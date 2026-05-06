@@ -1,0 +1,6 @@
+streamlit
+torch
+transformers
+Pillow
+rapidfuzz
+tqdm
