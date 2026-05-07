@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crystal Images</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: #0d1117;
+  font-family: 'DM Sans', sans-serif;
+  color: #fff;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 3rem 4rem;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid rgba(242,201,76,0.25);
+}
+.header img {
+  height: 52px; width: 52px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.header-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.header-title span { color: #F2C94C; }
+.header-sub {
+  font-size: 0.95rem;
+  color: rgba(255,255,255,0.45);
+  font-weight: 300;
+  letter-spacing: 0.5px;
+  margin-left: auto;
+}
+
+/* ── Panels ── */
+.panels {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+@media(max-width: 768px) { .panels { grid-template-columns: 1fr; } }
+
+.panel {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+.panel-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: #F2C94C;
+  margin-bottom: 1rem;
+}
+
+.row { display: flex; gap: 1rem; margin-bottom: 1rem; }
+.row > * { flex: 1; }
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.55);
+  margin-bottom: 4px;
+}
+
+select, input[type="text"] {
+  width: 100%;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px;
+  color: #fff;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1rem;
+  padding: 0.65rem 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+  appearance: none;
+}
+select:focus, input[type="text"]:focus {
+  border-color: #F2C94C;
+  box-shadow: 0 0 0 2px rgba(242,201,76,0.15);
+}
+select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+input::placeholder { color: rgba(255,255,255,0.3); }
+
+.btn {
+  background: #F2C94C;
+  color: #0d1117;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: none;
+  border-radius: 10px;
+  padding: 0.7rem 1.5rem;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
+}
+.btn:hover {
+  background: #ffd84d;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(242,201,76,0.3);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+/* ── Filter bar ── */
+.filter-bar {
+  display: none;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 1.5rem;
+}
+.filter-bar.visible { display: flex; }
+.filter-bar input { flex: 1; }
+.filter-bar .btn { width: auto; padding: 0.7rem 1.5rem; }
+
+/* ── Results header ── */
+.results-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 1.2rem;
+}
+.results-label { color: rgba(255,255,255,0.7); font-size: 0.95rem; font-weight: 500; }
+.results-count {
+  background: rgba(242,201,76,0.15);
+  border: 1px solid rgba(242,201,76,0.3);
+  color: #F2C94C;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 3px 12px;
+  border-radius: 20px;
+}
+
+/* ── Gallery ── */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+@media(max-width: 680px) { .gallery { grid-template-columns: repeat(2,1fr); } }
+@media(max-width: 420px) { .gallery { grid-template-columns: 1fr; } }
+
+.thumb-card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .2s, border-color .2s, box-shadow .2s;
+}
+.thumb-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(242,201,76,.45);
+  box-shadow: 0 14px 36px rgba(0,0,0,.55);
+}
+.thumb-card img {
+  width: 100%;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+  display: block;
+  background: rgba(255,255,255,0.05);
+}
+.thumb-meta {
+  padding: 9px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.thumb-loc  { color: rgba(255,255,255,.75); font-size: .75rem; font-weight: 500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.thumb-date { color: rgba(255,255,255,.4);  font-size: .7rem; }
+
+/* ── Lightbox ── */
+.lb-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.95);
+  z-index: 99999;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+.lb-overlay.open { display: flex; }
+.lb-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 92vw;
+  max-width: 1080px;
+}
+.lb-img-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#lb-photo {
+  max-width: 100%;
+  max-height: 74vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 0 80px rgba(0,0,0,.9);
+  display: block;
+  transition: opacity .18s ease;
+}
+.lb-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(242,201,76,.92);
+  color: #0d1117;
+  border: none;
+  border-radius: 50%;
+  width: 50px; height: 50px;
+  font-size: 22px; font-weight: bold;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s, transform .2s;
+  z-index: 10;
+  user-select: none;
+}
+.lb-arrow:hover { background: #F2C94C; transform: translateY(-50%) scale(1.1); }
+.lb-arrow.left  { left: -64px; }
+.lb-arrow.right { right: -64px; }
+@media(max-width: 820px) {
+  .lb-arrow.left  { left: 6px; }
+  .lb-arrow.right { right: 6px; }
+}
+.lb-close {
+  position: fixed; top: 16px; right: 20px;
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #fff;
+  border-radius: 50%;
+  width: 42px; height: 42px;
+  font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+  z-index: 100001;
+}
+.lb-close:hover { background: rgba(255,255,255,.22); }
+.lb-info {
+  margin-top: 16px;
+  text-align: center;
+  color: rgba(255,255,255,.8);
+  font-size: .9rem;
+  line-height: 1.7;
+}
+.lb-filename { color: rgba(255,255,255,.35); font-size: .74rem; margin-top: 4px; }
+.lb-counter  { margin-top: 10px; color: rgba(255,255,255,.28); font-size: .74rem; letter-spacing: 1px; }
+
+/* ── Spinner ── */
+.spinner {
+  display: none;
+  width: 36px; height: 36px;
+  border: 3px solid rgba(242,201,76,0.2);
+  border-top-color: #F2C94C;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  margin: 2rem auto;
+}
+.spinner.visible { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.msg { text-align: center; color: rgba(255,255,255,0.45); padding: 2rem 0; font-size: 0.95rem; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/JRM_3584-copy-2.jpeg" alt="logo" />
+    <div class="header-title">Crystal <span>Images</span></div>
+    <div class="header-sub">AI-powered image search &nbsp;·&nbsp; Powered by CLIP</div>
+  </div>
+
+  <!-- Search panels -->
+  <div class="panels">
+
+    <!-- Browse by location -->
+    <div class="panel">
+      <div class="panel-label">Browse by Location</div>
+      <div class="row">
+        <div>
+          <label>Date</label>
+          <select id="date-sel">
+            <option value="">Select a date…</option>
+          </select>
+        </div>
+        <div>
+          <label>Location</label>
+          <select id="loc-sel" disabled>
+            <option value="">Select a date first</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn" id="browse-btn">📂 Browse All Photos</button>
+    </div>
+
+    <!-- Last name search -->
+    <div class="panel">
+      <div class="panel-label">Find My Photos by Last Name</div>
+      <div style="margin-bottom:1rem;">
+        <label>Guest last name</label>
+        <input type="text" id="ln-input" placeholder="e.g. Smith" />
+      </div>
+      <button class="btn" id="ln-btn">🔍 Find My Photos</button>
+    </div>
+
+  </div>
+
+  <!-- Descriptive filter (shown after browse) -->
+  <div class="filter-bar" id="filter-bar">
+    <input type="text" id="filter-input" placeholder="Filter these photos by description… e.g. red jacket, jumping, family portrait" />
+    <button class="btn" id="filter-btn">Filter</button>
+  </div>
+
+  <!-- Spinner -->
+  <div class="spinner" id="spinner"></div>
+
+  <!-- Results -->
+  <div id="results-header" style="display:none;" class="results-header">
+    <span class="results-label" id="results-label">Results</span>
+    <span class="results-count" id="results-count"></span>
+  </div>
+  <div class="gallery" id="gallery"></div>
+  <div class="msg" id="msg"></div>
+
+</div>
+
+<!-- Lightbox -->
+<div class="lb-overlay" id="lb">
+  <button class="lb-close" onclick="closeLB()">✕</button>
+  <div class="lb-inner">
+    <div class="lb-img-wrap">
+      <button class="lb-arrow left"  onclick="stepLB(-1)">&#8592;</button>
+      <img id="lb-photo" src="" alt="" />
+      <button class="lb-arrow right" onclick="stepLB(1)">&#8594;</button>
+    </div>
+    <div class="lb-info"     id="lb-info"></div>
+    <div class="lb-filename" id="lb-fn"></div>
+    <div class="lb-counter"  id="lb-ct"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──
+let allPhotos   = [];   // current result set (metadata only)
+let loadedImgs  = {};   // path → b64 cache
+let cur         = 0;
+let browseDate  = '';
+let browseLoc   = '';
+
+// ── Init: load dates ──
+async function init() {
+  const res   = await fetch('/api/dates');
+  const { dates } = await res.json();
+  const sel   = document.getElementById('date-sel');
+  dates.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d; opt.textContent = d;
+    sel.appendChild(opt);
+  });
+}
+init();
+
+// ── Date change → load locations ──
+document.getElementById('date-sel').addEventListener('change', async function() {
+  const date  = this.value;
+  const locSel = document.getElementById('loc-sel');
+  locSel.innerHTML = '<option value="">Select a location…</option>';
+  if (!date) { locSel.disabled = true; return; }
+
+  const res  = await fetch(`/api/locations?date=${encodeURIComponent(date)}`);
+  const { locations } = await res.json();
+  locations.forEach(l => {
+    const opt = document.createElement('option');
+    opt.value = l; opt.textContent = l;
+    locSel.appendChild(opt);
+  });
+  locSel.disabled = false;
+});
+
+// ── Browse ──
+document.getElementById('browse-btn').addEventListener('click', async function() {
+  const date = document.getElementById('date-sel').value;
+  const loc  = document.getElementById('loc-sel').value;
+  if (!date || !loc) { showMsg('Please select a date and location.'); return; }
+
+  browseDate = date;
+  browseLoc  = loc;
+
+  showSpinner();
+  const res  = await fetch(`/api/browse?date=${encodeURIComponent(date)}&location=${encodeURIComponent(loc)}`);
+  const data = await res.json();
+  hideSpinner();
+
+  allPhotos = data.photos;
+  document.getElementById('filter-bar').classList.add('visible');
+  document.getElementById('results-label').textContent = `📍 ${loc}  ·  ${date}`;
+  renderGallery(allPhotos);
+});
+
+// ── Descriptive filter ──
+document.getElementById('filter-btn').addEventListener('click', async function() {
+  const q = document.getElementById('filter-input').value.trim();
+  if (!q) { renderGallery(allPhotos); return; }
+
+  showSpinner();
+  const url = `/api/search?query=${encodeURIComponent(q)}&date=${encodeURIComponent(browseDate)}&location=${encodeURIComponent(browseLoc)}`;
+  const res  = await fetch(url);
+  const data = await res.json();
+  hideSpinner();
+  renderGallery(data.photos);
+});
+
+// ── Last name search ──
+document.getElementById('ln-btn').addEventListener('click', async function() {
+  const ln = document.getElementById('ln-input').value.trim();
+  if (!ln) { showMsg('Please enter a last name.'); return; }
+
+  browseDate = ''; browseLoc = '';
+  document.getElementById('filter-bar').classList.remove('visible');
+
+  showSpinner();
+  const res  = await fetch(`/api/search?last_name=${encodeURIComponent(ln)}`);
+  const data = await res.json();
+  hideSpinner();
+
+  allPhotos = data.photos;
+  document.getElementById('results-label').textContent = `Last name: ${ln}`;
+  renderGallery(allPhotos);
+});
+
+// ── Render gallery ──
+function renderGallery(photos) {
+  const gallery = document.getElementById('gallery');
+  const msg     = document.getElementById('msg');
+  gallery.innerHTML = '';
+  msg.textContent   = '';
+
+  if (!photos || !photos.length) {
+    msg.textContent = 'No photos found.';
+    document.getElementById('results-header').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('results-count').textContent =
+    `${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
+  document.getElementById('results-header').style.display = 'flex';
+
+  photos.forEach((photo, i) => {
+    const card = document.createElement('div');
+    card.className = 'thumb-card';
+    card.innerHTML = `
+      <img src="" data-path="${photo.path}" alt="${photo.filename}" />
+      <div class="thumb-meta">
+        <span class="thumb-loc">📍 ${photo.location}</span>
+        <span class="thumb-date">${formatDate(photo.date)}</span>
+      </div>`;
+    card.addEventListener('click', () => openLB(i));
+    gallery.appendChild(card);
+
+    // Lazy-load image
+    loadPhoto(photo.path).then(b64 => {
+      const img = card.querySelector('img');
+      if (img) img.src = 'data:image/jpeg;base64,' + b64;
+    });
+  });
+}
+
+// ── Load photo via API (cached) ──
+async function loadPhoto(path) {
+  if (loadedImgs[path]) return loadedImgs[path];
+  const res  = await fetch(`/api/photo?path=${encodeURIComponent(path)}`);
+  const data = await res.json();
+  loadedImgs[path] = data.b64;
+  return data.b64;
+}
+
+// ── Lightbox ──
+function openLB(i) {
+  cur = i;
+  renderLB();
+  document.getElementById('lb').classList.add('open');
+}
+function closeLB() {
+  document.getElementById('lb').classList.remove('open');
+}
+function stepLB(dir) {
+  cur = (cur + dir + allPhotos.length) % allPhotos.length;
+  renderLB();
+}
+async function renderLB() {
+  const photo = allPhotos[cur];
+  const ph    = document.getElementById('lb-photo');
+  ph.style.opacity = '0';
+
+  const b64 = await loadPhoto(photo.path);
+  ph.src = 'data:image/jpeg;base64,' + b64;
+  ph.style.opacity = '1';
+
+  document.getElementById('lb-info').innerHTML =
+    `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
+  document.getElementById('lb-fn').textContent  = photo.filename;
+  document.getElementById('lb-ct').textContent  = `${cur + 1} / ${allPhotos.length}`;
+}
+
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lb').classList.contains('open')) return;
+  if (e.key === 'ArrowRight') stepLB(1);
+  if (e.key === 'ArrowLeft')  stepLB(-1);
+  if (e.key === 'Escape')     closeLB();
+});
+document.getElementById('lb').addEventListener('click', function(e) {
+  if (e.target === this) closeLB();
+});
+
+// ── Helpers ──
+function formatDate(d) {
+  try {
+    const parts = d.split('-');
+    // Handle YYYY-MM-DD
+    if (parts[0].length === 4) {
+      return new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    }
+    // Handle MM-DD-YY
+    const [m, day, y] = parts;
+    return new Date(`20${y}-${m}-${day}`).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+  } catch { return d; }
+}
+
+function showSpinner() {
+  document.getElementById('spinner').classList.add('visible');
+  document.getElementById('gallery').innerHTML = '';
+  document.getElementById('msg').textContent   = '';
+  document.getElementById('results-header').style.display = 'none';
+}
+function hideSpinner() {
+  document.getElementById('spinner').classList.remove('visible');
+}
+function showMsg(text) {
+  document.getElementById('msg').textContent = text;
+}
+</script>
+</body>
+</html>
