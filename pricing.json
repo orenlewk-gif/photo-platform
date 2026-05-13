@@ -1,0 +1,25 @@
+{
+  "default": {
+    "tiers": [
+      {"label": "1 Photo",    "count": 1,     "price": 25},
+      {"label": "3 Photos",   "count": 3,     "price": 60},
+      {"label": "All Photos", "count": "all", "price": 90}
+    ]
+  },
+  "activities": {
+    "Mountain Biking": {
+      "tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 25},
+        {"label": "3 Photos",   "count": 3,     "price": 60},
+        {"label": "All Photos", "count": "all", "price": 90}
+      ]
+    },
+    "Winter Portraits": {
+      "tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 30},
+        {"label": "3 Photos",   "count": 3,     "price": 75},
+        {"label": "All Photos", "count": "all", "price": 120}
+      ]
+    }
+  }
+}

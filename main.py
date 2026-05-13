@@ -12,8 +12,24 @@ import base64
 from io import BytesIO
 from PIL import Image, ImageOps
 from functools import lru_cache
+import boto3
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
+
+# ─────────────────────────────────────────
+# R2 CLIENT
+# ─────────────────────────────────────────
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.getenv("R2_ENDPOINT_URL"),
+    aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
+)
+R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 
 # ─────────────────────────────────────────
 # HELPERS
@@ -45,14 +61,60 @@ model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
 processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 print("Model loaded.")
 
-with open("images.json", "r") as f:
-    data = json.load(f)
+if os.path.exists("images.json"):
+    with open("images.json", "r") as f:
+        data = json.load(f)
+else:
+    print("images.json not found locally — downloading from R2...")
+    obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
+    data = json.loads(obj["Body"].read().decode("utf-8"))
 print(f"Loaded {len(data)} photos.")
 
 
 # ─────────────────────────────────────────
 # API ROUTES
 # ─────────────────────────────────────────
+
+@app.get("/api/days")
+def get_days():
+    days = {}
+    for item in data:
+        d = item["date"]
+        if d not in days:
+            days[d] = {"locations": set(), "galleries": set(), "loc_previews": {}}
+        loc = clean_location(item["location"])
+        days[d]["locations"].add(loc)
+        days[d]["galleries"].add((loc, item.get("last_name", "")))
+        if loc not in days[d]["loc_previews"]:
+            days[d]["loc_previews"][loc] = []
+        days[d]["loc_previews"][loc].append(item["path"])
+
+    result = []
+    for date in sorted(days.keys(), reverse=True):
+        d = days[date]
+        # One photo per folder first, then fill remaining slots round-robin
+        loc_lists = list(d["loc_previews"].values())
+        previews = []
+        i = 0
+        while len(previews) < 4:
+            added = False
+            for lst in loc_lists:
+                if i < len(lst):
+                    previews.append(lst[i])
+                    added = True
+                    if len(previews) == 4:
+                        break
+            if not added:
+                break
+            i += 1
+        result.append({
+            "date":          date,
+            "previews":      previews,
+            "folder_count":  len(d["locations"]),
+            "gallery_count": len(d["galleries"])
+        })
+    return {"days": result}
+
 
 @app.get("/api/dates")
 def get_dates():
@@ -67,17 +129,58 @@ def get_locations(date: str = Query(None)):
     else:
         items = data
     loc_map = {}
+    previews = {}
     for item in items:
         display = clean_location(item["location"])
         loc_map[display] = item["location"]
-    return {"locations": sorted(loc_map.keys())}
+        if display not in previews:
+            previews[display] = []
+        if len(previews[display]) < 4:
+            previews[display].append(item["path"])
 
+    locations = []
+    for display in sorted(loc_map.keys()):
+        locations.append({
+            "name":     display,
+            "previews": previews[display]
+        })
+    return {"locations": locations}
+
+
+@app.get("/api/families")
+def get_families(date: str, location: str):
+    """Return last-name subfolders for a location, plus preview photos for each."""
+    families = {}
+    for item in data:
+        if item["date"] != date:
+            continue
+        if clean_location(item["location"]) != location:
+            continue
+        ln = item.get("last_name", "").strip()
+        if not ln:
+            continue
+        if ln not in families:
+            families[ln] = []
+        if len(families[ln]) < 4:
+            families[ln].append(item["path"])
+
+    result = []
+    for name in sorted(families.keys()):
+        result.append({"name": name, "previews": families[name]})
+    return {"families": result, "has_families": len(result) > 0}
+
+
+def natural_sort_key(path):
+    name = os.path.basename(path).lower()
+    return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', name)]
 
 @app.get("/api/browse")
-def browse(date: str, location: str):
+def browse(date: str, location: str, family: str = Query(None)):
     pool = [item for item in data
             if item["date"] == date
-            and clean_location(item["location"]) == location]
+            and clean_location(item["location"]) == location
+            and (not family or item.get("last_name","").strip().lower() == family.lower())]
+    pool.sort(key=lambda x: natural_sort_key(x["path"]))
     results = []
     for item in pool:
         results.append({
@@ -138,7 +241,11 @@ def search(
 
         results.append((similarity + boost, item))
 
-    results.sort(reverse=True, key=lambda x: x[0])
+    # When no text query (last name only), sort by filename; otherwise sort by score
+    if text_embedding is not None:
+        results.sort(reverse=True, key=lambda x: x[0])
+    else:
+        results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
 
     photos = []
     for score, item in results:
@@ -153,12 +260,37 @@ def search(
     return {"count": len(photos), "photos": photos}
 
 
+@app.get("/api/pricing")
+def get_pricing(location: str = Query(None)):
+    default = {"tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 25},
+        {"label": "3 Photos",   "count": 3,     "price": 60},
+        {"label": "All Photos", "count": "all", "price": 90}
+    ]}
+    if not os.path.exists("pricing.json"):
+        return default
+    with open("pricing.json", "r") as f:
+        pricing = json.load(f)
+    if location and location in pricing.get("activities", {}):
+        return pricing["activities"][location]
+    return pricing.get("default", default)
+
+
+def to_r2_key(path: str) -> str:
+    # Convert absolute local path to R2 key (relative, starting from 'images/')
+    idx = path.find("images/")
+    return path[idx:] if idx >= 0 else path
+
 @app.get("/api/photo")
 def get_photo(path: str):
-    if not os.path.exists(path):
-        return JSONResponse(status_code=404, content={"error": "File not found"})
     try:
-        img = Image.open(path).convert("RGB")
+        if os.getenv("R2_ENDPOINT_URL"):
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=to_r2_key(path))
+            img = Image.open(BytesIO(obj["Body"].read())).convert("RGB")
+        elif os.path.exists(path):
+            img = Image.open(path).convert("RGB")
+        else:
+            return JSONResponse(status_code=404, content={"error": "File not found"})
         img = fix_orientation(img)
         b64 = image_to_base64(img)
         return {"b64": b64}

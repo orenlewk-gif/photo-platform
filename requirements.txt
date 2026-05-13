@@ -1,6 +1,9 @@
-streamlit
+fastapi
+uvicorn
 torch
 transformers
 Pillow
 rapidfuzz
 tqdm
+boto3
+python-dotenv

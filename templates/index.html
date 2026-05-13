@@ -4,359 +4,537 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Crystal Images</title>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min-height: 100vh; }
+.container { max-width: 1400px; margin: 0 auto; padding: 2rem 3rem 4rem; }
 
-body {
-  background: #0d1117;
-  font-family: 'DM Sans', sans-serif;
-  color: #fff;
-  min-height: 100vh;
-}
+/* Header */
+.header { display:flex; align-items:center; gap:16px; margin-bottom:2rem; padding-bottom:1.5rem; border-bottom:1px solid rgba(255,255,255,0.1); }
+.header img { height:52px; width:52px; object-fit:cover; border-radius:8px; flex-shrink:0; }
+.header-title { font-family:'Space Mono',monospace; font-size:2rem; font-weight:700; letter-spacing:-0.5px; }
+.header-title span { color:#F5C518; }
+.header-sub { font-size:0.9rem; color:rgba(255,255,255,0.4); font-weight:300; margin-left:auto; }
 
-.container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem 3rem 4rem;
-}
+/* Last name bar */
+.ln-bar { display:flex; gap:0.75rem; align-items:flex-end; margin-bottom:2rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:1rem 1.2rem; }
+.ln-bar input { flex:1; }
+.ln-bar .btn { width:auto; padding:0.65rem 1.4rem; white-space:nowrap; }
+.ln-bar-label { font-size:0.7rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#F5C518; margin-bottom:6px; }
 
-/* ── Header ── */
-.header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 2rem;
-  padding-bottom: 1.5rem;
-  border-bottom: 1px solid rgba(242,201,76,0.25);
-}
-.header img {
-  height: 52px; width: 52px;
-  object-fit: cover;
-  border-radius: 8px;
-  flex-shrink: 0;
-}
-.header-title {
-  font-family: 'Playfair Display', serif;
-  font-size: 2.4rem;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-}
-.header-title span { color: #F2C94C; }
-.header-sub {
-  font-size: 0.95rem;
-  color: rgba(255,255,255,0.45);
-  font-weight: 300;
-  letter-spacing: 0.5px;
-  margin-left: auto;
-}
+/* Breadcrumb */
+.breadcrumb { display:none; align-items:center; gap:8px; margin-bottom:1.5rem; font-size:0.85rem; color:rgba(255,255,255,0.45); flex-wrap:wrap; }
+.breadcrumb.show { display:flex; }
+.crumb { cursor:pointer; color:#F5C518; text-decoration:underline; text-underline-offset:3px; }
+.sep { color:rgba(255,255,255,0.2); }
+.current { color:rgba(255,255,255,0.75); }
 
-/* ── Panels ── */
-.panels {
-  display: grid;
-  grid-template-columns: 3fr 2fr;
-  gap: 1.5rem;
-  margin-bottom: 2rem;
-}
-@media(max-width: 768px) { .panels { grid-template-columns: 1fr; } }
+/* Grid cards */
+.grid { display:grid; grid-template-columns:repeat(3,1fr); gap:2rem; }
+@media(max-width:900px){ .grid{ grid-template-columns:repeat(2,1fr); } }
+@media(max-width:560px){ .grid{ grid-template-columns:1fr; } }
 
-.panel {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 16px;
-  padding: 1.5rem;
-}
-.panel-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: #F2C94C;
-  margin-bottom: 1rem;
-}
+.grid-card { cursor:pointer; transition:transform 0.2s; }
+.grid-card:hover { transform:translateY(-3px); }
+.grid-card:hover .collage-inner { border-color:rgba(242,201,76,0.5); }
 
-.row { display: flex; gap: 1rem; margin-bottom: 1rem; }
-.row > * { flex: 1; }
+.collage-inner { border:2px solid rgba(255,255,255,0.08); border-radius:6px; overflow:hidden; margin-bottom:0.75rem; transition:border-color 0.2s; }
 
-label {
-  display: block;
-  font-size: 0.8rem;
-  color: rgba(255,255,255,0.55);
-  margin-bottom: 4px;
-}
+/* Layout A: 2x2 grid */
+.collage-2x2 { display:grid; grid-template-columns:1fr 1fr; gap:2px; background:#0a1e2e; }
+.collage-2x2 img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#0a1e2e; }
 
-select, input[type="text"] {
-  width: 100%;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 10px;
-  color: #fff;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 1rem;
-  padding: 0.65rem 1rem;
-  outline: none;
-  transition: border-color 0.2s;
-  appearance: none;
-}
-select:focus, input[type="text"]:focus {
-  border-color: #F2C94C;
-  box-shadow: 0 0 0 2px rgba(242,201,76,0.15);
-}
-select:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-input::placeholder { color: rgba(255,255,255,0.3); }
+/* Layout B: 1 hero */
+.collage-hero img { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; background:#0a1e2e; }
 
-.btn {
-  background: #F2C94C;
-  color: #0d1117;
-  font-family: 'DM Sans', sans-serif;
-  font-weight: 600;
-  font-size: 0.95rem;
-  border: none;
-  border-radius: 10px;
-  padding: 0.7rem 1.5rem;
-  cursor: pointer;
-  width: 100%;
-  transition: background 0.2s, transform 0.2s, box-shadow 0.2s;
-}
-.btn:hover {
-  background: #ffd84d;
-  transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(242,201,76,0.3);
-}
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+/* Layout C: 1 wide top + 2 bottom */
+.collage-top1-bot2 { display:grid; grid-template-rows:auto auto; gap:2px; background:#0a1e2e; }
+.collage-top1-bot2 .top { width:100%; aspect-ratio:16/9; object-fit:cover; display:block; background:#0a1e2e; }
+.collage-top1-bot2 .bot-row { display:grid; grid-template-columns:1fr 1fr; gap:2px; }
+.collage-top1-bot2 .bot-row img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#0a1e2e; }
 
-/* ── Filter bar ── */
-.filter-bar {
-  display: none;
-  gap: 0.75rem;
-  align-items: flex-end;
-  margin-bottom: 1.5rem;
-}
-.filter-bar.visible { display: flex; }
-.filter-bar input { flex: 1; }
-.filter-bar .btn { width: auto; padding: 0.7rem 1.5rem; }
+/* Layout D: 1 tall left + 2 stacked right */
+.collage-left1-right2 { display:grid; grid-template-columns:1fr 1fr; gap:2px; background:#0a1e2e; }
+.collage-left1-right2 .tall { aspect-ratio:2/3; object-fit:cover; width:100%; display:block; background:#0a1e2e; grid-row:span 2; }
+.collage-left1-right2 .small { aspect-ratio:1/1; object-fit:cover; width:100%; display:block; background:#0a1e2e; }
 
-/* ── Results header ── */
-.results-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 1.2rem;
+.collage-single img { width:100%; aspect-ratio:3/2; object-fit:cover; display:block; background:#0a1e2e; }
+.collage-placeholder { width:100%; aspect-ratio:1/1; background:#0a1e2e; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.15); font-size:2rem; }
+
+.card-title { font-size:1rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#fff; margin-bottom:0.25rem; text-align:center; text-decoration:underline; text-underline-offset:3px; }
+.card-sub { font-size:0.8rem; color:rgba(255,255,255,0.45); text-align:center; }
+
+/* Gallery */
+.gallery-header { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
+.gallery-title { font-size:1.1rem; font-weight:600; }
+.results-count { background:rgba(242,201,76,0.15); border:1px solid rgba(242,201,76,0.3); color:#F5C518; font-size:0.8rem; font-weight:600; padding:3px 12px; border-radius:20px; }
+.select-all-btn { background:rgba(245,197,24,0.12); border:1px solid rgba(245,197,24,0.4); color:#F5C518; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.85rem; border-radius:8px; padding:0.45rem 1.1rem; cursor:pointer; margin-left:auto; transition:background 0.2s; }
+.select-all-btn:hover { background:rgba(245,197,24,0.25); }
+
+.gallery-controls {
+  display:flex; align-items:center; gap:1.5rem; margin-bottom:1.2rem; flex-wrap:wrap;
 }
-.results-label { color: rgba(255,255,255,0.7); font-size: 0.95rem; font-weight: 500; }
-.results-count {
-  background: rgba(242,201,76,0.15);
-  border: 1px solid rgba(242,201,76,0.3);
-  color: #F2C94C;
-  font-size: 0.8rem;
-  font-weight: 600;
-  padding: 3px 12px;
-  border-radius: 20px;
+.filter-bar { display:flex; gap:0.75rem; flex:1; min-width:220px; }
+.filter-bar input { flex:1; }
+.filter-bar .btn { width:auto; padding:0.65rem 1.4rem; }
+
+.size-slider-wrap {
+  display:flex; align-items:center; gap:0.6rem;
+  color:rgba(255,255,255,0.45); font-size:0.8rem; white-space:nowrap;
+}
+.size-slider-wrap span { font-size:1rem; }
+input[type="range"] {
+  -webkit-appearance:none; appearance:none;
+  width:100px; height:4px;
+  background:rgba(255,255,255,0.15); border-radius:2px; outline:none; cursor:pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none;
+  width:16px; height:16px; border-radius:50%;
+  background:#F5C518; cursor:pointer;
 }
 
-/* ── Gallery ── */
-.gallery {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
+/* Pricing display */
+.pricing-box {
+  display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;
+  background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+  border-radius:10px; padding:0.65rem 1rem; flex-wrap:wrap;
 }
-@media(max-width: 680px) { .gallery { grid-template-columns: repeat(2,1fr); } }
-@media(max-width: 420px) { .gallery { grid-template-columns: 1fr; } }
+.pricing-label { font-size:0.72rem; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:rgba(255,255,255,0.4); margin-right:0.25rem; }
+.tier-pill {
+  background:rgba(242,201,76,0.1); border:1px solid rgba(242,201,76,0.25);
+  color:#F5C518; font-size:0.8rem; font-weight:600;
+  padding:3px 12px; border-radius:16px; white-space:nowrap;
+}
+.tier-pill.all-pill {
+  background:rgba(242,201,76,0.18); border-color:rgba(242,201,76,0.5);
+  cursor:pointer; transition:background 0.2s;
+}
+.tier-pill.all-pill:hover { background:rgba(242,201,76,0.3); }
+.pricing-hint { font-size:0.75rem; color:rgba(255,255,255,0.3); margin-left:auto; }
 
+/* Gallery grid */
+.gallery { display:grid; gap:10px; }
+.gallery { grid-template-columns: repeat(var(--cols,3), 1fr); }
+
+/* Thumbnail cards */
 .thumb-card {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.08);
-  border-radius: 12px;
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform .2s, border-color .2s, box-shadow .2s;
+  background:rgba(255,255,255,.04); border:2px solid rgba(255,255,255,.08);
+  border-radius:12px; overflow:hidden; cursor:pointer;
+  transition:transform .2s, border-color .2s, box-shadow .2s;
+  position:relative;
 }
-.thumb-card:hover {
-  transform: translateY(-4px);
-  border-color: rgba(242,201,76,.45);
-  box-shadow: 0 14px 36px rgba(0,0,0,.55);
-}
-.thumb-card img {
-  width: 100%;
-  aspect-ratio: 4/3;
-  object-fit: cover;
-  display: block;
-  background: rgba(255,255,255,0.05);
-}
-.thumb-meta {
-  padding: 9px 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.thumb-loc  { color: rgba(255,255,255,.75); font-size: .75rem; font-weight: 500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.thumb-date { color: rgba(255,255,255,.4);  font-size: .7rem; }
+.thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
+.thumb-card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
 
-/* ── Lightbox ── */
-.lb-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,.95);
-  z-index: 99999;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
+/* Transparent click blocker */
+.thumb-card::after {
+  content:''; position:absolute; inset:0; z-index:2;
+  background:transparent;
 }
-.lb-overlay.open { display: flex; }
-.lb-inner {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 92vw;
-  max-width: 1080px;
-}
-.lb-img-wrap {
-  position: relative;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-#lb-photo {
-  max-width: 100%;
-  max-height: 74vh;
-  object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 0 80px rgba(0,0,0,.9);
-  display: block;
-  transition: opacity .18s ease;
-}
-.lb-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(242,201,76,.92);
-  color: #0d1117;
-  border: none;
-  border-radius: 50%;
-  width: 50px; height: 50px;
-  font-size: 22px; font-weight: bold;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .2s, transform .2s;
-  z-index: 10;
-  user-select: none;
-}
-.lb-arrow:hover { background: #F2C94C; transform: translateY(-50%) scale(1.1); }
-.lb-arrow.left  { left: -64px; }
-.lb-arrow.right { right: -64px; }
-@media(max-width: 820px) {
-  .lb-arrow.left  { left: 6px; }
-  .lb-arrow.right { right: 6px; }
-}
-.lb-close {
-  position: fixed; top: 16px; right: 20px;
-  background: rgba(255,255,255,.1);
-  border: 1px solid rgba(255,255,255,.2);
-  color: #fff;
-  border-radius: 50%;
-  width: 42px; height: 42px;
-  font-size: 18px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .2s;
-  z-index: 100001;
-}
-.lb-close:hover { background: rgba(255,255,255,.22); }
-.lb-info {
-  margin-top: 16px;
-  text-align: center;
-  color: rgba(255,255,255,.8);
-  font-size: .9rem;
-  line-height: 1.7;
-}
-.lb-filename { color: rgba(255,255,255,.35); font-size: .74rem; margin-top: 4px; }
-.lb-counter  { margin-top: 10px; color: rgba(255,255,255,.28); font-size: .74rem; letter-spacing: 1px; }
 
-/* ── Spinner ── */
-.spinner {
-  display: none;
-  width: 36px; height: 36px;
-  border: 3px solid rgba(242,201,76,0.2);
-  border-top-color: #F2C94C;
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-  margin: 2rem auto;
+/* Bottom action row — select circle + quick shop side by side */
+.card-btn-row {
+  position:absolute; bottom:42px; left:8px; z-index:5;
+  display:flex; gap:5px; align-items:center;
+  opacity:0; transition:opacity 0.15s; pointer-events:all;
 }
-.spinner.visible { display: block; }
-@keyframes spin { to { transform: rotate(360deg); } }
+.thumb-card:hover .card-btn-row   { opacity:1; }
+.thumb-card.selected .card-btn-row { opacity:1; }
 
-.msg { text-align: center; color: rgba(255,255,255,0.45); padding: 2rem 0; font-size: 0.95rem; }
+.select-check {
+  width:26px; height:26px; border-radius:50%; flex-shrink:0;
+  background:rgba(0,0,0,0.55); border:2px solid rgba(255,255,255,0.55);
+  display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:bold; color:#fff;
+  transition:background 0.15s, border-color 0.15s; cursor:pointer;
+}
+.thumb-card.selected .select-check { background:#F5C518; border-color:#F5C518; color:#0c2336; }
+.thumb-card.selected {
+  border-color:#F5C518;
+  box-shadow:0 0 0 1px rgba(242,201,76,0.4), 0 8px 24px rgba(0,0,0,0.5);
+}
+
+/* Watermark overlay */
+.thumb-card .watermark {
+  position:absolute; inset:0; z-index:3;
+  display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
+  /* background-image: url('/static/watermark.png'); */
+  /* background-size: 60%; background-repeat: no-repeat; background-position: center; */
+  /* opacity: 0.35; */
+}
+
+.thumb-meta { padding:9px 12px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+.thumb-loc  { color:rgba(255,255,255,.75); font-size:.75rem; font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.thumb-date { color:rgba(255,255,255,.4); font-size:.7rem; }
+
+.thumb-shop-btn {
+  background:#F5C518; color:#0c2336; border:none;
+  font-family:'DM Sans',sans-serif; font-weight:700; font-size:0.82rem;
+  border-radius:6px; padding:0.3rem 0.75rem; cursor:pointer;
+  transition:background 0.2s; white-space:nowrap;
+}
+.thumb-shop-btn:hover { background:#ffd700; }
+
+/* ── Quick Shop modal ── */
+.qs-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:99997; align-items:center; justify-content:center; padding:1rem; }
+.qs-overlay.open { display:flex; }
+.qs-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,0.1); border-radius:16px; max-width:460px; width:100%; max-height:88vh; overflow-y:auto; }
+.qs-photo { width:100%; height:190px; object-fit:cover; border-radius:16px 16px 0 0; display:block; background:#0a1e2e; }
+.qs-body { padding:1.4rem; }
+.qs-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:1.1rem; }
+.qs-filename { font-size:0.78rem; color:rgba(255,255,255,0.4); }
+.qs-close { background:transparent; border:1px solid rgba(255,255,255,0.2); color:#fff; border-radius:50%; width:30px; height:30px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.qs-section { margin-bottom:1.2rem; }
+.qs-section-label { font-size:0.68rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,0.38); margin-bottom:0.65rem; }
+.qs-row { display:flex; align-items:center; justify-content:space-between; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06); }
+.qs-row:last-child { border-bottom:none; }
+.qs-row-label { font-size:0.88rem; }
+.qs-row-prices { display:flex; align-items:center; gap:0.5rem; }
+.qs-price { font-weight:700; color:#F5C518; font-size:0.95rem; }
+.qs-price-was { text-decoration:line-through; color:rgba(255,255,255,0.3); font-size:0.8rem; }
+.qs-add-btn { background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif; font-weight:700; font-size:0.8rem; border:none; border-radius:6px; padding:0.32rem 0.85rem; cursor:pointer; transition:background 0.2s; margin-left:0.75rem; }
+.qs-add-btn:hover { background:#ffd700; }
+.print-discount-banner { background:rgba(245,197,24,0.1); border:1px solid rgba(245,197,24,0.35); border-radius:8px; padding:0.6rem 0.9rem; margin-bottom:0.8rem; font-size:0.82rem; color:#F5C518; }
+
+/* ── Frame selector ── */
+.frame-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:99998; align-items:center; justify-content:center; padding:1rem; }
+.frame-overlay.open { display:flex; }
+.frame-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,0.1); border-radius:16px; padding:2rem; max-width:500px; width:100%; }
+.frame-modal h3 { font-size:1.1rem; font-weight:700; margin-bottom:0.3rem; }
+.frame-modal .frame-sub { color:rgba(255,255,255,0.4); font-size:0.83rem; margin-bottom:1.4rem; }
+.frame-grid { display:flex; gap:0.75rem; margin-bottom:1.5rem; }
+.frame-option { background:rgba(255,255,255,0.04); border:2px solid rgba(255,255,255,0.1); border-radius:10px; padding:1rem; cursor:pointer; text-align:center; transition:all 0.15s; }
+.frame-option:hover { border-color:rgba(245,197,24,0.5); }
+.frame-option.selected { border-color:#F5C518; background:rgba(245,197,24,0.08); }
+.frame-option .frame-icon { font-size:1.8rem; margin-bottom:0.4rem; }
+.frame-option .frame-name { font-weight:600; font-size:0.88rem; }
+.frame-option .frame-fprice { color:rgba(255,255,255,0.45); font-size:0.78rem; margin-top:2px; }
+.frame-option .frame-fprice.free { color:#4ade80; }
+.frame-actions { display:flex; gap:0.75rem; }
+.frame-actions .btn { flex:1; width:auto; }
+.frame-actions .btn-ghost { flex:1; text-align:center; }
+
+/* Toast */
+.toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#F5C518; color:#0c2336; font-weight:700; padding:0.6rem 1.4rem; border-radius:8px; z-index:999999; font-size:0.9rem; pointer-events:none; animation:fadeInOut 2.5s forwards; }
+@keyframes fadeInOut { 0%{opacity:0;transform:translateX(-50%) translateY(10px)} 15%{opacity:1;transform:translateX(-50%) translateY(0)} 75%{opacity:1} 100%{opacity:0} }
+
+/* Print upsell banner */
+.print-upsell-banner {
+  display:none; position:fixed; top:0; left:0; right:0; z-index:99990;
+  background:#F5C518; color:#0c2336; padding:0.75rem 2rem;
+  align-items:center; justify-content:center; gap:1rem;
+  font-size:0.9rem; font-weight:500; text-align:center;
+}
+.print-upsell-banner.show { display:flex; }
+.print-upsell-banner strong { font-weight:800; }
+.print-upsell-banner button {
+  background:transparent; border:2px solid rgba(0,0,0,0.25); color:#0c2336;
+  border-radius:50%; width:26px; height:26px; font-size:14px; font-weight:bold;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+
+/* Screenshot blackout overlay */
+#ss-block {
+  display:none; position:fixed; inset:0;
+  background:#000; z-index:999999;
+}
+#ss-block.active { display:block; }
+
+/* Shared inputs */
+input[type="text"], select { width:100%; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px; color:#fff; font-family:'DM Sans',sans-serif; font-size:1rem; padding:0.65rem 1rem; outline:none; transition:border-color 0.2s; }
+input:focus { border-color:#F5C518; box-shadow:0 0 0 2px rgba(242,201,76,0.15); }
+input::placeholder { color:rgba(255,255,255,0.3); }
+.btn { background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.95rem; border:none; border-radius:10px; padding:0.7rem 1.5rem; cursor:pointer; width:100%; transition:background 0.2s, transform 0.2s, box-shadow 0.2s; }
+.btn:hover { background:#ffd700; transform:translateY(-1px); box-shadow:0 6px 20px rgba(242,201,76,0.3); }
+
+.spinner { display:none; width:36px; height:36px; border:3px solid rgba(242,201,76,0.2); border-top-color:#F5C518; border-radius:50%; animation:spin 0.7s linear infinite; margin:2rem auto; }
+.spinner.visible { display:block; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.msg { text-align:center; color:rgba(255,255,255,0.4); padding:2rem 0; font-size:0.95rem; }
+
+/* ── Cart bar ── */
+.cart-bar {
+  display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
+  background:#0c2336; border-top:2px solid rgba(242,201,76,0.4);
+  padding:0.9rem 2rem; align-items:center; gap:1.5rem; flex-wrap:wrap;
+}
+.cart-bar.show { display:flex; }
+.cart-summary { display:flex; align-items:center; gap:1rem; }
+.cart-count-text { font-weight:600; font-size:0.95rem; }
+.cart-price-tag {
+  background:rgba(242,201,76,0.15); border:1px solid rgba(242,201,76,0.45);
+  color:#F5C518; font-weight:700; font-size:1.15rem;
+  padding:3px 16px; border-radius:20px;
+}
+.cart-upsell {
+  flex:1; font-size:0.78rem; color:rgba(255,255,255,0.55);
+  min-width:200px;
+}
+.cart-upsell strong { color:#F5C518; }
+.cart-actions { display:flex; gap:0.6rem; margin-left:auto; }
+.btn-ghost {
+  background:transparent; border:1px solid rgba(255,255,255,0.2);
+  color:rgba(255,255,255,0.7); font-family:'DM Sans',sans-serif;
+  font-size:0.88rem; font-weight:500; border-radius:8px;
+  padding:0.55rem 1.1rem; cursor:pointer; transition:all 0.2s; white-space:nowrap;
+}
+.btn-ghost:hover { border-color:rgba(255,255,255,0.45); color:#fff; }
+.btn-checkout {
+  background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif;
+  font-weight:700; font-size:0.95rem; border:none; border-radius:8px;
+  padding:0.6rem 1.4rem; cursor:pointer; transition:background 0.2s; white-space:nowrap;
+}
+.btn-checkout:hover { background:#ffd700; }
+
+/* ── Cart view overlay ── */
+.cartview-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
+  z-index:99996; align-items:flex-end; justify-content:center; padding:0;
+}
+.cartview-overlay.open { display:flex; }
+.cartview-modal {
+  background:#0e2a3a; border:1px solid rgba(255,255,255,0.1);
+  border-radius:16px 16px 0 0; width:100%; max-width:600px;
+  max-height:82vh; overflow-y:auto; padding:1.8rem 1.8rem 2rem;
+}
+.cartview-modal h3 { font-size:1.15rem; font-weight:700; margin-bottom:1.2rem; }
+.cartview-section-label {
+  font-size:0.68rem; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; color:rgba(255,255,255,0.38);
+  margin:1rem 0 0.6rem;
+}
+.cartview-section-label:first-of-type { margin-top:0; }
+.cartview-photo-grid { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:0.5rem; }
+.cartview-thumb {
+  position:relative; width:76px; height:76px; border-radius:8px; overflow:hidden;
+  border:2px solid rgba(255,255,255,0.12); background:#0a1e2e; flex-shrink:0;
+}
+.cartview-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.cartview-thumb .cv-remove {
+  position:absolute; top:2px; right:2px; background:rgba(0,0,0,0.7);
+  border:none; color:#fff; border-radius:50%; width:20px; height:20px;
+  font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  line-height:1;
+}
+.cartview-thumb .cv-remove:hover { background:#e53e3e; }
+.cartview-print-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06);
+  font-size:0.88rem; gap:0.75rem;
+}
+.cartview-print-row:last-child { border-bottom:none; }
+.cartview-print-info { flex:1; }
+.cartview-print-info .cv-size { font-weight:600; }
+.cartview-print-info .cv-frame { color:rgba(255,255,255,0.45); font-size:0.8rem; margin-top:1px; }
+.cartview-print-price { font-weight:700; color:#F5C518; white-space:nowrap; }
+.cartview-rm-btn {
+  background:transparent; border:1px solid rgba(255,255,255,0.18); color:rgba(255,255,255,0.5);
+  border-radius:6px; padding:0.25rem 0.6rem; font-size:0.78rem; cursor:pointer; white-space:nowrap;
+}
+.cartview-rm-btn:hover { border-color:#e53e3e; color:#e53e3e; }
+.cartview-total {
+  display:flex; justify-content:space-between; align-items:center;
+  padding:0.9rem 0 0; margin-top:0.5rem;
+  border-top:1px solid rgba(255,255,255,0.1); font-size:1rem; font-weight:700;
+}
+.cartview-total span:last-child { color:#F5C518; font-size:1.2rem; }
+.cartview-actions { display:flex; gap:0.75rem; margin-top:1.2rem; }
+.cartview-actions .btn, .cartview-actions .btn-ghost { flex:1; text-align:center; }
+
+/* ── Checkout overlay ── */
+.checkout-overlay {
+  display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
+  z-index:99998; align-items:center; justify-content:center; padding:1rem;
+}
+.checkout-overlay.open { display:flex; }
+.checkout-modal {
+  background:#0e2a3a; border:1px solid rgba(255,255,255,0.1);
+  border-radius:16px; padding:2.5rem; max-width:540px; width:100%;
+  max-height:85vh; overflow-y:auto;
+}
+.checkout-modal h2 {
+  font-family:'Playfair Display',serif; font-size:1.6rem; margin-bottom:0.35rem;
+}
+.checkout-modal h2 span { color:#F5C518; }
+.checkout-divider { border:none; border-top:1px solid rgba(255,255,255,0.08); margin:1.25rem 0; }
+.order-line { display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; font-size:0.9rem; border-bottom:1px solid rgba(255,255,255,0.06); }
+.order-line:last-child { border-bottom:none; }
+.order-line .label { color:rgba(255,255,255,0.6); }
+.order-line .value { font-weight:600; }
+.order-total { display:flex; justify-content:space-between; align-items:center; padding:0.75rem 0; }
+.order-total .label { font-size:1rem; font-weight:600; }
+.order-total .value { font-size:1.4rem; font-weight:700; color:#F5C518; }
+.checkout-thumbs { display:flex; gap:6px; flex-wrap:wrap; margin:1rem 0; }
+.checkout-thumbs img { width:72px; height:72px; object-fit:cover; border-radius:6px; border:2px solid rgba(255,255,255,0.1); background:#0a1e2e; }
+.woo-note {
+  background:rgba(242,201,76,0.08); border:1px solid rgba(242,201,76,0.25);
+  border-radius:10px; padding:1rem; font-size:0.83rem; color:rgba(255,255,255,0.7);
+  margin:1.25rem 0; line-height:1.6;
+}
+.woo-note strong { color:#F5C518; }
+.checkout-actions { display:flex; gap:0.75rem; margin-top:1.5rem; }
+.checkout-actions .btn { width:auto; flex:1; }
+.checkout-actions .btn-ghost { flex:1; text-align:center; }
+
+/* Lightbox */
+.lb-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:99999; align-items:center; justify-content:center; flex-direction:column; }
+.lb-overlay.open { display:flex; }
+.lb-inner { position:relative; display:flex; flex-direction:column; align-items:center; width:92vw; max-width:1080px; }
+.lb-img-wrap { position:relative; width:100%; display:flex; align-items:center; justify-content:center; }
+#lb-photo { max-width:100%; max-height:74vh; object-fit:contain; border-radius:8px; box-shadow:0 0 80px rgba(0,0,0,.9); display:block; transition:opacity .18s ease; }
+.lb-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(242,201,76,.92); color:#0c2336; border:none; border-radius:50%; width:50px; height:50px; font-size:22px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s, transform .2s; z-index:10; user-select:none; }
+.lb-arrow:hover { background:#F5C518; transform:translateY(-50%) scale(1.1); }
+.lb-arrow.left  { left:-64px; }
+.lb-arrow.right { right:-64px; }
+@media(max-width:820px){ .lb-arrow.left{ left:6px; } .lb-arrow.right{ right:6px; } }
+.lb-close { position:fixed; top:16px; right:20px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; border-radius:50%; width:42px; height:42px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; z-index:100001; }
+.lb-close:hover { background:rgba(255,255,255,.22); }
+
+/* Select-this button inside lightbox */
+.lb-select-btn {
+  margin-top:14px; background:transparent; border:1px solid rgba(242,201,76,0.5);
+  color:#F5C518; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.85rem;
+  border-radius:8px; padding:0.5rem 1.4rem; cursor:pointer; transition:all 0.2s;
+}
+.lb-select-btn:hover { background:rgba(242,201,76,0.12); }
+.lb-select-btn.selected-btn { background:#F5C518; color:#0c2336; border-color:#F5C518; }
+
+.lb-info { margin-top:14px; text-align:center; color:rgba(255,255,255,.8); font-size:.9rem; line-height:1.7; }
+.lb-filename { color:rgba(255,255,255,.35); font-size:.74rem; margin-top:4px; }
+.lb-counter  { margin-top:10px; color:rgba(255,255,255,.28); font-size:.74rem; letter-spacing:1px; }
 </style>
 </head>
 <body>
-<div class="container">
+<div class="container" id="main-container">
 
-  <!-- Header -->
   <div class="header">
-    <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/JRM_3584-copy-2.jpeg" alt="logo" />
+    <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="logo" />
     <div class="header-title">Crystal <span>Images</span></div>
-    <div class="header-sub">AI-powered image search &nbsp;·&nbsp; Powered by CLIP</div>
+    <div class="header-sub">Professional Photography</div>
   </div>
 
-  <!-- Search panels -->
-  <div class="panels">
-
-    <!-- Browse by location -->
-    <div class="panel">
-      <div class="panel-label">Browse by Location</div>
-      <div class="row">
-        <div>
-          <label>Date</label>
-          <select id="date-sel">
-            <option value="">Select a date…</option>
-          </select>
-        </div>
-        <div>
-          <label>Location</label>
-          <select id="loc-sel" disabled>
-            <option value="">Select a date first</option>
-          </select>
-        </div>
-      </div>
-      <button class="btn" id="browse-btn">📂 Browse All Photos</button>
+  <div class="ln-bar" id="ln-bar">
+    <div style="flex:1">
+      <div class="ln-bar-label">Find My Photos by Last Name</div>
+      <input type="text" id="ln-input" placeholder="Enter your last name… e.g. Smith" />
     </div>
+    <button class="btn" id="ln-btn">🔍 Find My Photos</button>
+  </div>
 
-    <!-- Last name search -->
-    <div class="panel">
-      <div class="panel-label">Find My Photos by Last Name</div>
-      <div style="margin-bottom:1rem;">
-        <label>Guest last name</label>
-        <input type="text" id="ln-input" placeholder="e.g. Smith" />
-      </div>
-      <button class="btn" id="ln-btn">🔍 Find My Photos</button>
+  <div class="breadcrumb" id="breadcrumb"></div>
+  <div class="spinner"    id="spinner"></div>
+
+  <div id="view-days"      ></div>
+  <div id="view-locations" style="display:none;"></div>
+  <div id="view-families"  style="display:none;"></div>
+  <div id="view-gallery"   style="display:none;"></div>
+  <div class="msg"         id="msg"></div>
+</div>
+
+<!-- Screenshot blackout -->
+<div id="ss-block"></div>
+
+<!-- Print upsell banner -->
+<div class="print-upsell-banner" id="print-upsell-banner">
+  <span>🎉 Your digital photos include <strong>50% off prints</strong> — hover any photo and tap Quick Shop to add them.</span>
+  <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
+</div>
+
+<!-- Cart bar -->
+<div class="cart-bar" id="cart-bar">
+  <div class="cart-summary">
+    <span class="cart-count-text" id="cart-count-text">0 selected</span>
+    <span class="cart-price-tag"  id="cart-price-text">$0</span>
+  </div>
+  <div class="cart-upsell" id="cart-upsell-text"></div>
+  <div class="cart-actions">
+    <button class="btn-ghost" onclick="selectAllPhotos()">Select All</button>
+    <button class="btn-ghost" onclick="openCartView()">View Cart</button>
+    <button class="btn-ghost" onclick="clearCart()">Clear</button>
+    <button class="btn-checkout" onclick="openCheckout()">Checkout →</button>
+  </div>
+</div>
+
+<!-- Cart View -->
+<div class="cartview-overlay" id="cartview-overlay">
+  <div class="cartview-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem">
+      <h3>Your Cart</h3>
+      <button class="qs-close" onclick="closeCartView()">✕</button>
     </div>
-
+    <div id="cartview-body"></div>
+    <div class="cartview-total">
+      <span>Total</span>
+      <span id="cartview-total-price">$0</span>
+    </div>
+    <div class="cartview-actions">
+      <button class="btn-ghost" onclick="closeCartView()">Continue Shopping</button>
+      <button class="btn" onclick="closeCartView(); openCheckout()">Checkout →</button>
+    </div>
   </div>
+</div>
 
-  <!-- Descriptive filter (shown after browse) -->
-  <div class="filter-bar" id="filter-bar">
-    <input type="text" id="filter-input" placeholder="Filter these photos by description… e.g. red jacket, jumping, family portrait" />
-    <button class="btn" id="filter-btn">Filter</button>
+<!-- Checkout overlay -->
+<div class="checkout-overlay" id="checkout-overlay">
+  <div class="checkout-modal">
+    <h2>Your <span>Order</span></h2>
+    <p style="color:rgba(255,255,255,0.45);font-size:0.85rem;margin-top:4px;">Review your selected photos below.</p>
+    <hr class="checkout-divider" />
+    <div id="checkout-thumbs-row" class="checkout-thumbs"></div>
+    <div id="checkout-lines"></div>
+    <hr class="checkout-divider" />
+    <div class="order-total">
+      <span class="label">Total</span>
+      <span class="value" id="checkout-total">$0</span>
+    </div>
+    <div class="woo-note">
+      <strong>🛒 Online ordering coming soon.</strong><br/>
+      To complete your purchase today, please see a Crystal Images staff member or email us your order summary. We accept all major credit cards.
+      <!-- TODO: wire up to WooCommerce REST API + Stripe once R2 storage is live -->
+    </div>
+    <div class="checkout-actions">
+      <button class="btn-ghost" onclick="closeCheckout()">← Back</button>
+      <button class="btn" onclick="copyOrderSummary()">📋 Copy Order Summary</button>
+    </div>
   </div>
+</div>
 
-  <!-- Spinner -->
-  <div class="spinner" id="spinner"></div>
-
-  <!-- Results -->
-  <div id="results-header" style="display:none;" class="results-header">
-    <span class="results-label" id="results-label">Results</span>
-    <span class="results-count" id="results-count"></span>
+<!-- Quick Shop -->
+<div class="qs-overlay" id="qs-overlay">
+  <div class="qs-modal">
+    <img class="qs-photo" id="qs-photo" src="" alt="" />
+    <div class="qs-body">
+      <div class="qs-header">
+        <span class="qs-filename" id="qs-filename"></span>
+        <button class="qs-close" onclick="closeQuickShop()">✕</button>
+      </div>
+      <div class="qs-section">
+        <div class="qs-section-label">Digital Files</div>
+        <div id="qs-digitals"></div>
+      </div>
+      <div class="qs-section">
+        <div class="qs-section-label">Prints</div>
+        <div class="print-discount-banner" id="qs-print-banner" style="display:none"></div>
+        <div id="qs-prints"></div>
+      </div>
+    </div>
   </div>
-  <div class="gallery" id="gallery"></div>
-  <div class="msg" id="msg"></div>
+</div>
 
+<!-- Frame Selector -->
+<div class="frame-overlay" id="frame-overlay">
+  <div class="frame-modal">
+    <h3>Add a Frame?</h3>
+    <p class="frame-sub">Optionally add a frame to your <span id="frame-size-label"></span></p>
+    <div class="frame-grid" id="frame-grid"></div>
+    <div class="frame-actions">
+      <button class="btn-ghost" onclick="closeFrame()">Cancel</button>
+      <button class="btn" onclick="confirmFrame()">Add to Cart</button>
+    </div>
+  </div>
 </div>
 
 <!-- Lightbox -->
@@ -368,7 +546,8 @@ input::placeholder { color: rgba(255,255,255,0.3); }
       <img id="lb-photo" src="" alt="" />
       <button class="lb-arrow right" onclick="stepLB(1)">&#8594;</button>
     </div>
-    <div class="lb-info"     id="lb-info"></div>
+    <button class="lb-select-btn" id="lb-select-btn" onclick="toggleSelectFromLB()">+ Add to Selection</button>
+    <div class="lb-info"    id="lb-info"></div>
     <div class="lb-filename" id="lb-fn"></div>
     <div class="lb-counter"  id="lb-ct"></div>
   </div>
@@ -376,203 +555,1011 @@ input::placeholder { color: rgba(255,255,255,0.3); }
 
 <script>
 // ── State ──
-let allPhotos   = [];   // current result set (metadata only)
-let loadedImgs  = {};   // path → b64 cache
-let cur         = 0;
-let browseDate  = '';
-let browseLoc   = '';
+let allPhotos      = [];
+let imgCache       = {};
+let cur            = 0;
+let selectedPhotos = new Set();   // stores photo indices
+let currentPricing = null;
 
-// ── Init: load dates ──
+// ── History-aware navigation ──
+function navigate(state, replace = false) {
+  const params = new URLSearchParams();
+  if (state.date)     params.set('date',     state.date);
+  if (state.location) params.set('location', state.location);
+  if (state.family)   params.set('family',   state.family);
+  if (state.ln)       params.set('ln',       state.ln);
+  const url = params.toString() ? '?' + params.toString() : '/';
+  if (replace) history.replaceState(state, '', url);
+  else         history.pushState(state, '', url);
+  renderState(state);
+}
+
+window.addEventListener('popstate', e => {
+  if (e.state) renderState(e.state);
+  else         renderState({ view: 'days' });
+});
+
+async function renderState(state) {
+  hideMsg();
+  switch (state.view) {
+    case 'days':      await showDays();                                  break;
+    case 'locations': await showLocations(state.date);                   break;
+    case 'families':  await showFamilies(state.date, state.location);    break;
+    case 'gallery':   await showGallery(state.date, state.location, state.family, state.ln); break;
+  }
+}
+
+// ── Boot ──
 async function init() {
-  const res   = await fetch('/api/dates');
-  const { dates } = await res.json();
-  const sel   = document.getElementById('date-sel');
-  dates.forEach(d => {
-    const opt = document.createElement('option');
-    opt.value = d; opt.textContent = d;
-    sel.appendChild(opt);
-  });
+  const params = new URLSearchParams(location.search);
+  const date   = params.get('date');
+  const loc    = params.get('location');
+  const family = params.get('family');
+  const ln     = params.get('ln');
+
+  if (ln)            navigate({ view:'gallery', ln }, true);
+  else if (family)   navigate({ view:'gallery', date, location:loc, family }, true);
+  else if (loc)      navigate({ view:'families', date, location:loc }, true);
+  else if (date)     navigate({ view:'locations', date }, true);
+  else               navigate({ view:'days' }, true);
 }
 init();
 
-// ── Date change → load locations ──
-document.getElementById('date-sel').addEventListener('change', async function() {
-  const date  = this.value;
-  const locSel = document.getElementById('loc-sel');
-  locSel.innerHTML = '<option value="">Select a location…</option>';
-  if (!date) { locSel.disabled = true; return; }
-
-  const res  = await fetch(`/api/locations?date=${encodeURIComponent(date)}`);
-  const { locations } = await res.json();
-  locations.forEach(l => {
-    const opt = document.createElement('option');
-    opt.value = l; opt.textContent = l;
-    locSel.appendChild(opt);
-  });
-  locSel.disabled = false;
-});
-
-// ── Browse ──
-document.getElementById('browse-btn').addEventListener('click', async function() {
-  const date = document.getElementById('date-sel').value;
-  const loc  = document.getElementById('loc-sel').value;
-  if (!date || !loc) { showMsg('Please select a date and location.'); return; }
-
-  browseDate = date;
-  browseLoc  = loc;
-
+// ── View: Days ──
+async function showDays() {
   showSpinner();
-  const res  = await fetch(`/api/browse?date=${encodeURIComponent(date)}&location=${encodeURIComponent(loc)}`);
+  const res  = await fetch('/api/days');
+  const data = await res.json();
+  hideSpinner();
+  showView('days');
+  setBreadcrumb([]);
+  clearCart();
+  document.getElementById('ln-bar').style.display = '';
+
+  const el = document.getElementById('view-days');
+  el.innerHTML = `<div class="grid">${data.days.map(d => `
+    <div class="grid-card" onclick='navigate({view:"locations",date:"${d.date}"})'>
+      <div class="collage-inner"><div class="collage-2x2">
+        ${[0,1,2,3].map(i => d.previews[i]
+          ? `<img data-path="${escA(d.previews[i])}" src="" alt="" />`
+          : `<div class="collage-placeholder">📷</div>`
+        ).join('')}
+      </div></div>
+      <div class="card-title">${formatDateLong(d.date)}</div>
+      <div class="card-sub">${d.folder_count} Folder${d.folder_count!==1?'s':''} | ${d.gallery_count} Galler${d.gallery_count!==1?'ies':'y'}</div>
+    </div>`).join('')}
+  </div>`;
+  lazyLoad(el);
+}
+
+// ── View: Locations ──
+async function showLocations(date) {
+  showSpinner();
+  const res  = await fetch(`/api/locations?date=${enc(date)}`);
+  const data = await res.json();
+  hideSpinner();
+  showView('locations');
+  setBreadcrumb([{ label:'All Days', state:{ view:'days' } }], formatDateLong(date));
+  clearCart();
+  document.getElementById('ln-bar').style.display = '';
+
+  const el = document.getElementById('view-locations');
+  el.innerHTML = `<div class="grid">${data.locations.map(loc => `
+    <div class="grid-card" onclick='navigate({view:"families",date:"${date}",location:"${escQ(loc.name)}"})'>
+      <div class="collage-inner"><div class="collage-2x2">
+        ${[0,1,2,3].map(i => loc.previews[i]
+          ? `<img data-path="${escA(loc.previews[i])}" src="" alt="" />`
+          : `<div class="collage-placeholder">📷</div>`
+        ).join('')}
+      </div></div>
+      <div class="card-title">${loc.name}</div>
+    </div>`).join('')}
+  </div>`;
+  lazyLoad(el);
+}
+
+// ── View: Families (sub-folders) or straight to gallery ──
+async function showFamilies(date, location) {
+  showSpinner();
+  const res  = await fetch(`/api/families?date=${enc(date)}&location=${enc(location)}`);
   const data = await res.json();
   hideSpinner();
 
-  allPhotos = data.photos;
-  document.getElementById('filter-bar').classList.add('visible');
-  document.getElementById('results-label').textContent = `📍 ${loc}  ·  ${date}`;
-  renderGallery(allPhotos);
-});
+  const crumbs = [
+    { label:'All Days',            state:{ view:'days' } },
+    { label:formatDateLong(date),  state:{ view:'locations', date } }
+  ];
 
-// ── Descriptive filter ──
-document.getElementById('filter-btn').addEventListener('click', async function() {
-  const q = document.getElementById('filter-input').value.trim();
-  if (!q) { renderGallery(allPhotos); return; }
-
-  showSpinner();
-  const url = `/api/search?query=${encodeURIComponent(q)}&date=${encodeURIComponent(browseDate)}&location=${encodeURIComponent(browseLoc)}`;
-  const res  = await fetch(url);
-  const data = await res.json();
-  hideSpinner();
-  renderGallery(data.photos);
-});
-
-// ── Last name search ──
-document.getElementById('ln-btn').addEventListener('click', async function() {
-  const ln = document.getElementById('ln-input').value.trim();
-  if (!ln) { showMsg('Please enter a last name.'); return; }
-
-  browseDate = ''; browseLoc = '';
-  document.getElementById('filter-bar').classList.remove('visible');
-
-  showSpinner();
-  const res  = await fetch(`/api/search?last_name=${encodeURIComponent(ln)}`);
-  const data = await res.json();
-  hideSpinner();
-
-  allPhotos = data.photos;
-  document.getElementById('results-label').textContent = `Last name: ${ln}`;
-  renderGallery(allPhotos);
-});
-
-// ── Render gallery ──
-function renderGallery(photos) {
-  const gallery = document.getElementById('gallery');
-  const msg     = document.getElementById('msg');
-  gallery.innerHTML = '';
-  msg.textContent   = '';
-
-  if (!photos || !photos.length) {
-    msg.textContent = 'No photos found.';
-    document.getElementById('results-header').style.display = 'none';
+  if (!data.has_families) {
+    navigate({ view:'gallery', date, location }, true);
     return;
   }
 
+  showView('families');
+  setBreadcrumb(crumbs, location);
+  clearCart();
+  document.getElementById('ln-bar').style.display = '';
+
+  const el = document.getElementById('view-families');
+  el.innerHTML = `<div class="grid">${data.families.map(f => `
+    <div class="grid-card" onclick='navigate({view:"gallery",date:"${date}",location:"${escQ(location)}",family:"${escQ(f.name)}"})'>
+      <div class="collage-inner"><div class="collage-2x2">
+        ${[0,1,2,3].map(i => f.previews[i]
+          ? `<img data-path="${escA(f.previews[i])}" src="" alt="" />`
+          : `<div class="collage-placeholder">📷</div>`
+        ).join('')}
+      </div></div>
+      <div class="card-title">${f.name}</div>
+    </div>`).join('')}
+  </div>`;
+  lazyLoad(el);
+}
+
+// ── View: Gallery ──
+async function showGallery(date, location, family, ln) {
+  showSpinner();
+  let photos, title, crumbs;
+
+  if (ln) {
+    const res = await fetch(`/api/search?last_name=${enc(ln)}`);
+    const d   = await res.json();
+    photos = d.photos;
+    title  = `Last name: ${ln}`;
+    crumbs = [{ label:'All Days', state:{ view:'days' } }];
+  } else {
+    const familyParam = family ? `&family=${enc(family)}` : '';
+    const res = await fetch(`/api/browse?date=${enc(date)}&location=${enc(location)}${familyParam}`);
+    const d   = await res.json();
+    photos = d.photos;
+    title  = family || location;
+    crumbs = [
+      { label:'All Days',           state:{ view:'days' } },
+      { label:formatDateLong(date), state:{ view:'locations', date } },
+      { label:location,             state:{ view:'families', date, location } }
+    ];
+  }
+
+  // Fetch pricing for this location
+  const pricingLoc = location || '';
+  const pRes = await fetch(`/api/pricing?location=${enc(pricingLoc)}`);
+  currentPricing = await pRes.json();
+
+  hideSpinner();
+  allPhotos = photos;
+  selectedPhotos = new Set();
+  showView('gallery');
+  setBreadcrumb(crumbs, title);
+  // Only show last name search for portrait/family galleries
+  document.getElementById('ln-bar').style.display = (family || ln) ? '' : 'none';
+
+  const el = document.getElementById('view-gallery');
+  el.innerHTML = `
+    <div class="gallery-header">
+      <span class="gallery-title">${title}</span>
+      <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
+      ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
+      <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
+    </div>
+    <div class="gallery-controls">
+      <div class="filter-bar">
+        <input type="text" id="filter-input" placeholder="Describe what you're looking for… e.g. red jacket, jumping, family portrait" />
+        <button class="btn" onclick="runFilter('${escQ(date||'')}','${escQ(location||'')}')">Filter</button>
+      </div>
+      <div class="size-slider-wrap">
+        <span>🔍</span>
+        <input type="range" id="size-slider" min="1" max="6" value="3" />
+        <span>⊞</span>
+      </div>
+    </div>
+    <div class="gallery" id="gallery" style="--cols:3"></div>`;
+
+  renderThumbs(photos);
+  el.querySelector('#filter-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runFilter(date||'', location||'');
+  });
+  el.querySelector('#size-slider').addEventListener('input', function() {
+    const cols = [10, 8, 6, 4, 3, 2][parseInt(this.value) - 1];
+    document.getElementById('gallery').style.setProperty('--cols', cols);
+  });
+}
+
+function buildPricingBox() {
+  if (!currentPricing || !currentPricing.tiers) return '';
+  const tiers = currentPricing.tiers;
+  const pills = tiers.map(t => {
+    const isAll = t.count === 'all';
+    const label = isAll ? `All Photos — $${t.price}` : `${t.label} — $${t.price}`;
+    const cls = isAll ? 'tier-pill all-pill' : 'tier-pill';
+    const click = isAll ? `onclick="selectAllPhotos()"` : '';
+    return `<span class="${cls}" ${click} title="${isAll ? 'Click to select all photos' : ''}">${label}</span>`;
+  }).join('');
+  return `<div class="pricing-box">
+    <span class="pricing-label">Pricing</span>
+    ${pills}
+    <span class="pricing-hint">Hover a photo to select it</span>
+  </div>`;
+}
+
+function renderThumbs(photos) {
+  const gallery = document.getElementById('gallery');
+  if (!gallery) return;
+  gallery.innerHTML = '';
+  if (!photos.length) { showMsg('No photos found.'); return; }
   document.getElementById('results-count').textContent =
-    `${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
-  document.getElementById('results-header').style.display = 'flex';
+    `${photos.length} photo${photos.length!==1?'s':''}`;
 
   photos.forEach((photo, i) => {
     const card = document.createElement('div');
-    card.className = 'thumb-card';
+    card.className = 'thumb-card' + (selectedPhotos.has(i) ? ' selected' : '');
+    card.dataset.idx = i;
     card.innerHTML = `
-      <img src="" data-path="${photo.path}" alt="${photo.filename}" />
+      <div class="card-btn-row">
+        <div class="select-check" data-idx="${i}">✓</div>
+        <button class="thumb-shop-btn" data-idx="${i}">Quick Shop</button>
+      </div>
+      <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
+      <div class="watermark"></div>
       <div class="thumb-meta">
         <span class="thumb-loc">📍 ${photo.location}</span>
         <span class="thumb-date">${formatDate(photo.date)}</span>
       </div>`;
-    card.addEventListener('click', () => openLB(i));
-    gallery.appendChild(card);
 
-    // Lazy-load image
-    loadPhoto(photo.path).then(b64 => {
-      const img = card.querySelector('img');
-      if (img) img.src = 'data:image/jpeg;base64,' + b64;
+    // Select-check click: toggle selection
+    card.querySelector('.select-check').addEventListener('click', e => {
+      e.stopPropagation();
+      toggleSelect(i);
     });
+
+    // Shop button click: open Quick Shop
+    card.querySelector('.thumb-shop-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      openQuickShop(i);
+    });
+
+    // Card click: open lightbox (the ::after overlay is transparent so this fires)
+    card.addEventListener('click', () => openLB(i));
+
+    gallery.appendChild(card);
+  });
+  lazyLoad(gallery);
+}
+
+// ── Photo selection ──
+function toggleSelect(i) {
+  if (selectedPhotos.has(i)) selectedPhotos.delete(i);
+  else                        selectedPhotos.add(i);
+  // Update card visual
+  const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
+  if (card) card.classList.toggle('selected', selectedPhotos.has(i));
+  updateCart();
+}
+
+function selectAllPhotos() {
+  allPhotos.forEach((_, i) => selectedPhotos.add(i));
+  document.querySelectorAll('.thumb-card').forEach(c => c.classList.add('selected'));
+  updateCart();
+}
+
+function clearCart() {
+  selectedPhotos.clear();
+  printCart = [];
+  document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
+  document.getElementById('cart-bar').classList.remove('show');
+  document.getElementById('print-upsell-banner').classList.remove('show');
+  document.getElementById('main-container').style.paddingBottom = '';
+}
+
+// ── Pricing logic ──
+function calcPrice(count) {
+  if (!currentPricing || !currentPricing.tiers || count === 0) return 0;
+  const tiers = currentPricing.tiers;
+  const total = allPhotos.length;
+
+  // All-photos tier
+  const allTier = tiers.find(t => t.count === 'all');
+  if (count >= total && allTier) return allTier.price;
+
+  const singleTier = tiers.find(t => t.count === 1);
+  const singleUnit = singleTier ? singleTier.price : 25;
+
+  let best = count * singleUnit;
+
+  // Check bundle tiers
+  const bundles = tiers
+    .filter(t => typeof t.count === 'number' && t.count > 1 && t.count <= count)
+    .sort((a, b) => b.count - a.count);
+
+  for (const tier of bundles) {
+    const n   = Math.floor(count / tier.count);
+    const rem = count % tier.count;
+    const cost = n * tier.price + rem * singleUnit;
+    if (cost < best) best = cost;
+  }
+
+  // Don't let selected-count price exceed all-photos price
+  if (allTier && best > allTier.price) best = allTier.price;
+
+  return best;
+}
+
+function getUpsellMsg(count) {
+  if (!currentPricing || !currentPricing.tiers || count === 0) return '';
+  const tiers = currentPricing.tiers;
+  const total = allPhotos.length;
+  const curPrice = calcPrice(count);
+
+  // Check next numeric tier
+  const nextTier = tiers
+    .filter(t => typeof t.count === 'number' && t.count > count)
+    .sort((a, b) => a.count - b.count)[0];
+
+  if (nextTier) {
+    const extra = nextTier.price - curPrice;
+    const more  = nextTier.count - count;
+    if (extra > 0 && extra <= curPrice) {
+      return `💡 Add <strong>${more} more</strong> for only <strong>$${extra} extra</strong> → ${nextTier.count} photos for $${nextTier.price}`;
+    }
+  }
+
+  // Check all-photos tier
+  const allTier = tiers.find(t => t.count === 'all');
+  if (allTier && count < total) {
+    const extra = allTier.price - curPrice;
+    if (extra > 0 && extra < curPrice) {
+      return `🌟 Upgrade to <strong>all ${total} photos</strong> for just <strong>$${extra} more</strong> → $${allTier.price}`;
+    }
+  }
+
+  return '';
+}
+
+function recalcPrintPrices() {
+  const hasDigitals = selectedPhotos.size > 0;
+  printCart.forEach(p => {
+    const base = PRINT_SIZES[p.sizeIdx].price;
+    p.price = hasDigitals ? base / 2 : base;
   });
 }
 
-// ── Load photo via API (cached) ──
-async function loadPhoto(path) {
-  if (loadedImgs[path]) return loadedImgs[path];
-  const res  = await fetch(`/api/photo?path=${encodeURIComponent(path)}`);
+function updateCart() {
+  recalcPrintPrices();
+  const count      = selectedPhotos.size;
+  const printCount = printCart.length;
+  if (count === 0 && printCount === 0) {
+    document.getElementById('cart-bar').classList.remove('show');
+    document.getElementById('main-container').style.paddingBottom = '';
+    return;
+  }
+  const digitalPrice = calcPrice(count);
+  const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const total        = digitalPrice + printPrice;
+
+  let summary = [];
+  if (count > 0)      summary.push(`${count} photo${count!==1?'s':''}`);
+  if (printCount > 0) summary.push(`${printCount} print${printCount!==1?'s':''}`);
+  document.getElementById('cart-count-text').textContent = summary.join(' + ') + ' selected';
+  document.getElementById('cart-price-text').textContent = `$${total}`;
+  document.getElementById('cart-upsell-text').innerHTML  = count > 0 ? getUpsellMsg(count) : (printCount > 0 ? '💡 Add digital files to get <strong>50% off</strong> all prints!' : '');
+  document.getElementById('cart-bar').classList.add('show');
+  document.getElementById('main-container').style.paddingBottom = '80px';
+  updateLBSelectBtn();
+  // Show print upsell banner whenever digital photos are selected
+  const banner = document.getElementById('print-upsell-banner');
+  if (count > 0) banner.classList.add('show');
+  else           banner.classList.remove('show');
+}
+
+async function runFilter(date, location) {
+  const q = document.getElementById('filter-input').value.trim();
+  if (!q) { renderThumbs(allPhotos); return; }
+  showSpinner();
+  let url = `/api/search?query=${enc(q)}`;
+  if (date)     url += `&date=${enc(date)}`;
+  if (location) url += `&location=${enc(location)}`;
+  const res  = await fetch(url);
   const data = await res.json();
-  loadedImgs[path] = data.b64;
+  hideSpinner();
+  allPhotos = data.photos;
+  renderThumbs(data.photos);
+}
+
+// ── Cart View ──
+function openCartView() {
+  renderCartView();
+  document.getElementById('cartview-overlay').classList.add('open');
+}
+
+function closeCartView() {
+  document.getElementById('cartview-overlay').classList.remove('open');
+}
+
+function renderCartView() {
+  const digitalCount = selectedPhotos.size;
+  const digitalPrice = calcPrice(digitalCount);
+  const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const total        = digitalPrice + printPrice;
+  let html = '';
+
+  // Digital photos section
+  if (digitalCount > 0) {
+    const photos = [...selectedPhotos].map(i => allPhotos[i]);
+    html += `<div class="cartview-section-label">Digital Photos (${digitalCount}) — $${digitalPrice}</div>`;
+    html += `<div class="cartview-photo-grid">`;
+    photos.forEach(p => {
+      const src = imgCache[p.path] ? 'data:image/jpeg;base64,' + imgCache[p.path] : '';
+      html += `<div class="cartview-thumb">
+        <img src="${src}" alt="${p.filename}" />
+        <button class="cv-remove" onclick="deSelectPhotoByPath('${escQ(p.path)}')" title="Remove">✕</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Prints section
+  if (printCart.length > 0) {
+    html += `<div class="cartview-section-label">Prints</div>`;
+    printCart.forEach((p, idx) => {
+      html += `
+      <div style="border-bottom:1px solid rgba(255,255,255,0.07);padding:0.65rem 0;">
+        <div class="cartview-print-row" style="border-bottom:none;padding:0 0 0.4rem 0;">
+          <div class="cartview-print-info">
+            <div class="cv-size" style="margin-bottom:5px;">${p.filename}</div>
+            <select style="font-size:0.82rem;padding:0.28rem 0.55rem;width:auto;"
+                    onchange="changePrintSize(${idx}, this.value)">
+              ${buildSizeOptions(p.sizeIdx)}
+            </select>
+          </div>
+          <span class="cartview-print-price">$${p.price}</span>
+          <button class="cartview-rm-btn" onclick="removePrintFromCart(${idx})">Remove</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;padding-top:0.35rem;">
+          <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);white-space:nowrap;">Frame</div>
+          <select style="font-size:0.82rem;padding:0.28rem 0.55rem;flex:1;"
+                  onchange="changePrintFrame(${idx}, this.value)">
+            ${buildFrameOptions(p.frame, p.sizeIdx)}
+          </select>
+          <span class="cartview-print-price" style="font-size:0.88rem;min-width:36px;text-align:right;">
+            ${p.framePrice > 0 ? '$' + p.framePrice : '—'}
+          </span>
+        </div>
+      </div>`;
+    });
+  }
+
+  if (!html) html = '<div class="msg" style="padding:1rem 0">Your cart is empty.</div>';
+
+  document.getElementById('cartview-body').innerHTML = html;
+  document.getElementById('cartview-total-price').textContent = `$${total}`;
+
+  // Load any missing thumbnails
+  [...selectedPhotos].map(i => allPhotos[i]).forEach(p => {
+    if (!imgCache[p.path]) {
+      loadPhoto(p.path).then(() => {
+        const imgs = document.querySelectorAll('#cartview-body .cartview-thumb img');
+        imgs.forEach(img => {
+          if (img.src === '' && imgCache[p.path]) img.src = 'data:image/jpeg;base64,' + imgCache[p.path];
+        });
+      });
+    }
+  });
+}
+
+function deSelectPhotoByPath(path) {
+  const idx = allPhotos.findIndex(p => p.path === path);
+  if (idx !== -1 && selectedPhotos.has(idx)) {
+    toggleSelect(idx);
+    renderCartView();
+  }
+}
+
+function removePrintFromCart(idx) {
+  printCart.splice(idx, 1);
+  updateCart();
+  renderCartView();
+  if (selectedPhotos.size === 0 && printCart.length === 0) closeCartView();
+}
+
+function changePrintSize(idx, newSizeIdx) {
+  newSizeIdx = parseInt(newSizeIdx);
+  const hasDigitals = selectedPhotos.size > 0;
+  const basePrice = PRINT_SIZES[newSizeIdx].price;
+  printCart[idx].sizeIdx = newSizeIdx;
+  printCart[idx].size    = PRINT_SIZES[newSizeIdx].label;
+  printCart[idx].price   = hasDigitals ? basePrice / 2 : basePrice;
+  const frameOpt = FRAME_OPTIONS.find(f => f.label === printCart[idx].frame);
+  if (frameOpt && frameOpt.priceKey > 0) {
+    printCart[idx].framePrice = FRAME_PRICES[newSizeIdx];
+  }
+  updateCart();
+  if (document.getElementById('cartview-overlay').classList.contains('open'))   renderCartView();
+  if (document.getElementById('checkout-overlay').classList.contains('open'))   renderCheckoutLines();
+}
+
+function changePrintFrame(idx, newFrameIdx) {
+  newFrameIdx = parseInt(newFrameIdx);
+  const frame = FRAME_OPTIONS[newFrameIdx];
+  printCart[idx].frame      = frame.label;
+  printCart[idx].framePrice = frame.priceKey === 0 ? 0 : FRAME_PRICES[printCart[idx].sizeIdx];
+  updateCart();
+  if (document.getElementById('cartview-overlay').classList.contains('open'))   renderCartView();
+  if (document.getElementById('checkout-overlay').classList.contains('open'))   renderCheckoutLines();
+}
+
+function buildSizeOptions(currentSizeIdx) {
+  const hasDigitals = selectedPhotos.size > 0;
+  return PRINT_SIZES.map((s, si) => {
+    const price = hasDigitals ? s.price / 2 : s.price;
+    return `<option value="${si}" ${si === currentSizeIdx ? 'selected' : ''}>${s.label} — $${price}</option>`;
+  }).join('');
+}
+
+function buildFrameOptions(currentFrameLabel, sizeIdx) {
+  return FRAME_OPTIONS.map((f, fi) => {
+    const fp = f.priceKey === 0 ? 0 : FRAME_PRICES[sizeIdx];
+    const priceStr = fp === 0 ? 'No extra cost' : '+$' + fp;
+    return `<option value="${fi}" ${f.label === currentFrameLabel ? 'selected' : ''}>${f.label} — ${priceStr}</option>`;
+  }).join('');
+}
+
+// ── Checkout ──
+function openCheckout() {
+  if (selectedPhotos.size === 0 && printCart.length === 0) return;
+  const photos = [...selectedPhotos].map(i => allPhotos[i]);
+
+  // Thumbnails row
+  const thumbsEl = document.getElementById('checkout-thumbs-row');
+  thumbsEl.innerHTML = '';
+  const thumbPhotos = photos.length > 0
+    ? photos.slice(0, 12)
+    : printCart.slice(0, 12).map(p => allPhotos[p.photoIdx]).filter(Boolean);
+  thumbPhotos.forEach(p => {
+    const img = document.createElement('img');
+    img.src = imgCache[p.path] ? 'data:image/jpeg;base64,' + imgCache[p.path] : '';
+    img.alt = p.filename;
+    if (!imgCache[p.path]) {
+      loadPhoto(p.path).then(b64 => { img.src = 'data:image/jpeg;base64,' + b64; });
+    }
+    thumbsEl.appendChild(img);
+  });
+  if (thumbPhotos.length > 12) {
+    const more = document.createElement('div');
+    more.style.cssText = 'width:72px;height:72px;border-radius:6px;background:#0a1e2e;display:flex;align-items:center;justify-content:center;font-size:0.8rem;color:rgba(255,255,255,0.5);border:2px solid rgba(255,255,255,0.1)';
+    more.textContent = `+${thumbPhotos.length - 12} more`;
+    thumbsEl.appendChild(more);
+  }
+
+  renderCheckoutLines();
+  document.getElementById('checkout-overlay').classList.add('open');
+}
+
+function renderCheckoutLines() {
+  const count      = selectedPhotos.size;
+  const digPrice   = calcPrice(count);
+  const printPrice = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const total      = digPrice + printPrice;
+  const photos     = [...selectedPhotos].map(i => allPhotos[i]);
+
+  let linesHtml = '';
+  if (count > 0) {
+    linesHtml += `<div class="order-line">
+      <span class="label">Digital Photos (${count})</span>
+      <span class="value">$${digPrice}</span>
+    </div>`;
+  }
+
+  printCart.forEach((p, idx) => {
+    linesHtml += `<div class="order-line" style="flex-wrap:wrap;align-items:flex-start;gap:0.5rem;padding:0.75rem 0;">
+      <div style="flex:1;min-width:180px;">
+        <div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:5px;">${p.filename}</div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          <select style="font-size:0.8rem;padding:0.25rem 0.5rem;width:auto;"
+                  onchange="changePrintSize(${idx}, this.value)">
+            ${buildSizeOptions(p.sizeIdx)}
+          </select>
+          <select style="font-size:0.8rem;padding:0.25rem 0.5rem;flex:1;min-width:140px;"
+                  onchange="changePrintFrame(${idx}, this.value)">
+            ${buildFrameOptions(p.frame, p.sizeIdx)}
+          </select>
+        </div>
+      </div>
+      <span class="value" style="align-self:center;">$${p.price + p.framePrice}</span>
+    </div>`;
+  });
+
+  if (count > 0 && photos[0]) {
+    linesHtml += `<div class="order-line">
+      <span class="label">Location</span>
+      <span class="value">${photos[0].location}</span>
+    </div>`;
+  }
+
+  document.getElementById('checkout-lines').innerHTML = linesHtml;
+  document.getElementById('checkout-total').textContent = `$${total}`;
+}
+
+function closeCheckout() {
+  document.getElementById('checkout-overlay').classList.remove('open');
+}
+
+function copyOrderSummary() {
+  const count      = selectedPhotos.size;
+  const digPrice   = calcPrice(count);
+  const printPrice = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const total      = digPrice + printPrice;
+  const photos     = [...selectedPhotos].map(i => allPhotos[i]);
+  const loc        = photos[0]?.location || (printCart[0] ? allPhotos[printCart[0].photoIdx]?.location : '') || '';
+  const date       = formatDate(photos[0]?.date || (printCart[0] ? allPhotos[printCart[0].photoIdx]?.date : '') || '');
+
+  let lines = [`Crystal Images Order Summary`, `---`];
+  if (count > 0) {
+    lines.push(`Digital Photos: ${count} — $${digPrice}`);
+    lines.push(`Files: ${photos.map(p => p.filename).join(', ')}`);
+  }
+  printCart.forEach(p => {
+    const frameNote = p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
+    lines.push(`Print: ${p.size}${frameNote} — ${p.filename} — $${p.price + p.framePrice}`);
+  });
+  lines.push(`Location: ${loc}`, `Date: ${date}`, `Total: $${total}`);
+
+  navigator.clipboard.writeText(lines.join('\n')).then(() => {
+    const btn = document.querySelector('.checkout-actions .btn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ Copied!';
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  });
+}
+
+// ── Last name search ──
+document.getElementById('ln-btn').addEventListener('click', doLnSearch);
+document.getElementById('ln-input').addEventListener('keydown', e => { if(e.key==='Enter') doLnSearch(); });
+
+function doLnSearch() {
+  const ln = document.getElementById('ln-input').value.trim();
+  if (!ln) return;
+  navigate({ view:'gallery', ln });
+}
+
+// ── Lazy image loading ──
+function lazyLoad(container) {
+  container.querySelectorAll('img[data-path]').forEach(img => {
+    loadPhoto(img.dataset.path).then(b64 => { img.src = 'data:image/jpeg;base64,' + b64; });
+  });
+}
+
+async function loadPhoto(path) {
+  if (imgCache[path]) return imgCache[path];
+  const res  = await fetch(`/api/photo?path=${enc(path)}`);
+  const data = await res.json();
+  imgCache[path] = data.b64;
   return data.b64;
 }
 
 // ── Lightbox ──
-function openLB(i) {
-  cur = i;
-  renderLB();
-  document.getElementById('lb').classList.add('open');
-}
-function closeLB() {
-  document.getElementById('lb').classList.remove('open');
-}
-function stepLB(dir) {
-  cur = (cur + dir + allPhotos.length) % allPhotos.length;
-  renderLB();
-}
+function openLB(i)   { cur = i; renderLB(); document.getElementById('lb').classList.add('open'); }
+function closeLB()   { document.getElementById('lb').classList.remove('open'); }
+function stepLB(dir) { cur = (cur + dir + allPhotos.length) % allPhotos.length; renderLB(); }
+
 async function renderLB() {
   const photo = allPhotos[cur];
   const ph    = document.getElementById('lb-photo');
   ph.style.opacity = '0';
-
   const b64 = await loadPhoto(photo.path);
   ph.src = 'data:image/jpeg;base64,' + b64;
   ph.style.opacity = '1';
-
-  document.getElementById('lb-info').innerHTML =
-    `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
+  document.getElementById('lb-info').innerHTML = `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
   document.getElementById('lb-fn').textContent  = photo.filename;
-  document.getElementById('lb-ct').textContent  = `${cur + 1} / ${allPhotos.length}`;
+  document.getElementById('lb-ct').textContent  = `${cur+1} / ${allPhotos.length}`;
+  updateLBSelectBtn();
+}
+
+function updateLBSelectBtn() {
+  const btn = document.getElementById('lb-select-btn');
+  if (!btn) return;
+  const isSelected = selectedPhotos.has(cur);
+  btn.textContent = isSelected ? '✓ Selected' : '+ Add to Selection';
+  btn.classList.toggle('selected-btn', isSelected);
+}
+
+function toggleSelectFromLB() {
+  toggleSelect(cur);
+  updateLBSelectBtn();
 }
 
 document.addEventListener('keydown', e => {
   if (!document.getElementById('lb').classList.contains('open')) return;
-  if (e.key === 'ArrowRight') stepLB(1);
-  if (e.key === 'ArrowLeft')  stepLB(-1);
-  if (e.key === 'Escape')     closeLB();
+  if (e.key==='ArrowRight') stepLB(1);
+  if (e.key==='ArrowLeft')  stepLB(-1);
+  if (e.key==='Escape')     closeLB();
 });
-document.getElementById('lb').addEventListener('click', function(e) {
-  if (e.target === this) closeLB();
-});
+document.getElementById('lb').addEventListener('click', function(e) { if(e.target===this) closeLB(); });
 
 // ── Helpers ──
-function formatDate(d) {
-  try {
-    const parts = d.split('-');
-    // Handle YYYY-MM-DD
-    if (parts[0].length === 4) {
-      return new Date(d).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-    }
-    // Handle MM-DD-YY
-    const [m, day, y] = parts;
-    return new Date(`20${y}-${m}-${day}`).toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
-  } catch { return d; }
+function showView(name) {
+  ['days','locations','families','gallery'].forEach(v =>
+    document.getElementById(`view-${v}`).style.display = v===name ? '' : 'none'
+  );
 }
 
-function showSpinner() {
-  document.getElementById('spinner').classList.add('visible');
-  document.getElementById('gallery').innerHTML = '';
-  document.getElementById('msg').textContent   = '';
-  document.getElementById('results-header').style.display = 'none';
+function setBreadcrumb(crumbs, current) {
+  const el = document.getElementById('breadcrumb');
+  if (!crumbs.length && !current) { el.classList.remove('show'); return; }
+  el.classList.add('show');
+  let html = crumbs.map(c =>
+    `<span class="crumb" onclick='navigate(${JSON.stringify(c.state)})'>${c.label}</span><span class="sep">›</span>`
+  ).join('');
+  if (current) html += `<span class="current">${current}</span>`;
+  el.innerHTML = html;
 }
-function hideSpinner() {
-  document.getElementById('spinner').classList.remove('visible');
+
+// ── Print & Frame config ──
+const PRINT_SIZES = [
+  { label: '5×7"',   price: 30 },
+  { label: '8×10"',  price: 40 },
+  { label: '10×13"', price: 55 },
+  { label: '16×20"', price: 120 },
+];
+
+// Frame price matches the print size (same index as PRINT_SIZES)
+const FRAME_PRICES = [35, 45, 60, 130];
+
+const FRAME_OPTIONS = [
+  {
+    icon: '—',
+    label: 'No Frame',
+    priceKey: 0,
+    portraitImg:  '',   // paste portrait frame photo URL here when ready
+    landscapeImg: '',   // paste landscape frame photo URL here when ready
+  },
+  {
+    icon: '▪',
+    label: 'Rustic Big Sky Picture Frame',
+    priceKey: 1,
+    portraitImg:  '',   // paste portrait frame photo URL here when ready
+    landscapeImg: '',   // paste landscape frame photo URL here when ready
+  },
+];
+// Frame prices per size: 5x7=$35, 8x10=$45, 10x13=$60, 16x20=$130
+
+let printCart      = [];
+let pendingPrint   = null;
+let selectedFrameIdx = 0;
+
+// ── Quick Shop ──
+function openQuickShop(i) {
+  const photo       = allPhotos[i];
+  const hasDigitals = selectedPhotos.size > 0;
+
+  const photoEl = document.getElementById('qs-photo');
+  if (imgCache[photo.path]) {
+    photoEl.src = 'data:image/jpeg;base64,' + imgCache[photo.path];
+  } else {
+    photoEl.src = '';
+    loadPhoto(photo.path).then(b64 => { photoEl.src = 'data:image/jpeg;base64,' + b64; });
+  }
+  document.getElementById('qs-filename').textContent = photo.filename;
+
+  // Digital section — show tier options for this photo
+  const digEl = document.getElementById('qs-digitals');
+  if (currentPricing && currentPricing.tiers) {
+    digEl.innerHTML = currentPricing.tiers.map(t => {
+      const isAll = t.count === 'all';
+      const isMulti = typeof t.count === 'number' && t.count > 1;
+      const label = isAll ? `All Photos — $${t.price}` : `${t.label} — $${t.price}`;
+      const btnLabel = isAll ? 'Add All Photos' : isMulti ? 'Select Photos' : 'Select Photo';
+      const clickFn = isAll ? `selectAllFromQS(${i})` : `selectPhotoFromQS(${i}); closeQuickShop();`;
+      return `<div class="qs-row">
+        <span class="qs-row-label">${label}</span>
+        <button class="qs-add-btn" onclick="${clickFn}">${btnLabel}</button>
+      </div>`;
+    }).join('');
+  } else {
+    digEl.innerHTML = '<div class="qs-row"><span class="qs-row-label" style="color:rgba(255,255,255,0.4)">Browse the gallery to select photos</span></div>';
+  }
+
+  // Print section
+  const banner = document.getElementById('qs-print-banner');
+  if (hasDigitals) {
+    banner.style.display = '';
+    banner.innerHTML = '🎉 <strong>50% off prints</strong> with your digital file purchase!';
+  } else {
+    banner.style.display = 'none';
+  }
+
+  const printsEl = document.getElementById('qs-prints');
+  printsEl.innerHTML = PRINT_SIZES.map((s, si) => {
+    const sale  = hasDigitals ? s.price / 2 : s.price;
+    const wasHtml = hasDigitals
+      ? `<span class="qs-price-was">$${s.price}</span>`
+      : '';
+    return `<div class="qs-row">
+      <span class="qs-row-label">${s.label} Print</span>
+      <div class="qs-row-prices">
+        ${wasHtml}
+        <span class="qs-price">$${sale}</span>
+        <button class="qs-add-btn" onclick="addPrint(${i}, ${si}, ${sale})">Add</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('qs-overlay').classList.add('open');
 }
-function showMsg(text) {
-  document.getElementById('msg').textContent = text;
+
+function closeQuickShop() {
+  document.getElementById('qs-overlay').classList.remove('open');
 }
+
+function selectPhotoFromQS(i) {
+  if (!selectedPhotos.has(i)) toggleSelect(i);
+}
+
+function selectAllFromQS(photoIdx) {
+  selectAllPhotos();
+  closeQuickShop();
+  // Show half-off print upsell
+  const upsell = document.getElementById('print-upsell-banner');
+  upsell.classList.add('show');
+  setTimeout(() => upsell.classList.remove('show'), 6000);
+}
+
+// ── Print → Frame flow ──
+function addPrint(photoIdx, sizeIdx, price) {
+  const photo = allPhotos[photoIdx];
+  pendingPrint     = { photoIdx, sizeIdx, price, orientation: 'landscape' };
+  selectedFrameIdx = 0;
+
+  document.getElementById('frame-size-label').textContent = PRINT_SIZES[sizeIdx].label + ' print';
+
+  // Detect orientation from cached image, then (re)render the frame grid
+  if (imgCache[photo.path]) {
+    const tmp = new Image();
+    tmp.onload = () => {
+      pendingPrint.orientation = tmp.naturalHeight > tmp.naturalWidth ? 'portrait' : 'landscape';
+      renderFrameGrid(sizeIdx);
+    };
+    tmp.src = 'data:image/jpeg;base64,' + imgCache[photo.path];
+  }
+
+  renderFrameGrid(sizeIdx);
+  closeQuickShop();
+  document.getElementById('frame-overlay').classList.add('open');
+}
+
+function renderFrameGrid(sizeIdx) {
+  const si         = sizeIdx !== undefined ? sizeIdx : (pendingPrint ? pendingPrint.sizeIdx : 0);
+  const framePrice = FRAME_PRICES[si];
+  const orient     = pendingPrint ? pendingPrint.orientation : 'landscape';
+
+  document.getElementById('frame-grid').innerHTML = FRAME_OPTIONS.map((f, fi) => {
+    const price  = f.priceKey === 0 ? 0 : framePrice;
+    const imgUrl = orient === 'portrait' ? f.portraitImg : f.landscapeImg;
+    const visual = imgUrl
+      ? `<img src="${imgUrl}" alt="${f.label}" style="width:100%;border-radius:6px;margin-bottom:0.5rem;aspect-ratio:${orient==='portrait'?'2/3':'3/2'};object-fit:cover;" />`
+      : `<div style="font-size:1.4rem;margin-bottom:0.4rem">${f.icon}</div>`;
+    return `<div class="frame-option ${fi === 0 ? 'selected' : ''}" onclick="selectFrame(${fi})">
+      ${visual}
+      <div class="frame-name">${f.label}</div>
+      <div class="frame-fprice ${price === 0 ? 'free' : ''}">${price === 0 ? 'No extra cost' : '+$' + price}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectFrame(fi) {
+  selectedFrameIdx = fi;
+  document.querySelectorAll('.frame-option').forEach((el, i) =>
+    el.classList.toggle('selected', i === fi)
+  );
+}
+
+function confirmFrame() {
+  if (!pendingPrint) return;
+  const { photoIdx, sizeIdx, price } = pendingPrint;
+  const photo = allPhotos[photoIdx];
+  const frame = FRAME_OPTIONS[selectedFrameIdx];
+  const framePrice = frame.priceKey === 0 ? 0 : FRAME_PRICES[sizeIdx];
+  printCart.push({
+    photoIdx,
+    sizeIdx,
+    filename:    photo.filename,
+    size:        PRINT_SIZES[sizeIdx].label,
+    price,
+    frame:       frame.label,
+    framePrice,
+    orientation: pendingPrint.orientation,
+  });
+  closeFrame();
+  updateCart();
+  showToast(`${PRINT_SIZES[sizeIdx].label} print added!`);
+}
+
+function closeFrame() {
+  document.getElementById('frame-overlay').classList.remove('open');
+  pendingPrint = null;
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = '✓ ' + msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function buildCollage(previews, idx) {
+  const p = previews;
+  const img = (i) => p[i]
+    ? `<img data-path="${escA(p[i])}" src="" alt="" />`
+    : `<div class="collage-placeholder">📷</div>`;
+
+  switch (idx % 4) {
+    case 0: // 2x2 grid
+      return `<div class="collage-2x2">${img(0)}${img(1)}${img(2)}${img(3)}</div>`;
+    case 1: // hero single wide
+      return `<div class="collage-hero">${img(0)}</div>`;
+    case 2: // 1 wide top + 2 bottom
+      return `<div class="collage-top1-bot2">
+        ${p[0] ? `<img class="top" data-path="${escA(p[0])}" src="" alt="" />` : `<div class="collage-placeholder">📷</div>`}
+        <div class="bot-row">${img(1)}${img(2)}</div>
+      </div>`;
+    case 3: // 1 tall left + 2 stacked right
+      return `<div class="collage-left1-right2">
+        ${p[0] ? `<img class="tall" data-path="${escA(p[0])}" src="" alt="" />` : `<div class="collage-placeholder">📷</div>`}
+        ${p[1] ? `<img class="small" data-path="${escA(p[1])}" src="" alt="" />` : `<div class="collage-placeholder">📷</div>`}
+        ${p[2] ? `<img class="small" data-path="${escA(p[2])}" src="" alt="" />` : `<div class="collage-placeholder">📷</div>`}
+      </div>`;
+  }
+}
+
+function enc(s)  { return encodeURIComponent(s || ''); }
+function escQ(s) { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
+function escA(s) { return (s||'').replace(/"/g,'&quot;'); }
+
+function formatDateLong(d) {
+  try {
+    const p = d.split('-');
+    const dt = p[0].length===4
+      ? new Date(d+'T12:00:00')
+      : new Date(`20${p[2]}-${p[0]}-${p[1]}T12:00:00`);
+    return dt.toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
+  } catch { return d; }
+}
+function formatDate(d) {
+  try {
+    const p = d.split('-');
+    const dt = p[0].length===4
+      ? new Date(d+'T12:00:00')
+      : new Date(`20${p[2]}-${p[0]}-${p[1]}T12:00:00`);
+    return dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  } catch { return d; }
+}
+function showSpinner() { document.getElementById('spinner').classList.add('visible'); }
+function hideSpinner() { document.getElementById('spinner').classList.remove('visible'); }
+function showMsg(t)    { document.getElementById('msg').textContent = t; }
+function hideMsg()     { document.getElementById('msg').textContent = ''; }
+
+// ── Screenshot & save protection ──
+const ssBlock = document.getElementById('ss-block');
+
+function flashBlock() {
+  ssBlock.classList.add('active');
+  setTimeout(() => ssBlock.classList.remove('active'), 1000);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'PrintScreen') { flashBlock(); e.preventDefault(); }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'p' || e.key === 's')) {
+    e.preventDefault(); flashBlock();
+  }
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) flashBlock();
+});
+
+document.addEventListener('contextmenu', e => {
+  const photoSelectors = ['.thumb-card', '#lb-photo', '.qs-photo', '.cartview-thumb', '.checkout-thumbs', '.collage-inner'];
+  const isPhoto = e.target.tagName === 'IMG' || photoSelectors.some(sel => e.target.closest(sel));
+  if (isPhoto) e.preventDefault();
+});
 </script>
 </body>
 </html>
