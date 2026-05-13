@@ -290,20 +290,29 @@ def to_r2_key(path: str) -> str:
     return path[idx:] if idx >= 0 else path
 
 @app.get("/api/photo")
-def get_photo(path: str):
+def get_photo(path: str, thumb: bool = Query(False)):
     from fastapi.responses import StreamingResponse as SR
     try:
         key = to_r2_key(path)
         if os.getenv("R2_ENDPOINT_URL"):
             obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+            if thumb:
+                img = Image.open(obj["Body"]).convert("RGB")
+                img = fix_orientation(img)
+                img.thumbnail((450, 450), Image.LANCZOS)
+                buf = BytesIO()
+                img.save(buf, format="JPEG", quality=72)
+                buf.seek(0)
+                return SR(buf, media_type="image/jpeg",
+                          headers={"Cache-Control": "private, max-age=86400"})
             return SR(obj["Body"], media_type="image/jpeg",
                       headers={"Cache-Control": "private, max-age=3600"})
         elif os.path.exists(path):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)
+            img.thumbnail((450, 450) if thumb else (900, 900), Image.LANCZOS)
             buf = BytesIO()
-            img.thumbnail((900, 900), Image.LANCZOS)
-            img.save(buf, format="JPEG", quality=83)
+            img.save(buf, format="JPEG", quality=72 if thumb else 83)
             buf.seek(0)
             return SR(buf, media_type="image/jpeg")
         else:

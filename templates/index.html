@@ -1220,16 +1220,29 @@ function doLnSearch() {
 }
 
 // ── Lazy image loading ──
+const _imgObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (!entry.isIntersecting) return;
+    const img = entry.target;
+    const path = img.dataset.path;
+    if (path) {
+      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&thumb=1`;
+      img.src = imgCache[path];
+    }
+    _imgObserver.unobserve(img);
+  });
+}, { rootMargin: '400px' });
+
 function lazyLoad(container) {
+  _imgObserver.disconnect();
   container.querySelectorAll('img[data-path]').forEach(img => {
-    loadPhoto(img.dataset.path).then(src => { img.src = src; });
+    _imgObserver.observe(img);
   });
 }
 
 function loadPhoto(path) {
   if (imgCache[path]) return Promise.resolve(imgCache[path]);
-  // /api/photo now streams the image directly — no fetch/JSON needed
-  const src = `/api/photo?path=${enc(path)}`;
+  const src = `/api/photo?path=${enc(path)}&thumb=1`;
   imgCache[path] = src;
   return Promise.resolve(src);
 }
@@ -1243,9 +1256,8 @@ async function renderLB() {
   const photo = allPhotos[cur];
   const ph    = document.getElementById('lb-photo');
   ph.style.opacity = '0';
-  const src = await loadPhoto(photo.path);
-  ph.src = src;
-  ph.style.opacity = '1';
+  ph.onload = () => { ph.style.opacity = '1'; };
+  ph.src = `/api/photo?path=${enc(photo.path)}`;
   document.getElementById('lb-info').innerHTML = `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
   document.getElementById('lb-fn').textContent  = photo.filename;
   document.getElementById('lb-ct').textContent  = `${cur+1} / ${allPhotos.length}`;
