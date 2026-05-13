@@ -302,29 +302,39 @@ def to_r2_key(path: str) -> str:
     return path[idx:] if idx >= 0 else path
 
 @app.get("/api/photo")
-def get_photo(path: str, thumb: bool = Query(False)):
+def get_photo(path: str, size: str = Query("medium")):
+    """
+    size=thumb  → 450px  q72  (gallery thumbnails)
+    size=medium → 1200px q85  (lightbox — default)
+    size=full   → 1800px q88  (download-quality)
+    """
     from fastapi.responses import StreamingResponse as SR
+    SIZE_MAP = {
+        "thumb":  (450,  72),
+        "medium": (1200, 85),
+        "full":   (1800, 88),
+    }
+    max_px, quality = SIZE_MAP.get(size, SIZE_MAP["medium"])
+    cache_secs = 86400 if size == "thumb" else 3600
+
     try:
         key = to_r2_key(path)
         if os.getenv("R2_ENDPOINT_URL"):
             obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-            if thumb:
-                img = Image.open(obj["Body"]).convert("RGB")
-                img = fix_orientation(img)
-                img.thumbnail((450, 450), Image.LANCZOS)
-                buf = BytesIO()
-                img.save(buf, format="JPEG", quality=72)
-                buf.seek(0)
-                return SR(buf, media_type="image/jpeg",
-                          headers={"Cache-Control": "private, max-age=86400"})
-            return SR(obj["Body"], media_type="image/jpeg",
-                      headers={"Cache-Control": "private, max-age=3600"})
+            img = Image.open(obj["Body"]).convert("RGB")
+            img = fix_orientation(img)
+            img.thumbnail((max_px, max_px), Image.LANCZOS)
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=quality)
+            buf.seek(0)
+            return SR(buf, media_type="image/jpeg",
+                      headers={"Cache-Control": f"private, max-age={cache_secs}"})
         elif os.path.exists(path):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)
-            img.thumbnail((450, 450) if thumb else (900, 900), Image.LANCZOS)
+            img.thumbnail((max_px, max_px), Image.LANCZOS)
             buf = BytesIO()
-            img.save(buf, format="JPEG", quality=72 if thumb else 83)
+            img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
             return SR(buf, media_type="image/jpeg")
         else:

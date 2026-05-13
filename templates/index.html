@@ -1226,7 +1226,7 @@ const _imgObserver = new IntersectionObserver((entries) => {
     const img = entry.target;
     const path = img.dataset.path;
     if (path) {
-      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&thumb=1`;
+      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb`;
       img.src = imgCache[path];
     }
     _imgObserver.unobserve(img);
@@ -1242,7 +1242,7 @@ function lazyLoad(container) {
 
 function loadPhoto(path) {
   if (imgCache[path]) return Promise.resolve(imgCache[path]);
-  const src = `/api/photo?path=${enc(path)}&thumb=1`;
+  const src = `/api/photo?path=${enc(path)}&size=thumb`;
   imgCache[path] = src;
   return Promise.resolve(src);
 }
@@ -1256,30 +1256,19 @@ async function renderLB() {
   const photo = allPhotos[cur];
   const ph    = document.getElementById('lb-photo');
 
-  // Show cached thumbnail immediately so the user sees something right away
-  if (imgCache[photo.path]) {
-    ph.src = imgCache[photo.path];
-    ph.style.opacity = '1';
-  } else {
-    ph.style.opacity = '0';
-  }
+  // Load medium-size (1200px) — sharp but fast, ~200-400 KB vs several MB for raw
+  ph.style.opacity = '0';
+  ph.onload = () => { ph.style.opacity = '1'; };
+  ph.src = `/api/photo?path=${enc(photo.path)}&size=medium`;
 
-  // Load full-size in the background; swap when ready
-  const fullSrc = `/api/photo?path=${enc(photo.path)}`;
-  const tmp = new window.Image();
-  tmp.onload = () => {
-    if (allPhotos[cur] === photo) { // still on the same photo
-      ph.src = fullSrc;
-      ph.style.opacity = '1';
-    }
-  };
-  tmp.src = fullSrc;
-
-  // Preload adjacent photo thumbnails into cache
+  // Preload adjacent photos in the background
   [cur - 1, cur + 1].forEach(idx => {
     const n = allPhotos.length;
     const p = allPhotos[(idx + n) % n];
-    if (p && !imgCache[p.path]) loadPhoto(p.path);
+    if (p) {
+      const pre = new window.Image();
+      pre.src = `/api/photo?path=${enc(p.path)}&size=medium`;
+    }
   });
   document.getElementById('lb-info').innerHTML = `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
   document.getElementById('lb-fn').textContent  = photo.filename;
