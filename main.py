@@ -56,10 +56,17 @@ def image_to_base64(img, max_size=900):
 # LOAD MODEL & DATA (once on startup)
 # ─────────────────────────────────────────
 
-print("Loading CLIP model...")
-model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-print("Model loaded.")
+model     = None
+processor = None
+
+def get_model():
+    global model, processor
+    if model is None:
+        print("Loading CLIP model on first search request...")
+        model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        print("Model loaded.")
+    return model, processor
 
 if os.path.exists("images.json"):
     with open("images.json", "r") as f:
@@ -206,9 +213,10 @@ def search(
     # Text embedding
     text_embedding = None
     if query:
-        inputs = processor(text=[query], return_tensors="pt", padding=True)
+        m, p = get_model()
+        inputs = p(text=[query], return_tensors="pt", padding=True)
         with torch.no_grad():
-            text_embedding = model.get_text_features(**inputs)[0]
+            text_embedding = m.get_text_features(**inputs)[0]
 
     ln_filter = last_name.strip().lower() if last_name else ""
 
