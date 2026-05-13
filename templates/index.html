@@ -1226,14 +1226,12 @@ function lazyLoad(container) {
   });
 }
 
-async function loadPhoto(path) {
-  if (imgCache[path]) return imgCache[path];
-  const res  = await fetch(`/api/photo?path=${enc(path)}`);
-  const data = await res.json();
-  // R2 presigned URL (production) or base64 (local)
-  const src = data.url || ('data:image/jpeg;base64,' + data.b64);
+function loadPhoto(path) {
+  if (imgCache[path]) return Promise.resolve(imgCache[path]);
+  // /api/photo now streams the image directly — no fetch/JSON needed
+  const src = `/api/photo?path=${enc(path)}`;
   imgCache[path] = src;
-  return src;
+  return Promise.resolve(src);
 }
 
 // ── Lightbox ──
