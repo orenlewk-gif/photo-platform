@@ -292,16 +292,22 @@ def to_r2_key(path: str) -> str:
 @app.get("/api/photo")
 def get_photo(path: str):
     try:
+        key = to_r2_key(path)
         if os.getenv("R2_ENDPOINT_URL"):
-            obj = s3.get_object(Bucket=R2_BUCKET, Key=to_r2_key(path))
-            img = Image.open(BytesIO(obj["Body"].read())).convert("RGB")
+            # Return a presigned URL — browser fetches directly from R2/Cloudflare
+            url = s3.generate_presigned_url(
+                "get_object",
+                Params={"Bucket": R2_BUCKET, "Key": key},
+                ExpiresIn=3600,
+            )
+            return {"url": url}
         elif os.path.exists(path):
             img = Image.open(path).convert("RGB")
+            img = fix_orientation(img)
+            b64 = image_to_base64(img)
+            return {"b64": b64}
         else:
             return JSONResponse(status_code=404, content={"error": "File not found"})
-        img = fix_orientation(img)
-        b64 = image_to_base64(img)
-        return {"b64": b64}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

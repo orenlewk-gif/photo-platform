@@ -986,7 +986,7 @@ function renderCartView() {
     html += `<div class="cartview-section-label">Digital Photos (${digitalCount}) — $${digitalPrice}</div>`;
     html += `<div class="cartview-photo-grid">`;
     photos.forEach(p => {
-      const src = imgCache[p.path] ? 'data:image/jpeg;base64,' + imgCache[p.path] : '';
+      const src = imgCache[p.path] || '';
       html += `<div class="cartview-thumb">
         <img src="${src}" alt="${p.filename}" />
         <button class="cv-remove" onclick="deSelectPhotoByPath('${escQ(p.path)}')" title="Remove">✕</button>
@@ -1037,7 +1037,7 @@ function renderCartView() {
       loadPhoto(p.path).then(() => {
         const imgs = document.querySelectorAll('#cartview-body .cartview-thumb img');
         imgs.forEach(img => {
-          if (img.src === '' && imgCache[p.path]) img.src = 'data:image/jpeg;base64,' + imgCache[p.path];
+          if (img.src === '' && imgCache[p.path]) img.src = imgCache[p.path];
         });
       });
     }
@@ -1114,10 +1114,10 @@ function openCheckout() {
     : printCart.slice(0, 12).map(p => allPhotos[p.photoIdx]).filter(Boolean);
   thumbPhotos.forEach(p => {
     const img = document.createElement('img');
-    img.src = imgCache[p.path] ? 'data:image/jpeg;base64,' + imgCache[p.path] : '';
+    img.src = imgCache[p.path] || '';
     img.alt = p.filename;
     if (!imgCache[p.path]) {
-      loadPhoto(p.path).then(b64 => { img.src = 'data:image/jpeg;base64,' + b64; });
+      loadPhoto(p.path).then(src => { img.src = src; });
     }
     thumbsEl.appendChild(img);
   });
@@ -1222,7 +1222,7 @@ function doLnSearch() {
 // ── Lazy image loading ──
 function lazyLoad(container) {
   container.querySelectorAll('img[data-path]').forEach(img => {
-    loadPhoto(img.dataset.path).then(b64 => { img.src = 'data:image/jpeg;base64,' + b64; });
+    loadPhoto(img.dataset.path).then(src => { img.src = src; });
   });
 }
 
@@ -1230,8 +1230,10 @@ async function loadPhoto(path) {
   if (imgCache[path]) return imgCache[path];
   const res  = await fetch(`/api/photo?path=${enc(path)}`);
   const data = await res.json();
-  imgCache[path] = data.b64;
-  return data.b64;
+  // R2 presigned URL (production) or base64 (local)
+  const src = data.url || ('data:image/jpeg;base64,' + data.b64);
+  imgCache[path] = src;
+  return src;
 }
 
 // ── Lightbox ──
@@ -1243,8 +1245,8 @@ async function renderLB() {
   const photo = allPhotos[cur];
   const ph    = document.getElementById('lb-photo');
   ph.style.opacity = '0';
-  const b64 = await loadPhoto(photo.path);
-  ph.src = 'data:image/jpeg;base64,' + b64;
+  const src = await loadPhoto(photo.path);
+  ph.src = src;
   ph.style.opacity = '1';
   document.getElementById('lb-info').innerHTML = `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
   document.getElementById('lb-fn').textContent  = photo.filename;
@@ -1331,10 +1333,10 @@ function openQuickShop(i) {
 
   const photoEl = document.getElementById('qs-photo');
   if (imgCache[photo.path]) {
-    photoEl.src = 'data:image/jpeg;base64,' + imgCache[photo.path];
+    photoEl.src = imgCache[photo.path];
   } else {
     photoEl.src = '';
-    loadPhoto(photo.path).then(b64 => { photoEl.src = 'data:image/jpeg;base64,' + b64; });
+    loadPhoto(photo.path).then(src => { photoEl.src = src; });
   }
   document.getElementById('qs-filename').textContent = photo.filename;
 
@@ -1416,7 +1418,7 @@ function addPrint(photoIdx, sizeIdx, price) {
       pendingPrint.orientation = tmp.naturalHeight > tmp.naturalWidth ? 'portrait' : 'landscape';
       renderFrameGrid(sizeIdx);
     };
-    tmp.src = 'data:image/jpeg;base64,' + imgCache[photo.path];
+    tmp.src = imgCache[photo.path];
   }
 
   renderFrameGrid(sizeIdx);
