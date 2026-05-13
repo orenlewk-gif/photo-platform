@@ -1255,9 +1255,32 @@ function stepLB(dir) { cur = (cur + dir + allPhotos.length) % allPhotos.length; 
 async function renderLB() {
   const photo = allPhotos[cur];
   const ph    = document.getElementById('lb-photo');
-  ph.style.opacity = '0';
-  ph.onload = () => { ph.style.opacity = '1'; };
-  ph.src = `/api/photo?path=${enc(photo.path)}`;
+
+  // Show cached thumbnail immediately so the user sees something right away
+  if (imgCache[photo.path]) {
+    ph.src = imgCache[photo.path];
+    ph.style.opacity = '1';
+  } else {
+    ph.style.opacity = '0';
+  }
+
+  // Load full-size in the background; swap when ready
+  const fullSrc = `/api/photo?path=${enc(photo.path)}`;
+  const tmp = new window.Image();
+  tmp.onload = () => {
+    if (allPhotos[cur] === photo) { // still on the same photo
+      ph.src = fullSrc;
+      ph.style.opacity = '1';
+    }
+  };
+  tmp.src = fullSrc;
+
+  // Preload adjacent photo thumbnails into cache
+  [cur - 1, cur + 1].forEach(idx => {
+    const n = allPhotos.length;
+    const p = allPhotos[(idx + n) % n];
+    if (p && !imgCache[p.path]) loadPhoto(p.path);
+  });
   document.getElementById('lb-info').innerHTML = `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
   document.getElementById('lb-fn').textContent  = photo.filename;
   document.getElementById('lb-ct').textContent  = `${cur+1} / ${allPhotos.length}`;

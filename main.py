@@ -136,20 +136,26 @@ def get_locations(date: str = Query(None)):
     else:
         items = data
     loc_map = {}
-    previews = {}
+    all_previews = {}
     for item in items:
         display = clean_location(item["location"])
         loc_map[display] = item["location"]
-        if display not in previews:
-            previews[display] = []
-        if len(previews[display]) < 4:
-            previews[display].append(item["path"])
+        if display not in all_previews:
+            all_previews[display] = []
+        all_previews[display].append(item["path"])
+
+    def pick_four(photos):
+        n = len(photos)
+        if n <= 4:
+            return photos
+        step = n / 4
+        return [photos[int(i * step)] for i in range(4)]
 
     locations = []
     for display in sorted(loc_map.keys()):
         locations.append({
             "name":     display,
-            "previews": previews[display]
+            "previews": pick_four(all_previews[display])
         })
     return {"locations": locations}
 
@@ -168,12 +174,18 @@ def get_families(date: str, location: str):
             continue
         if ln not in families:
             families[ln] = []
-        if len(families[ln]) < 4:
-            families[ln].append(item["path"])
+        families[ln].append(item["path"])
+
+    def pick_four(photos):
+        n = len(photos)
+        if n <= 4:
+            return photos
+        step = n / 4
+        return [photos[int(i * step)] for i in range(4)]
 
     result = []
     for name in sorted(families.keys()):
-        result.append({"name": name, "previews": families[name]})
+        result.append({"name": name, "previews": pick_four(families[name])})
     return {"families": result, "has_families": len(result) > 0}
 
 
