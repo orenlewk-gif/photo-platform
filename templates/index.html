@@ -1278,6 +1278,7 @@ async function submitToWooCommerce() {
     digital_count:     count,
     digital_price:     calcPrice(count),
     digital_filenames: photos.map(p => p.filename),
+    digital_paths:     photos.map(p => p.path),
     prints: printCart.map(p => ({
       filename:    p.filename,
       size:        p.size,

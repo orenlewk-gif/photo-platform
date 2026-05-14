@@ -1,12 +1,15 @@
-from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 import json
 import torch
 import re
+import hmac
+import hashlib
+import uuid
+from datetime import datetime, timedelta, timezone
 from transformers import CLIPProcessor, CLIPModel
 from rapidfuzz import fuzz
-from datetime import datetime
 import os
 import base64
 from io import BytesIO
@@ -387,10 +390,12 @@ async def create_checkout(request: Request):
                 "total": str(float(p["shipping"]))
             })
 
+        paths = body.get("digital_paths", [])
         meta = [
             {"key": "_photo_location", "value": location},
             {"key": "_photo_date",     "value": date},
             {"key": "_photo_files",    "value": ", ".join(filenames)},
+            {"key": "_photo_paths",    "value": "|".join(paths)},
         ]
 
         order_data = {"status": "pending", "fee_lines": fee_lines, "meta_data": meta}
@@ -412,6 +417,189 @@ async def create_checkout(request: Request):
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ─────────────────────────────────────────
+# WEBHOOK + DIGITAL DELIVERY
+# ─────────────────────────────────────────
+
+WC_WEBHOOK_SECRET  = os.getenv("WC_WEBHOOK_SECRET", "")
+DOWNLOAD_EXPIRE_DAYS = 30
+SITE_URL = "https://photos.bigskyphotos.com"
+
+def _store_token(token: str, payload: dict):
+    body = json.dumps(payload).encode()
+    s3.put_object(Bucket=R2_BUCKET, Key=f"downloads/{token}.json",
+                  Body=body, ContentType="application/json")
+
+def _load_token(token: str):
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=f"downloads/{token}.json")
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return None
+
+@app.post("/webhook")
+async def wc_webhook(request: Request):
+    body = await request.body()
+    sig  = request.headers.get("X-WC-Webhook-Signature", "")
+
+    # Verify HMAC-SHA256 signature
+    expected = base64.b64encode(
+        hmac.new(WC_WEBHOOK_SECRET.encode(), body, hashlib.sha256).digest()
+    ).decode()
+    if WC_WEBHOOK_SECRET and not hmac.compare_digest(expected, sig):
+        return Response(status_code=401)
+
+    try:
+        order = json.loads(body)
+    except Exception:
+        return Response(status_code=400)
+
+    # Only act when order is completed
+    if order.get("status") != "completed":
+        return Response(status_code=200)
+
+    # Pull stored photo paths from order meta
+    meta = {m["key"]: m["value"] for m in order.get("meta_data", [])}
+    paths_raw = meta.get("_photo_paths", "")
+    if not paths_raw:
+        return Response(status_code=200)
+
+    photo_paths = [p for p in paths_raw.split("|") if p]
+    location    = meta.get("_photo_location", "")
+    date        = meta.get("_photo_date", "")
+    filenames   = meta.get("_photo_files", "")
+
+    billing     = order.get("billing", {})
+    customer_email = billing.get("email", "")
+    customer_name  = f"{billing.get('first_name','')} {billing.get('last_name','')}".strip()
+    order_id    = order.get("id")
+    order_key   = order.get("order_key", "")
+
+    # Generate download token
+    token = str(uuid.uuid4()).replace("-", "")
+    expires = (datetime.now(timezone.utc) + timedelta(days=DOWNLOAD_EXPIRE_DAYS)).isoformat()
+
+    _store_token(token, {
+        "order_id":   order_id,
+        "order_key":  order_key,
+        "customer":   customer_name,
+        "email":      customer_email,
+        "paths":      photo_paths,
+        "filenames":  filenames,
+        "location":   location,
+        "date":       date,
+        "expires":    expires,
+    })
+
+    download_url = f"{SITE_URL}/download/{token}"
+
+    # Send customer note via WooCommerce (triggers email to customer)
+    note_text = (
+        f"Hi {customer_name or 'there'}! Your Crystal Images photos are ready.\n\n"
+        f"Click the link below to access your download page:\n{download_url}\n\n"
+        f"Your download link is valid for {DOWNLOAD_EXPIRE_DAYS} days. "
+        f"If it expires, just contact us and we'll resend your photos anytime."
+    )
+    http_requests.post(
+        f"{WC_BASE}/orders/{order_id}/notes",
+        json={"note": note_text, "customer_note": True},
+        auth=(WC_KEY, WC_SECRET),
+        timeout=10
+    )
+
+    return Response(status_code=200)
+
+
+@app.get("/download/{token}")
+def download_page(token: str):
+    rec = _load_token(token)
+    if not rec:
+        return HTMLResponse("<h2>Invalid or expired download link.</h2>", status_code=404)
+
+    expires_dt = datetime.fromisoformat(rec["expires"])
+    if datetime.now(timezone.utc) > expires_dt:
+        return HTMLResponse(
+            "<h2 style='font-family:sans-serif;color:#c0392b'>This download link has expired.</h2>"
+            "<p style='font-family:sans-serif'>Please contact us at bigskyphotos.com to receive a new link.</p>",
+            status_code=410
+        )
+
+    expire_str = expires_dt.strftime("%B %d, %Y")
+    photo_rows = ""
+    for i, path in enumerate(rec["paths"]):
+        fname = os.path.basename(path)
+        photo_rows += f"""
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:0.65rem 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+          <span style="font-size:0.9rem;color:rgba(255,255,255,0.8)">{fname}</span>
+          <a href="/download/{token}/{i}" download="{fname}"
+             style="background:#F2C94C;color:#0d1f2d;padding:0.4rem 1rem;border-radius:6px;
+                    font-weight:700;font-size:0.85rem;text-decoration:none;">
+            Download
+          </a>
+        </div>"""
+
+    html = f"""<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Photos — Crystal Images</title>
+<style>
+  body{{margin:0;background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh;padding:2rem 1rem;box-sizing:border-box}}
+  .wrap{{max-width:680px;margin:0 auto}}
+  h1{{color:#F2C94C;margin-bottom:0.25rem}}
+  .sub{{color:rgba(255,255,255,0.5);margin-bottom:2rem;font-size:0.9rem}}
+  .card{{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}}
+  .license-title{{font-weight:700;color:#F2C94C;margin-bottom:0.75rem;font-size:1rem}}
+  .license-item{{display:flex;gap:0.5rem;margin-bottom:0.4rem;font-size:0.88rem;color:rgba(255,255,255,0.75)}}
+  .expire{{font-size:0.82rem;color:rgba(255,255,255,0.4);margin-top:1rem}}
+</style></head><body><div class="wrap">
+  <h1>Your Photos Are Ready</h1>
+  <div class="sub">Order #{rec['order_id']} &nbsp;·&nbsp; {rec['location']} &nbsp;·&nbsp; {rec['date']}</div>
+
+  <div class="card">
+    <div class="license-title">📋 Digital Photo License</div>
+    <div class="license-item"><span>✓</span><span>Personal use permitted — print, frame, and share freely.</span></div>
+    <div class="license-item"><span>✓</span><span>Commercial use permitted <strong>when you tag @crystalimagesbigsky on Instagram.</strong></span></div>
+    <div class="license-item"><span>✗</span><span>No resale or redistribution of the original image files.</span></div>
+    <div class="license-item"><span>✗</span><span>Do not sell or transfer these files to third parties.</span></div>
+    <div class="license-item"><span>📸</span><span>We love seeing your memories — tag us when you share!</span></div>
+    <div style="margin-top:0.75rem;font-size:0.8rem;color:rgba(255,255,255,0.4)">
+      By downloading you agree to these terms.
+      Links expire <strong style="color:rgba(255,255,255,0.6)">{expire_str}</strong> —
+      contact us anytime at bigskyphotos.com to resend.
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="license-title">⬇ Download Your Photos ({len(rec['paths'])} files)</div>
+    {photo_rows}
+  </div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
+@app.get("/download/{token}/{idx}")
+def download_file(token: str, idx: int):
+    rec = _load_token(token)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "Invalid link"})
+
+    expires_dt = datetime.fromisoformat(rec["expires"])
+    if datetime.now(timezone.utc) > expires_dt:
+        return JSONResponse(status_code=410, content={"error": "Link expired"})
+
+    if idx < 0 or idx >= len(rec["paths"]):
+        return JSONResponse(status_code=404, content={"error": "File not found"})
+
+    key = to_r2_key(rec["paths"][idx])
+    presigned = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": R2_BUCKET, "Key": key,
+                "ResponseContentDisposition": f"attachment; filename={os.path.basename(key)}"},
+        ExpiresIn=3600
+    )
+    return RedirectResponse(presigned)
 
 
 # ─────────────────────────────────────────
