@@ -435,7 +435,7 @@ async def create_checkout(request: Request):
                     "total":        frame_price,
                 })
             fee_lines.append({
-                "name":  f"Shipping — {p['size']} Print",
+                "name":  "Shipping",
                 "total": str(float(p["shipping"]))
             })
 
