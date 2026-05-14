@@ -1279,7 +1279,7 @@ function calcShipping() {
   const framed   = printCart.filter(p => p.frame && p.frame !== 'No Frame');
   const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
   if (framed.length) {
-    const rates = framed.map(p => PRINT_SHIPPING[p.sizeIdx]).sort((a, b) => b - a);
+    const rates = framed.map(p => FRAME_SHIPPING[p.sizeIdx]).sort((a, b) => b - a);
     return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
   } else if (unframed.length) {
     return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
@@ -1384,14 +1384,15 @@ async function submitToWooCommerce() {
     digital_filenames: photos.map(p => p.filename),
     digital_paths:     photos.map(p => p.path),
     prints: printCart.map(p => ({
-      filename:    p.filename,
-      size:        p.size,
-      size_idx:    p.sizeIdx,
-      orientation: p.orientation,
-      price:       p.price,
-      frame:       p.frame,
-      frame_price: p.framePrice,
-      shipping:    PRINT_SHIPPING[p.sizeIdx]
+      filename:       p.filename,
+      size:           p.size,
+      size_idx:       p.sizeIdx,
+      orientation:    p.orientation,
+      price:          p.price,
+      frame:          p.frame,
+      frame_price:    p.framePrice,
+      print_shipping: PRINT_SHIPPING[p.sizeIdx],
+      frame_shipping: FRAME_SHIPPING[p.sizeIdx]
     })),
     location: loc,
     date:     date,
@@ -1535,7 +1536,8 @@ const PRINT_SIZES = [
 const FRAME_PRICES = [35, 45, 65, 145];
 
 // Flat-rate shipping per print size (5x7, 8x10, 10x13, 16x20)
-const PRINT_SHIPPING = [8, 8, 13, 13];
+const PRINT_SHIPPING  = [8, 8, 13, 13];
+const FRAME_SHIPPING  = [20, 25, 30, 65];
 
 const FRAME_OPTIONS = [
   {
