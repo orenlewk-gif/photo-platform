@@ -993,7 +993,8 @@ function updateCart() {
   }
   const digitalPrice = calcPrice(count);
   const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const total        = digitalPrice + printPrice;
+  const shipping     = calcShipping();
+  const total        = digitalPrice + printPrice + shipping;
 
   let summary = [];
   if (count > 0)      summary.push(`${count} photo${count!==1?'s':''}`);
@@ -1193,11 +1194,16 @@ function openCheckout() {
   document.getElementById('checkout-overlay').classList.add('open');
 }
 
+function calcShipping() {
+  return printCart.reduce((s, p) => s + PRINT_SHIPPING[p.sizeIdx], 0);
+}
+
 function renderCheckoutLines() {
   const count      = selectedPhotos.size;
   const digPrice   = calcPrice(count);
   const printPrice = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const total      = digPrice + printPrice;
+  const shipping   = calcShipping();
+  const total      = digPrice + printPrice + shipping;
   const photos     = [...selectedPhotos].map(i => allPhotos[i]);
 
   let linesHtml = '';
@@ -1209,6 +1215,7 @@ function renderCheckoutLines() {
   }
 
   printCart.forEach((p, idx) => {
+    const ship = PRINT_SHIPPING[p.sizeIdx];
     linesHtml += `<div class="order-line" style="flex-wrap:wrap;align-items:flex-start;gap:0.5rem;padding:0.75rem 0;">
       <div style="flex:1;min-width:180px;">
         <div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:5px;">${p.filename}</div>
@@ -1224,8 +1231,23 @@ function renderCheckoutLines() {
         </div>
       </div>
       <span class="value" style="align-self:center;">$${p.price + p.framePrice}</span>
+    </div>
+    <div class="order-line" style="padding:0 0 0.5rem 0;border-bottom:none;">
+      <span class="label" style="color:rgba(255,255,255,0.45);font-size:0.8rem;">Shipping (${p.size})</span>
+      <span class="value" style="font-size:0.85rem;">$${ship}</span>
     </div>`;
   });
+
+  if (shipping > 0) {
+    linesHtml += `<div class="order-line" style="border-top:1px solid rgba(255,255,255,0.15);margin-top:0.25rem;padding-top:0.75rem;">
+      <span class="label">Subtotal</span>
+      <span class="value">$${digPrice + printPrice}</span>
+    </div>
+    <div class="order-line">
+      <span class="label">Shipping</span>
+      <span class="value">$${shipping}</span>
+    </div>`;
+  }
 
   if (count > 0 && photos[0]) {
     linesHtml += `<div class="order-line">
@@ -1251,6 +1273,8 @@ function copyOrderSummary() {
   const loc        = photos[0]?.location || (printCart[0] ? allPhotos[printCart[0].photoIdx]?.location : '') || '';
   const date       = formatDate(photos[0]?.date || (printCart[0] ? allPhotos[printCart[0].photoIdx]?.date : '') || '');
 
+  const shipping = calcShipping();
+  const grandTotal = digPrice + printPrice + shipping;
   let lines = [`Crystal Images Order Summary`, `---`];
   if (count > 0) {
     lines.push(`Digital Photos: ${count} — $${digPrice}`);
@@ -1260,7 +1284,8 @@ function copyOrderSummary() {
     const frameNote = p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
     lines.push(`Print: ${p.size}${frameNote} — ${p.filename} — $${p.price + p.framePrice}`);
   });
-  lines.push(`Location: ${loc}`, `Date: ${date}`, `Total: $${total}`);
+  if (shipping > 0) lines.push(`Shipping: $${shipping}`);
+  lines.push(`Location: ${loc}`, `Date: ${date}`, `Total: $${grandTotal}`);
 
   navigator.clipboard.writeText(lines.join('\n')).then(() => {
     const btn = document.querySelector('.checkout-actions .btn');
@@ -1386,6 +1411,9 @@ const PRINT_SIZES = [
 
 // Frame price matches the print size (same index as PRINT_SIZES)
 const FRAME_PRICES = [35, 45, 65, 145];
+
+// Flat-rate shipping per print size (5x7, 8x10, 10x13, 16x20)
+const PRINT_SHIPPING = [20, 25, 30, 65];
 
 const FRAME_OPTIONS = [
   {
