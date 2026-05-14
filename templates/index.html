@@ -768,10 +768,13 @@ function buildPricingBox() {
   const tiers = currentPricing.tiers;
   const pills = tiers.map(t => {
     const isAll = t.count === 'all';
-    const label = isAll ? `All Photos — $${t.price}` : `${t.label} — $${t.price}`;
-    const cls = isAll ? 'tier-pill all-pill' : 'tier-pill';
-    const click = isAll ? `onclick="selectAllPhotos()"` : '';
-    return `<span class="${cls}" ${click} title="${isAll ? 'Click to select all photos' : ''}">${label}</span>`;
+    const isMax = !!t.max;
+    const label = `${t.label} — $${t.price}`;
+    const cls   = (isAll || isMax) ? 'tier-pill all-pill' : 'tier-pill';
+    let click = '', title = '';
+    if (isAll)      { click = `onclick="selectAllPhotos()"`; title = 'Click to select all photos'; }
+    else if (isMax) { click = `onclick="selectUpTo(${t.count})"`;  title = `Click to select up to ${t.count} photos`; }
+    return `<span class="${cls}" ${click} title="${title}">${label}</span>`;
   }).join('');
   return `<div class="pricing-box">
     <span class="pricing-label">Pricing</span>
@@ -825,18 +828,54 @@ function renderThumbs(photos) {
 }
 
 // ── Photo selection ──
+function getMaxSelectionLimit() {
+  if (!currentPricing?.tiers) return null;
+  const maxTiers = currentPricing.tiers.filter(t => t.max).sort((a, b) => b.count - a.count);
+  return maxTiers.length ? maxTiers[0].count : null;
+}
+
+function showToast(msg) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    el.style.cssText = 'position:fixed;bottom:110px;left:50%;transform:translateX(-50%);background:#c0392b;color:#fff;padding:0.6rem 1.4rem;border-radius:8px;font-size:0.92rem;font-weight:600;z-index:9999;pointer-events:none;transition:opacity 0.3s;white-space:nowrap';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.opacity = '0'; }, 2500);
+}
+
 function toggleSelect(i) {
-  if (selectedPhotos.has(i)) selectedPhotos.delete(i);
-  else                        selectedPhotos.add(i);
-  // Update card visual
+  if (selectedPhotos.has(i)) {
+    selectedPhotos.delete(i);
+  } else {
+    const limit = getMaxSelectionLimit();
+    if (limit && selectedPhotos.size >= limit) {
+      showToast(`Maximum ${limit} photos for this activity`);
+      return;
+    }
+    selectedPhotos.add(i);
+  }
   const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
   if (card) card.classList.toggle('selected', selectedPhotos.has(i));
   updateCart();
 }
 
 function selectAllPhotos() {
-  allPhotos.forEach((_, i) => selectedPhotos.add(i));
-  document.querySelectorAll('.thumb-card').forEach(c => c.classList.add('selected'));
+  const limit = getMaxSelectionLimit();
+  const max = limit ? Math.min(limit, allPhotos.length) : allPhotos.length;
+  allPhotos.forEach((_, i) => { if (i < max) selectedPhotos.add(i); });
+  document.querySelectorAll('.thumb-card').forEach((c, i) => { if (i < max) c.classList.add('selected'); });
+  updateCart();
+}
+
+function selectUpTo(n) {
+  const max = Math.min(n, allPhotos.length);
+  allPhotos.forEach((_, i) => { if (i < max) selectedPhotos.add(i); });
+  document.querySelectorAll('.thumb-card').forEach((c, i) => { if (i < max) c.classList.add('selected'); });
   updateCart();
 }
 
@@ -855,29 +894,33 @@ function calcPrice(count) {
   const tiers = currentPricing.tiers;
   const total = allPhotos.length;
 
-  // All-photos tier
-  const allTier = tiers.find(t => t.count === 'all');
-  if (count >= total && allTier) return allTier.price;
-
+  const allTier  = tiers.find(t => t.count === 'all');
+  const maxTiers = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
   const singleTier = tiers.find(t => t.count === 1);
   const singleUnit = singleTier ? singleTier.price : 25;
 
+  if (!maxTiers.length && count >= total && allTier) return allTier.price;
+
   let best = count * singleUnit;
 
-  // Check bundle tiers
+  // Bundle tiers (fixed-count, non-max)
   const bundles = tiers
-    .filter(t => typeof t.count === 'number' && t.count > 1 && t.count <= count)
+    .filter(t => !t.max && typeof t.count === 'number' && t.count > 1 && t.count <= count)
     .sort((a, b) => b.count - a.count);
-
   for (const tier of bundles) {
-    const n   = Math.floor(count / tier.count);
+    const n = Math.floor(count / tier.count);
     const rem = count % tier.count;
     const cost = n * tier.price + rem * singleUnit;
     if (cost < best) best = cost;
   }
 
-  // Don't let selected-count price exceed all-photos price
-  if (allTier && best > allTier.price) best = allTier.price;
+  // Cap with the smallest max tier that covers this count
+  if (maxTiers.length) {
+    const cap = maxTiers.find(t => count <= t.count);
+    if (cap && cap.price < best) best = cap.price;
+  } else if (allTier && best > allTier.price) {
+    best = allTier.price;
+  }
 
   return best;
 }
@@ -888,11 +931,29 @@ function getUpsellMsg(count) {
   const total = allPhotos.length;
   const curPrice = calcPrice(count);
 
-  // Check next numeric tier
-  const nextTier = tiers
-    .filter(t => typeof t.count === 'number' && t.count > count)
-    .sort((a, b) => a.count - b.count)[0];
+  const maxTiers = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
 
+  if (maxTiers.length) {
+    // Already at the top tier
+    const topTier = maxTiers[maxTiers.length - 1];
+    if (count >= topTier.count) return '';
+
+    // Find the next max tier above current count
+    const nextMax = maxTiers.find(t => t.count > count);
+    if (nextMax) {
+      const extra = nextMax.price - curPrice;
+      const more  = nextMax.count - count;
+      if (extra > 0 && extra < curPrice) {
+        return `💡 Add up to <strong>${more} more</strong> for only <strong>$${extra} extra</strong> → Up to ${nextMax.count} photos for $${nextMax.price}`;
+      }
+    }
+    return '';
+  }
+
+  // Original logic for all/bundle tiers
+  const nextTier = tiers
+    .filter(t => typeof t.count === 'number' && !t.max && t.count > count)
+    .sort((a, b) => a.count - b.count)[0];
   if (nextTier) {
     const extra = nextTier.price - curPrice;
     const more  = nextTier.count - count;
@@ -901,7 +962,6 @@ function getUpsellMsg(count) {
     }
   }
 
-  // Check all-photos tier
   const allTier = tiers.find(t => t.count === 'all');
   if (allTier && count < total) {
     const extra = allTier.price - curPrice;

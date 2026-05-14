@@ -1,35 +1,35 @@
 {
   "default": {
     "tiers": [
-      {"label": "1 Photo",    "count": 1,     "price": 30},
-      {"label": "3 Photos",   "count": 3,     "price": 65},
-      {"label": "5 Photos",   "count": 5,     "price": 80},
-      {"label": "All Photos", "count": "all", "price": 90}
+      {"label": "1 Photo",          "count": 1,  "price": 30},
+      {"label": "3 Photos",         "count": 3,  "price": 65},
+      {"label": "Up to 10 Photos",  "count": 10, "price": 90,  "max": true},
+      {"label": "Up to 30 Photos",  "count": 30, "price": 100, "max": true}
     ]
   },
   "activities": {
     "Adventure Zip Line": {
       "tiers": [
-        {"label": "1 Photo",    "count": 1,     "price": 30},
-        {"label": "3 Photos",   "count": 3,     "price": 65},
-        {"label": "5 Photos",   "count": 5,     "price": 80},
-        {"label": "All Photos", "count": "all", "price": 90}
+        {"label": "1 Photo",          "count": 1,  "price": 30},
+        {"label": "3 Photos",         "count": 3,  "price": 65},
+        {"label": "Up to 10 Photos",  "count": 10, "price": 90,  "max": true},
+        {"label": "Up to 30 Photos",  "count": 30, "price": 100, "max": true}
       ]
     },
     "Nature Zip Line": {
       "tiers": [
-        {"label": "1 Photo",    "count": 1,     "price": 30},
-        {"label": "3 Photos",   "count": 3,     "price": 65},
-        {"label": "5 Photos",   "count": 5,     "price": 80},
-        {"label": "All Photos", "count": "all", "price": 90}
+        {"label": "1 Photo",          "count": 1,  "price": 30},
+        {"label": "3 Photos",         "count": 3,  "price": 65},
+        {"label": "Up to 10 Photos",  "count": 10, "price": 90,  "max": true},
+        {"label": "Up to 30 Photos",  "count": 30, "price": 100, "max": true}
       ]
     },
     "Mountain Biking": {
       "tiers": [
-        {"label": "1 Photo",    "count": 1,     "price": 25},
-        {"label": "3 Photos",   "count": 3,     "price": 55},
-        {"label": "5 Photos",   "count": 5,     "price": 65},
-        {"label": "All Photos", "count": "all", "price": 75}
+        {"label": "1 Photo",          "count": 1,  "price": 25},
+        {"label": "3 Photos",         "count": 3,  "price": 55},
+        {"label": "Up to 10 Photos",  "count": 10, "price": 80,  "max": true},
+        {"label": "Up to 30 Photos",  "count": 30, "price": 90,  "max": true}
       ]
     },
     "Lone Peak Portraits": {
