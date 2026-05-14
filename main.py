@@ -368,9 +368,10 @@ def reload_index(token: str = Query("")):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-WC_BASE    = "https://bigskyphotos.com/wp-json/wc/v3"
-WC_KEY     = os.getenv("WC_CONSUMER_KEY", "")
-WC_SECRET  = os.getenv("WC_CONSUMER_SECRET", "")
+WC_BASE                  = "https://bigskyphotos.com/wp-json/wc/v3"
+WC_KEY                   = os.getenv("WC_CONSUMER_KEY", "")
+WC_SECRET                = os.getenv("WC_CONSUMER_SECRET", "")
+WC_DIGITAL_PRODUCT_ID   = 1152
 
 @app.post("/api/checkout")
 async def create_checkout(request: Request):
@@ -384,12 +385,21 @@ async def create_checkout(request: Request):
         location      = body.get("location", "")
         date          = body.get("date", "")
 
-        fee_lines = []
+        line_items = []
+        fee_lines  = []
 
         if digital_count > 0:
-            fee_lines.append({
-                "name":  f"Digital Photos ({digital_count}) — {location}",
-                "total": str(float(digital_price))
+            price_str = str(float(digital_price))
+            # Individual filenames as meta so they show on the order
+            file_meta = [{"key": f"File {i+1}", "value": fn}
+                         for i, fn in enumerate(filenames)]
+            line_items.append({
+                "product_id": WC_DIGITAL_PRODUCT_ID,
+                "quantity":   digital_count,
+                "name":       f"Digital Photos — {location}",
+                "subtotal":   price_str,
+                "total":      price_str,
+                "meta_data":  file_meta,
             })
 
         for p in prints:
@@ -417,9 +427,10 @@ async def create_checkout(request: Request):
 
         customer_email = body.get("email", "")
         order_data = {
-            "status": "pending",
-            "fee_lines": fee_lines,
-            "meta_data": meta,
+            "status":     "pending",
+            "line_items": line_items,
+            "fee_lines":  fee_lines,
+            "meta_data":  meta,
             "billing": {"email": customer_email},
         }
         resp = http_requests.post(
