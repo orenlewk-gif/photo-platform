@@ -1,23 +1,41 @@
 {
   "default": {
     "tiers": [
-      {"label": "1 Photo",    "count": 1,     "price": 25},
-      {"label": "3 Photos",   "count": 3,     "price": 60},
+      {"label": "1 Photo",    "count": 1,     "price": 30},
+      {"label": "3 Photos",   "count": 3,     "price": 65},
+      {"label": "5 Photos",   "count": 5,     "price": 80},
       {"label": "All Photos", "count": "all", "price": 90}
     ]
   },
   "activities": {
-    "Mountain Biking": {
+    "Adventure Zip Line": {
       "tiers": [
-        {"label": "1 Photo",    "count": 1,     "price": 25},
-        {"label": "3 Photos",   "count": 3,     "price": 60},
+        {"label": "1 Photo",    "count": 1,     "price": 30},
+        {"label": "3 Photos",   "count": 3,     "price": 65},
+        {"label": "5 Photos",   "count": 5,     "price": 80},
         {"label": "All Photos", "count": "all", "price": 90}
       ]
     },
-    "Winter Portraits": {
+    "Nature Zip Line": {
       "tiers": [
         {"label": "1 Photo",    "count": 1,     "price": 30},
-        {"label": "3 Photos",   "count": 3,     "price": 75},
+        {"label": "3 Photos",   "count": 3,     "price": 65},
+        {"label": "5 Photos",   "count": 5,     "price": 80},
+        {"label": "All Photos", "count": "all", "price": 90}
+      ]
+    },
+    "Mountain Biking": {
+      "tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 25},
+        {"label": "3 Photos",   "count": 3,     "price": 55},
+        {"label": "5 Photos",   "count": 5,     "price": 65},
+        {"label": "All Photos", "count": "all", "price": 75}
+      ]
+    },
+    "Lone Peak Portraits": {
+      "tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 55},
+        {"label": "2 Photos",   "count": 2,     "price": 95},
         {"label": "All Photos", "count": "all", "price": 120}
       ]
     }
