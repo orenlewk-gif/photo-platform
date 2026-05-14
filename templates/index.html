@@ -1060,18 +1060,16 @@ function updateCart() {
     document.getElementById('main-container').style.paddingBottom = '';
     return;
   }
-  const digitalPrice = (count === 0 && lockedTier) ? lockedTier.price : calcPrice(count);
+  const digitalPrice = (lockedTier && count < lockedTier.count) ? lockedTier.price : calcPrice(count);
   const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
   const shipping     = calcShipping();
   const total        = digitalPrice + printPrice + shipping;
 
   let summary = [];
-  if (count > 0) {
-    if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
-      summary.push(`${count} of ${lockedTier.count} selected`);
-    } else {
-      summary.push(`${count} photo${count!==1?'s':''}`);
-    }
+  if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
+    summary.push(`${lockedTier.label} — ${count}/${lockedTier.count} photos selected`);
+  } else if (count > 0) {
+    summary.push(`${count} photo${count!==1?'s':''}`);
   }
   if (printCount > 0) summary.push(`${printCount} print${printCount!==1?'s':''}`);
   document.getElementById('cart-count-text').textContent = summary.join(' + ') + (count > 0 || printCount > 0 ? ' selected' : '');

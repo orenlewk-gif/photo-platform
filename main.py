@@ -434,10 +434,20 @@ async def create_checkout(request: Request):
                     "subtotal":     frame_price,
                     "total":        frame_price,
                 })
-            fee_lines.append({
-                "name":  "Shipping",
-                "total": str(float(p["shipping"]))
-            })
+
+        # ── Shipping logic ──────────────────────────────────────────────────
+        # Framed prints: first frame full rate, each additional frame half rate
+        # Unframed prints only: one flat fee (highest rate among sizes ordered)
+        framed   = [p for p in prints if p.get("frame") and p["frame"] != "No Frame"]
+        unframed = [p for p in prints if not p.get("frame") or p["frame"] == "No Frame"]
+
+        if framed:
+            rates = sorted([float(p["shipping"]) for p in framed], reverse=True)
+            total_ship = rates[0] + sum(r * 0.5 for r in rates[1:])
+            fee_lines.append({"name": "Shipping", "total": str(round(total_ship, 2))})
+        elif unframed:
+            max_rate = max(float(p["shipping"]) for p in unframed)
+            fee_lines.append({"name": "Shipping", "total": str(max_rate)})
 
         paths = body.get("digital_paths", [])
         meta = [
