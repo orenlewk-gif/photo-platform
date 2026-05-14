@@ -622,6 +622,7 @@ let imgCache       = {};
 let cur            = 0;
 let selectedPhotos = new Set();   // stores photo indices
 let currentPricing = null;
+let lockedTier     = null;        // tier the customer chose in Quick Shop
 
 // ── History-aware navigation ──
 function navigate(state, replace = false) {
@@ -945,6 +946,7 @@ function selectUpTo(n) {
 function clearCart() {
   selectedPhotos.clear();
   printCart = [];
+  lockedTier = null;
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('print-upsell-banner').classList.remove('show');
@@ -990,6 +992,11 @@ function calcPrice(count) {
 
 function getUpsellMsg(count) {
   if (!currentPricing || !currentPricing.tiers || count === 0) return '';
+  // If a tier is locked and they haven't filled it yet, show progress
+  if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
+    const need = lockedTier.count - count;
+    return `📷 Select <strong>${need} more photo${need!==1?'s':''}</strong> to complete your <strong>${lockedTier.label} package — $${lockedTier.price}</strong>`;
+  }
   const tiers = currentPricing.tiers;
   const total = allPhotos.length;
   const curPrice = calcPrice(count);
@@ -1048,7 +1055,7 @@ function updateCart() {
   recalcPrintPrices();
   const count      = selectedPhotos.size;
   const printCount = printCart.length;
-  if (count === 0 && printCount === 0) {
+  if (count === 0 && printCount === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
     return;
@@ -1059,9 +1066,15 @@ function updateCart() {
   const total        = digitalPrice + printPrice + shipping;
 
   let summary = [];
-  if (count > 0)      summary.push(`${count} photo${count!==1?'s':''}`);
+  if (count > 0) {
+    if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
+      summary.push(`${count} of ${lockedTier.count} selected`);
+    } else {
+      summary.push(`${count} photo${count!==1?'s':''}`);
+    }
+  }
   if (printCount > 0) summary.push(`${printCount} print${printCount!==1?'s':''}`);
-  document.getElementById('cart-count-text').textContent = summary.join(' + ') + ' selected';
+  document.getElementById('cart-count-text').textContent = summary.join(' + ') + (count > 0 || printCount > 0 ? ' selected' : '');
   document.getElementById('cart-price-text').textContent = `$${total}`;
   document.getElementById('cart-upsell-text').innerHTML  = count > 0 ? getUpsellMsg(count) : (printCount > 0 ? '💡 Add digital files to get <strong>50% off</strong> all prints!' : '');
   document.getElementById('cart-bar').classList.add('show');
@@ -1551,12 +1564,17 @@ function openQuickShop(i) {
   // Digital section — show tier options for this photo
   const digEl = document.getElementById('qs-digitals');
   if (currentPricing && currentPricing.tiers) {
-    digEl.innerHTML = currentPricing.tiers.map(t => {
-      const isAll = t.count === 'all';
-      const isMulti = typeof t.count === 'number' && t.count > 1;
-      const label = isAll ? `All Photos — $${t.price}` : `${t.label} — $${t.price}`;
-      const btnLabel = isAll ? 'Add All Photos' : isMulti ? 'Select Photos' : 'Select Photo';
-      const clickFn = isAll ? `selectAllFromQS(${i})` : `selectPhotoFromQS(${i}); closeQuickShop();`;
+    digEl.innerHTML = currentPricing.tiers.map((t, tidx) => {
+      const isAll    = t.count === 'all';
+      const isSingle = t.count === 1;
+      const isMulti  = typeof t.count === 'number' && t.count > 1;
+      const isMax    = !!t.max;
+      const label    = isAll ? `All Photos — $${t.price}` : `${t.label} — $${t.price}`;
+      const btnLabel = isAll ? 'Add All Photos' : (isSingle ? 'Select Photo' : 'Select Photos');
+      let clickFn;
+      if (isAll)    clickFn = `selectAllFromQS(${i})`;
+      else if (isSingle) clickFn = `selectPhotoFromQS(${i}); closeQuickShop();`;
+      else          clickFn = `lockTierFromQS(${tidx})`;
       return `<div class="qs-row">
         <span class="qs-row-label">${label}</span>
         <button class="qs-add-btn" onclick="${clickFn}">${btnLabel}</button>
@@ -1600,6 +1618,13 @@ function closeQuickShop() {
 
 function selectPhotoFromQS(i) {
   if (!selectedPhotos.has(i)) toggleSelect(i);
+}
+
+function lockTierFromQS(tierIdx) {
+  const t = currentPricing.tiers[tierIdx];
+  lockedTier = { count: t.count, price: t.price, label: t.label, isMax: !!t.max };
+  closeQuickShop();
+  updateCart();
 }
 
 function selectAllFromQS(photoIdx) {
