@@ -549,9 +549,17 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       <span class="label">Total</span>
       <span class="value" id="checkout-total">$0</span>
     </div>
+    <hr class="checkout-divider" />
+    <div style="margin-bottom:1.2rem;">
+      <label style="display:block;font-size:0.72rem;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:0.5rem;">Email — download link will be sent here</label>
+      <input type="email" id="checkout-email" placeholder="your@email.com"
+        style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:8px;padding:0.7rem 1rem;color:#fff;font-size:0.95rem;font-family:'DM Sans',sans-serif;outline:none;"
+        oninput="updateCheckoutBtn()" />
+      <div id="email-error" style="display:none;color:#e74c3c;font-size:0.8rem;margin-top:0.4rem;">Please enter a valid email address.</div>
+    </div>
     <div class="checkout-actions">
       <button class="btn-ghost" onclick="closeCheckout()">← Back</button>
-      <button class="btn" id="wc-checkout-btn" onclick="submitToWooCommerce()">Complete Order →</button>
+      <button class="btn" id="wc-checkout-btn" onclick="submitToWooCommerce()" disabled style="opacity:0.45;cursor:not-allowed;">Complete Order →</button>
     </div>
   </div>
 </div>
@@ -1318,7 +1326,26 @@ function closeCheckout() {
   document.getElementById('checkout-overlay').classList.remove('open');
 }
 
+function updateCheckoutBtn() {
+  const email = document.getElementById('checkout-email')?.value.trim() || '';
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const btn   = document.getElementById('wc-checkout-btn');
+  const err   = document.getElementById('email-error');
+  btn.disabled    = !valid;
+  btn.style.opacity    = valid ? '1' : '0.45';
+  btn.style.cursor     = valid ? 'pointer' : 'not-allowed';
+  if (err) err.style.display = 'none';
+}
+
 async function submitToWooCommerce() {
+  const emailInput = document.getElementById('checkout-email');
+  const email = emailInput?.value.trim() || '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const err = document.getElementById('email-error');
+    if (err) err.style.display = 'block';
+    return;
+  }
+
   const btn = document.getElementById('wc-checkout-btn');
   btn.textContent = 'Processing…';
   btn.disabled = true;
@@ -1342,7 +1369,8 @@ async function submitToWooCommerce() {
       shipping:    PRINT_SHIPPING[p.sizeIdx]
     })),
     location: loc,
-    date:     date
+    date:     date,
+    email:    email
   };
 
   try {

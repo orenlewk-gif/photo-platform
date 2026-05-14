@@ -415,7 +415,13 @@ async def create_checkout(request: Request):
             {"key": "_photo_paths",    "value": "|".join(paths)},
         ]
 
-        order_data = {"status": "pending", "fee_lines": fee_lines, "meta_data": meta}
+        customer_email = body.get("email", "")
+        order_data = {
+            "status": "pending",
+            "fee_lines": fee_lines,
+            "meta_data": meta,
+            "billing": {"email": customer_email},
+        }
         resp = http_requests.post(
             f"{WC_BASE}/orders",
             json=order_data,
