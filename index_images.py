@@ -4,9 +4,21 @@ import json
 from PIL import Image
 from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
+import boto3
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_DIR   = "images"
 INDEX_FILE = "images.json"
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=os.getenv("R2_ENDPOINT_URL"),
+    aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
+)
+R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 
 # Portrait folders are found by last name — no CLIP needed
 SKIP_CLIP_IF = "portrait"
@@ -37,8 +49,14 @@ else:
     already_indexed = set()
 
 # -----------------------
-# SCAN FOLDERS
+# SCAN FOLDERS + UPLOAD NEW PHOTOS TO R2
 # -----------------------
+def to_r2_key(abs_path):
+    rel = os.path.relpath(abs_path, start=os.getcwd())
+    idx = rel.find("images" + os.sep)
+    key = rel[idx:] if idx >= 0 else rel
+    return key.replace(os.sep, "/")
+
 image_paths = []
 for root, dirs, files in os.walk(BASE_DIR):
     for file in files:
@@ -46,6 +64,15 @@ for root, dirs, files in os.walk(BASE_DIR):
             full_path = os.path.abspath(os.path.join(root, file))
             if full_path not in already_indexed:
                 image_paths.append(full_path)
+
+# Upload any new photos to R2 before indexing
+if image_paths and os.getenv("R2_ENDPOINT_URL"):
+    print(f"Uploading {len(image_paths)} photo(s) to R2...")
+    for img_path in tqdm(image_paths, desc="Uploading"):
+        try:
+            s3.upload_file(img_path, R2_BUCKET, to_r2_key(img_path))
+        except Exception as e:
+            print(f"Upload failed {img_path}: {e}")
 
 print(f"New photos to index: {len(image_paths)}")
 
@@ -90,7 +117,7 @@ for img_path in tqdm(image_paths):
         print(f"Error processing {img_path}: {e}")
 
 # -----------------------
-# SAVE JSON
+# SAVE JSON + PUSH TO R2
 # -----------------------
 with open(INDEX_FILE, "w") as f:
     json.dump(results, f)
@@ -98,3 +125,10 @@ with open(INDEX_FILE, "w") as f:
 print(f"Done. Added {len(image_paths)} new photos.")
 print(f"Total in index: {len(results)}")
 print(f"Saved to {INDEX_FILE}")
+
+if os.getenv("R2_ENDPOINT_URL"):
+    print("Uploading images.json to R2...")
+    s3.upload_file(INDEX_FILE, R2_BUCKET, "images.json",
+                   ExtraArgs={"ContentType": "application/json"})
+    print("images.json pushed to R2.")
+    print("Reload the site with: curl -X POST https://photos.bigskyphotos.com/api/reload")

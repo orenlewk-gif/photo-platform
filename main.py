@@ -353,6 +353,21 @@ def get_photo(path: str, size: str = Query("medium")):
 # WOOCOMMERCE CHECKOUT
 # ─────────────────────────────────────────
 
+RELOAD_TOKEN = os.getenv("RELOAD_TOKEN", "")
+
+@app.post("/api/reload")
+def reload_index(token: str = Query("")):
+    global data
+    if RELOAD_TOKEN and token != RELOAD_TOKEN:
+        return Response(status_code=401)
+    try:
+        obj  = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
+        data = json.loads(obj["Body"].read().decode("utf-8"))
+        return {"status": "ok", "count": len(data)}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 WC_BASE    = "https://bigskyphotos.com/wp-json/wc/v3"
 WC_KEY     = os.getenv("WC_CONSUMER_KEY", "")
 WC_SECRET  = os.getenv("WC_CONSUMER_SECRET", "")
