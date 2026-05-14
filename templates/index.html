@@ -1376,6 +1376,8 @@ async function submitToWooCommerce() {
     prints: printCart.map(p => ({
       filename:    p.filename,
       size:        p.size,
+      size_idx:    p.sizeIdx,
+      orientation: p.orientation,
       price:       p.price,
       frame:       p.frame,
       frame_price: p.framePrice,

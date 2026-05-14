@@ -372,6 +372,16 @@ WC_BASE                  = "https://bigskyphotos.com/wp-json/wc/v3"
 WC_KEY                   = os.getenv("WC_CONSUMER_KEY", "")
 WC_SECRET                = os.getenv("WC_CONSUMER_SECRET", "")
 WC_DIGITAL_PRODUCT_ID   = 1152
+WC_PRINT_PRODUCT_ID     = 1156
+WC_FRAME_PARENT_ID      = 1034
+
+# Frame variation IDs: (size_idx, orientation) -> variation_id
+FRAME_VARIATION_MAP = {
+    (0, "landscape"): 1057, (0, "portrait"): 1058,
+    (1, "landscape"): 1059, (1, "portrait"): 1060,
+    (2, "landscape"): 1061, (2, "portrait"): 1062,
+    (3, "landscape"): 1063, (3, "portrait"): 1064,
+}
 
 @app.post("/api/checkout")
 async def create_checkout(request: Request):
@@ -403,14 +413,26 @@ async def create_checkout(request: Request):
             })
 
         for p in prints:
-            fee_lines.append({
-                "name":  f"Print {p['size']} — {p['filename']}",
-                "total": str(float(p["price"]))
+            print_price = str(float(p["price"]))
+            line_items.append({
+                "product_id": WC_PRINT_PRODUCT_ID,
+                "quantity":   1,
+                "name":       f"{p['size']} Print — {p['filename']}",
+                "subtotal":   print_price,
+                "total":      print_price,
+                "meta_data":  [{"key": "Orientation", "value": p.get("orientation", "landscape").title()}],
             })
             if p.get("frame") and p["frame"] != "No Frame":
-                fee_lines.append({
-                    "name":  f"{p['frame']} ({p['size']})",
-                    "total": str(float(p["frame_price"]))
+                size_idx    = int(p.get("size_idx", 0))
+                orientation = p.get("orientation", "landscape")
+                var_id      = FRAME_VARIATION_MAP.get((size_idx, orientation), 1057)
+                frame_price = str(float(p["frame_price"]))
+                line_items.append({
+                    "product_id":   WC_FRAME_PARENT_ID,
+                    "variation_id": var_id,
+                    "quantity":     1,
+                    "subtotal":     frame_price,
+                    "total":        frame_price,
                 })
             fee_lines.append({
                 "name":  f"Shipping — {p['size']} Print",
