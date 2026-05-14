@@ -1276,7 +1276,15 @@ function openCheckout() {
 }
 
 function calcShipping() {
-  return printCart.reduce((s, p) => s + PRINT_SHIPPING[p.sizeIdx], 0);
+  const framed   = printCart.filter(p => p.frame && p.frame !== 'No Frame');
+  const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+  if (framed.length) {
+    const rates = framed.map(p => PRINT_SHIPPING[p.sizeIdx]).sort((a, b) => b - a);
+    return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
+  } else if (unframed.length) {
+    return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
+  }
+  return 0;
 }
 
 function renderCheckoutLines() {
@@ -1312,10 +1320,6 @@ function renderCheckoutLines() {
         </div>
       </div>
       <span class="value" style="align-self:center;">$${p.price + p.framePrice}</span>
-    </div>
-    <div class="order-line" style="padding:0 0 0.5rem 0;border-bottom:none;">
-      <span class="label" style="color:rgba(255,255,255,0.45);font-size:0.8rem;">Shipping (${p.size})</span>
-      <span class="value" style="font-size:0.85rem;">$${ship}</span>
     </div>`;
   });
 
