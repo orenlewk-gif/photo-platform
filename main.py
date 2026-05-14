@@ -450,13 +450,32 @@ async def create_checkout(request: Request):
             {"key": "_photo_paths",    "value": "|".join(paths)},
         ]
 
-        customer_email = body.get("email", "")
+        customer_email   = body.get("email", "")
+        shipping_address = body.get("shipping_address") or {}
+
+        billing = {"email": customer_email}
+        shipping = {}
+        if shipping_address:
+            name_parts = shipping_address.get("full_name", "").split(" ", 1)
+            shipping = {
+                "first_name": name_parts[0],
+                "last_name":  name_parts[1] if len(name_parts) > 1 else "",
+                "address_1":  shipping_address.get("address", ""),
+                "city":       shipping_address.get("city", ""),
+                "state":      shipping_address.get("state", ""),
+                "postcode":   shipping_address.get("zip", ""),
+                "country":    "US",
+            }
+            billing.update({k: v for k, v in shipping.items() if k != "country"})
+            billing["country"] = "US"
+
         order_data = {
             "status":     "pending",
             "line_items": line_items,
             "fee_lines":  fee_lines,
             "meta_data":  meta,
-            "billing": {"email": customer_email},
+            "billing":    billing,
+            "shipping":   shipping,
         }
         resp = http_requests.post(
             f"{WC_BASE}/orders",
