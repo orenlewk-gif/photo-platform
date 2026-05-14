@@ -497,7 +497,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
     </div>
     <div class="checkout-actions">
       <button class="btn-ghost" onclick="closeCheckout()">← Back</button>
-      <button class="btn" onclick="copyOrderSummary()">📋 Copy Order Summary</button>
+      <button class="btn" id="wc-checkout-btn" onclick="submitToWooCommerce()">Complete Order →</button>
     </div>
   </div>
 </div>
@@ -1264,35 +1264,49 @@ function closeCheckout() {
   document.getElementById('checkout-overlay').classList.remove('open');
 }
 
-function copyOrderSummary() {
-  const count      = selectedPhotos.size;
-  const digPrice   = calcPrice(count);
-  const printPrice = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const total      = digPrice + printPrice;
-  const photos     = [...selectedPhotos].map(i => allPhotos[i]);
-  const loc        = photos[0]?.location || (printCart[0] ? allPhotos[printCart[0].photoIdx]?.location : '') || '';
-  const date       = formatDate(photos[0]?.date || (printCart[0] ? allPhotos[printCart[0].photoIdx]?.date : '') || '');
+async function submitToWooCommerce() {
+  const btn = document.getElementById('wc-checkout-btn');
+  btn.textContent = 'Processing…';
+  btn.disabled = true;
 
-  const shipping = calcShipping();
-  const grandTotal = digPrice + printPrice + shipping;
-  let lines = [`Crystal Images Order Summary`, `---`];
-  if (count > 0) {
-    lines.push(`Digital Photos: ${count} — $${digPrice}`);
-    lines.push(`Files: ${photos.map(p => p.filename).join(', ')}`);
+  const count  = selectedPhotos.size;
+  const photos = [...selectedPhotos].map(i => allPhotos[i]);
+  const loc    = photos[0]?.location || allPhotos[printCart[0]?.photoIdx]?.location || '';
+  const date   = photos[0]?.date     || allPhotos[printCart[0]?.photoIdx]?.date     || '';
+
+  const payload = {
+    digital_count:     count,
+    digital_price:     calcPrice(count),
+    digital_filenames: photos.map(p => p.filename),
+    prints: printCart.map(p => ({
+      filename:    p.filename,
+      size:        p.size,
+      price:       p.price,
+      frame:       p.frame,
+      frame_price: p.framePrice,
+      shipping:    PRINT_SHIPPING[p.sizeIdx]
+    })),
+    location: loc,
+    date:     date
+  };
+
+  try {
+    const resp = await fetch('/api/checkout', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.checkout_url) {
+      window.location.href = data.checkout_url;
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (e) {
+    showToast('Checkout failed — please try again');
+    btn.textContent = 'Complete Order →';
+    btn.disabled = false;
   }
-  printCart.forEach(p => {
-    const frameNote = p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
-    lines.push(`Print: ${p.size}${frameNote} — ${p.filename} — $${p.price + p.framePrice}`);
-  });
-  if (shipping > 0) lines.push(`Shipping: $${shipping}`);
-  lines.push(`Location: ${loc}`, `Date: ${date}`, `Total: $${grandTotal}`);
-
-  navigator.clipboard.writeText(lines.join('\n')).then(() => {
-    const btn = document.querySelector('.checkout-actions .btn');
-    const orig = btn.textContent;
-    btn.textContent = '✓ Copied!';
-    setTimeout(() => { btn.textContent = orig; }, 2000);
-  });
 }
 
 // ── Last name search ──

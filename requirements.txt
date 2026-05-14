@@ -6,4 +6,5 @@ Pillow
 rapidfuzz
 tqdm
 boto3
+requests
 python-dotenv

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import json
@@ -13,6 +13,7 @@ from io import BytesIO
 from PIL import Image, ImageOps
 from functools import lru_cache
 import boto3
+import requests as http_requests
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -339,6 +340,76 @@ def get_photo(path: str, size: str = Query("medium")):
             return SR(buf, media_type="image/jpeg")
         else:
             return JSONResponse(status_code=404, content={"error": "File not found"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ─────────────────────────────────────────
+# WOOCOMMERCE CHECKOUT
+# ─────────────────────────────────────────
+
+WC_BASE    = "https://bigskyphotos.com/wp-json/wc/v3"
+WC_KEY     = os.getenv("WC_CONSUMER_KEY", "")
+WC_SECRET  = os.getenv("WC_CONSUMER_SECRET", "")
+
+@app.post("/api/checkout")
+async def create_checkout(request: Request):
+    try:
+        body = await request.json()
+
+        digital_count = body.get("digital_count", 0)
+        digital_price = body.get("digital_price", 0)
+        filenames     = body.get("digital_filenames", [])
+        prints        = body.get("prints", [])
+        location      = body.get("location", "")
+        date          = body.get("date", "")
+
+        fee_lines = []
+
+        if digital_count > 0:
+            fee_lines.append({
+                "name":  f"Digital Photos ({digital_count}) — {location}",
+                "total": str(float(digital_price))
+            })
+
+        for p in prints:
+            fee_lines.append({
+                "name":  f"Print {p['size']} — {p['filename']}",
+                "total": str(float(p["price"]))
+            })
+            if p.get("frame") and p["frame"] != "No Frame":
+                fee_lines.append({
+                    "name":  f"{p['frame']} ({p['size']})",
+                    "total": str(float(p["frame_price"]))
+                })
+            fee_lines.append({
+                "name":  f"Shipping — {p['size']} Print",
+                "total": str(float(p["shipping"]))
+            })
+
+        meta = [
+            {"key": "_photo_location", "value": location},
+            {"key": "_photo_date",     "value": date},
+            {"key": "_photo_files",    "value": ", ".join(filenames)},
+        ]
+
+        order_data = {"status": "pending", "fee_lines": fee_lines, "meta_data": meta}
+        resp = http_requests.post(
+            f"{WC_BASE}/orders",
+            json=order_data,
+            auth=(WC_KEY, WC_SECRET),
+            timeout=15
+        )
+
+        if resp.status_code not in (200, 201):
+            return JSONResponse(status_code=500,
+                                content={"error": f"WooCommerce error: {resp.text}"})
+
+        order = resp.json()
+        pay_url = (f"https://bigskyphotos.com/checkout/order-pay/{order['id']}/"
+                   f"?pay_for_order=true&key={order['order_key']}")
+        return {"checkout_url": pay_url}
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
