@@ -5,14 +5,24 @@ from PIL import Image
 from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
 
-# -----------------------
-# LOAD MODEL
-# -----------------------
-model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-
-BASE_DIR = "images"
+BASE_DIR   = "images"
 INDEX_FILE = "images.json"
+
+# Portrait folders are found by last name — no CLIP needed
+SKIP_CLIP_IF = "portrait"
+
+# Lazy-load model only if needed
+model     = None
+processor = None
+
+def get_model():
+    global model, processor
+    if model is None:
+        print("Loading CLIP model...")
+        model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        print("Model loaded.")
+    return model, processor
 
 # -----------------------
 # LOAD EXISTING INDEX
@@ -46,24 +56,27 @@ if not image_paths:
 # -----------------------
 # PROCESS IMAGES
 # -----------------------
+skipped_clip = 0
 for img_path in tqdm(image_paths):
     try:
-        image = Image.open(img_path).convert("RGB")
-        inputs = processor(images=image, return_tensors="pt")
-
-        with torch.no_grad():
-            image_features = model.get_image_features(**inputs)
-
-        embedding = image_features[0].tolist()
-
         # Folder structure: {date}/{activity}/image.jpg
         #                or {date}/{activity}/{last_name}/image.jpg
-        rel_path = os.path.relpath(img_path, BASE_DIR)
-        parts = rel_path.split(os.sep)
-
+        rel_path  = os.path.relpath(img_path, BASE_DIR)
+        parts     = rel_path.split(os.sep)
         date      = parts[0] if len(parts) > 0 else "unknown"
         activity  = parts[1] if len(parts) > 1 else "unknown"
         last_name = parts[2] if len(parts) > 3 else ""
+
+        # Skip CLIP for portrait/family folders — they're searched by last name
+        if SKIP_CLIP_IF in activity.lower():
+            embedding = None
+            skipped_clip += 1
+        else:
+            m, p = get_model()
+            image = Image.open(img_path).convert("RGB")
+            inputs = p(images=image, return_tensors="pt")
+            with torch.no_grad():
+                embedding = m.get_image_features(**inputs)[0].tolist()
 
         results.append({
             "path":      img_path,

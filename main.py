@@ -250,8 +250,10 @@ def search(
             if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
                 continue
 
-        # Score
+        # Score — skip portrait photos (no CLIP embedding) during descriptive search
         if text_embedding is not None:
+            if item.get("embedding") is None:
+                continue
             img_emb    = torch.tensor(item["embedding"])
             similarity = torch.cosine_similarity(text_embedding, img_emb, dim=0).item()
         else:
