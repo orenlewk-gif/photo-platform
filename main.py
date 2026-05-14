@@ -413,27 +413,20 @@ async def create_checkout(request: Request):
             })
 
         for p in prints:
-            print_price = str(float(p["price"]))
+            has_frame   = p.get("frame") and p["frame"] != "No Frame"
+            frame_price = float(p.get("frame_price", 0)) if has_frame else 0.0
+            combined    = str(float(p["price"]) + frame_price)
+            meta = [{"key": "Orientation", "value": p.get("orientation", "landscape").title()}]
+            if has_frame:
+                meta.append({"key": "Frame", "value": p["frame"]})
             line_items.append({
                 "product_id": WC_PRINT_PRODUCT_ID,
                 "quantity":   1,
                 "name":       f"{p['size']} Print — {p['filename']}",
-                "subtotal":   print_price,
-                "total":      print_price,
-                "meta_data":  [{"key": "Orientation", "value": p.get("orientation", "landscape").title()}],
+                "subtotal":   combined,
+                "total":      combined,
+                "meta_data":  meta,
             })
-            if p.get("frame") and p["frame"] != "No Frame":
-                size_idx    = int(p.get("size_idx", 0))
-                orientation = p.get("orientation", "landscape")
-                var_id      = FRAME_VARIATION_MAP.get((size_idx, orientation), 1057)
-                frame_price = str(float(p["frame_price"]))
-                line_items.append({
-                    "product_id":   WC_FRAME_PARENT_ID,
-                    "variation_id": var_id,
-                    "quantity":     1,
-                    "subtotal":     frame_price,
-                    "total":        frame_price,
-                })
 
         # ── Shipping logic ──────────────────────────────────────────────────
         # Framed prints: first frame full rate, each additional frame half rate
