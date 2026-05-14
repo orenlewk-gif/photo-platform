@@ -4,18 +4,33 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Crystal Images</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min-height: 100vh; }
 .container { max-width: 1400px; margin: 0 auto; padding: 2rem 3rem 4rem; }
 
-/* Header */
-.header { display:flex; align-items:center; gap:16px; margin-bottom:2rem; padding-bottom:1.5rem; border-bottom:1px solid rgba(255,255,255,0.1); }
-.header img { height:52px; width:52px; object-fit:cover; border-radius:8px; flex-shrink:0; }
-.header-title { font-family:'Space Mono',monospace; font-size:2rem; font-weight:700; letter-spacing:-0.5px; }
-.header-title span { color:#F5C518; }
-.header-sub { font-size:0.9rem; color:rgba(255,255,255,0.4); font-weight:300; margin-left:auto; }
+/* WordPress nav header */
+.custom-header { position:relative; width:100%; height:120px; background:rgba(4,50,73,0.95); display:flex; align-items:center; justify-content:space-between; padding:0 40px; box-sizing:border-box; font-family:'Inter',Arial,sans-serif; z-index:9999; }
+.header-inner { width:100%; display:flex; align-items:center; justify-content:space-between; }
+.logo img { height:65px; width:auto; }
+.nav-center { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; }
+.nav-center ul { list-style:none; margin:0; padding:0; display:flex; align-items:center; }
+.nav-center li { position:relative; margin:0 10px; z-index:10000; }
+.nav-center a { color:#ffffff; text-decoration:none; font-size:14px; letter-spacing:0.3px; padding:8px 4px; }
+.nav-center a:hover { opacity:0.7; }
+.nav-title { color:#ffffff; font-size:14px; letter-spacing:0.3px; padding:8px 4px; cursor:default; }
+.submenu { display:none; position:absolute; top:100%; left:0; background:#ffffff; min-width:180px; box-shadow:0 10px 25px rgba(0,0,0,0.2); z-index:10001; }
+.submenu a { display:block; padding:10px; color:#333; font-size:14px; }
+.submenu a:hover { background:#f5f5f5; }
+.nav-center li:hover .submenu { display:block; }
+.dropdown { position:relative; }
+.dropdown button { background:transparent; border:1px solid #ffffff; color:#ffffff; padding:6px 12px; font-size:13px; cursor:pointer; font-family:'Inter',Arial,sans-serif; }
+.dropdown-content { display:none; position:absolute; right:0; background:#ffffff; min-width:200px; box-shadow:0 10px 25px rgba(0,0,0,0.2); z-index:10001; }
+.dropdown-content a { display:block; padding:10px; color:#333; text-decoration:none; font-size:14px; }
+.dropdown-content a:hover { background:#f5f5f5; }
+.dropdown:hover .dropdown-content { display:block; }
+@media(max-width:900px){ .nav-center { display:none; } }
 
 /* Last name bar */
 .ln-bar { display:flex; gap:0.75rem; align-items:flex-end; margin-bottom:2rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:1rem 1.2rem; }
@@ -408,13 +423,57 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 </style>
 </head>
 <body>
-<div class="container" id="main-container">
 
-  <div class="header">
-    <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="logo" />
-    <div class="header-title">Crystal <span>Images</span></div>
-    <div class="header-sub">Professional Photography</div>
+<div class="custom-header">
+  <div class="header-inner">
+    <div class="logo">
+      <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="Crystal Images Logo">
+    </div>
+    <div class="nav-center">
+      <ul>
+        <li><a href="https://bigskyphotos.com/home/">Home</a></li>
+        <li>
+          <a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a>
+          <div class="submenu">
+            <a href="https://bigskyphotos.com/lone-peak-portraits/">Lone Peak Portraits</a>
+            <a href="https://bigskyphotos.com/mountain-biking/">Mountain Biking</a>
+            <a href="https://bigskyphotos.com/nature-zip-line/">Nature Zip Line</a>
+            <a href="https://bigskyphotos.com/adventure-zip-line/">Adventure Zip Line</a>
+          </div>
+        </li>
+        <li><a href="https://bigskyphotos.com/find-your-photos/">Find Your Photos</a></li>
+        <li><a href="https://bigskyphotos.com/services/">Services</a></li>
+        <li>
+          <span class="nav-title">Shop</span>
+          <div class="submenu">
+            <a href="https://bigskyphotos.com/frames/">Frames</a>
+          </div>
+        </li>
+        <li><a href="https://bigskyphotos.com/contact-us/">Contact Us</a></li>
+        <li><a href="https://bigskyphotos.com/About-us/">About Us</a></li>
+      </ul>
+    </div>
+    <div class="dropdown">
+      <button>Menu ▾</button>
+      <div class="dropdown-content">
+        <a href="https://bigskyphotos.com/home/">Home</a>
+        <a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a>
+        <a href="https://bigskyphotos.com/lone-peak-portraits/">— Lone Peak Portraits</a>
+        <a href="https://bigskyphotos.com/mountain-biking/">— Mountain Biking</a>
+        <a href="https://bigskyphotos.com/nature-zip-line/">— Nature Zip Line</a>
+        <a href="https://bigskyphotos.com/adventure-zip-line/">— Adventure Zip Line</a>
+        <a href="https://bigskyphotos.com/find-your-photos/">Find Your Photos</a>
+        <a href="https://bigskyphotos.com/services/">Services</a>
+        <a href="https://bigskyphotos.com/shop/">Shop</a>
+        <a href="https://bigskyphotos.com/frames/">— Frames</a>
+        <a href="https://bigskyphotos.com/contact-us/">Contact Us</a>
+        <a href="https://bigskyphotos.com/About-us/">About Us</a>
+      </div>
+    </div>
   </div>
+</div>
+
+<div class="container" id="main-container">
 
   <div class="ln-bar" id="ln-bar">
     <div style="flex:1">
@@ -489,11 +548,6 @@ input::placeholder { color:rgba(255,255,255,0.3); }
     <div class="order-total">
       <span class="label">Total</span>
       <span class="value" id="checkout-total">$0</span>
-    </div>
-    <div class="woo-note">
-      <strong>🛒 Online ordering coming soon.</strong><br/>
-      To complete your purchase today, please see a Crystal Images staff member or email us your order summary. We accept all major credit cards.
-      <!-- TODO: wire up to WooCommerce REST API + Stripe once R2 storage is live -->
     </div>
     <div class="checkout-actions">
       <button class="btn-ghost" onclick="closeCheckout()">← Back</button>
