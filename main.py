@@ -413,20 +413,28 @@ async def create_checkout(request: Request):
             })
 
         for p in prints:
-            has_frame   = p.get("frame") and p["frame"] != "No Frame"
-            frame_price = float(p.get("frame_price", 0)) if has_frame else 0.0
-            combined    = str(float(p["price"]) + frame_price)
-            meta = [{"key": "Orientation", "value": p.get("orientation", "landscape").title()}]
-            if has_frame:
-                meta.append({"key": "Frame", "value": p["frame"]})
+            print_price = str(float(p["price"]))
             line_items.append({
                 "product_id": WC_PRINT_PRODUCT_ID,
                 "quantity":   1,
                 "name":       f"{p['size']} Print — {p['filename']}",
-                "subtotal":   combined,
-                "total":      combined,
-                "meta_data":  meta,
+                "subtotal":   print_price,
+                "total":      print_price,
+                "meta_data":  [],
             })
+            if p.get("frame") and p["frame"] != "No Frame":
+                size_idx    = int(p.get("size_idx", 0))
+                orientation = p.get("orientation", "landscape")
+                var_id      = FRAME_VARIATION_MAP.get((size_idx, orientation), 1057)
+                frame_price = str(float(p["frame_price"]))
+                line_items.append({
+                    "product_id":   WC_FRAME_PARENT_ID,
+                    "variation_id": var_id,
+                    "quantity":     1,
+                    "name":         f"  └ Frame: {p['frame']}",
+                    "subtotal":     frame_price,
+                    "total":        frame_price,
+                })
 
         # ── Shipping logic ──────────────────────────────────────────────────
         # Framed prints: first frame full rate, each additional frame half rate
@@ -450,32 +458,14 @@ async def create_checkout(request: Request):
             {"key": "_photo_paths",    "value": "|".join(paths)},
         ]
 
-        customer_email   = body.get("email", "")
-        shipping_address = body.get("shipping_address") or {}
-
-        billing = {"email": customer_email}
-        shipping = {}
-        if shipping_address:
-            name_parts = shipping_address.get("full_name", "").split(" ", 1)
-            shipping = {
-                "first_name": name_parts[0],
-                "last_name":  name_parts[1] if len(name_parts) > 1 else "",
-                "address_1":  shipping_address.get("address", ""),
-                "city":       shipping_address.get("city", ""),
-                "state":      shipping_address.get("state", ""),
-                "postcode":   shipping_address.get("zip", ""),
-                "country":    "US",
-            }
-            billing.update({k: v for k, v in shipping.items() if k != "country"})
-            billing["country"] = "US"
+        customer_email = body.get("email", "")
 
         order_data = {
             "status":     "pending",
             "line_items": line_items,
             "fee_lines":  fee_lines,
             "meta_data":  meta,
-            "billing":    billing,
-            "shipping":   shipping,
+            "billing":    {"email": customer_email},
         }
         resp = http_requests.post(
             f"{WC_BASE}/orders",

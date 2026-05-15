@@ -636,35 +636,6 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       <div id="checkout-lines"></div>
     </div>
     <div class="checkout-totals-section" id="checkout-totals-section"></div>
-    <div class="checkout-shipping-section" id="checkout-shipping-section">
-      <div class="email-section-label">Shipping Address</div>
-      <div class="shipping-row">
-        <div class="shipping-field" style="flex:1">
-          <label>Full Name</label>
-          <input type="text" id="ship-name" placeholder="Jane Smith" />
-        </div>
-      </div>
-      <div class="shipping-row">
-        <div class="shipping-field" style="flex:1">
-          <label>Street Address</label>
-          <input type="text" id="ship-address" placeholder="123 Main St" />
-        </div>
-      </div>
-      <div class="shipping-row">
-        <div class="shipping-field" style="flex:2">
-          <label>City</label>
-          <input type="text" id="ship-city" placeholder="Big Sky" />
-        </div>
-        <div class="shipping-field" style="flex:1">
-          <label>State</label>
-          <input type="text" id="ship-state" placeholder="MT" maxlength="2" />
-        </div>
-        <div class="shipping-field" style="flex:1">
-          <label>ZIP</label>
-          <input type="text" id="ship-zip" placeholder="59716" maxlength="10" />
-        </div>
-      </div>
-    </div>
     <div class="checkout-email-section">
       <div class="email-section-label" id="checkout-email-label">Contact Information</div>
       <div class="email-input-wrap">
@@ -1510,14 +1481,7 @@ async function submitToWooCommerce() {
     })),
     location: loc,
     date:     date,
-    email:    email,
-    shipping_address: printCart.length > 0 ? {
-      full_name: document.getElementById('ship-name')?.value.trim() || '',
-      address:   document.getElementById('ship-address')?.value.trim() || '',
-      city:      document.getElementById('ship-city')?.value.trim() || '',
-      state:     document.getElementById('ship-state')?.value.trim() || '',
-      zip:       document.getElementById('ship-zip')?.value.trim() || '',
-    } : null
+    email:    email
   };
 
   try {
