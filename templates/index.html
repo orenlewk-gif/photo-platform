@@ -533,6 +533,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   cursor:pointer; transition:background 0.2s;
 }
 .lb-shop-btn:hover { background:#e6b800; }
+@media(max-width:640px){ .lb-shop-label { display:none; } }
 
 .lb-info { margin-top:14px; text-align:center; color:rgba(255,255,255,.8); font-size:.9rem; line-height:1.7; }
 .lb-filename { color:rgba(255,255,255,.35); font-size:.74rem; margin-top:4px; }
@@ -726,7 +727,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
     </div>
     <div class="lb-btn-row">
       <button class="lb-select-btn" id="lb-select-btn" onclick="toggleSelectFromLB()">+ Add to Selection</button>
-      <button class="lb-shop-btn" onclick="openQuickShop(cur)">🛒 Shop</button>
+      <button class="lb-shop-btn" onclick="openQuickShop(cur)">🛒<span class="lb-shop-label"> Shop</span></button>
     </div>
     <div class="lb-info"    id="lb-info"></div>
     <div class="lb-filename" id="lb-fn"></div>
