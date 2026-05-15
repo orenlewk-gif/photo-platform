@@ -1539,6 +1539,19 @@ async function submitToWooCommerce() {
   }
 }
 
+// Reset checkout button if user hits back from WooCommerce
+window.addEventListener('pageshow', function(e) {
+  if (!e.persisted) return;
+  const btn = document.getElementById('wc-checkout-btn');
+  if (btn) {
+    btn.textContent = 'Complete Order →';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = '';
+  }
+  updateCheckoutBtn();
+});
+
 // ── Last name search ──
 document.getElementById('ln-btn').addEventListener('click', doLnSearch);
 document.getElementById('ln-input').addEventListener('keydown', e => { if(e.key==='Enter') doLnSearch(); });
