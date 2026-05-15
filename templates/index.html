@@ -192,9 +192,10 @@ input[type="range"]::-webkit-slider-thumb {
   transition:background 0.2s; white-space:nowrap;
 }
 .thumb-shop-btn:hover { background:#ffd700; }
+@media(max-width:640px){ .thumb-shop-label { display:none; } }
 
 /* ── Quick Shop modal ── */
-.qs-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:99997; align-items:center; justify-content:center; padding:1rem; }
+.qs-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:100002; align-items:center; justify-content:center; padding:1rem; }
 .qs-overlay.open { display:flex; }
 .qs-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,0.12); border-radius:14px; max-width:340px; width:100%; max-height:70vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
 .qs-photo { display:none; }
@@ -984,7 +985,7 @@ function renderThumbs(photos) {
     card.innerHTML = `
       <div class="card-btn-row">
         <div class="select-check" data-idx="${i}">✓</div>
-        <button class="thumb-shop-btn" data-idx="${i}">Quick Shop</button>
+        <button class="thumb-shop-btn" data-idx="${i}">🛒<span class="thumb-shop-label"> Quick Shop</span></button>
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
