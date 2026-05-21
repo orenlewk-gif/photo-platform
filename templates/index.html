@@ -1608,17 +1608,20 @@ function calcShipping() {
   const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
 
   if (framed.length) {
-    // Framed prints dominate — use FRAME_SHIPPING; standalone frames ship free alongside
+    // Framed prints: FRAME_SHIPPING rates, highest + 50% of rest
+    // Standalone frames ride alongside at no extra charge
     const rates = framed.map(p => FRAME_SHIPPING[p.sizeIdx]).sort((a, b) => b - a);
     return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
   }
 
-  // Standalone frames + unframed prints all use PRINT_SHIPPING — take the max across all
-  const allIdxs = [
-    ...unframed.map(p => p.sizeIdx),
-    ...frameCart.map(f => f.sizeIdx).filter(i => i !== undefined),
-  ];
-  if (allIdxs.length) return Math.max(...allIdxs.map(i => PRINT_SHIPPING[i]));
+  // Standalone frames + unframed prints: PRINT_SHIPPING rates
+  // Expand by quantity, then highest + 50% of rest
+  const rates = [
+    ...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]),
+    ...frameCart.flatMap(f => Array(f.quantity).fill(PRINT_SHIPPING[f.sizeIdx ?? 0])),
+  ].filter(r => r != null).sort((a, b) => b - a);
+
+  if (rates.length) return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
 
   return 0;
 }
