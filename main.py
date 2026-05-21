@@ -393,22 +393,28 @@ def get_frames():
     )
     if resp.status_code != 200:
         return JSONResponse(status_code=502, content={"error": "WooCommerce unavailable"})
-    variations = resp.json()
-    by_size = {}
-    for v in variations:
-        attrs = v.get("attributes", [])
-        size  = next((a["option"] for a in attrs if "size" in a["name"].lower()), "")
-        orient = next((a["option"].lower() for a in attrs if "orientation" in a["name"].lower()), "landscape")
-        if size not in by_size:
-            by_size[size] = {"size": size, "landscape": None, "portrait": None}
-        by_size[size][orient] = {
-            "variation_id": v["id"],
-            "size":         size,
-            "orientation":  orient,
-            "price":        v.get("price", "0"),
-            "stock_status": v.get("stock_status", "instock"),
-        }
-    return {"frames": list(by_size.values())}
+
+    # Build lookup by variation ID from WC response
+    wc_by_id = {v["id"]: v for v in resp.json()}
+
+    SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
+    frames = []
+    for size_idx, label in enumerate(SIZE_LABELS):
+        entry = {"size": label, "landscape": None, "portrait": None}
+        for orient in ("landscape", "portrait"):
+            var_id = FRAME_VARIATION_MAP.get((size_idx, orient))
+            if var_id is None:
+                continue
+            wc = wc_by_id.get(var_id, {})
+            entry[orient] = {
+                "variation_id": var_id,
+                "size":         label,
+                "orientation":  orient,
+                "price":        wc.get("price") or wc.get("regular_price", "0"),
+                "stock_status": wc.get("stock_status", "instock"),
+            }
+        frames.append(entry)
+    return {"frames": frames}
 
 
 @app.post("/api/checkout")

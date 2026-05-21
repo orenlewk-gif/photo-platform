@@ -508,28 +508,26 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .header-cart-count { background:#F5C518; color:#0c2336; border-radius:10px; font-size:11px; font-weight:700; padding:1px 6px; min-width:18px; text-align:center; }
 
 /* ── Frames store ── */
-.frames-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
-.frames-title  { font-size:1.1rem; font-weight:600; }
-.frames-grid   { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1.5rem; }
-.frame-store-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:1.25rem; }
-.frame-store-card h4 { font-size:1rem; font-weight:700; margin-bottom:1rem; color:#fff; }
-.frame-store-variant { display:flex; align-items:center; justify-content:space-between; padding:0.65rem 0; border-bottom:1px solid rgba(255,255,255,0.06); gap:0.6rem; }
-.frame-store-variant:last-child { border-bottom:none; }
-.frame-store-variant-label { font-size:0.88rem; flex:1; color:rgba(255,255,255,0.85); }
-.frame-store-variant-price { font-weight:700; color:#F5C518; white-space:nowrap; font-size:0.9rem; }
-.frame-qty-wrap { display:flex; align-items:center; gap:0.35rem; }
-.frame-qty-wrap button { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:4px; width:24px; height:24px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
-.frame-qty-wrap button:hover { background:rgba(255,255,255,0.18); }
-.frame-qty-input { width:32px; text-align:center; background:transparent; border:none; color:#fff; font-size:0.88rem; padding:0; -moz-appearance:textfield; }
-.frame-qty-input::-webkit-outer-spin-button, .frame-qty-input::-webkit-inner-spin-button { -webkit-appearance:none; }
-.frame-atc-btn { background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif; font-weight:700; font-size:0.8rem; border:none; border-radius:6px; padding:0.3rem 0.85rem; cursor:pointer; white-space:nowrap; transition:background 0.2s; }
+.frames-page { max-width:1000px; margin:0 auto; padding:1.5rem 1rem 3rem; }
+.frames-page h2 { font-size:1.5rem; font-weight:700; color:#fff; margin-bottom:0.25rem; }
+.frames-page p  { color:rgba(255,255,255,0.45); font-size:0.9rem; margin-bottom:2rem; }
+.frames-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:1.25rem; }
+.frame-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:14px; overflow:hidden; transition:border-color 0.2s; }
+.frame-card:hover { border-color:rgba(255,255,255,0.22); }
+.frame-card-photo { width:100%; aspect-ratio:4/3; background:rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.18); font-size:0.78rem; letter-spacing:1px; text-transform:uppercase; border-bottom:1px solid rgba(255,255,255,0.07); overflow:hidden; }
+.frame-card-photo img { width:100%; height:100%; object-fit:cover; display:block; }
+.frame-card-body { padding:1rem; }
+.frame-card-size { font-size:1.05rem; font-weight:700; color:#fff; margin-bottom:0.85rem; }
+.frame-variant-row { display:flex; align-items:center; justify-content:space-between; padding:0.5rem 0; border-top:1px solid rgba(255,255,255,0.06); gap:0.5rem; }
+.frame-variant-label { font-size:0.82rem; color:rgba(255,255,255,0.55); min-width:60px; }
+.frame-variant-price { font-size:0.92rem; font-weight:700; color:#F5C518; flex:1; }
+.frame-atc-btn { background:#F5C518; color:#0c2336; font-weight:700; font-size:0.78rem; border:none; border-radius:6px; padding:0.32rem 0.8rem; cursor:pointer; white-space:nowrap; transition:background 0.15s; font-family:inherit; }
 .frame-atc-btn:hover { background:#ffd700; }
-.frame-qty-btn { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:5px; width:28px; height:28px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:background 0.15s; }
+.frame-qty-controls { display:flex; align-items:center; gap:6px; }
+.frame-qty-btn { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:5px; width:26px; height:26px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:background 0.15s; line-height:1; font-family:inherit; }
 .frame-qty-btn:hover { background:rgba(255,255,255,0.2); }
-.cartview-frame-row { display:flex; align-items:center; justify-content:space-between; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:0.88rem; gap:0.75rem; }
+.cartview-frame-row { display:flex; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:0.88rem; gap:0.75rem; }
 .cartview-frame-row:last-child { border-bottom:none; }
-.cartview-frame-info { flex:1; }
-.cartview-frame-price { font-weight:700; color:#F5C518; white-space:nowrap; }
 
 /* Lightbox */
 .lb-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:99999; align-items:center; justify-content:center; flex-direction:column; }
@@ -1119,7 +1117,7 @@ async function showFramesView() {
   el.innerHTML = '<div class="msg">Loading frames…</div>';
 
   if (!frameStoreItems.length) {
-    const res = await fetch('/api/frames');
+    const res  = await fetch('/api/frames');
     const data = await res.json();
     frameStoreItems = data.frames || [];
   }
@@ -1129,18 +1127,19 @@ async function showFramesView() {
     return;
   }
 
-  let html = `<div style="max-width:900px;margin:0 auto;padding:1.5rem 1rem;">
-    <h2 style="color:#fff;font-size:1.4rem;margin-bottom:0.25rem;">Crystal Frames</h2>
-    <p style="color:rgba(255,255,255,0.5);font-size:0.9rem;margin-bottom:1.5rem;">Handcrafted wooden frames for your favourite photos.</p>
+  let html = `<div class="frames-page">
+    <h2>Crystal Frames</h2>
+    <p>Handcrafted wooden frames — perfect for your favourite photos.</p>
     <div class="frames-grid">`;
 
-  frameStoreItems.forEach((item, idx) => {
-    const hasL = !!item.landscape;
-    const hasP = !!item.portrait;
-    html += `<div class="frame-store-card">
-      <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:0.75rem;">${item.size}</div>
-      ${hasL ? buildFrameVariantRow(item.landscape, idx, 'landscape') : ''}
-      ${hasP ? buildFrameVariantRow(item.portrait,  idx, 'portrait')  : ''}
+  frameStoreItems.forEach((item, sizeIdx) => {
+    html += `<div class="frame-card">
+      <div class="frame-card-photo">Photo coming soon</div>
+      <div class="frame-card-body">
+        <div class="frame-card-size">${item.size}"</div>
+        ${buildVariantRow(sizeIdx, 'landscape')}
+        ${buildVariantRow(sizeIdx, 'portrait')}
+      </div>
     </div>`;
   });
 
@@ -1148,65 +1147,55 @@ async function showFramesView() {
   el.innerHTML = html;
 }
 
-function buildFrameVariantRow(variant, idx, orient) {
+function buildVariantRow(sizeIdx, orient) {
+  const item    = frameStoreItems[sizeIdx];
+  const variant = item?.[orient];
   if (!variant || variant.stock_status === 'outofstock') return '';
-  const inCart = frameCart.find(f => f.variation_id === variant.variation_id);
-  const qty    = inCart ? inCart.quantity : 0;
-  return `<div class="frame-store-variant" id="fv-${variant.variation_id}">
-    <div style="flex:1;">
-      <div style="font-size:0.85rem;color:rgba(255,255,255,0.6);">${orient.charAt(0).toUpperCase()+orient.slice(1)}</div>
-      <div style="font-weight:600;color:#F5C518;font-size:0.95rem;">$${variant.price}</div>
-    </div>
+  const price   = parseFloat(variant.price) || 0;
+  const inCart  = frameCart.find(f => f.variation_id === variant.variation_id);
+  const qty     = inCart ? inCart.quantity : 0;
+  const label   = orient.charAt(0).toUpperCase() + orient.slice(1);
+  return `<div class="frame-variant-row" id="fv-${variant.variation_id}">
+    <span class="frame-variant-label">${label}</span>
+    <span class="frame-variant-price">$${price}</span>
     ${qty === 0
-      ? `<button class="frame-atc-btn" onclick="addFrameToCart(${JSON.stringify(variant).replace(/"/g,'&quot;')})">Add to Cart</button>`
-      : `<div style="display:flex;align-items:center;gap:8px;">
-           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},-1)">−</button>
+      ? `<button class="frame-atc-btn" onclick="addFrameToCartByIdx(${sizeIdx},'${orient}')">Add to Cart</button>`
+      : `<div class="frame-qty-controls">
+           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},-1,${sizeIdx},'${orient}')">−</button>
            <span style="color:#fff;min-width:18px;text-align:center;" id="fqty-${variant.variation_id}">${qty}</span>
-           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},1)">+</button>
+           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},1,${sizeIdx},'${orient}')">+</button>
          </div>`
     }
   </div>`;
 }
 
-function addFrameToCart(variant) {
+function addFrameToCartByIdx(sizeIdx, orient) {
+  const variant = frameStoreItems[sizeIdx]?.[orient];
+  if (!variant) return;
   const existing = frameCart.find(f => f.variation_id === variant.variation_id);
   if (existing) { existing.quantity++; }
   else {
     frameCart.push({
       variation_id: variant.variation_id,
       size:         variant.size,
-      orientation:  variant.orientation,
-      price:        parseFloat(variant.price),
+      orientation:  orient,
+      price:        parseFloat(variant.price) || 0,
       quantity:     1,
     });
   }
   updateCart();
-  // Re-render the specific variant row
-  const el = document.getElementById(`fv-${variant.variation_id}`);
-  if (el) el.outerHTML = buildFrameVariantRow(variant, null, variant.orientation);
+  const row = document.getElementById(`fv-${variant.variation_id}`);
+  if (row) row.outerHTML = buildVariantRow(sizeIdx, orient);
 }
 
-function adjustFrameQty(variationId, delta) {
-  const idx = frameCart.findIndex(f => f.variation_id === variationId);
-  if (idx === -1) return;
-  frameCart[idx].quantity += delta;
-  if (frameCart[idx].quantity <= 0) frameCart.splice(idx, 1);
+function adjustFrameQty(variationId, delta, sizeIdx, orient) {
+  const cartIdx = frameCart.findIndex(f => f.variation_id === variationId);
+  if (cartIdx === -1) return;
+  frameCart[cartIdx].quantity += delta;
+  if (frameCart[cartIdx].quantity <= 0) frameCart.splice(cartIdx, 1);
   updateCart();
-  // Re-render the variant row by refreshing the full frames view
-  const qtyEl = document.getElementById(`fqty-${variationId}`);
-  if (qtyEl) {
-    const newQty = frameCart.find(f => f.variation_id === variationId)?.quantity || 0;
-    if (newQty > 0) { qtyEl.textContent = newQty; }
-    else {
-      // Swap back to Add to Cart button — find the variant from store items
-      const variant = frameStoreItems.flatMap(i => [i.landscape, i.portrait].filter(Boolean))
-                        .find(v => v.variation_id === variationId);
-      if (variant) {
-        const row = document.getElementById(`fv-${variationId}`);
-        if (row) row.outerHTML = buildFrameVariantRow(variant, null, variant.orientation);
-      }
-    }
-  }
+  const row = document.getElementById(`fv-${variationId}`);
+  if (row) row.outerHTML = buildVariantRow(sizeIdx, orient);
 }
 
 function removeFrameFromCart(idx) {
