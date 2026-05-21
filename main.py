@@ -383,6 +383,34 @@ FRAME_VARIATION_MAP = {
     (3, "landscape"): 1063, (3, "portrait"): 1064,
 }
 
+@app.get("/api/frames")
+def get_frames():
+    resp = http_requests.get(
+        f"{WC_BASE}/products/{WC_FRAME_PARENT_ID}/variations",
+        params={"per_page": 100},
+        auth=(WC_KEY, WC_SECRET),
+        timeout=15
+    )
+    if resp.status_code != 200:
+        return JSONResponse(status_code=502, content={"error": "WooCommerce unavailable"})
+    variations = resp.json()
+    by_size = {}
+    for v in variations:
+        attrs = v.get("attributes", [])
+        size  = next((a["option"] for a in attrs if "size" in a["name"].lower()), "")
+        orient = next((a["option"].lower() for a in attrs if "orientation" in a["name"].lower()), "landscape")
+        if size not in by_size:
+            by_size[size] = {"size": size, "landscape": None, "portrait": None}
+        by_size[size][orient] = {
+            "variation_id": v["id"],
+            "size":         size,
+            "orientation":  orient,
+            "price":        v.get("price", "0"),
+            "stock_status": v.get("stock_status", "instock"),
+        }
+    return {"frames": list(by_size.values())}
+
+
 @app.post("/api/checkout")
 async def create_checkout(request: Request):
     try:
@@ -392,6 +420,7 @@ async def create_checkout(request: Request):
         digital_price = body.get("digital_price", 0)
         filenames     = body.get("digital_filenames", [])
         prints        = body.get("prints", [])
+        frames        = body.get("frames", [])
         location      = body.get("location", "")
         date          = body.get("date", "")
 
@@ -436,9 +465,20 @@ async def create_checkout(request: Request):
                     "total":        frame_price,
                 })
 
+        for fr in frames:
+            var_id    = int(fr["variation_id"])
+            qty       = int(fr.get("quantity", 1))
+            fr_price  = float(fr["price"]) * qty
+            line_items.append({
+                "product_id":   WC_FRAME_PARENT_ID,
+                "variation_id": var_id,
+                "quantity":     qty,
+                "name":         f"Frame — {fr['size']} ({fr['orientation'].capitalize()})",
+                "subtotal":     str(fr_price),
+                "total":        str(fr_price),
+            })
+
         # ── Shipping logic ──────────────────────────────────────────────────
-        # Framed prints: first frame full rate, each additional frame half rate
-        # Unframed prints only: one flat fee (highest rate among sizes ordered)
         framed   = [p for p in prints if p.get("frame") and p["frame"] != "No Frame"]
         unframed = [p for p in prints if not p.get("frame") or p["frame"] == "No Frame"]
 
@@ -449,6 +489,8 @@ async def create_checkout(request: Request):
         elif unframed:
             max_rate = max(float(p["print_shipping"]) for p in unframed)
             fee_lines.append({"name": "Shipping", "total": str(max_rate)})
+        elif frames:
+            fee_lines.append({"name": "Shipping", "total": "20.00"})
 
         paths = body.get("digital_paths", [])
         meta = [

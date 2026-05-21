@@ -502,6 +502,35 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 }
 .woo-note strong { color:#F5C518; }
 
+/* ── Header cart button ── */
+.header-cart-btn { background:transparent; border:1px solid rgba(255,255,255,0.35); color:#fff; border-radius:20px; padding:5px 14px; font-size:13px; font-family:'Inter',Arial,sans-serif; cursor:pointer; display:flex; align-items:center; gap:6px; white-space:nowrap; transition:border-color 0.2s; }
+.header-cart-btn:hover { border-color:#F5C518; color:#F5C518; }
+.header-cart-count { background:#F5C518; color:#0c2336; border-radius:10px; font-size:11px; font-weight:700; padding:1px 6px; min-width:18px; text-align:center; }
+
+/* ── Frames store ── */
+.frames-header { display:flex; align-items:center; gap:1rem; margin-bottom:1.5rem; flex-wrap:wrap; }
+.frames-title  { font-size:1.1rem; font-weight:600; }
+.frames-grid   { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:1.5rem; }
+.frame-store-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:14px; padding:1.25rem; }
+.frame-store-card h4 { font-size:1rem; font-weight:700; margin-bottom:1rem; color:#fff; }
+.frame-store-variant { display:flex; align-items:center; justify-content:space-between; padding:0.65rem 0; border-bottom:1px solid rgba(255,255,255,0.06); gap:0.6rem; }
+.frame-store-variant:last-child { border-bottom:none; }
+.frame-store-variant-label { font-size:0.88rem; flex:1; color:rgba(255,255,255,0.85); }
+.frame-store-variant-price { font-weight:700; color:#F5C518; white-space:nowrap; font-size:0.9rem; }
+.frame-qty-wrap { display:flex; align-items:center; gap:0.35rem; }
+.frame-qty-wrap button { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:4px; width:24px; height:24px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+.frame-qty-wrap button:hover { background:rgba(255,255,255,0.18); }
+.frame-qty-input { width:32px; text-align:center; background:transparent; border:none; color:#fff; font-size:0.88rem; padding:0; -moz-appearance:textfield; }
+.frame-qty-input::-webkit-outer-spin-button, .frame-qty-input::-webkit-inner-spin-button { -webkit-appearance:none; }
+.frame-atc-btn { background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif; font-weight:700; font-size:0.8rem; border:none; border-radius:6px; padding:0.3rem 0.85rem; cursor:pointer; white-space:nowrap; transition:background 0.2s; }
+.frame-atc-btn:hover { background:#ffd700; }
+.frame-qty-btn { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:5px; width:28px; height:28px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:background 0.15s; }
+.frame-qty-btn:hover { background:rgba(255,255,255,0.2); }
+.cartview-frame-row { display:flex; align-items:center; justify-content:space-between; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:0.88rem; gap:0.75rem; }
+.cartview-frame-row:last-child { border-bottom:none; }
+.cartview-frame-info { flex:1; }
+.cartview-frame-price { font-weight:700; color:#F5C518; white-space:nowrap; }
+
 /* Lightbox */
 .lb-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:99999; align-items:center; justify-content:center; flex-direction:column; }
 .lb-overlay.open { display:flex; }
@@ -560,7 +589,13 @@ input::placeholder { color:rgba(255,255,255,0.3); }
             <a href="https://bigskyphotos.com/adventure-zip-line/">Adventure Zip Line</a>
           </div>
         </li>
-        <li><a href="https://bigskyphotos.com/find-your-photos/">Find Your Photos</a></li>
+        <li>
+          <span class="nav-title">Shop</span>
+          <div class="submenu">
+            <a href="javascript:void(0)" onclick="navigate({view:'days'})">Find Your Photos</a>
+            <a href="javascript:void(0)" onclick="showFramesView()">Frames</a>
+          </div>
+        </li>
         <li>
           <a href="https://bigskyphotos.com/services/">Services</a>
           <div class="submenu">
@@ -569,34 +604,32 @@ input::placeholder { color:rgba(255,255,255,0.3); }
             <a href="https://bigskyphotos.com/large-group-portraits/">Large Group Portraits</a>
           </div>
         </li>
-        <li>
-          <span class="nav-title">Shop</span>
-          <div class="submenu">
-            <a href="https://bigskyphotos.com/frames/">Frames</a>
-          </div>
-        </li>
         <li><a href="https://bigskyphotos.com/contact-us/">Contact Us</a></li>
         <li><a href="https://bigskyphotos.com/About-us/">About Us</a></li>
       </ul>
     </div>
-    <div class="dropdown">
-      <button>Menu ▾</button>
-      <div class="dropdown-content">
-        <a href="https://bigskyphotos.com/home/">Home</a>
-        <a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a>
-        <a href="https://bigskyphotos.com/lone-peak-portraits/">— Lone Peak Portraits</a>
-        <a href="https://bigskyphotos.com/mountain-biking/">— Mountain Biking</a>
-        <a href="https://bigskyphotos.com/nature-zip-line/">— Nature Zip Line</a>
-        <a href="https://bigskyphotos.com/adventure-zip-line/">— Adventure Zip Line</a>
-        <a href="https://bigskyphotos.com/find-your-photos/">Find Your Photos</a>
-        <a href="https://bigskyphotos.com/services/">Services</a>
-        <a href="https://bigskyphotos.com/family-portraits/">— Family Portraits</a>
-        <a href="https://bigskyphotos.com/engagements/">— Engagements</a>
-        <a href="https://bigskyphotos.com/large-group-portraits/">— Large Group Portraits</a>
-        <a href="https://bigskyphotos.com/shop/">Shop</a>
-        <a href="https://bigskyphotos.com/frames/">— Frames</a>
-        <a href="https://bigskyphotos.com/contact-us/">Contact Us</a>
-        <a href="https://bigskyphotos.com/About-us/">About Us</a>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <button class="header-cart-btn" id="header-cart-btn" onclick="openCartView()" style="display:none">
+        🛒 <span id="header-cart-count" class="header-cart-count">0</span>
+      </button>
+      <div class="dropdown">
+        <button>Menu ▾</button>
+        <div class="dropdown-content">
+          <a href="https://bigskyphotos.com/home/">Home</a>
+          <a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a>
+          <a href="https://bigskyphotos.com/lone-peak-portraits/">— Lone Peak Portraits</a>
+          <a href="https://bigskyphotos.com/mountain-biking/">— Mountain Biking</a>
+          <a href="https://bigskyphotos.com/nature-zip-line/">— Nature Zip Line</a>
+          <a href="https://bigskyphotos.com/adventure-zip-line/">— Adventure Zip Line</a>
+          <a href="javascript:void(0)" onclick="navigate({view:'days'})">Find Your Photos</a>
+          <a href="javascript:void(0)" onclick="showFramesView()">— Frames</a>
+          <a href="https://bigskyphotos.com/services/">Services</a>
+          <a href="https://bigskyphotos.com/family-portraits/">— Family Portraits</a>
+          <a href="https://bigskyphotos.com/engagements/">— Engagements</a>
+          <a href="https://bigskyphotos.com/large-group-portraits/">— Large Group Portraits</a>
+          <a href="https://bigskyphotos.com/contact-us/">Contact Us</a>
+          <a href="https://bigskyphotos.com/About-us/">About Us</a>
+        </div>
       </div>
     </div>
   </div>
@@ -619,6 +652,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   <div id="view-locations" style="display:none;"></div>
   <div id="view-families"  style="display:none;"></div>
   <div id="view-gallery"   style="display:none;"></div>
+  <div id="view-frames"    style="display:none;"></div>
   <div class="msg"         id="msg"></div>
 </div>
 
@@ -1076,14 +1110,129 @@ function selectUpTo(n) {
   updateCart();
 }
 
+// ── Frame Store ──────────────────────────────────────────────────────────────
+
+async function showFramesView() {
+  showView('frames');
+  setBreadcrumb([], 'Frames');
+  const el = document.getElementById('view-frames');
+  el.innerHTML = '<div class="msg">Loading frames…</div>';
+
+  if (!frameStoreItems.length) {
+    const res = await fetch('/api/frames');
+    const data = await res.json();
+    frameStoreItems = data.frames || [];
+  }
+
+  if (!frameStoreItems.length) {
+    el.innerHTML = '<div class="msg">No frames available right now.</div>';
+    return;
+  }
+
+  let html = `<div style="max-width:900px;margin:0 auto;padding:1.5rem 1rem;">
+    <h2 style="color:#fff;font-size:1.4rem;margin-bottom:0.25rem;">Crystal Frames</h2>
+    <p style="color:rgba(255,255,255,0.5);font-size:0.9rem;margin-bottom:1.5rem;">Handcrafted wooden frames for your favourite photos.</p>
+    <div class="frames-grid">`;
+
+  frameStoreItems.forEach((item, idx) => {
+    const hasL = !!item.landscape;
+    const hasP = !!item.portrait;
+    html += `<div class="frame-store-card">
+      <div style="font-size:1rem;font-weight:700;color:#fff;margin-bottom:0.75rem;">${item.size}</div>
+      ${hasL ? buildFrameVariantRow(item.landscape, idx, 'landscape') : ''}
+      ${hasP ? buildFrameVariantRow(item.portrait,  idx, 'portrait')  : ''}
+    </div>`;
+  });
+
+  html += `</div></div>`;
+  el.innerHTML = html;
+}
+
+function buildFrameVariantRow(variant, idx, orient) {
+  if (!variant || variant.stock_status !== 'instock') return '';
+  const inCart = frameCart.find(f => f.variation_id === variant.variation_id);
+  const qty    = inCart ? inCart.quantity : 0;
+  return `<div class="frame-store-variant" id="fv-${variant.variation_id}">
+    <div style="flex:1;">
+      <div style="font-size:0.85rem;color:rgba(255,255,255,0.6);">${orient.charAt(0).toUpperCase()+orient.slice(1)}</div>
+      <div style="font-weight:600;color:#F5C518;font-size:0.95rem;">$${variant.price}</div>
+    </div>
+    ${qty === 0
+      ? `<button class="frame-atc-btn" onclick="addFrameToCart(${JSON.stringify(variant).replace(/"/g,'&quot;')})">Add to Cart</button>`
+      : `<div style="display:flex;align-items:center;gap:8px;">
+           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},-1)">−</button>
+           <span style="color:#fff;min-width:18px;text-align:center;" id="fqty-${variant.variation_id}">${qty}</span>
+           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},1)">+</button>
+         </div>`
+    }
+  </div>`;
+}
+
+function addFrameToCart(variant) {
+  const existing = frameCart.find(f => f.variation_id === variant.variation_id);
+  if (existing) { existing.quantity++; }
+  else {
+    frameCart.push({
+      variation_id: variant.variation_id,
+      size:         variant.size,
+      orientation:  variant.orientation,
+      price:        parseFloat(variant.price),
+      quantity:     1,
+    });
+  }
+  updateCart();
+  // Re-render the specific variant row
+  const el = document.getElementById(`fv-${variant.variation_id}`);
+  if (el) el.outerHTML = buildFrameVariantRow(variant, null, variant.orientation);
+}
+
+function adjustFrameQty(variationId, delta) {
+  const idx = frameCart.findIndex(f => f.variation_id === variationId);
+  if (idx === -1) return;
+  frameCart[idx].quantity += delta;
+  if (frameCart[idx].quantity <= 0) frameCart.splice(idx, 1);
+  updateCart();
+  // Re-render the variant row by refreshing the full frames view
+  const qtyEl = document.getElementById(`fqty-${variationId}`);
+  if (qtyEl) {
+    const newQty = frameCart.find(f => f.variation_id === variationId)?.quantity || 0;
+    if (newQty > 0) { qtyEl.textContent = newQty; }
+    else {
+      // Swap back to Add to Cart button — find the variant from store items
+      const variant = frameStoreItems.flatMap(i => [i.landscape, i.portrait].filter(Boolean))
+                        .find(v => v.variation_id === variationId);
+      if (variant) {
+        const row = document.getElementById(`fv-${variationId}`);
+        if (row) row.outerHTML = buildFrameVariantRow(variant, null, variant.orientation);
+      }
+    }
+  }
+}
+
+function removeFrameFromCart(idx) {
+  frameCart.splice(idx, 1);
+  updateCart();
+  if (document.getElementById('cartview-overlay').classList.contains('open')) renderCartView();
+  if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0) closeCartView();
+}
+
+function adjustFrameCartQty(idx, delta) {
+  frameCart[idx].quantity += delta;
+  if (frameCart[idx].quantity <= 0) frameCart.splice(idx, 1);
+  updateCart();
+  renderCartView();
+}
+
 function clearCart() {
   selectedPhotos.clear();
   printCart = [];
+  frameCart = [];
   lockedTier = null;
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('print-upsell-banner').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
+  updateHeaderCartBtn();
 }
 
 // ── Pricing logic ──
@@ -1184,19 +1333,30 @@ function recalcPrintPrices() {
   });
 }
 
+function updateHeaderCartBtn() {
+  const total = selectedPhotos.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
+  const btn   = document.getElementById('header-cart-btn');
+  const cnt   = document.getElementById('header-cart-count');
+  if (!btn) return;
+  if (total > 0) { btn.style.display = ''; cnt.textContent = total; }
+  else           { btn.style.display = 'none'; }
+}
+
 function updateCart() {
   recalcPrintPrices();
   const count      = selectedPhotos.size;
   const printCount = printCart.length;
-  if (count === 0 && printCount === 0 && !lockedTier) {
+  updateHeaderCartBtn();
+  if (count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
     return;
   }
   const digitalPrice = (lockedTier && count < lockedTier.count) ? lockedTier.price : calcPrice(count);
   const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const framePrice   = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
   const shipping     = calcShipping();
-  const total        = digitalPrice + printPrice + shipping;
+  const total        = digitalPrice + printPrice + framePrice + shipping;
 
   let summary = [];
   if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
@@ -1205,7 +1365,9 @@ function updateCart() {
     summary.push(`${count} photo${count!==1?'s':''}`);
   }
   if (printCount > 0) summary.push(`${printCount} print${printCount!==1?'s':''}`);
-  document.getElementById('cart-count-text').textContent = summary.join(' + ') + (count > 0 || printCount > 0 ? ' selected' : '');
+  const frameQty = frameCart.reduce((s, f) => s + f.quantity, 0);
+  if (frameQty > 0) summary.push(`${frameQty} frame${frameQty!==1?'s':''}`);
+  document.getElementById('cart-count-text').textContent = summary.join(' + ') + (summary.length > 0 ? ' selected' : '');
   document.getElementById('cart-price-text').textContent = `$${total}`;
   document.getElementById('cart-upsell-text').innerHTML  = count > 0 ? getUpsellMsg(count) : (printCount > 0 ? '💡 Add digital files to get <strong>50% off</strong> all prints!' : '');
   document.getElementById('cart-bar').classList.add('show');
@@ -1294,10 +1456,33 @@ function renderCartView() {
     });
   }
 
+  // Frames section
+  if (frameCart.length > 0) {
+    html += `<div class="cartview-section-label">Frames</div>`;
+    frameCart.forEach((f, idx) => {
+      html += `<div class="cartview-frame-row">
+        <div style="flex:1;">
+          <div style="font-weight:600;font-size:0.9rem;">${f.size} Frame</div>
+          <div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-top:2px;">${f.orientation.charAt(0).toUpperCase()+f.orientation.slice(1)}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="frame-qty-btn" onclick="adjustFrameCartQty(${idx},-1)">−</button>
+          <span style="min-width:18px;text-align:center;">${f.quantity}</span>
+          <button class="frame-qty-btn" onclick="adjustFrameCartQty(${idx},1)">+</button>
+        </div>
+        <span style="font-weight:600;min-width:48px;text-align:right;">$${f.price * f.quantity}</span>
+        <button class="cartview-rm-btn" onclick="removeFrameFromCart(${idx})">Remove</button>
+      </div>`;
+    });
+  }
+
+  const frameTotal = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
+  const grandTotal = total + frameTotal + calcShipping();
+
   if (!html) html = '<div class="msg" style="padding:1rem 0">Your cart is empty.</div>';
 
   document.getElementById('cartview-body').innerHTML = html;
-  document.getElementById('cartview-total-price').textContent = `$${total}`;
+  document.getElementById('cartview-total-price').textContent = `$${grandTotal}`;
 
   // Load any missing thumbnails
   [...selectedPhotos].map(i => allPhotos[i]).forEach(p => {
@@ -1371,7 +1556,7 @@ function buildFrameOptions(currentFrameLabel, sizeIdx) {
 
 // ── Checkout ──
 function openCheckout() {
-  if (selectedPhotos.size === 0 && printCart.length === 0) return;
+  if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0) return;
   const photos = [...selectedPhotos].map(i => allPhotos[i]);
 
   // Thumbnails row
@@ -1396,10 +1581,10 @@ function openCheckout() {
     thumbsEl.appendChild(more);
   }
 
-  // Show shipping section only for print orders
+  // Show shipping section for print or frame orders
   const shipSection = document.getElementById('checkout-shipping-section');
   if (shipSection) {
-    shipSection.classList.toggle('visible', printCart.length > 0);
+    shipSection.classList.toggle('visible', printCart.length > 0 || frameCart.length > 0);
   }
 
   renderCheckoutLines();
@@ -1409,21 +1594,25 @@ function openCheckout() {
 function calcShipping() {
   const framed   = printCart.filter(p => p.frame && p.frame !== 'No Frame');
   const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+  let shipping = 0;
   if (framed.length) {
     const rates = framed.map(p => FRAME_SHIPPING[p.sizeIdx]).sort((a, b) => b - a);
-    return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
+    shipping += rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
   } else if (unframed.length) {
-    return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
+    shipping += Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
   }
-  return 0;
+  // Standalone frames: flat $20 if no prints already adding shipping
+  if (frameCart.length > 0 && printCart.length === 0) shipping += 20;
+  return shipping;
 }
 
 function renderCheckoutLines() {
   const count      = selectedPhotos.size;
   const digPrice   = calcPrice(count);
   const printPrice = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const framePrice = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
   const shipping   = calcShipping();
-  const subtotal   = digPrice + printPrice;
+  const subtotal   = digPrice + printPrice + framePrice;
   const total      = subtotal + shipping;
 
   // ── items section ──────────────────────────────────────────────────────────
@@ -1453,6 +1642,13 @@ function renderCheckoutLines() {
         </div>
         <span style="font-weight:600;white-space:nowrap;padding-top:2px;">$${p.price + p.framePrice}</span>
       </div>
+    </div>`;
+  });
+
+  frameCart.forEach(f => {
+    linesHtml += `<div class="order-line">
+      <span class="label">${f.size} Frame (${f.orientation}) ×${f.quantity}</span>
+      <span class="value">$${f.price * f.quantity}</span>
     </div>`;
   });
 
@@ -1524,6 +1720,13 @@ async function submitToWooCommerce() {
       frame_price:    p.framePrice,
       print_shipping: PRINT_SHIPPING[p.sizeIdx],
       frame_shipping: FRAME_SHIPPING[p.sizeIdx]
+    })),
+    frames: frameCart.map(f => ({
+      variation_id: f.variation_id,
+      size:         f.size,
+      orientation:  f.orientation,
+      price:        f.price,
+      quantity:     f.quantity,
     })),
     location: loc,
     date:     date,
@@ -1652,7 +1855,7 @@ document.getElementById('lb').addEventListener('click', function(e) { if(e.targe
 
 // ── Helpers ──
 function showView(name) {
-  ['days','locations','families','gallery'].forEach(v =>
+  ['days','locations','families','gallery','frames'].forEach(v =>
     document.getElementById(`view-${v}`).style.display = v===name ? '' : 'none'
   );
 }
@@ -1702,6 +1905,8 @@ const FRAME_OPTIONS = [
 // Frame prices per size: 5x7=$35, 8x10=$45, 10x13=$60, 16x20=$130
 
 let printCart      = [];
+let frameCart      = [];   // [{variation_id, size, orientation, price, quantity}]
+let frameStoreItems = [];  // cached from /api/frames
 let pendingPrint   = null;
 let selectedFrameIdx = 0;
 
