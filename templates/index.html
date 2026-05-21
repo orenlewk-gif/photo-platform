@@ -843,7 +843,6 @@ async function showDays() {
   hideSpinner();
   showView('days');
   setBreadcrumb([]);
-  clearPhotoCart();
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-days');
@@ -870,7 +869,6 @@ async function showLocations(date) {
   hideSpinner();
   showView('locations');
   setBreadcrumb([{ label:'All Days', state:{ view:'days' } }], formatDateLong(date));
-  clearPhotoCart();
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-locations');
@@ -907,7 +905,6 @@ async function showFamilies(date, location) {
 
   showView('families');
   setBreadcrumb(crumbs, location);
-  clearPhotoCart();
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-families');
