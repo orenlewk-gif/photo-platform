@@ -316,9 +316,9 @@ def get_photo(path: str, size: str = Query("medium")):
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
-        "thumb":  (450,  72),
-        "medium": (1200, 85),
-        "full":   (1800, 88),
+        "thumb":  (600,  80),
+        "medium": (1500, 88),
+        "full":   (1800, 90),
     }
     max_px, quality = SIZE_MAP.get(size, SIZE_MAP["medium"])
     cache_secs = 86400 if size == "thumb" else 3600
