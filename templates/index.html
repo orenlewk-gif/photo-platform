@@ -521,8 +521,12 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .frame-variant-row { display:flex; align-items:center; justify-content:space-between; padding:0.5rem 0; border-top:1px solid rgba(255,255,255,0.06); gap:0.5rem; }
 .frame-variant-label { font-size:0.82rem; color:rgba(255,255,255,0.55); min-width:60px; }
 .frame-variant-price { font-size:0.92rem; font-weight:700; color:#F5C518; flex:1; }
+.frame-card-row { display:flex; align-items:center; gap:0.6rem; margin-bottom:0.75rem; }
+.frame-orient-select { flex:1; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:7px; padding:0.35rem 0.6rem; font-size:0.82rem; font-family:inherit; cursor:pointer; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='rgba(255,255,255,0.4)'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 8px center; padding-right:22px; }
+.frame-orient-select:focus { outline:none; border-color:rgba(245,197,24,0.5); }
 .frame-atc-btn { background:#F5C518; color:#0c2336; font-weight:700; font-size:0.78rem; border:none; border-radius:6px; padding:0.32rem 0.8rem; cursor:pointer; white-space:nowrap; transition:background 0.15s; font-family:inherit; }
 .frame-atc-btn:hover { background:#ffd700; }
+.frame-atc-full { width:100%; padding:0.5rem; font-size:0.85rem; border-radius:8px; }
 .frame-qty-controls { display:flex; align-items:center; gap:6px; }
 .frame-qty-btn { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:5px; width:26px; height:26px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:background 0.15s; line-height:1; font-family:inherit; }
 .frame-qty-btn:hover { background:rgba(255,255,255,0.2); }
@@ -1128,17 +1132,28 @@ async function showFramesView() {
   }
 
   let html = `<div class="frames-page">
-    <h2>Crystal Frames</h2>
+    <h2>Rustic Big Sky Frames</h2>
     <p>Handcrafted wooden frames — perfect for your favourite photos.</p>
     <div class="frames-grid">`;
 
   frameStoreItems.forEach((item, sizeIdx) => {
-    html += `<div class="frame-card">
+    const defaultOrient = item.landscape ? 'landscape' : 'portrait';
+    const defaultPrice  = parseFloat(item[defaultOrient]?.price) || 0;
+    const orientOptions = [
+      item.landscape ? `<option value="landscape">Landscape — $${parseFloat(item.landscape.price)||0}</option>` : '',
+      item.portrait  ? `<option value="portrait">Portrait — $${parseFloat(item.portrait.price)||0}</option>`   : '',
+    ].join('');
+    html += `<div class="frame-card" id="fcard-${sizeIdx}">
       <div class="frame-card-photo">Photo coming soon</div>
       <div class="frame-card-body">
         <div class="frame-card-size">${item.size}"</div>
-        ${buildVariantRow(sizeIdx, 'landscape')}
-        ${buildVariantRow(sizeIdx, 'portrait')}
+        <div class="frame-card-row">
+          <select class="frame-orient-select" id="fselect-${sizeIdx}" onchange="updateFrameCardPrice(${sizeIdx})">
+            ${orientOptions}
+          </select>
+          <span class="frame-variant-price" id="fprice-${sizeIdx}">$${defaultPrice}</span>
+        </div>
+        <div id="fatc-${sizeIdx}">${buildFrameCardAtc(sizeIdx, defaultOrient)}</div>
       </div>
     </div>`;
   });
@@ -1147,29 +1162,32 @@ async function showFramesView() {
   el.innerHTML = html;
 }
 
-function buildVariantRow(sizeIdx, orient) {
-  const item    = frameStoreItems[sizeIdx];
-  const variant = item?.[orient];
-  if (!variant || variant.stock_status === 'outofstock') return '';
-  const price   = parseFloat(variant.price) || 0;
-  const inCart  = frameCart.find(f => f.variation_id === variant.variation_id);
-  const qty     = inCart ? inCart.quantity : 0;
-  const label   = orient.charAt(0).toUpperCase() + orient.slice(1);
-  return `<div class="frame-variant-row" id="fv-${variant.variation_id}">
-    <span class="frame-variant-label">${label}</span>
-    <span class="frame-variant-price">$${price}</span>
-    ${qty === 0
-      ? `<button class="frame-atc-btn" onclick="addFrameToCartByIdx(${sizeIdx},'${orient}')">Add to Cart</button>`
-      : `<div class="frame-qty-controls">
-           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},-1,${sizeIdx},'${orient}')">−</button>
-           <span style="color:#fff;min-width:18px;text-align:center;" id="fqty-${variant.variation_id}">${qty}</span>
-           <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},1,${sizeIdx},'${orient}')">+</button>
-         </div>`
-    }
+function updateFrameCardPrice(sizeIdx) {
+  const sel    = document.getElementById(`fselect-${sizeIdx}`);
+  const orient = sel.value;
+  const price  = parseFloat(frameStoreItems[sizeIdx]?.[orient]?.price) || 0;
+  document.getElementById(`fprice-${sizeIdx}`).textContent = `$${price}`;
+  document.getElementById(`fatc-${sizeIdx}`).innerHTML = buildFrameCardAtc(sizeIdx, orient);
+}
+
+function buildFrameCardAtc(sizeIdx, orient) {
+  const variant = frameStoreItems[sizeIdx]?.[orient];
+  if (!variant) return '';
+  const inCart = frameCart.find(f => f.variation_id === variant.variation_id);
+  const qty    = inCart ? inCart.quantity : 0;
+  if (qty === 0) {
+    return `<button class="frame-atc-btn frame-atc-full" onclick="addFrameToCartByIdx(${sizeIdx})">Add to Cart</button>`;
+  }
+  return `<div class="frame-qty-controls" style="justify-content:center;">
+    <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},-1,${sizeIdx})">−</button>
+    <span style="color:#fff;min-width:24px;text-align:center;font-weight:600;">${qty}</span>
+    <button class="frame-qty-btn" onclick="adjustFrameQty(${variant.variation_id},1,${sizeIdx})">+</button>
   </div>`;
 }
 
-function addFrameToCartByIdx(sizeIdx, orient) {
+function addFrameToCartByIdx(sizeIdx) {
+  const sel    = document.getElementById(`fselect-${sizeIdx}`);
+  const orient = sel ? sel.value : 'landscape';
   const variant = frameStoreItems[sizeIdx]?.[orient];
   if (!variant) return;
   const existing = frameCart.find(f => f.variation_id === variant.variation_id);
@@ -1184,18 +1202,17 @@ function addFrameToCartByIdx(sizeIdx, orient) {
     });
   }
   updateCart();
-  const row = document.getElementById(`fv-${variant.variation_id}`);
-  if (row) row.outerHTML = buildVariantRow(sizeIdx, orient);
+  document.getElementById(`fatc-${sizeIdx}`).innerHTML = buildFrameCardAtc(sizeIdx, orient);
 }
 
-function adjustFrameQty(variationId, delta, sizeIdx, orient) {
+function adjustFrameQty(variationId, delta, sizeIdx) {
   const cartIdx = frameCart.findIndex(f => f.variation_id === variationId);
   if (cartIdx === -1) return;
+  const orient = frameCart[cartIdx].orientation;
   frameCart[cartIdx].quantity += delta;
   if (frameCart[cartIdx].quantity <= 0) frameCart.splice(cartIdx, 1);
   updateCart();
-  const row = document.getElementById(`fv-${variationId}`);
-  if (row) row.outerHTML = buildVariantRow(sizeIdx, orient);
+  document.getElementById(`fatc-${sizeIdx}`).innerHTML = buildFrameCardAtc(sizeIdx, orient);
 }
 
 function removeFrameFromCart(idx) {
