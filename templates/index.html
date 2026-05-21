@@ -820,7 +820,51 @@ async function renderState(state) {
 }
 
 // ── Boot ──
+// ── Cart persistence (7-day localStorage) ────────────────────────────────────
+const CART_KEY = 'bsp_cart_v1';
+const CART_TTL = 7 * 24 * 60 * 60 * 1000;
+
+function saveCart() {
+  try {
+    localStorage.setItem(CART_KEY, JSON.stringify({
+      ts:            Date.now(),
+      frameCart,
+      printCart,
+      lockedTier,
+      selectedPaths: [...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean),
+    }));
+  } catch(e) {}
+}
+
+function loadCart() {
+  try {
+    const raw = localStorage.getItem(CART_KEY);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (Date.now() - data.ts > CART_TTL) { localStorage.removeItem(CART_KEY); return; }
+    frameCart  = data.frameCart  || [];
+    printCart  = data.printCart  || [];
+    lockedTier = data.lockedTier || null;
+    window._savedPhotoPaths = data.selectedPaths || [];
+    updateHeaderCartBtn();
+  } catch(e) {}
+}
+
+// Called after renderThumbs — re-selects any saved photos that are in this gallery
+function restoreSelectedPhotos() {
+  if (!window._savedPhotoPaths?.length) return;
+  window._savedPhotoPaths.forEach(path => {
+    const idx = allPhotos.findIndex(p => p.path === path);
+    if (idx === -1) return;
+    selectedPhotos.add(idx);
+    const card = document.querySelector(`.thumb-card[data-idx="${idx}"]`);
+    if (card) card.classList.add('selected');
+  });
+  if (selectedPhotos.size > 0) updateCart();
+}
+
 async function init() {
+  loadCart();
   const params = new URLSearchParams(location.search);
   const date   = params.get('date');
   const loc    = params.get('location');
@@ -981,6 +1025,7 @@ async function showGallery(date, location, family, ln) {
     <div class="gallery" id="gallery" style="--cols:6"></div>`;
 
   renderThumbs(photos);
+  restoreSelectedPhotos();
   const filterInput = el.querySelector('#filter-input');
   if (filterInput) filterInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') runFilter(date||'', location||'');
@@ -1243,11 +1288,13 @@ function clearCart() {
   printCart = [];
   frameCart = [];
   lockedTier = null;
+  window._savedPhotoPaths = [];
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('print-upsell-banner').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
   updateHeaderCartBtn();
+  try { localStorage.removeItem(CART_KEY); } catch(e) {}
 }
 
 // ── Pricing logic ──
@@ -1384,6 +1431,7 @@ function updateCart() {
   document.getElementById('cart-upsell-text').innerHTML  = count > 0 ? getUpsellMsg(count) : (printCount > 0 ? '💡 Add digital files to get <strong>50% off</strong> all prints!' : '');
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
+  saveCart();
   updateLBSelectBtn();
   // Show print upsell banner whenever digital photos are selected
   const banner = document.getElementById('print-upsell-banner');
