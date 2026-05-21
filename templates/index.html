@@ -847,6 +847,7 @@ function loadCart() {
     lockedTier = data.lockedTier || null;
     window._savedPhotoPaths = data.selectedPaths || [];
     updateHeaderCartBtn();
+    if (frameCart.length || printCart.length || (window._savedPhotoPaths.length)) updateCart();
   } catch(e) {}
 }
 
