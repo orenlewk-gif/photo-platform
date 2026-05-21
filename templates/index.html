@@ -1193,6 +1193,7 @@ function addFrameToCartByIdx(sizeIdx) {
     frameCart.push({
       variation_id: variant.variation_id,
       size:         variant.size,
+      sizeIdx:      sizeIdx,
       orientation:  orient,
       price:        parseFloat(variant.price) || 0,
       quantity:     1,
@@ -1605,16 +1606,21 @@ function openCheckout() {
 function calcShipping() {
   const framed   = printCart.filter(p => p.frame && p.frame !== 'No Frame');
   const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
-  let shipping = 0;
+
   if (framed.length) {
+    // Framed prints dominate — use FRAME_SHIPPING; standalone frames ship free alongside
     const rates = framed.map(p => FRAME_SHIPPING[p.sizeIdx]).sort((a, b) => b - a);
-    shipping += rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
-  } else if (unframed.length) {
-    shipping += Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
+    return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
   }
-  // Standalone frames: flat $20 if no prints already adding shipping
-  if (frameCart.length > 0 && printCart.length === 0) shipping += 20;
-  return shipping;
+
+  // Standalone frames + unframed prints all use PRINT_SHIPPING — take the max across all
+  const allIdxs = [
+    ...unframed.map(p => p.sizeIdx),
+    ...frameCart.map(f => f.sizeIdx).filter(i => i !== undefined),
+  ];
+  if (allIdxs.length) return Math.max(...allIdxs.map(i => PRINT_SHIPPING[i]));
+
+  return 0;
 }
 
 function renderCheckoutLines() {
