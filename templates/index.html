@@ -1743,6 +1743,7 @@ async function submitToWooCommerce() {
     frames: frameCart.map(f => ({
       variation_id: f.variation_id,
       size:         f.size,
+      sizeIdx:      f.sizeIdx,
       orientation:  f.orientation,
       price:        f.price,
       quantity:     f.quantity,
