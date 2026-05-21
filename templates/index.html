@@ -975,11 +975,11 @@ async function showGallery(date, location, family, ln) {
       </div>` : ''}
       <div class="size-slider-wrap">
         <span>🔍</span>
-        <input type="range" id="size-slider" min="1" max="6" value="5" />
+        <input type="range" id="size-slider" min="1" max="5" value="3" />
         <span>⊞</span>
       </div>
     </div>
-    <div class="gallery" id="gallery" style="--cols:2"></div>`;
+    <div class="gallery" id="gallery" style="--cols:6"></div>`;
 
   renderThumbs(photos);
   const filterInput = el.querySelector('#filter-input');
@@ -988,7 +988,7 @@ async function showGallery(date, location, family, ln) {
   });
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
-    let cols = [10, 8, 6, 4, 3, 2][parseInt(this.value) - 1];
+    let cols = [8, 7, 6, 5, 4][parseInt(this.value) - 1];
     if (isMobile) cols = Math.min(cols, 3);
     document.getElementById('gallery').style.setProperty('--cols', cols);
   });
