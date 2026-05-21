@@ -1614,11 +1614,11 @@ function calcShipping() {
     return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
   }
 
-  // Standalone frames + unframed prints: PRINT_SHIPPING rates
+  // Standalone frames use FRAME_SHIPPING; unframed prints use PRINT_SHIPPING
   // Expand by quantity, then highest + 50% of rest
   const rates = [
     ...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]),
-    ...frameCart.flatMap(f => Array(f.quantity).fill(PRINT_SHIPPING[f.sizeIdx ?? 0])),
+    ...frameCart.flatMap(f => Array(f.quantity).fill(FRAME_SHIPPING[f.sizeIdx ?? 0])),
   ].filter(r => r != null).sort((a, b) => b - a);
 
   if (rates.length) return rates[0] + rates.slice(1).reduce((s, r) => s + r * 0.5, 0);
