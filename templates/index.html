@@ -843,7 +843,7 @@ async function showDays() {
   hideSpinner();
   showView('days');
   setBreadcrumb([]);
-  clearCart();
+  clearPhotoCart();
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-days');
@@ -870,7 +870,7 @@ async function showLocations(date) {
   hideSpinner();
   showView('locations');
   setBreadcrumb([{ label:'All Days', state:{ view:'days' } }], formatDateLong(date));
-  clearCart();
+  clearPhotoCart();
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-locations');
@@ -907,7 +907,7 @@ async function showFamilies(date, location) {
 
   showView('families');
   setBreadcrumb(crumbs, location);
-  clearCart();
+  clearPhotoCart();
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-families');
@@ -1229,6 +1229,17 @@ function adjustFrameCartQty(idx, delta) {
   renderCartView();
 }
 
+// Used on view navigation — preserves frame cart across browse
+function clearPhotoCart() {
+  selectedPhotos.clear();
+  printCart = [];
+  lockedTier = null;
+  document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
+  document.getElementById('print-upsell-banner').classList.remove('show');
+  updateCart();
+}
+
+// Full clear — used by the "Clear" button only
 function clearCart() {
   selectedPhotos.clear();
   printCart = [];
