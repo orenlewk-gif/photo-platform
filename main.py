@@ -484,19 +484,27 @@ async def create_checkout(request: Request):
                 "total":        str(fr_price),
             })
 
-        # ── Shipping logic ──────────────────────────────────────────────────
+        # ── Shipping logic (mirrors frontend calcShipping) ───────────────────
+        PRINT_SHIP = [8, 8, 13, 13]
+        FRAME_SHIP = [20, 25, 30, 65]
+
         framed   = [p for p in prints if p.get("frame") and p["frame"] != "No Frame"]
         unframed = [p for p in prints if not p.get("frame") or p["frame"] == "No Frame"]
 
-        if framed:
-            rates = sorted([float(p["frame_shipping"]) for p in framed], reverse=True)
-            total_ship = rates[0] + sum(r * 0.5 for r in rates[1:])
+        # Collect all frame shipping rates: framed prints + standalone frames (expanded by qty)
+        frame_rates = (
+            [FRAME_SHIP[int(p.get("size_idx", 0))] for p in framed] +
+            [FRAME_SHIP[int(fr.get("sizeIdx", 0))]
+             for fr in frames for _ in range(int(fr.get("quantity", 1)))]
+        )
+
+        if frame_rates:
+            frame_rates.sort(reverse=True)
+            total_ship = frame_rates[0] + sum(r * 0.5 for r in frame_rates[1:])
             fee_lines.append({"name": "Shipping", "total": str(round(total_ship, 2))})
         elif unframed:
-            max_rate = max(float(p["print_shipping"]) for p in unframed)
+            max_rate = max(PRINT_SHIP[int(p.get("size_idx", 0))] for p in unframed)
             fee_lines.append({"name": "Shipping", "total": str(max_rate)})
-        elif frames:
-            fee_lines.append({"name": "Shipping", "total": "20.00"})
 
         paths = body.get("digital_paths", [])
         meta = [
