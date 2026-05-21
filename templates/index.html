@@ -609,7 +609,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       </ul>
     </div>
     <div style="display:flex;align-items:center;gap:10px;">
-      <button class="header-cart-btn" id="header-cart-btn" onclick="openCartView()" style="display:none">
+      <button class="header-cart-btn" id="header-cart-btn" onclick="openCartView()">
         🛒 <span id="header-cart-count" class="header-cart-count">0</span>
       </button>
       <div class="dropdown">
@@ -1149,7 +1149,7 @@ async function showFramesView() {
 }
 
 function buildFrameVariantRow(variant, idx, orient) {
-  if (!variant || variant.stock_status !== 'instock') return '';
+  if (!variant || variant.stock_status === 'outofstock') return '';
   const inCart = frameCart.find(f => f.variation_id === variant.variation_id);
   const qty    = inCart ? inCart.quantity : 0;
   return `<div class="frame-store-variant" id="fv-${variant.variation_id}">
@@ -1335,11 +1335,8 @@ function recalcPrintPrices() {
 
 function updateHeaderCartBtn() {
   const total = selectedPhotos.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
-  const btn   = document.getElementById('header-cart-btn');
   const cnt   = document.getElementById('header-cart-count');
-  if (!btn) return;
-  if (total > 0) { btn.style.display = ''; cnt.textContent = total; }
-  else           { btn.style.display = 'none'; }
+  if (cnt) cnt.textContent = total;
 }
 
 function updateCart() {
