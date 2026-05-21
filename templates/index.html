@@ -878,8 +878,6 @@ async function init() {
   else if (date)     navigate({ view:'locations', date }, true);
   else               navigate({ view:'days' }, true);
 }
-init();
-
 // ── View: Days ──
 async function showDays() {
   showSpinner();
@@ -2228,6 +2226,8 @@ document.addEventListener('contextmenu', e => {
   const isPhoto = e.target.tagName === 'IMG' || photoSelectors.some(sel => e.target.closest(sel));
   if (isPhoto) e.preventDefault();
 });
+
+init();
 </script>
 </body>
 </html>
