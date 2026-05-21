@@ -872,11 +872,13 @@ async function init() {
   const family = params.get('family');
   const ln     = params.get('ln');
 
-  if (ln)            navigate({ view:'gallery', ln }, true);
-  else if (family)   navigate({ view:'gallery', date, location:loc, family }, true);
-  else if (loc)      navigate({ view:'families', date, location:loc }, true);
-  else if (date)     navigate({ view:'locations', date }, true);
-  else               navigate({ view:'days' }, true);
+  const view = params.get('view');
+  if (view === 'frames')   { showView('frames'); showFramesView(); }
+  else if (ln)             navigate({ view:'gallery', ln }, true);
+  else if (family)         navigate({ view:'gallery', date, location:loc, family }, true);
+  else if (loc)            navigate({ view:'families', date, location:loc }, true);
+  else if (date)           navigate({ view:'locations', date }, true);
+  else                     navigate({ view:'days' }, true);
 }
 // ── View: Days ──
 async function showDays() {
