@@ -1410,6 +1410,7 @@ function updateCart() {
   if (count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
+    saveCart();
     return;
   }
   const digitalPrice = (lockedTier && count < lockedTier.count) ? lockedTier.price : calcPrice(count);
