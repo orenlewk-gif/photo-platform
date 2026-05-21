@@ -50,10 +50,10 @@ def fix_orientation(img):
         pass
     return img
 
-def image_to_base64(img, max_size=900):
+def image_to_base64(img, max_size=1200):
     img.thumbnail((max_size, max_size), Image.LANCZOS)
     buf = BytesIO()
-    img.save(buf, format="JPEG", quality=83)
+    img.save(buf, format="JPEG", quality=87)
     return base64.b64encode(buf.getvalue()).decode()
 
 # ─────────────────────────────────────────
@@ -316,9 +316,9 @@ def get_photo(path: str, size: str = Query("medium")):
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
-        "thumb":  (600,  80),
-        "medium": (1500, 88),
-        "full":   (1800, 90),
+        "thumb":  (1000, 85),
+        "medium": (1800, 90),
+        "full":   (2400, 92),
     }
     max_px, quality = SIZE_MAP.get(size, SIZE_MAP["medium"])
     cache_secs = 86400 if size == "thumb" else 3600
