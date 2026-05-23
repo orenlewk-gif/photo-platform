@@ -1206,7 +1206,7 @@ async function showFramesView() {
     <p>Handcrafted wooden frames — perfect for your favourite photos.</p>
     <div class="frames-grid">`;
 
-  const DEFAULT_START = { 0: 3, 1: 4, 2: 0, 3: 7 }; // 5x7→4, 8x10→5, 10x13→1, 16x20→8
+  const DEFAULT_START = { 0: 3, 1: 4, 2: 0, 3: 6 }; // 5x7→4, 8x10→5, 10x13→1, 16x20→7
   frameStoreItems.forEach((item, sizeIdx) => {
     if (framePhotoIdx[sizeIdx] == null) framePhotoIdx[sizeIdx] = DEFAULT_START[sizeIdx] ?? 0;
     const defaultOrient = item.landscape ? 'landscape' : 'portrait';
