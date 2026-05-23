@@ -514,8 +514,13 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .frames-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:1.25rem; }
 .frame-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:14px; overflow:hidden; transition:border-color 0.2s; }
 .frame-card:hover { border-color:rgba(255,255,255,0.22); }
-.frame-card-photo { width:100%; aspect-ratio:4/3; background:rgba(255,255,255,0.06); position:relative; border-bottom:1px solid rgba(255,255,255,0.07); overflow:hidden; }
-.frame-card-photo img { width:100%; height:100%; object-fit:cover; display:block; }
+.frame-card-photo { width:100%; aspect-ratio:3/4; background:rgba(0,0,0,0.3); position:relative; border-bottom:1px solid rgba(255,255,255,0.07); overflow:hidden; }
+.frame-card-photo img { width:100%; height:100%; object-fit:contain; display:block; cursor:zoom-in; }
+.frame-lb-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.93); z-index:199999; align-items:center; justify-content:center; }
+.frame-lb-overlay.open { display:flex; }
+.frame-lb-img { max-width:90vw; max-height:90vh; object-fit:contain; border-radius:8px; }
+.frame-lb-close { position:fixed; top:16px; right:20px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; border-radius:50%; width:42px; height:42px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s; z-index:200001; }
+.frame-lb-close:hover { background:rgba(255,255,255,.22); }
 .frame-carousel-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.45); color:#fff; border:none; border-radius:50%; width:28px; height:28px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:2; transition:background 0.15s; padding:0; line-height:1; }
 .frame-carousel-arrow:hover { background:rgba(0,0,0,0.7); }
 .frame-carousel-arrow.left  { left:6px; }
@@ -772,6 +777,11 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 </div>
 
 <!-- Lightbox -->
+<div class="frame-lb-overlay" id="frame-lb" onclick="closeFrameLB()">
+  <button class="frame-lb-close" onclick="closeFrameLB()">✕</button>
+  <img id="frame-lb-img" class="frame-lb-img" src="" alt="Frame" onclick="event.stopPropagation()" />
+</div>
+
 <div class="lb-overlay" id="lb">
   <button class="lb-close" onclick="closeLB()">✕</button>
   <div class="lb-inner">
@@ -1226,10 +1236,10 @@ function buildCarousel(sizeIdx, size) {
     `<div class="frame-carousel-dot${i === idx ? ' active' : ''}"></div>`
   ).join('');
   const arrows = photos.length > 1 ? `
-    <button class="frame-carousel-arrow left"  onclick="carouselStep(${sizeIdx},'${size}',-1)">&#8249;</button>
-    <button class="frame-carousel-arrow right" onclick="carouselStep(${sizeIdx},'${size}',1)">&#8250;</button>
+    <button class="frame-carousel-arrow left"  onclick="event.stopPropagation();carouselStep(${sizeIdx},'${size}',-1)">&#8249;</button>
+    <button class="frame-carousel-arrow right" onclick="event.stopPropagation();carouselStep(${sizeIdx},'${size}',1)">&#8250;</button>
     <div class="frame-carousel-dots">${dots}</div>` : '';
-  return `<img src="${photos[idx]}" alt="${size} frame" loading="lazy">${arrows}`;
+  return `<img src="${photos[idx]}" alt="${size} frame" loading="lazy" onclick="openFrameLB('${photos[idx]}')">${arrows}`;
 }
 
 function carouselStep(sizeIdx, size, dir) {
@@ -1237,6 +1247,16 @@ function carouselStep(sizeIdx, size, dir) {
   if (!photos.length) return;
   framePhotoIdx[sizeIdx] = ((framePhotoIdx[sizeIdx] || 0) + dir + photos.length) % photos.length;
   document.getElementById(`fphoto-${sizeIdx}`).innerHTML = buildCarousel(sizeIdx, size);
+}
+
+function openFrameLB(src) {
+  document.getElementById('frame-lb-img').src = src;
+  document.getElementById('frame-lb').classList.add('open');
+}
+
+function closeFrameLB() {
+  document.getElementById('frame-lb').classList.remove('open');
+  document.getElementById('frame-lb-img').src = '';
 }
 
 function updateFrameCardPrice(sizeIdx) {
@@ -1886,7 +1906,7 @@ const _imgObserver = new IntersectionObserver((entries) => {
     const img = entry.target;
     const path = img.dataset.path;
     if (path) {
-      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb`;
+      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb&v=2`;
       img.src = imgCache[path];
     }
     _imgObserver.unobserve(img);
@@ -1902,7 +1922,7 @@ function lazyLoad(container) {
 
 function loadPhoto(path) {
   if (imgCache[path]) return Promise.resolve(imgCache[path]);
-  const src = `/api/photo?path=${enc(path)}&size=thumb`;
+  const src = `/api/photo?path=${enc(path)}&size=thumb&v=2`;
   imgCache[path] = src;
   return Promise.resolve(src);
 }

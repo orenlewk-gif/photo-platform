@@ -53,7 +53,7 @@ def fix_orientation(img):
         pass
     return img
 
-WATERMARK_OPACITY = 0.35
+WATERMARK_OPACITY = 0.40
 _watermark_cache  = None
 
 def get_watermark():
@@ -78,7 +78,7 @@ def apply_watermark(img):
     wm = get_watermark()
     if wm is None:
         return img
-    wm_size = int(min(img.width, img.height) * 0.30)
+    wm_size = int(min(img.width, img.height) * 0.50)
     wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
     img_rgba = img.convert("RGBA")
     x = (img.width  - wm_size) // 2
