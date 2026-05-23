@@ -23,6 +23,9 @@ load_dotenv()
 
 app = FastAPI()
 
+if os.path.exists("frames"):
+    app.mount("/frames", StaticFiles(directory="frames"), name="frames")
+
 # ─────────────────────────────────────────
 # R2 CLIENT
 # ─────────────────────────────────────────
@@ -49,6 +52,39 @@ def fix_orientation(img):
     except Exception:
         pass
     return img
+
+WATERMARK_OPACITY = 0.35
+_watermark_cache  = None
+
+def get_watermark():
+    global _watermark_cache
+    if _watermark_cache is not None:
+        return _watermark_cache
+    if not os.path.exists("watermark.png"):
+        return None
+    wm = Image.open("watermark.png").convert("RGBA")
+    pixels = list(wm.getdata())
+    new_pixels = []
+    for r, g, b, a in pixels:
+        if r > 210 and g > 210 and b > 210:
+            new_pixels.append((r, g, b, 0))
+        else:
+            new_pixels.append((r, g, b, int(a * WATERMARK_OPACITY)))
+    wm.putdata(new_pixels)
+    _watermark_cache = wm
+    return _watermark_cache
+
+def apply_watermark(img):
+    wm = get_watermark()
+    if wm is None:
+        return img
+    wm_size = int(min(img.width, img.height) * 0.30)
+    wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
+    img_rgba = img.convert("RGBA")
+    x = (img.width  - wm_size) // 2
+    y = (img.height - wm_size) // 2
+    img_rgba.paste(wm_scaled, (x, y), wm_scaled)
+    return img_rgba.convert("RGB")
 
 def image_to_base64(img, max_size=1200):
     img.thumbnail((max_size, max_size), Image.LANCZOS)
@@ -330,6 +366,7 @@ def get_photo(path: str, size: str = Query("medium")):
             img = Image.open(obj["Body"]).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
+            img = apply_watermark(img)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
@@ -339,6 +376,7 @@ def get_photo(path: str, size: str = Query("medium")):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
+            img = apply_watermark(img)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
@@ -415,6 +453,22 @@ def get_frames():
             }
         frames.append(entry)
     return {"frames": frames}
+
+
+@app.get("/api/frame-photos")
+def get_frame_photos():
+    frames_dir = "frames"
+    if not os.path.exists(frames_dir):
+        return {"photos": {}}
+    SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
+    result = {}
+    for size in SIZE_LABELS:
+        photos = sorted([
+            f"/frames/{f}" for f in os.listdir(frames_dir)
+            if f.startswith(f"frame_{size}_") and f.lower().endswith((".jpg", ".jpeg", ".png"))
+        ])
+        result[size] = photos
+    return {"photos": result}
 
 
 @app.post("/api/checkout")

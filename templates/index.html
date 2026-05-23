@@ -514,8 +514,16 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .frames-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:1.25rem; }
 .frame-card { background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); border-radius:14px; overflow:hidden; transition:border-color 0.2s; }
 .frame-card:hover { border-color:rgba(255,255,255,0.22); }
-.frame-card-photo { width:100%; aspect-ratio:4/3; background:rgba(255,255,255,0.06); display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.18); font-size:0.78rem; letter-spacing:1px; text-transform:uppercase; border-bottom:1px solid rgba(255,255,255,0.07); overflow:hidden; }
+.frame-card-photo { width:100%; aspect-ratio:4/3; background:rgba(255,255,255,0.06); position:relative; border-bottom:1px solid rgba(255,255,255,0.07); overflow:hidden; }
 .frame-card-photo img { width:100%; height:100%; object-fit:cover; display:block; }
+.frame-carousel-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.45); color:#fff; border:none; border-radius:50%; width:28px; height:28px; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:2; transition:background 0.15s; padding:0; line-height:1; }
+.frame-carousel-arrow:hover { background:rgba(0,0,0,0.7); }
+.frame-carousel-arrow.left  { left:6px; }
+.frame-carousel-arrow.right { right:6px; }
+.frame-carousel-dots { position:absolute; bottom:5px; left:50%; transform:translateX(-50%); display:flex; gap:4px; }
+.frame-carousel-dot { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,0.35); transition:background 0.15s; }
+.frame-carousel-dot.active { background:#fff; }
+.frame-card-photo-placeholder { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.18); font-size:0.78rem; letter-spacing:1px; text-transform:uppercase; }
 .frame-card-body { padding:1rem; }
 .frame-card-size { font-size:1.05rem; font-weight:700; color:#fff; margin-bottom:0.85rem; }
 .frame-variant-row { display:flex; align-items:center; justify-content:space-between; padding:0.5rem 0; border-top:1px solid rgba(255,255,255,0.06); gap:0.5rem; }
@@ -1157,17 +1165,21 @@ function selectUpTo(n) {
 
 // ── Frame Store ──────────────────────────────────────────────────────────────
 
+let framePhotos    = {};   // { "5x7": ["/frames/frame_5x7_landscape_1.jpg", ...], ... }
+let framePhotoIdx  = {};   // { sizeIdx: currentPhotoIndex }
+
 async function showFramesView() {
   showView('frames');
   setBreadcrumb([], 'Frames');
   const el = document.getElementById('view-frames');
   el.innerHTML = '<div class="msg">Loading frames…</div>';
 
-  if (!frameStoreItems.length) {
-    const res  = await fetch('/api/frames');
-    const data = await res.json();
-    frameStoreItems = data.frames || [];
-  }
+  const [framesRes, photosRes] = await Promise.all([
+    frameStoreItems.length ? null : fetch('/api/frames'),
+    Object.keys(framePhotos).length ? null : fetch('/api/frame-photos'),
+  ]);
+  if (framesRes) { const d = await framesRes.json(); frameStoreItems = d.frames || []; }
+  if (photosRes) { const d = await photosRes.json(); framePhotos = d.photos || {}; }
 
   if (!frameStoreItems.length) {
     el.innerHTML = '<div class="msg">No frames available right now.</div>';
@@ -1180,6 +1192,7 @@ async function showFramesView() {
     <div class="frames-grid">`;
 
   frameStoreItems.forEach((item, sizeIdx) => {
+    framePhotoIdx[sizeIdx] = framePhotoIdx[sizeIdx] || 0;
     const defaultOrient = item.landscape ? 'landscape' : 'portrait';
     const defaultPrice  = parseFloat(item[defaultOrient]?.price) || 0;
     const orientOptions = [
@@ -1187,7 +1200,7 @@ async function showFramesView() {
       item.portrait  ? `<option value="portrait">Portrait — $${parseFloat(item.portrait.price)||0}</option>`   : '',
     ].join('');
     html += `<div class="frame-card" id="fcard-${sizeIdx}">
-      <div class="frame-card-photo">Photo coming soon</div>
+      <div class="frame-card-photo" id="fphoto-${sizeIdx}">${buildCarousel(sizeIdx, item.size)}</div>
       <div class="frame-card-body">
         <div class="frame-card-size">${item.size}"</div>
         <div class="frame-card-row">
@@ -1203,6 +1216,27 @@ async function showFramesView() {
 
   html += `</div></div>`;
   el.innerHTML = html;
+}
+
+function buildCarousel(sizeIdx, size) {
+  const photos = framePhotos[size] || [];
+  if (!photos.length) return `<div class="frame-card-photo-placeholder">Photo coming soon</div>`;
+  const idx  = framePhotoIdx[sizeIdx] || 0;
+  const dots  = photos.map((_, i) =>
+    `<div class="frame-carousel-dot${i === idx ? ' active' : ''}"></div>`
+  ).join('');
+  const arrows = photos.length > 1 ? `
+    <button class="frame-carousel-arrow left"  onclick="carouselStep(${sizeIdx},'${size}',-1)">&#8249;</button>
+    <button class="frame-carousel-arrow right" onclick="carouselStep(${sizeIdx},'${size}',1)">&#8250;</button>
+    <div class="frame-carousel-dots">${dots}</div>` : '';
+  return `<img src="${photos[idx]}" alt="${size} frame" loading="lazy">${arrows}`;
+}
+
+function carouselStep(sizeIdx, size, dir) {
+  const photos = framePhotos[size] || [];
+  if (!photos.length) return;
+  framePhotoIdx[sizeIdx] = ((framePhotoIdx[sizeIdx] || 0) + dir + photos.length) % photos.length;
+  document.getElementById(`fphoto-${sizeIdx}`).innerHTML = buildCarousel(sizeIdx, size);
 }
 
 function updateFrameCardPrice(sizeIdx) {
