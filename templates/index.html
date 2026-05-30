@@ -586,9 +586,10 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .lb-info { margin-top:14px; text-align:center; color:rgba(255,255,255,.8); font-size:.9rem; line-height:1.7; }
 .lb-filename { color:rgba(255,255,255,.35); font-size:.74rem; margin-top:4px; }
 .lb-counter  { margin-top:10px; color:rgba(255,255,255,.28); font-size:.74rem; letter-spacing:1px; }
-.lb-upsell { margin-top:12px; text-align:center; font-size:.82rem; line-height:1.6; color:rgba(255,255,255,.75); max-width:540px; }
-.lb-upsell .upsell-line { margin:2px 0; }
-.lb-upsell .upsell-prints { color:#4ade80; font-size:.8rem; margin-top:4px; }
+.lb-upsell { margin-top:14px; text-align:center; max-width:500px; border-top:1px solid rgba(255,255,255,0.1); padding-top:12px; }
+.lb-upsell .upsell-upgrade { font-size:.84rem; color:rgba(255,255,255,.85); margin-bottom:9px; line-height:1.5; }
+.lb-upsell .upsell-perks { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
+.lb-upsell .upsell-perk { background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.28); color:#4ade80; font-size:.72rem; font-weight:500; padding:3px 11px; border-radius:20px; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -1137,7 +1138,8 @@ async function showGallery(date, location, family, ln) {
     const card = document.querySelector(`.thumb-card[data-idx="${idx}"]`);
     if (card) card.classList.add('selected');
   });
-  if (selectedPhotos.size > 0 || printCart.length > 0 || lockedTier) updateCart();
+  // Always call updateCart so the cart bar hides if the new folder has no selections
+  updateCart();
   const filterInput = el.querySelector('#filter-input');
   if (filterInput) filterInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') runFilter(date||'', location||'');
@@ -2185,12 +2187,14 @@ function updateLBSelectBtn() {
   if (!upsell) return;
   if (!isSelected) { upsell.innerHTML = ''; return; }
 
-  const count   = selectedPhotos.size;
-  const upMsg   = getUpsellMsg(count);
+  const count = selectedPhotos.size;
+  const upMsg = getUpsellMsg(count);
   let html = '';
-  if (upMsg) html += `<div class="upsell-line">${upMsg}</div>`;
-  html += `<div class="upsell-prints">50% off prints for photos you've selected digitally</div>`;
-  html += `<div class="upsell-prints">Free shipping when you order 3+ prints</div>`;
+  if (upMsg) html += `<div class="upsell-upgrade">${upMsg}</div>`;
+  html += `<div class="upsell-perks">
+    <span class="upsell-perk">50% off prints for selected photos</span>
+    <span class="upsell-perk">Free shipping on 3+ prints</span>
+  </div>`;
   upsell.innerHTML = html;
 }
 
