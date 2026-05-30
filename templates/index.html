@@ -37,6 +37,14 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .ln-bar input { flex:1; }
 .ln-bar .btn { width:auto; padding:0.65rem 1.4rem; white-space:nowrap; }
 .ln-bar-label { font-size:0.7rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#F5C518; margin-bottom:6px; }
+/* Last-name autocomplete dropdown */
+.ln-input-wrap { flex:1; position:relative; }
+.ln-dropdown { position:absolute; left:0; right:0; top:calc(100% + 6px); background:#0d2a3d; border:1px solid rgba(255,255,255,0.14); border-radius:10px; z-index:9999; box-shadow:0 10px 36px rgba(0,0,0,0.55); overflow:hidden; max-height:300px; overflow-y:auto; }
+.ln-dd-item { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0.65rem 1rem; cursor:pointer; border-bottom:1px solid rgba(255,255,255,0.06); transition:background 0.12s; }
+.ln-dd-item:last-child { border-bottom:none; }
+.ln-dd-item:hover, .ln-dd-item.ln-dd-active { background:rgba(245,197,24,0.1); }
+.ln-dd-name { font-weight:600; font-size:0.9rem; color:#fff; }
+.ln-dd-meta { font-size:0.76rem; color:rgba(255,255,255,0.45); text-align:right; white-space:nowrap; }
 
 /* Breadcrumb */
 .breadcrumb { display:none; align-items:center; gap:8px; margin-bottom:1.5rem; font-size:0.85rem; color:rgba(255,255,255,0.45); flex-wrap:wrap; }
@@ -660,9 +668,10 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 <div class="container" id="main-container">
 
   <div class="ln-bar" id="ln-bar">
-    <div style="flex:1">
+    <div class="ln-input-wrap">
       <div class="ln-bar-label">Find My Photos by Last Name</div>
-      <input type="text" id="ln-input" placeholder="Enter your last name… e.g. Smith" />
+      <input type="text" id="ln-input" placeholder="Enter your last name… e.g. Smith" autocomplete="off" />
+      <div id="ln-dropdown" class="ln-dropdown" style="display:none;"></div>
     </div>
     <button class="btn" id="ln-btn">Find My Photos</button>
   </div>
@@ -1585,6 +1594,7 @@ function updateCart() {
   if (count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
+    document.getElementById('print-upsell-banner').classList.remove('show');  // always hide banner when folder is empty
     saveCart();
     return;
   }
@@ -1610,7 +1620,7 @@ function updateCart() {
   const cartUpsell = count > 0
     ? getUpsellMsg(count)
     : (printsWithoutDigital.length > 0
-        ? `💡 Select a photo's digital file to get <strong>50% off</strong> its print!`
+        ? `Select a photo's digital file to get <strong>50% off</strong> its print!`
         : '');
   document.getElementById('cart-upsell-text').innerHTML = cartUpsell;
   document.getElementById('cart-bar').classList.add('show');
@@ -2111,14 +2121,86 @@ window.addEventListener('pageshow', function(e) {
   updateCheckoutBtn();
 });
 
-// ── Last name search ──
-document.getElementById('ln-btn').addEventListener('click', doLnSearch);
-document.getElementById('ln-input').addEventListener('keydown', e => { if(e.key==='Enter') doLnSearch(); });
+// ── Last name autocomplete ──
+let _lnResults = [];
+let _lnActive  = -1;
+let _lnTimer   = null;
 
+document.getElementById('ln-input').addEventListener('input', handleLnInput);
+document.getElementById('ln-input').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    _lnActive = Math.min(_lnActive + 1, _lnResults.length - 1);
+    renderLnDropdown();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    _lnActive = Math.max(_lnActive - 1, -1);
+    renderLnDropdown();
+  } else if (e.key === 'Enter') {
+    if (_lnActive >= 0)            selectLnResult(_lnActive);
+    else if (_lnResults.length === 1) selectLnResult(0);
+    else                           doLnSearch();
+  } else if (e.key === 'Escape') {
+    hideLnDropdown();
+  }
+});
+document.getElementById('ln-btn').addEventListener('click', () => {
+  if (_lnActive >= 0)               selectLnResult(_lnActive);
+  else if (_lnResults.length === 1) selectLnResult(0);
+  else                              doLnSearch();
+});
+document.addEventListener('click', e => {
+  if (!e.target.closest('#ln-bar')) hideLnDropdown();
+});
+
+async function handleLnInput() {
+  const val = document.getElementById('ln-input').value.trim();
+  _lnActive = -1;
+  if (val.length < 2) { hideLnDropdown(); return; }
+  clearTimeout(_lnTimer);
+  _lnTimer = setTimeout(async () => {
+    try {
+      const res  = await fetch(`/api/last-name-search?q=${enc(val)}`);
+      const d    = await res.json();
+      _lnResults = d.results || [];
+      renderLnDropdown();
+    } catch(e) { hideLnDropdown(); }
+  }, 180);
+}
+
+function renderLnDropdown() {
+  const dd = document.getElementById('ln-dropdown');
+  if (!dd) return;
+  if (!_lnResults.length) { dd.style.display = 'none'; return; }
+  dd.innerHTML = _lnResults.map((r, i) =>
+    `<div class="ln-dd-item${i === _lnActive ? ' ln-dd-active' : ''}" onmousedown="selectLnResult(${i})">
+      <span class="ln-dd-name">${r.last_name}</span>
+      <span class="ln-dd-meta">${r.location}&nbsp;&nbsp;·&nbsp;&nbsp;${formatDateLong(r.date)}</span>
+    </div>`
+  ).join('');
+  dd.style.display = '';
+}
+
+function hideLnDropdown() {
+  const dd = document.getElementById('ln-dropdown');
+  if (dd) dd.style.display = 'none';
+  _lnActive = -1;
+}
+
+function selectLnResult(i) {
+  const r = _lnResults[i];
+  if (!r) return;
+  hideLnDropdown();
+  document.getElementById('ln-input').value = '';
+  // Navigate directly to that person's gallery folder
+  navigate({ view: 'gallery', date: r.date, location: r.location, family: r.last_name });
+}
+
+// Fallback: old cross-gallery search (used when no dropdown result is selected)
 function doLnSearch() {
   const ln = document.getElementById('ln-input').value.trim();
   if (!ln) return;
-  navigate({ view:'gallery', ln });
+  navigate({ view: 'gallery', ln });
 }
 
 // ── Lazy image loading ──

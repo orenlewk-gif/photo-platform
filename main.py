@@ -310,6 +310,42 @@ def get_families(date: str, location: str):
     return {"families": result, "has_families": len(result) > 0}
 
 
+@app.get("/api/last-name-search")
+def last_name_search(q: str = Query("")):
+    """Autocomplete: return unique (last_name, date, location) combos matching q."""
+    q_lower = q.strip().lower()
+    if len(q_lower) < 2:
+        return {"results": []}
+
+    seen = set()
+    results = []
+    for item in data:
+        ln = item.get("last_name", "").strip()
+        if not ln:
+            continue
+        ln_lower = ln.lower()
+        # Prefix match first; fall back to fuzzy
+        if not ln_lower.startswith(q_lower) and fuzz.partial_ratio(q_lower, ln_lower) < 75:
+            continue
+        loc = clean_location(item["location"])
+        key = (ln_lower, item["date"], loc)
+        if key not in seen:
+            seen.add(key)
+            results.append({
+                "last_name": ln,
+                "date":      item["date"],
+                "location":  loc,
+            })
+
+    # Exact/prefix matches first, then alphabetical, then by date
+    results.sort(key=lambda x: (
+        not x["last_name"].lower().startswith(q_lower),
+        x["last_name"].lower(),
+        x["date"],
+    ))
+    return {"results": results[:20]}
+
+
 def natural_sort_key(path):
     name = os.path.basename(path).lower()
     return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', name)]
