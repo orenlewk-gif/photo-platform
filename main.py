@@ -55,79 +55,86 @@ def fix_orientation(img):
 
 WATERMARK_OPACITY = 0.40
 _watermark_cache  = None
+_watermark_lock   = threading.Lock()
 
 def get_watermark():
     global _watermark_cache
     if _watermark_cache is not None:
         return _watermark_cache
-    if not os.path.exists("watermark.png"):
-        return None
-    wm = Image.open("watermark.png").convert("RGBA")
-    w, h = wm.size
-    px = wm.load()
+    with _watermark_lock:
+        if _watermark_cache is not None:
+            return _watermark_cache
+        if not os.path.exists("watermark.png"):
+            return None
+        try:
+            wm = Image.open("watermark.png").convert("RGBA")
+            # Resize to 500px max BEFORE flood fill — BFS on small image is instant
+            wm.thumbnail((500, 500), Image.LANCZOS)
+            w, h = wm.size
+            print(f"Processing watermark at {w}x{h}...")
+            px = wm.load()
+            THRESH = 230
 
-    THRESH = 230
-
-    # ── Pass 1: flood fill from edges → removes outer white background ──────
-    bg = set()
-    queue = []
-    for x in range(w):
-        for y in (0, h - 1):
-            if (x, y) not in bg:
-                r, g, b, a = px[x, y]
-                if r > THRESH and g > THRESH and b > THRESH:
-                    bg.add((x, y)); queue.append((x, y))
-    for y in range(h):
-        for x in (0, w - 1):
-            if (x, y) not in bg:
-                r, g, b, a = px[x, y]
-                if r > THRESH and g > THRESH and b > THRESH:
-                    bg.add((x, y)); queue.append((x, y))
-    while queue:
-        cx, cy = queue.pop()
-        px[cx, cy] = (px[cx, cy][0], px[cx, cy][1], px[cx, cy][2], 0)
-        for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
-            nx, ny = cx + dx, cy + dy
-            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in bg:
-                r, g, b, a = px[nx, ny]
-                if r > THRESH and g > THRESH and b > THRESH:
-                    bg.add((nx, ny)); queue.append((nx, ny))
-
-    # ── Pass 2: find remaining white regions (donut hole vs text) ───────────
-    # Large regions = donut hole → transparent. Small regions = text → keep.
-    seen = set()
-    hole_threshold = (w * h) * 0.005  # regions > 0.5% of image are holes
-    for sy in range(h):
-        for sx in range(w):
-            if (sx, sy) in bg or (sx, sy) in seen:
-                continue
-            r, g, b, a = px[sx, sy]
-            if not (r > THRESH and g > THRESH and b > THRESH and a > 0):
-                continue
-            # BFS this white region
-            component = []
-            q2 = [(sx, sy)]
-            seen.add((sx, sy))
-            while q2:
-                cx, cy = q2.pop()
-                component.append((cx, cy))
+            # Pass 1: flood fill from edges → removes outer white background
+            bg = set()
+            queue = []
+            for x in range(w):
+                for y in (0, h - 1):
+                    if (x, y) not in bg:
+                        r, g, b, a = px[x, y]
+                        if r > THRESH and g > THRESH and b > THRESH:
+                            bg.add((x, y)); queue.append((x, y))
+            for y in range(h):
+                for x in (0, w - 1):
+                    if (x, y) not in bg:
+                        r, g, b, a = px[x, y]
+                        if r > THRESH and g > THRESH and b > THRESH:
+                            bg.add((x, y)); queue.append((x, y))
+            while queue:
+                cx, cy = queue.pop()
+                px[cx, cy] = (px[cx, cy][0], px[cx, cy][1], px[cx, cy][2], 0)
                 for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
                     nx, ny = cx + dx, cy + dy
-                    if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in bg and (nx, ny) not in seen:
-                        r2, g2, b2, a2 = px[nx, ny]
-                        if r2 > THRESH and g2 > THRESH and b2 > THRESH and a2 > 0:
-                            seen.add((nx, ny)); q2.append((nx, ny))
-            if len(component) > hole_threshold:
-                # Large region = donut hole → transparent
-                for cx, cy in component:
-                    px[cx, cy] = (px[cx, cy][0], px[cx, cy][1], px[cx, cy][2], 0)
-            # Small region = text → leave it (opacity applied below)
+                    if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in bg:
+                        r, g, b, a = px[nx, ny]
+                        if r > THRESH and g > THRESH and b > THRESH:
+                            bg.add((nx, ny)); queue.append((nx, ny))
 
-    # ── Apply opacity to all remaining visible pixels ────────────────────────
-    data = list(wm.getdata())
-    wm.putdata([(r, g, b, int(a * WATERMARK_OPACITY)) for r, g, b, a in data])
-    _watermark_cache = wm
-    return _watermark_cache
+            # Pass 2: large enclosed white regions = donut hole → transparent
+            # Small white regions = text → keep
+            seen = set()
+            hole_threshold = (w * h) * 0.005
+            for sy in range(h):
+                for sx in range(w):
+                    if (sx, sy) in bg or (sx, sy) in seen:
+                        continue
+                    r, g, b, a = px[sx, sy]
+                    if not (r > THRESH and g > THRESH and b > THRESH and a > 0):
+                        continue
+                    component = []
+                    q2 = [(sx, sy)]
+                    seen.add((sx, sy))
+                    while q2:
+                        cx, cy = q2.pop()
+                        component.append((cx, cy))
+                        for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
+                            nx, ny = cx + dx, cy + dy
+                            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in bg and (nx, ny) not in seen:
+                                r2, g2, b2, a2 = px[nx, ny]
+                                if r2 > THRESH and g2 > THRESH and b2 > THRESH and a2 > 0:
+                                    seen.add((nx, ny)); q2.append((nx, ny))
+                    if len(component) > hole_threshold:
+                        for cx, cy in component:
+                            px[cx, cy] = (px[cx, cy][0], px[cx, cy][1], px[cx, cy][2], 0)
+
+            data = list(wm.getdata())
+            wm.putdata([(r, g, b, int(a * WATERMARK_OPACITY)) for r, g, b, a in data])
+            _watermark_cache = wm
+            print("Watermark ready.")
+        except Exception as e:
+            print(f"Watermark load failed: {e} — photos will serve without watermark")
+            _watermark_cache = False  # False = tried and failed, don't retry
+        return _watermark_cache if _watermark_cache else None
 
 def apply_watermark(img, size="medium"):
     wm = get_watermark()
