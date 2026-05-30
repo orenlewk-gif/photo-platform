@@ -1,3 +1,4 @@
+import threading
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -186,7 +187,6 @@ def get_model():
     return model, processor
 
 # Pre-load CLIP in background so it's ready before the first search request
-import threading
 threading.Thread(target=get_model, daemon=True).start()
 
 if os.path.exists("images.json"):
