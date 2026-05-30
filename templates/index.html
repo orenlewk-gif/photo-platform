@@ -586,6 +586,9 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .lb-info { margin-top:14px; text-align:center; color:rgba(255,255,255,.8); font-size:.9rem; line-height:1.7; }
 .lb-filename { color:rgba(255,255,255,.35); font-size:.74rem; margin-top:4px; }
 .lb-counter  { margin-top:10px; color:rgba(255,255,255,.28); font-size:.74rem; letter-spacing:1px; }
+.lb-upsell { margin-top:12px; text-align:center; font-size:.82rem; line-height:1.6; color:rgba(255,255,255,.75); max-width:540px; }
+.lb-upsell .upsell-line { margin:2px 0; }
+.lb-upsell .upsell-prints { color:#4ade80; font-size:.8rem; margin-top:4px; }
 </style>
 </head>
 <body>
@@ -679,7 +682,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
-  <span>🎉 Your digital photos include <strong>50% off prints</strong> — hover any photo and tap Quick Shop to add them.</span>
+  <span>🎉 Your selected digital photos include <strong>50% off prints</strong> for those specific photos — hover a photo and tap Quick Shop to add prints.</span>
   <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
 </div>
 
@@ -802,6 +805,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
     <div class="lb-info"    id="lb-info"></div>
     <div class="lb-filename" id="lb-fn"></div>
     <div class="lb-counter"  id="lb-ct"></div>
+    <div class="lb-upsell"   id="lb-upsell"></div>
   </div>
 </div>
 
@@ -810,9 +814,79 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 let allPhotos      = [];
 let imgCache       = {};
 let cur            = 0;
-let selectedPhotos = new Set();   // stores photo indices
+let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
 let currentPricing = null;
-let lockedTier     = null;        // tier the customer chose in Quick Shop
+let lockedTier     = null;        // tier the customer chose in Quick Shop (current folder)
+
+// ── Per-folder cart ──
+// Key = "date||location||family"; each entry holds that folder's selections/package/prints
+let folderCarts       = {};
+let currentFolderKey  = null;    // key for the gallery currently being viewed
+let currentFolderLabel = '';     // display name (e.g. "Mountain Biking")
+
+// ── Folder-cart helpers ──
+function getFolderKey(date, location, family) {
+  return [date, location, family].filter(Boolean).join('||');
+}
+
+// Save the current gallery's selections/package/prints into folderCarts
+function saveCurrentFolder() {
+  if (!currentFolderKey) return;
+  const photos = [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean);
+  if (!photos.length && !printCart.length && !lockedTier) {
+    // Nothing here — remove stale entry so the cart view stays clean
+    delete folderCarts[currentFolderKey];
+    return;
+  }
+  folderCarts[currentFolderKey] = {
+    selectedPaths:  photos.map(p => p.path),
+    selectedPhotos: photos,   // full objects needed for cart-view thumbnails
+    lockedTier:     lockedTier ? { ...lockedTier } : null,
+    printCart:      JSON.parse(JSON.stringify(printCart)),
+    pricing:        currentPricing,
+    label:          currentFolderLabel,
+  };
+}
+
+// Restore a folder's state (or start fresh) when entering a gallery
+function loadFolderData(key, photos) {
+  const saved = folderCarts[key];
+  selectedPhotos = new Set();
+  printCart      = [];
+  lockedTier     = null;
+  if (!saved) return;
+  saved.selectedPaths.forEach(path => {
+    const idx = photos.findIndex(p => p.path === path);
+    if (idx !== -1) selectedPhotos.add(idx);
+  });
+  printCart  = JSON.parse(JSON.stringify(saved.printCart  || []));
+  lockedTier = saved.lockedTier ? { ...saved.lockedTier } : null;
+}
+
+// Price calculator that accepts an explicit pricing object (for cross-folder totals)
+function calcPriceFor(count, pricing) {
+  if (!pricing || !pricing.tiers || count === 0) return 0;
+  const tiers      = pricing.tiers;
+  const allTier    = tiers.find(t => t.count === 'all');
+  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+  const singleTier = tiers.find(t => t.count === 1);
+  const singleUnit = singleTier ? singleTier.price : 25;
+  let best = count * singleUnit;
+  const bundles = tiers
+    .filter(t => !t.max && typeof t.count === 'number' && t.count > 1 && t.count <= count)
+    .sort((a, b) => b.count - a.count);
+  for (const tier of bundles) {
+    const cost = Math.floor(count / tier.count) * tier.price + (count % tier.count) * singleUnit;
+    if (cost < best) best = cost;
+  }
+  if (maxTiers.length) {
+    const cap = maxTiers.find(t => count <= t.count);
+    if (cap && cap.price < best) best = cap.price;
+  } else if (allTier && best > allTier.price) {
+    best = allTier.price;
+  }
+  return best;
+}
 
 // ── History-aware navigation ──
 function navigate(state, replace = false) {
@@ -849,12 +923,12 @@ const CART_TTL = 7 * 24 * 60 * 60 * 1000;
 
 function saveCart() {
   try {
+    saveCurrentFolder();   // flush current gallery state before persisting
     localStorage.setItem(CART_KEY, JSON.stringify({
-      ts:            Date.now(),
+      ts: Date.now(),
       frameCart,
-      printCart,
-      lockedTier,
-      selectedPaths: [...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean),
+      folderCarts,
+      currentFolderKey,
     }));
   } catch(e) {}
 }
@@ -865,12 +939,16 @@ function loadCart() {
     if (!raw) return;
     const data = JSON.parse(raw);
     if (Date.now() - data.ts > CART_TTL) { localStorage.removeItem(CART_KEY); return; }
-    frameCart  = data.frameCart  || [];
-    printCart  = data.printCart  || [];
-    lockedTier = data.lockedTier || null;
-    window._savedPhotoPaths = data.selectedPaths || [];
+    frameCart   = data.frameCart   || [];
+    folderCarts = data.folderCarts || {};
+    // Legacy format: had flat selectedPaths — migrate silently
+    if (!data.folderCarts && data.selectedPaths) {
+      window._savedPhotoPaths = data.selectedPaths;
+      printCart  = data.printCart  || [];
+      lockedTier = data.lockedTier || null;
+    }
     updateHeaderCartBtn();
-    if (frameCart.length || printCart.length || window._savedPhotoPaths.length) updateCart();
+    if (frameCart.length) updateCart();
   } catch(e) {}
 }
 
@@ -1020,8 +1098,14 @@ async function showGallery(date, location, family, ln) {
   currentPricing = await pRes.json();
 
   hideSpinner();
+
+  // ── Folder-cart: save previous folder, then load this folder's saved state ──
+  saveCurrentFolder();
+  currentFolderKey   = getFolderKey(date, location, family);
+  currentFolderLabel = family || location || 'Gallery';
   allPhotos = photos;
-  selectedPhotos = new Set();
+  loadFolderData(currentFolderKey, photos);
+
   showView('gallery');
   setBreadcrumb(crumbs, title);
   // Only show last name search for portrait/family galleries
@@ -1048,7 +1132,12 @@ async function showGallery(date, location, family, ln) {
     <div class="gallery" id="gallery" style="--cols:6"></div>`;
 
   renderThumbs(photos);
-  restoreSelectedPhotos();
+  // Re-highlight any photos that were already selected in this folder
+  selectedPhotos.forEach(idx => {
+    const card = document.querySelector(`.thumb-card[data-idx="${idx}"]`);
+    if (card) card.classList.add('selected');
+  });
+  if (selectedPhotos.size > 0 || printCart.length > 0 || lockedTier) updateCart();
   const filterInput = el.querySelector('#filter-input');
   if (filterInput) filterInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') runFilter(date||'', location||'');
@@ -1352,23 +1441,24 @@ function adjustFrameCartQty(idx, delta) {
   renderCartView();
 }
 
-// Used on view navigation — preserves frame cart across browse
+// Clears current folder's photo selections only (preserves frame cart and other folders)
 function clearPhotoCart() {
   selectedPhotos.clear();
-  printCart = [];
+  printCart  = [];
   lockedTier = null;
+  if (currentFolderKey) delete folderCarts[currentFolderKey];
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.getElementById('print-upsell-banner').classList.remove('show');
   updateCart();
 }
 
-// Full clear — used by the "Clear" button only
+// Full clear — used by the "Clear" button only (wipes everything including other folders)
 function clearCart() {
   selectedPhotos.clear();
-  printCart = [];
-  frameCart = [];
-  lockedTier = null;
-  window._savedPhotoPaths = [];
+  printCart    = [];
+  frameCart    = [];
+  lockedTier   = null;
+  folderCarts  = {};
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('print-upsell-banner').classList.remove('show');
@@ -1421,63 +1511,65 @@ function getUpsellMsg(count) {
     const need = lockedTier.count - count;
     return `📷 Select <strong>${need} more photo${need!==1?'s':''}</strong> to complete your <strong>${lockedTier.label} package — $${lockedTier.price}</strong>`;
   }
-  const tiers = currentPricing.tiers;
-  const total = allPhotos.length;
+
+  const tiers    = currentPricing.tiers;
   const curPrice = calcPrice(count);
 
-  const maxTiers = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+  // Build all candidates: every tier with a count above current
+  const candidates = [];
+  tiers.forEach(t => {
+    if (t.count === 'all') return;
+    const tCount = typeof t.count === 'number' ? t.count : null;
+    if (!tCount || tCount <= count) return;
+    // What would the customer actually pay for tCount photos?
+    const nextPrice = t.max ? t.price : calcPrice(tCount);
+    candidates.push({
+      count:   tCount,
+      price:   nextPrice,
+      extra:   nextPrice - curPrice,
+      more:    tCount - count,
+      isMax:   !!t.max,
+    });
+  });
 
-  if (maxTiers.length) {
-    // Already at the top tier
-    const topTier = maxTiers[maxTiers.length - 1];
-    if (count >= topTier.count) return '';
+  if (!candidates.length) return '';
 
-    // Find the next max tier above current count
-    const nextMax = maxTiers.find(t => t.count > count);
-    if (nextMax) {
-      const extra = nextMax.price - curPrice;
-      const more  = nextMax.count - count;
-      if (extra > 0 && extra < curPrice) {
-        return `💡 Add up to <strong>${more} more</strong> for only <strong>$${extra} extra</strong> → Up to ${nextMax.count} photos for $${nextMax.price}`;
-      }
-    }
-    return '';
+  // Sort: cheapest extra first, then by proximity
+  candidates.sort((a, b) => a.extra - b.extra || a.more - b.more);
+
+  // 1. If adding photos actually saves money, surface that first
+  const saveTier = candidates.find(c => c.extra < 0);
+  if (saveTier) {
+    return `🌟 Add <strong>${saveTier.more} more photo${saveTier.more!==1?'s':''}</strong> and <strong>save $${Math.abs(saveTier.extra)}</strong> → ${saveTier.isMax?'up to ':''}${saveTier.count} photos for $${saveTier.price}`;
   }
 
-  // Original logic for all/bundle tiers
-  const nextTier = tiers
-    .filter(t => typeof t.count === 'number' && !t.max && t.count > count)
-    .sort((a, b) => a.count - b.count)[0];
-  if (nextTier) {
-    const extra = nextTier.price - curPrice;
-    const more  = nextTier.count - count;
-    if (extra > 0 && extra <= curPrice) {
-      return `💡 Add <strong>${more} more</strong> for only <strong>$${extra} extra</strong> → ${nextTier.count} photos for $${nextTier.price}`;
-    }
-  }
-
-  const allTier = tiers.find(t => t.count === 'all');
-  if (allTier && count < total) {
-    const extra = allTier.price - curPrice;
-    if (extra > 0 && extra < curPrice) {
-      return `🌟 Upgrade to <strong>all ${total} photos</strong> for just <strong>$${extra} more</strong> → $${allTier.price}`;
-    }
+  // 2. Otherwise show the nearest (lowest extra) tier — this correctly steps 1→3, 3→5, etc.
+  candidates.sort((a, b) => a.more - b.more);
+  const nearest = candidates[0];
+  if (nearest && nearest.extra > 0) {
+    return `💡 Add <strong>${nearest.more} more photo${nearest.more!==1?'s':''}</strong> for only <strong>$${nearest.extra} extra</strong> → ${nearest.isMax?'up to ':''}${nearest.count} photos for $${nearest.price}`;
   }
 
   return '';
 }
 
 function recalcPrintPrices() {
-  const hasDigitals = selectedPhotos.size > 0;
+  // Half price only if the specific photo for this print is also selected as a digital
   printCart.forEach(p => {
     const base = PRINT_SIZES[p.sizeIdx].price;
-    p.price = hasDigitals ? base / 2 : base;
+    p.price = selectedPhotos.has(p.photoIdx) ? base / 2 : base;
   });
 }
 
 function updateHeaderCartBtn() {
-  const total = selectedPhotos.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
-  const cnt   = document.getElementById('header-cart-count');
+  // Current folder (live) + all other saved folders + frames
+  let total = selectedPhotos.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
+  Object.entries(folderCarts).forEach(([key, fc]) => {
+    if (key !== currentFolderKey) {
+      total += (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0);
+    }
+  });
+  const cnt = document.getElementById('header-cart-count');
   if (cnt) cnt.textContent = total;
 }
 
@@ -1509,7 +1601,14 @@ function updateCart() {
   if (frameQty > 0) summary.push(`${frameQty} frame${frameQty!==1?'s':''}`);
   document.getElementById('cart-count-text').textContent = summary.join(' + ') + (summary.length > 0 ? ' selected' : '');
   document.getElementById('cart-price-text').textContent = `$${total}`;
-  document.getElementById('cart-upsell-text').innerHTML  = count > 0 ? getUpsellMsg(count) : (printCount > 0 ? '💡 Add digital files to get <strong>50% off</strong> all prints!' : '');
+  // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
+  const printsWithoutDigital = printCart.filter(p => !selectedPhotos.has(p.photoIdx));
+  const cartUpsell = count > 0
+    ? getUpsellMsg(count)
+    : (printsWithoutDigital.length > 0
+        ? `💡 Select a photo's digital file to get <strong>50% off</strong> its print!`
+        : '');
+  document.getElementById('cart-upsell-text').innerHTML = cartUpsell;
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
   saveCart();
@@ -1560,61 +1659,106 @@ function closeCartView() {
 }
 
 function renderCartView() {
-  const digitalCount = selectedPhotos.size;
-  const digitalPrice = calcPrice(digitalCount);
-  const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const total        = digitalPrice + printPrice;
+  // Flush current folder so the view is accurate
+  saveCurrentFolder();
+
   let html = '';
+  let grandDigitalPrice = 0;
+  let grandPrintPrice   = 0;
 
-  // Digital photos section
-  if (digitalCount > 0) {
-    const photos = [...selectedPhotos].map(i => allPhotos[i]);
-    html += `<div class="cartview-section-label">Digital Photos (${digitalCount}) — $${digitalPrice}</div>`;
-    html += `<div class="cartview-photo-grid">`;
-    photos.forEach(p => {
-      const src = imgCache[p.path] || '';
-      html += `<div class="cartview-thumb">
-        <img src="${src}" alt="${p.filename}" />
-        <button class="cv-remove" onclick="deSelectPhotoByPath('${escQ(p.path)}')" title="Remove">✕</button>
-      </div>`;
-    });
-    html += `</div>`;
-  }
+  // ── Gather all folders that have content ──
+  const allKeys = Object.keys(folderCarts).filter(k => {
+    const fc = folderCarts[k];
+    return (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0;
+  });
+  // Current folder first, then others
+  const orderedKeys = [
+    ...(currentFolderKey && folderCarts[currentFolderKey] ? [currentFolderKey] : []),
+    ...allKeys.filter(k => k !== currentFolderKey),
+  ];
 
-  // Prints section
-  if (printCart.length > 0) {
-    html += `<div class="cartview-section-label">Prints</div>`;
-    printCart.forEach((p, idx) => {
-      html += `
-      <div style="border-bottom:1px solid rgba(255,255,255,0.07);padding:0.65rem 0;">
-        <div class="cartview-print-row" style="border-bottom:none;padding:0 0 0.4rem 0;">
-          <div class="cartview-print-info">
-            <div class="cv-size" style="margin-bottom:5px;">${p.filename}</div>
-            <select style="font-size:0.82rem;padding:0.28rem 0.55rem;width:auto;"
-                    onchange="changePrintSize(${idx}, this.value)">
-              ${buildSizeOptions(p.sizeIdx)}
-            </select>
-          </div>
-          <span class="cartview-print-price">$${p.price}</span>
-          <button class="cartview-rm-btn" onclick="removePrintFromCart(${idx})">Remove</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:0.75rem;padding-top:0.35rem;">
-          <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);white-space:nowrap;">Frame</div>
-          <select style="font-size:0.82rem;padding:0.28rem 0.55rem;flex:1;"
-                  onchange="changePrintFrame(${idx}, this.value)">
-            ${buildFrameOptions(p.frame, p.sizeIdx)}
-          </select>
-          <span class="cartview-print-price" style="font-size:0.88rem;min-width:36px;text-align:right;">
-            ${p.framePrice > 0 ? '$' + p.framePrice : '—'}
-          </span>
-        </div>
-      </div>`;
-    });
-  }
+  orderedKeys.forEach(key => {
+    const fc = folderCarts[key];
+    const isCurrent      = key === currentFolderKey;
+    const label          = fc.label || key;
+    const digitalCount   = fc.selectedPaths?.length || 0;
+    const folderPricing  = isCurrent ? currentPricing : fc.pricing;
+    const digitalPrice   = calcPriceFor(digitalCount, folderPricing);
+    const folderPrints   = isCurrent ? printCart : (fc.printCart || []);
+    const printPrice     = folderPrints.reduce((s, p) => s + p.price + p.framePrice, 0);
 
-  // Frames section
+    grandDigitalPrice += digitalPrice;
+    grandPrintPrice   += printPrice;
+
+    if (!digitalCount && !folderPrints.length) return;
+
+    html += `<div class="cartview-section-label" style="margin-top:${html?'1.4rem':'0'}">${label}</div>`;
+
+    if (digitalCount > 0) {
+      html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}</div>`;
+      html += `<div class="cartview-photo-grid">`;
+      const photos = isCurrent
+        ? [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean)
+        : (fc.selectedPhotos || []);
+      photos.forEach(p => {
+        const src = imgCache[p.path] || '';
+        html += `<div class="cartview-thumb">
+          <img src="${src}" alt="${p.filename}" />
+          <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
+        </div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Prints within this folder
+    if (folderPrints.length > 0) {
+      if (isCurrent) {
+        html += `<div style="margin-top:0.75rem;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);">Prints</div>`;
+        folderPrints.forEach((p, idx) => {
+          html += `
+          <div style="border-bottom:1px solid rgba(255,255,255,0.07);padding:0.65rem 0;">
+            <div class="cartview-print-row" style="border-bottom:none;padding:0 0 0.4rem 0;">
+              <div class="cartview-print-info">
+                <div class="cv-size" style="margin-bottom:5px;">${p.filename}</div>
+                <select style="font-size:0.82rem;padding:0.28rem 0.55rem;width:auto;"
+                        onchange="changePrintSize(${idx}, this.value)">
+                  ${buildSizeOptions(p.sizeIdx, p.photoIdx)}
+                </select>
+              </div>
+              <span class="cartview-print-price">$${p.price}</span>
+              <button class="cartview-rm-btn" onclick="removePrintFromCart(${idx})">Remove</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.75rem;padding-top:0.35rem;">
+              <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);white-space:nowrap;">Frame</div>
+              <select style="font-size:0.82rem;padding:0.28rem 0.55rem;flex:1;"
+                      onchange="changePrintFrame(${idx}, this.value)">
+                ${buildFrameOptions(p.frame, p.sizeIdx)}
+              </select>
+              <span class="cartview-print-price" style="font-size:0.88rem;min-width:36px;text-align:right;">
+                ${p.framePrice > 0 ? '$' + p.framePrice : '—'}
+              </span>
+            </div>
+          </div>`;
+        });
+      } else {
+        // Other folders: simplified, read-only view
+        html += `<div style="margin-top:0.75rem;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);">Prints</div>`;
+        folderPrints.forEach(p => {
+          html += `<div class="cartview-print-row">
+            <div class="cartview-print-info">
+              <div class="cv-size">${p.size} Print</div>
+              <div class="cv-frame">${p.filename}${p.frame && p.frame !== 'No Frame' ? ' + Frame' : ''}</div>
+            </div>
+            <span class="cartview-print-price">$${p.price + p.framePrice}</span>
+          </div>`;
+        });
+      }
+    }
+  }); // end orderedKeys.forEach
+
+  // ── Frames (not folder-specific) ──
   if (frameCart.length > 0) {
-    html += `<div class="cartview-section-label">Frames</div>`;
+    html += `<div class="cartview-section-label" style="margin-top:${html?'1.4rem':'0'}">Frames</div>`;
     frameCart.forEach((f, idx) => {
       html += `<div class="cartview-frame-row">
         <div style="flex:1;">
@@ -1633,23 +1777,16 @@ function renderCartView() {
   }
 
   const frameTotal = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
-  const grandTotal = total + frameTotal + calcShipping();
+  const grandTotal = grandDigitalPrice + grandPrintPrice + frameTotal + calcShipping();
 
   if (!html) html = '<div class="msg" style="padding:1rem 0">Your cart is empty.</div>';
 
   document.getElementById('cartview-body').innerHTML = html;
   document.getElementById('cartview-total-price').textContent = `$${grandTotal}`;
 
-  // Load any missing thumbnails
-  [...selectedPhotos].map(i => allPhotos[i]).forEach(p => {
-    if (!imgCache[p.path]) {
-      loadPhoto(p.path).then(() => {
-        const imgs = document.querySelectorAll('#cartview-body .cartview-thumb img');
-        imgs.forEach(img => {
-          if (img.src === '' && imgCache[p.path]) img.src = imgCache[p.path];
-        });
-      });
-    }
+  // Load any missing thumbnails for current folder
+  [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean).forEach(p => {
+    if (!imgCache[p.path]) loadPhoto(p.path);
   });
 }
 
@@ -1661,6 +1798,18 @@ function deSelectPhotoByPath(path) {
   }
 }
 
+// Remove a digital photo from a non-current folder's cart
+function removeFolderDigital(key, path) {
+  const fc = folderCarts[key];
+  if (!fc) return;
+  fc.selectedPaths  = (fc.selectedPaths  || []).filter(p => p !== path);
+  fc.selectedPhotos = (fc.selectedPhotos || []).filter(p => p.path !== path);
+  if (!fc.selectedPaths.length && !fc.printCart?.length) delete folderCarts[key];
+  updateHeaderCartBtn();
+  renderCartView();
+  saveCart();
+}
+
 function removePrintFromCart(idx) {
   printCart.splice(idx, 1);
   updateCart();
@@ -1670,11 +1819,11 @@ function removePrintFromCart(idx) {
 
 function changePrintSize(idx, newSizeIdx) {
   newSizeIdx = parseInt(newSizeIdx);
-  const hasDigitals = selectedPhotos.size > 0;
-  const basePrice = PRINT_SIZES[newSizeIdx].price;
+  const basePrice   = PRINT_SIZES[newSizeIdx].price;
+  const photoSelected = selectedPhotos.has(printCart[idx].photoIdx);
   printCart[idx].sizeIdx = newSizeIdx;
   printCart[idx].size    = PRINT_SIZES[newSizeIdx].label;
-  printCart[idx].price   = hasDigitals ? basePrice / 2 : basePrice;
+  printCart[idx].price   = photoSelected ? basePrice / 2 : basePrice;
   const frameOpt = FRAME_OPTIONS.find(f => f.label === printCart[idx].frame);
   if (frameOpt && frameOpt.priceKey > 0) {
     printCart[idx].framePrice = FRAME_PRICES[newSizeIdx];
@@ -1694,10 +1843,11 @@ function changePrintFrame(idx, newFrameIdx) {
   if (document.getElementById('checkout-overlay').classList.contains('open'))   renderCheckoutLines();
 }
 
-function buildSizeOptions(currentSizeIdx) {
-  const hasDigitals = selectedPhotos.size > 0;
+function buildSizeOptions(currentSizeIdx, photoIdx) {
+  // Half price only if the specific photo is also selected as a digital
+  const halfPrice = photoIdx != null ? selectedPhotos.has(photoIdx) : false;
   return PRINT_SIZES.map((s, si) => {
-    const price = hasDigitals ? s.price / 2 : s.price;
+    const price = halfPrice ? s.price / 2 : s.price;
     return `<option value="${si}" ${si === currentSizeIdx ? 'selected' : ''}>${s.label} — $${price}</option>`;
   }).join('');
 }
@@ -1770,9 +1920,18 @@ function calcShipping() {
 }
 
 function renderCheckoutLines() {
-  const count      = selectedPhotos.size;
-  const digPrice   = calcPrice(count);
-  const printPrice = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  // Use cross-folder totals for checkout display
+  saveCurrentFolder();
+  let digCount = 0, digPrice = 0, allCheckoutPrints = [];
+  Object.entries(folderCarts).forEach(([key, fc]) => {
+    const pricing = key === currentFolderKey ? currentPricing : fc.pricing;
+    const n = fc.selectedPaths?.length || 0;
+    digCount += n;
+    digPrice += calcPriceFor(n, pricing);
+    const prints = key === currentFolderKey ? printCart : (fc.printCart || []);
+    allCheckoutPrints.push(...prints);
+  });
+  const printPrice = allCheckoutPrints.reduce((s, p) => s + p.price + p.framePrice, 0);
   const framePrice = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
   const shipping   = calcShipping();
   const subtotal   = digPrice + printPrice + framePrice;
@@ -1780,28 +1939,30 @@ function renderCheckoutLines() {
 
   // ── items section ──────────────────────────────────────────────────────────
   let linesHtml = '';
-  if (count > 0) {
+  if (digCount > 0) {
     linesHtml += `<div class="order-line">
-      <span class="label">Digital Photos (${count})</span>
+      <span class="label">Digital Photos (${digCount})</span>
       <span class="value">$${digPrice}</span>
     </div>`;
   }
 
-  printCart.forEach((p, idx) => {
+  // Only show editable print rows for current folder; others are read-only
+  allCheckoutPrints.forEach((p, idx) => {
+    const isCurrentFolderPrint = idx < printCart.length;
     linesHtml += `<div class="order-line-print">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;">
         <div style="flex:1;">
           <div style="font-size:0.78rem;color:rgba(255,255,255,0.4);margin-bottom:6px;">${p.filename}</div>
-          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+          ${isCurrentFolderPrint ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
             <select style="font-size:0.8rem;padding:0.3rem 0.5rem;width:auto;border-radius:6px;"
                     onchange="changePrintSize(${idx}, this.value)">
-              ${buildSizeOptions(p.sizeIdx)}
+              ${buildSizeOptions(p.sizeIdx, p.photoIdx)}
             </select>
             <select style="font-size:0.8rem;padding:0.3rem 0.5rem;flex:1;min-width:140px;border-radius:6px;"
                     onchange="changePrintFrame(${idx}, this.value)">
               ${buildFrameOptions(p.frame, p.sizeIdx)}
             </select>
-          </div>
+          </div>` : `<div style="font-size:0.85rem;color:rgba(255,255,255,0.6);">${p.size}${p.frame && p.frame !== 'No Frame' ? ' + Frame' : ''}</div>`}
         </div>
         <span style="font-weight:600;white-space:nowrap;padding-top:2px;">$${p.price + p.framePrice}</span>
       </div>
@@ -1863,17 +2024,34 @@ async function submitToWooCommerce() {
   btn.textContent = 'Processing…';
   btn.disabled = true;
 
-  const count  = selectedPhotos.size;
-  const photos = [...selectedPhotos].map(i => allPhotos[i]);
-  const loc    = photos[0]?.location || allPhotos[printCart[0]?.photoIdx]?.location || '';
-  const date   = photos[0]?.date     || allPhotos[printCart[0]?.photoIdx]?.date     || '';
+  // Flush current folder before building payload
+  saveCurrentFolder();
+
+  // Combine all folders' digital photos
+  const allDigitalPhotos = [];
+  let   allDigitalPrice  = 0;
+  const allPrints        = [];
+
+  Object.entries(folderCarts).forEach(([key, fc]) => {
+    const photos   = fc.selectedPhotos || [];
+    const pricing  = key === currentFolderKey ? currentPricing : fc.pricing;
+    allDigitalPhotos.push(...photos);
+    allDigitalPrice += calcPriceFor(photos.length, pricing);
+    const prints = key === currentFolderKey ? printCart : (fc.printCart || []);
+    allPrints.push(...prints);
+  });
+
+  const count  = allDigitalPhotos.length;
+  const photos = allDigitalPhotos;
+  const loc    = photos[0]?.location || allPhotos[allPrints[0]?.photoIdx]?.location || '';
+  const date   = photos[0]?.date     || allPhotos[allPrints[0]?.photoIdx]?.date     || '';
 
   const payload = {
     digital_count:     count,
-    digital_price:     calcPrice(count),
+    digital_price:     allDigitalPrice,
     digital_filenames: photos.map(p => p.filename),
     digital_paths:     photos.map(p => p.path),
-    prints: printCart.map(p => ({
+    prints: allPrints.map(p => ({
       filename:       p.filename,
       size:           p.size,
       size_idx:       p.sizeIdx,
@@ -1997,11 +2175,23 @@ async function renderLB() {
 }
 
 function updateLBSelectBtn() {
-  const btn = document.getElementById('lb-select-btn');
+  const btn    = document.getElementById('lb-select-btn');
+  const upsell = document.getElementById('lb-upsell');
   if (!btn) return;
   const isSelected = selectedPhotos.has(cur);
   btn.textContent = isSelected ? '✓ Selected' : '+ Add to Selection';
   btn.classList.toggle('selected-btn', isSelected);
+
+  if (!upsell) return;
+  if (!isSelected) { upsell.innerHTML = ''; return; }
+
+  const count   = selectedPhotos.size;
+  const upMsg   = getUpsellMsg(count);
+  let html = '';
+  if (upMsg) html += `<div class="upsell-line">${upMsg}</div>`;
+  html += `<div class="upsell-prints">50% off prints for photos you've selected digitally</div>`;
+  html += `<div class="upsell-prints">Free shipping when you order 3+ prints</div>`;
+  upsell.innerHTML = html;
 }
 
 function toggleSelectFromLB() {
@@ -2077,7 +2267,8 @@ let selectedFrameIdx = 0;
 // ── Quick Shop ──
 function openQuickShop(i) {
   const photo       = allPhotos[i];
-  const hasDigitals = selectedPhotos.size > 0;
+  // Half-price prints only if THIS specific photo has been selected as a digital
+  const hasDigitals = selectedPhotos.has(i);
 
   const photoEl = document.getElementById('qs-photo');
   if (imgCache[photo.path]) {
