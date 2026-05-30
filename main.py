@@ -378,8 +378,12 @@ def _search(query, last_name, date, location):
         if text_embedding is not None:
             if item.get("embedding") is None:
                 continue
-            img_emb    = torch.tensor(item["embedding"])
-            similarity = torch.cosine_similarity(text_embedding, img_emb, dim=0).item()
+            img_emb    = torch.tensor(item["embedding"]).flatten()
+            similarity = torch.nn.functional.cosine_similarity(
+                text_embedding.flatten().unsqueeze(0),
+                img_emb.unsqueeze(0),
+                dim=1
+            ).item()
         else:
             similarity = 0.0
 
