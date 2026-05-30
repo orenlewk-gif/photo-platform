@@ -1622,7 +1622,23 @@ function updateCart() {
     : (printsWithoutDigital.length > 0
         ? `Select a photo's digital file to get <strong>50% off</strong> its print!`
         : '');
-  document.getElementById('cart-upsell-text').innerHTML = cartUpsell;
+  // Free shipping incentive for prints
+  let shippingMsg = '';
+  if (printCart.length > 0) {
+    const FREE_SHIP_THRESHOLD = 3;
+    const need = FREE_SHIP_THRESHOLD - printCart.length;
+    if (need > 0) {
+      shippingMsg = `Add <strong>${need} more print${need !== 1 ? 's' : ''}</strong> for <strong>free shipping</strong>`;
+    } else {
+      shippingMsg = `Free shipping included on your prints!`;
+    }
+  }
+  const upsellEl = document.getElementById('cart-upsell-text');
+  if (cartUpsell && shippingMsg) {
+    upsellEl.innerHTML = cartUpsell + `<span style="margin:0 8px;opacity:0.35;">|</span>` + shippingMsg;
+  } else {
+    upsellEl.innerHTML = cartUpsell || shippingMsg;
+  }
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
   saveCart();
