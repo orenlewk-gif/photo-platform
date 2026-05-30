@@ -356,17 +356,13 @@ def _search(query, last_name, date, location):
         m, p = get_model()
         inputs = p(text=[query], return_tensors="pt", padding=True)
         with torch.no_grad():
-            feat = m.get_text_features(**inputs)
-            # get_text_features → (batch, 512); safely extract 1-D (512,) vector
-            if feat.dim() == 1:
-                text_embedding = feat                   # already (512,)
-            elif feat.dim() == 2:
-                text_embedding = feat[0]                # (batch,512) → (512,)
-            elif feat.dim() == 3:
-                text_embedding = feat[0].mean(dim=0)   # (batch,tokens,512) → (512,)
-            else:
-                text_embedding = feat.reshape(-1)[:512]
-            text_embedding = text_embedding.float()
+            # Use text_model + text_projection directly — avoids API differences
+            # across transformers versions where get_text_features may return
+            # a BaseModelOutputWithPooling object instead of a plain tensor.
+            text_out  = m.text_model(**inputs)
+            pooled    = text_out.pooler_output          # (batch, hidden_dim)
+            feat      = m.text_projection(pooled)       # (batch, 512)
+            text_embedding = feat[0].float()            # (512,)
 
     ln_filter = last_name.strip().lower() if last_name else ""
 
