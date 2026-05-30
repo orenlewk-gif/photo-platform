@@ -1932,7 +1932,7 @@ const _imgObserver = new IntersectionObserver((entries) => {
     const img = entry.target;
     const path = img.dataset.path;
     if (path) {
-      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb&v=2`;
+      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb&v=3`;
       img.src = imgCache[path];
     }
     _imgObserver.unobserve(img);
@@ -1948,7 +1948,7 @@ function lazyLoad(container) {
 
 function loadPhoto(path) {
   if (imgCache[path]) return Promise.resolve(imgCache[path]);
-  const src = `/api/photo?path=${enc(path)}&size=thumb&v=2`;
+  const src = `/api/photo?path=${enc(path)}&size=thumb&v=3`;
   imgCache[path] = src;
   return Promise.resolve(src);
 }

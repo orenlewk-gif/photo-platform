@@ -63,27 +63,97 @@ def get_watermark():
     if not os.path.exists("watermark.png"):
         return None
     wm = Image.open("watermark.png").convert("RGBA")
-    pixels = list(wm.getdata())
-    new_pixels = []
-    for r, g, b, a in pixels:
-        if r > 210 and g > 210 and b > 210:
-            new_pixels.append((r, g, b, 0))
-        else:
-            new_pixels.append((r, g, b, int(a * WATERMARK_OPACITY)))
-    wm.putdata(new_pixels)
+    w, h = wm.size
+    px = wm.load()
+
+    THRESH = 230
+
+    # ── Pass 1: flood fill from edges → removes outer white background ──────
+    bg = set()
+    queue = []
+    for x in range(w):
+        for y in (0, h - 1):
+            if (x, y) not in bg:
+                r, g, b, a = px[x, y]
+                if r > THRESH and g > THRESH and b > THRESH:
+                    bg.add((x, y)); queue.append((x, y))
+    for y in range(h):
+        for x in (0, w - 1):
+            if (x, y) not in bg:
+                r, g, b, a = px[x, y]
+                if r > THRESH and g > THRESH and b > THRESH:
+                    bg.add((x, y)); queue.append((x, y))
+    while queue:
+        cx, cy = queue.pop()
+        px[cx, cy] = (px[cx, cy][0], px[cx, cy][1], px[cx, cy][2], 0)
+        for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
+            nx, ny = cx + dx, cy + dy
+            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in bg:
+                r, g, b, a = px[nx, ny]
+                if r > THRESH and g > THRESH and b > THRESH:
+                    bg.add((nx, ny)); queue.append((nx, ny))
+
+    # ── Pass 2: find remaining white regions (donut hole vs text) ───────────
+    # Large regions = donut hole → transparent. Small regions = text → keep.
+    seen = set()
+    hole_threshold = (w * h) * 0.005  # regions > 0.5% of image are holes
+    for sy in range(h):
+        for sx in range(w):
+            if (sx, sy) in bg or (sx, sy) in seen:
+                continue
+            r, g, b, a = px[sx, sy]
+            if not (r > THRESH and g > THRESH and b > THRESH and a > 0):
+                continue
+            # BFS this white region
+            component = []
+            q2 = [(sx, sy)]
+            seen.add((sx, sy))
+            while q2:
+                cx, cy = q2.pop()
+                component.append((cx, cy))
+                for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
+                    nx, ny = cx + dx, cy + dy
+                    if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in bg and (nx, ny) not in seen:
+                        r2, g2, b2, a2 = px[nx, ny]
+                        if r2 > THRESH and g2 > THRESH and b2 > THRESH and a2 > 0:
+                            seen.add((nx, ny)); q2.append((nx, ny))
+            if len(component) > hole_threshold:
+                # Large region = donut hole → transparent
+                for cx, cy in component:
+                    px[cx, cy] = (px[cx, cy][0], px[cx, cy][1], px[cx, cy][2], 0)
+            # Small region = text → leave it (opacity applied below)
+
+    # ── Apply opacity to all remaining visible pixels ────────────────────────
+    data = list(wm.getdata())
+    wm.putdata([(r, g, b, int(a * WATERMARK_OPACITY)) for r, g, b, a in data])
     _watermark_cache = wm
     return _watermark_cache
 
-def apply_watermark(img):
+def apply_watermark(img, size="medium"):
     wm = get_watermark()
     if wm is None:
         return img
-    wm_size = int(min(img.width, img.height) * 0.50)
-    wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
     img_rgba = img.convert("RGBA")
-    x = (img.width  - wm_size) // 2
-    y = (img.height - wm_size) // 2
-    img_rgba.paste(wm_scaled, (x, y), wm_scaled)
+
+    if size == "thumb":
+        # Single watermark centred, 60% of shorter dimension
+        wm_size = int(min(img.width, img.height) * 0.60)
+        wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
+        x = (img.width  - wm_size) // 2
+        y = (img.height - wm_size) // 2
+        img_rgba.paste(wm_scaled, (x, y), wm_scaled)
+    else:
+        # Two watermarks side by side for enlarged view
+        wm_size = int(min(img.width, img.height) * 0.40)
+        gap     = int(wm_size * 0.20)
+        total_w = wm_size * 2 + gap
+        wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
+        y  = (img.height - wm_size) // 2
+        x1 = (img.width  - total_w) // 2
+        x2 = x1 + wm_size + gap
+        img_rgba.paste(wm_scaled, (x1, y), wm_scaled)
+        img_rgba.paste(wm_scaled, (x2, y), wm_scaled)
+
     return img_rgba.convert("RGB")
 
 def image_to_base64(img, max_size=1200):
@@ -366,7 +436,7 @@ def get_photo(path: str, size: str = Query("medium")):
             img = Image.open(obj["Body"]).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
-            img = apply_watermark(img)
+            img = apply_watermark(img, size)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
@@ -376,7 +446,7 @@ def get_photo(path: str, size: str = Query("medium")):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
-            img = apply_watermark(img)
+            img = apply_watermark(img, size)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
