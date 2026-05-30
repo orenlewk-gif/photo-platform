@@ -172,11 +172,15 @@ processor = None
 def get_model():
     global model, processor
     if model is None:
-        print("Loading CLIP model on first search request...")
+        print("Loading CLIP model...")
         model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-        print("Model loaded.")
+        print("CLIP model loaded.")
     return model, processor
+
+# Pre-load CLIP in background so it's ready before the first search request
+import threading
+threading.Thread(target=get_model, daemon=True).start()
 
 if os.path.exists("images.json"):
     with open("images.json", "r") as f:

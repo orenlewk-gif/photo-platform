@@ -660,7 +660,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       <div class="ln-bar-label">Find My Photos by Last Name</div>
       <input type="text" id="ln-input" placeholder="Enter your last name… e.g. Smith" />
     </div>
-    <button class="btn" id="ln-btn">🔍 Find My Photos</button>
+    <button class="btn" id="ln-btn">Find My Photos</button>
   </div>
 
   <div class="breadcrumb" id="breadcrumb"></div>
@@ -1041,7 +1041,6 @@ async function showGallery(date, location, family, ln) {
         <button class="btn" onclick="runFilter('${escQ(date||'')}','${escQ(location||'')}')">Filter</button>
       </div>` : ''}
       <div class="size-slider-wrap">
-        <span>🔍</span>
         <input type="range" id="size-slider" min="1" max="5" value="3" />
         <span>⊞</span>
       </div>
@@ -1102,7 +1101,7 @@ function renderThumbs(photos) {
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
       <div class="thumb-meta">
-        <span class="thumb-loc">📍 ${photo.location}</span>
+        <span class="thumb-loc">${photo.location}</span>
         <span class="thumb-date">${formatDate(photo.date)}</span>
       </div>`;
 
@@ -1525,14 +1524,29 @@ async function runFilter(date, location) {
   const q = document.getElementById('filter-input').value.trim();
   if (!q) { renderThumbs(allPhotos); return; }
   showSpinner();
-  let url = `/api/search?query=${enc(q)}`;
-  if (date)     url += `&date=${enc(date)}`;
-  if (location) url += `&location=${enc(location)}`;
-  const res  = await fetch(url);
-  const data = await res.json();
-  hideSpinner();
-  allPhotos = data.photos;
-  renderThumbs(data.photos);
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60000);
+    let url = `/api/search?query=${enc(q)}`;
+    if (date)     url += `&date=${enc(date)}`;
+    if (location) url += `&location=${enc(location)}`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error('Search failed');
+    const data = await res.json();
+    hideSpinner();
+    allPhotos = data.photos;
+    renderThumbs(data.photos);
+    if (!data.photos.length) {
+      document.getElementById('gallery').innerHTML = '<div class="msg">No photos found. Try different keywords.</div>';
+    }
+  } catch(e) {
+    hideSpinner();
+    const msg = e.name === 'AbortError'
+      ? 'Search is taking too long — the search engine may still be warming up. Please try again in a moment.'
+      : 'Search unavailable right now. Please try again.';
+    document.getElementById('gallery').innerHTML = `<div class="msg">${msg}</div>`;
+  }
 }
 
 // ── Cart View ──
@@ -1976,7 +1990,7 @@ async function renderLB() {
       pre.src = `/api/photo?path=${enc(p.path)}&size=medium`;
     }
   });
-  document.getElementById('lb-info').innerHTML = `📍 <strong>${photo.location}</strong> &nbsp;·&nbsp; 📅 ${formatDate(photo.date)}`;
+  document.getElementById('lb-info').innerHTML = `<strong>${photo.location}</strong> &nbsp;·&nbsp; ${formatDate(photo.date)}`;
   document.getElementById('lb-fn').textContent  = photo.filename;
   document.getElementById('lb-ct').textContent  = `${cur+1} / ${allPhotos.length}`;
   updateLBSelectBtn();
