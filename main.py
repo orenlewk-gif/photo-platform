@@ -346,10 +346,14 @@ def search(
     # Text embedding
     text_embedding = None
     if query:
-        m, p = get_model()
-        inputs = p(text=[query], return_tensors="pt", padding=True)
-        with torch.no_grad():
-            text_embedding = m.get_text_features(**inputs)[0]
+        try:
+            m, p = get_model()
+            inputs = p(text=[query], return_tensors="pt", padding=True)
+            with torch.no_grad():
+                text_embedding = m.get_text_features(**inputs)[0]
+        except Exception as e:
+            print(f"CLIP inference error: {e}")
+            return JSONResponse(status_code=503, content={"error": f"Search engine error: {e}"})
 
     ln_filter = last_name.strip().lower() if last_name else ""
 

@@ -1532,7 +1532,7 @@ async function runFilter(date, location) {
     if (location) url += `&location=${enc(location)}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) throw new Error('Search failed');
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || 'Search failed'); }
     const data = await res.json();
     hideSpinner();
     allPhotos = data.photos;
@@ -1544,7 +1544,7 @@ async function runFilter(date, location) {
     hideSpinner();
     const msg = e.name === 'AbortError'
       ? 'Search is taking too long — the search engine may still be warming up. Please try again in a moment.'
-      : 'Search unavailable right now. Please try again.';
+      : `Search unavailable: ${e.message}`;
     document.getElementById('gallery').innerHTML = `<div class="msg">${msg}</div>`;
   }
 }
