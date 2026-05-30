@@ -356,7 +356,17 @@ def _search(query, last_name, date, location):
         m, p = get_model()
         inputs = p(text=[query], return_tensors="pt", padding=True)
         with torch.no_grad():
-            text_embedding = m.get_text_features(**inputs)[0]
+            feat = m.get_text_features(**inputs)
+            # get_text_features → (batch, 512); safely extract 1-D (512,) vector
+            if feat.dim() == 1:
+                text_embedding = feat                   # already (512,)
+            elif feat.dim() == 2:
+                text_embedding = feat[0]                # (batch,512) → (512,)
+            elif feat.dim() == 3:
+                text_embedding = feat[0].mean(dim=0)   # (batch,tokens,512) → (512,)
+            else:
+                text_embedding = feat.reshape(-1)[:512]
+            text_embedding = text_embedding.float()
 
     ln_filter = last_name.strip().lower() if last_name else ""
 
@@ -374,16 +384,23 @@ def _search(query, last_name, date, location):
             if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
                 continue
 
-        # Score — skip portrait photos (no CLIP embedding) during descriptive search
+        # Score — skip photos with no CLIP embedding during descriptive search
         if text_embedding is not None:
             if item.get("embedding") is None:
                 continue
-            img_emb    = torch.tensor(item["embedding"]).flatten()
-            similarity = torch.nn.functional.cosine_similarity(
-                text_embedding.flatten().unsqueeze(0),
-                img_emb.unsqueeze(0),
-                dim=1
-            ).item()
+            img_emb = torch.tensor(item["embedding"]).float().reshape(-1)
+            t = text_embedding.reshape(-1)
+            # Pad / trim so shapes always match (both should be 512)
+            if t.shape[0] != img_emb.shape[0]:
+                min_dim = min(t.shape[0], img_emb.shape[0])
+                t = t[:min_dim]
+                img_emb = img_emb[:min_dim]
+            t_norm = t.norm()
+            i_norm = img_emb.norm()
+            if t_norm == 0 or i_norm == 0:
+                similarity = 0.0
+            else:
+                similarity = (t @ img_emb / (t_norm * i_norm)).item()
         else:
             similarity = 0.0
 
