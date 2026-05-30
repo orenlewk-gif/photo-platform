@@ -1532,7 +1532,7 @@ async function runFilter(date, location) {
     if (location) url += `&location=${enc(location)}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
-    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || 'Search failed'); }
+    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || e.detail || `HTTP ${res.status}`); }
     const data = await res.json();
     hideSpinner();
     allPhotos = data.photos;

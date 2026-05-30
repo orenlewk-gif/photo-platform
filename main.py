@@ -340,20 +340,23 @@ def search(
     date:      str  = Query(None),
     location:  str  = Query(None),
 ):
+    try:
+        return _search(query, last_name, date, location)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
+def _search(query, last_name, date, location):
     if not query and not last_name:
         return JSONResponse(status_code=400, content={"error": "Provide query or last_name"})
 
     # Text embedding
     text_embedding = None
     if query:
-        try:
-            m, p = get_model()
-            inputs = p(text=[query], return_tensors="pt", padding=True)
-            with torch.no_grad():
-                text_embedding = m.get_text_features(**inputs)[0]
-        except Exception as e:
-            print(f"CLIP inference error: {e}")
-            return JSONResponse(status_code=503, content={"error": f"Search engine error: {e}"})
+        m, p = get_model()
+        inputs = p(text=[query], return_tensors="pt", padding=True)
+        with torch.no_grad():
+            text_embedding = m.get_text_features(**inputs)[0]
 
     ln_filter = last_name.strip().lower() if last_name else ""
 
