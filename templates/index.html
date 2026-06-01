@@ -260,6 +260,11 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius:50%; width:26px; height:26px; font-size:14px; font-weight:bold;
   cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
+.print-upsell-banner .banner-view-btn {
+  background:#0c2336; color:#F5C518; border:none; border-radius:20px;
+  padding:4px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;
+  white-space:nowrap; flex-shrink:0;
+}
 
 /* Screenshot blackout overlay */
 #ss-block {
@@ -693,6 +698,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
   <span>🎉 Your selected digital photos include <strong>50% off prints</strong> for those specific photos — hover a photo and tap Quick Shop to add prints.</span>
+  <button class="banner-view-btn" onclick="document.getElementById('gallery')?.scrollIntoView({behavior:'smooth',block:'start'})">View Photos</button>
   <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
 </div>
 
