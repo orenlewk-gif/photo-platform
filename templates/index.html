@@ -249,9 +249,10 @@ input[type="range"]::-webkit-slider-thumb {
 /* Print upsell banner */
 .print-upsell-banner {
   display:none; position:fixed; top:0; left:0; right:0; z-index:99990;
-  background:#F5C518; color:#0c2336; padding:0.75rem 2rem;
+  background:#F5C518; color:#0c2336; padding:0.75rem 1rem 0.75rem 2rem;
   align-items:center; justify-content:center; gap:1rem;
   font-size:0.9rem; font-weight:500; text-align:center;
+  flex-wrap:wrap;
 }
 .print-upsell-banner.show { display:flex; }
 .print-upsell-banner strong { font-weight:800; }
@@ -722,9 +723,11 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
-  <span>🎉 Your selected digital photos include <strong>50% off prints</strong> for those specific photos — hover a photo and tap Quick Shop to add prints.</span>
-  <button class="banner-view-btn" onclick="openPrintsModal()">View Photos</button>
-  <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
+  <span style="flex:1;min-width:0;">🎉 Your selected digital photos include <strong>50% off prints</strong> for those specific photos — hover a photo and tap Quick Shop to add prints.</span>
+  <div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0;">
+    <button class="banner-view-btn" onclick="openPrintsModal()">View Photos</button>
+    <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
+  </div>
 </div>
 
 <!-- Cart bar -->
@@ -1670,13 +1673,14 @@ function updateCart() {
     : (printsWithoutDigital.length > 0
         ? `Select a photo's digital file to get <strong>50% off</strong> its print!`
         : '');
-  // Free shipping incentive for prints
+  // Free shipping incentive — only applies to unframed prints
   let shippingMsg = '';
-  if (printCart.length > 0) {
+  const unframedPrints = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+  if (unframedPrints.length > 0) {
     const FREE_SHIP_THRESHOLD = 3;
-    const need = FREE_SHIP_THRESHOLD - printCart.length;
+    const need = FREE_SHIP_THRESHOLD - unframedPrints.length;
     if (need > 0) {
-      shippingMsg = `Add <strong>${need} more print${need !== 1 ? 's' : ''}</strong> for <strong>free shipping</strong>`;
+      shippingMsg = `Add <strong>${need} more unframed print${need !== 1 ? 's' : ''}</strong> for <strong>free shipping</strong>`;
     } else {
       shippingMsg = `Free shipping included on your prints!`;
     }
@@ -1819,15 +1823,16 @@ function renderCartView() {
           </div>`;
         });
       } else {
-        // Other folders: simplified, read-only view
+        // Other folders: simplified view with remove button
         html += `<div style="margin-top:0.75rem;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);">Prints</div>`;
-        folderPrints.forEach(p => {
+        folderPrints.forEach((p, pidx) => {
           html += `<div class="cartview-print-row">
             <div class="cartview-print-info">
               <div class="cv-size">${p.size} Print</div>
               <div class="cv-frame">${p.filename}${p.frame && p.frame !== 'No Frame' ? ' + Frame' : ''}</div>
             </div>
             <span class="cartview-print-price">$${p.price + p.framePrice}</span>
+            <button class="cartview-rm-btn" onclick="removeFolderPrint('${escQ(key)}',${pidx})">Remove</button>
           </div>`;
         });
       }
@@ -1893,6 +1898,16 @@ function removePrintFromCart(idx) {
   updateCart();
   renderCartView();
   if (selectedPhotos.size === 0 && printCart.length === 0) closeCartView();
+}
+
+function removeFolderPrint(key, idx) {
+  if (!folderCarts[key]) return;
+  folderCarts[key].printCart.splice(idx, 1);
+  if (!folderCarts[key].selectedPaths?.length && !folderCarts[key].printCart?.length) {
+    delete folderCarts[key];
+  }
+  renderCartView();
+  updateCart();
 }
 
 function changePrintSize(idx, newSizeIdx) {
@@ -2279,7 +2294,7 @@ const _imgObserver = new IntersectionObserver((entries) => {
     }
     _imgObserver.unobserve(img);
   });
-}, { rootMargin: '400px' });
+}, { rootMargin: '800px' });
 
 function lazyLoad(container) {
   _imgObserver.disconnect();
@@ -2491,14 +2506,15 @@ function openPrintsModal() {
   const photos = [...selectedPhotos].map(i => ({ idx: i, photo: allPhotos[i] })).filter(x => x.photo);
   if (!photos.length) return;
 
-  // Subtitle with free shipping note
+  // Subtitle with free shipping note (unframed prints only)
   const FREE_SHIP_THRESHOLD = 3;
-  const need = FREE_SHIP_THRESHOLD - printCart.length;
+  const unframedInModal = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+  const need = FREE_SHIP_THRESHOLD - unframedInModal.length;
   const subtitleEl = document.getElementById('pu-subtitle');
   if (subtitleEl) {
     const shipNote = need > 0
-      ? ` · Add ${need} more print${need !== 1 ? 's' : ''} for free shipping`
-      : ` · Free shipping included!`;
+      ? ` · Add ${need} more unframed print${need !== 1 ? 's' : ''} for free shipping`
+      : ` · Free shipping included on unframed prints!`;
     subtitleEl.innerHTML = `50% off prints for your selected digital photos<span style="color:#4ade80">${shipNote}</span>`;
   }
 

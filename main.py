@@ -693,13 +693,19 @@ async def create_checkout(request: Request):
              for fr in frames for _ in range(int(fr.get("quantity", 1)))]
         )
 
+        FREE_SHIP_PRINT_THRESHOLD = 3
+
         if frame_rates:
             frame_rates.sort(reverse=True)
             total_ship = frame_rates[0] + sum(r * 0.5 for r in frame_rates[1:])
             fee_lines.append({"name": "Shipping", "total": str(round(total_ship, 2))})
         elif unframed:
-            max_rate = max(PRINT_SHIP[int(p.get("size_idx", 0))] for p in unframed)
-            fee_lines.append({"name": "Shipping", "total": str(max_rate)})
+            # Free shipping when 3+ unframed prints and no framed prints
+            if len(unframed) >= FREE_SHIP_PRINT_THRESHOLD and not frame_rates:
+                pass  # free shipping — no fee added
+            else:
+                max_rate = max(PRINT_SHIP[int(p.get("size_idx", 0))] for p in unframed)
+                fee_lines.append({"name": "Shipping", "total": str(max_rate)})
 
         paths = body.get("digital_paths", [])
         meta = [
