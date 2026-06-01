@@ -249,22 +249,22 @@ input[type="range"]::-webkit-slider-thumb {
 /* Print upsell banner */
 .print-upsell-banner {
   display:none; position:fixed; top:0; left:0; right:0; z-index:99990;
-  background:#F5C518; color:#0c2336; padding:0.6rem 1.25rem;
-  align-items:center; gap:0.75rem;
-  font-size:0.88rem; font-weight:500;
+  background:#F5C518; color:#0c2336; padding:0.6rem 3rem;
+  align-items:center; justify-content:center;
+  font-size:0.88rem; font-weight:500; text-align:center;
   white-space:nowrap;
 }
 .print-upsell-banner.show { display:flex; }
 .print-upsell-banner strong { font-weight:800; }
-.print-upsell-banner .banner-msg { flex:1; overflow:hidden; text-overflow:ellipsis; }
 .print-upsell-banner .banner-view-btn {
   background:none; border:none; color:#0c2336; font-weight:800; cursor:pointer;
-  padding:0; text-decoration:underline; font-size:0.88rem; white-space:nowrap; flex-shrink:0;
+  padding:0 0 0 0.35rem; text-decoration:underline; font-size:0.88rem; white-space:nowrap;
 }
 .print-upsell-banner .banner-close-btn {
+  position:absolute; right:1rem; top:50%; transform:translateY(-50%);
   background:transparent; border:2px solid rgba(0,0,0,0.25); color:#0c2336;
   border-radius:50%; width:24px; height:24px; font-size:13px; font-weight:bold;
-  cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; padding:0;
+  cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0;
 }
 
 /* ── Prints Upsell Modal ── */
@@ -733,8 +733,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
-  <span class="banner-msg">Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>.</span>
-  <button class="banner-view-btn" onclick="openPrintsModal()">View Photos →</button>
+  <span>Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>.<button class="banner-view-btn" onclick="openPrintsModal()">View Photos →</button></span>
   <button class="banner-close-btn" onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
 </div>
 
