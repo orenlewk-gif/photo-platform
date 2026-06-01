@@ -262,9 +262,8 @@ input[type="range"]::-webkit-slider-thumb {
   cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
 .print-upsell-banner .banner-view-btn {
-  background:#0c2336; color:#F5C518; border:2px solid #F5C518; border-radius:6px;
-  padding:3px 12px; font-size:0.82rem; font-weight:700; cursor:pointer;
-  white-space:nowrap; display:inline-block; vertical-align:middle; margin-left:6px;
+  background:none; border:none; color:#0c2336; font-weight:800; cursor:pointer;
+  padding:0; text-decoration:underline; font-size:inherit; white-space:nowrap;
 }
 
 /* ── Prints Upsell Modal ── */
@@ -1858,13 +1857,32 @@ function renderCartView() {
     });
   }
 
-  const frameTotal = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
-  const grandTotal = grandDigitalPrice + grandPrintPrice + frameTotal + calcShipping();
+  const frameTotal  = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
+  const shipping    = calcShipping();
+  const grandTotal  = grandDigitalPrice + grandPrintPrice + frameTotal + shipping;
+  const subtotal    = grandDigitalPrice + grandPrintPrice + frameTotal;
+  const unframedAll = [...Object.values(folderCarts), { printCart }]
+    .flatMap(fc => (fc.printCart || [])).filter(p => !p.frame || p.frame === 'No Frame');
+  const freeShip    = shipping === 0 && unframedAll.length >= 3;
 
   if (!html) html = '<div class="msg" style="padding:1rem 0">Your cart is empty.</div>';
 
   document.getElementById('cartview-body').innerHTML = html;
-  document.getElementById('cartview-total-price').textContent = `$${grandTotal}`;
+
+  // Build total section with shipping breakdown
+  const cvTotalEl = document.querySelector('.cartview-total');
+  if (cvTotalEl) {
+    let totalHtml = '';
+    if (shipping > 0) {
+      totalHtml += `<div style="display:flex;justify-content:space-between;font-size:0.88rem;color:rgba(255,255,255,0.55);margin-bottom:4px;"><span>Subtotal</span><span>$${subtotal}</span></div>`;
+      totalHtml += `<div style="display:flex;justify-content:space-between;font-size:0.88rem;color:rgba(255,255,255,0.55);margin-bottom:8px;"><span>Shipping</span><span>$${shipping}</span></div>`;
+    } else if (freeShip) {
+      totalHtml += `<div style="display:flex;justify-content:space-between;font-size:0.88rem;color:#4ade80;margin-bottom:8px;"><span>Shipping</span><span>Free</span></div>`;
+    }
+    totalHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:${shipping > 0 || freeShip ? '8px' : '0'};border-top:${shipping > 0 || freeShip ? '1px solid rgba(255,255,255,0.1)' : 'none'};font-size:1rem;font-weight:700;"><span>Total</span><span style="color:#F5C518;font-size:1.2rem;">$${grandTotal}</span></div>`;
+    totalHtml += `<div style="font-size:0.72rem;color:rgba(255,255,255,0.3);text-align:right;margin-top:5px;">Taxes calculated at next step</div>`;
+    cvTotalEl.innerHTML = totalHtml;
+  }
 
   // Load any missing thumbnails for current folder
   [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean).forEach(p => {
@@ -1896,6 +1914,7 @@ function removePrintFromCart(idx) {
   printCart.splice(idx, 1);
   updateCart();
   renderCartView();
+  if (document.getElementById('checkout-overlay').classList.contains('open')) renderCheckoutLines();
   if (selectedPhotos.size === 0 && printCart.length === 0) closeCartView();
 }
 
@@ -2551,14 +2570,14 @@ function openPrintsModal() {
         </div>
       </div>
       <div class="pu-selects">
-        <select class="pu-size-select" id="pu-size-${idx}" onchange="updatePuPrice(${idx})">
+        <select class="pu-size-select" id="pu-size-${idx}" onchange="updatePuPrice(${idx}); resetPuBtn(${idx})">
           ${sizesHtml}
         </select>
-        <select class="pu-size-select" id="pu-frame-${idx}">
+        <select class="pu-size-select" id="pu-frame-${idx}" onchange="resetPuBtn(${idx})">
           ${framesHtml}
         </select>
       </div>
-      <button class="pu-add-btn" onclick="addPrintFromModal(${idx})">Add</button>
+      <button class="pu-add-btn" id="pu-btn-${idx}" onclick="addPrintFromModal(${idx})">Add</button>
     </div>`;
   }).join('');
 
@@ -2587,6 +2606,11 @@ function updatePuPrice(photoIdx) {
   }
 }
 
+function resetPuBtn(photoIdx) {
+  const btn = document.getElementById(`pu-btn-${photoIdx}`);
+  if (btn) { btn.textContent = 'Add'; btn.style.background = ''; btn.style.color = ''; }
+}
+
 function addPrintFromModal(photoIdx) {
   const sizeSel  = document.getElementById(`pu-size-${photoIdx}`);
   const frameSel = document.getElementById(`pu-frame-${photoIdx}`);
@@ -2607,12 +2631,9 @@ function addPrintFromModal(photoIdx) {
   printCart.push({ photoIdx, photoPath: photo.path, sizeIdx: si, filename: photo.filename, size: PRINT_SIZES[si].label, price: sale, frame: frame.label, framePrice, orientation });
   recalcPrintPrices();
   updateCart();
-  // Show confirmation on button without closing modal
-  if (btn) {
-    btn.textContent = 'Added ✓';
-    btn.style.background = '#4ade80';
-    setTimeout(() => { btn.textContent = 'Add'; btn.style.background = ''; }, 2000);
-  }
+  // Stay green until size/frame is changed
+  const btn2 = document.getElementById(`pu-btn-${photoIdx}`);
+  if (btn2) { btn2.textContent = 'Added ✓'; btn2.style.background = '#4ade80'; btn2.style.color = '#0c2336'; }
   // Update shipping note in subtitle
   const FREE_SHIP_THRESHOLD = 3;
   const unframedCount = printCart.filter(p => !p.frame || p.frame === 'No Frame').length;
