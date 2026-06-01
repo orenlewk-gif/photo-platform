@@ -266,6 +266,31 @@ input[type="range"]::-webkit-slider-thumb {
   white-space:nowrap; flex-shrink:0;
 }
 
+/* ── Prints Upsell Modal ── */
+.pu-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:100003; align-items:center; justify-content:center; padding:1rem; }
+.pu-overlay.open { display:flex; }
+.pu-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,0.12); border-radius:14px; width:100%; max-width:540px; max-height:84vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.65); }
+.pu-header { display:flex; justify-content:space-between; align-items:flex-start; padding:1.1rem 1.25rem 0.9rem; border-bottom:1px solid rgba(255,255,255,0.08); flex-shrink:0; }
+.pu-title { font-size:1rem; font-weight:700; color:#fff; }
+.pu-subtitle { font-size:0.78rem; color:rgba(255,255,255,0.45); margin-top:3px; }
+.pu-close { background:transparent; border:1px solid rgba(255,255,255,0.18); color:#fff; border-radius:50%; width:26px; height:26px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pu-photo-list { overflow-y:auto; flex:1; padding:0.25rem 0; }
+.pu-row { display:flex; align-items:center; gap:0.85rem; padding:0.7rem 1.25rem; border-bottom:1px solid rgba(255,255,255,0.05); }
+.pu-row:last-child { border-bottom:none; }
+.pu-thumb { width:54px; height:54px; object-fit:cover; border-radius:7px; flex-shrink:0; background:#0a1f2e; }
+.pu-row-info { flex:1; min-width:0; }
+.pu-row-name { font-size:0.75rem; color:rgba(255,255,255,0.4); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pu-price-row { display:flex; align-items:center; gap:0.45rem; margin-top:3px; }
+.pu-price { font-size:0.95rem; font-weight:700; color:#F5C518; }
+.pu-price-was { font-size:0.75rem; color:rgba(255,255,255,0.28); text-decoration:line-through; }
+.pu-selects { display:flex; flex-direction:column; gap:5px; flex-shrink:0; }
+.pu-size-select { background:#0a1f2e; border:1px solid rgba(255,255,255,0.18); color:#fff; border-radius:7px; padding:0.35rem 0.55rem; font-size:0.8rem; cursor:pointer; width:160px; }
+.pu-add-btn { background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif; font-weight:700; font-size:0.8rem; border:none; border-radius:7px; padding:0.42rem 1rem; cursor:pointer; white-space:nowrap; flex-shrink:0; transition:background 0.15s; }
+.pu-add-btn:hover { background:#ffd700; }
+.pu-footer { padding:0.85rem 1.25rem; border-top:1px solid rgba(255,255,255,0.08); display:flex; justify-content:flex-end; flex-shrink:0; }
+.pu-done-btn { background:transparent; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.65); border-radius:8px; padding:0.45rem 1.4rem; font-size:0.85rem; cursor:pointer; transition:background 0.15s; }
+.pu-done-btn:hover { background:rgba(255,255,255,0.07); }
+
 /* Screenshot blackout overlay */
 #ss-block {
   display:none; position:fixed; inset:0;
@@ -698,7 +723,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
   <span>🎉 Your selected digital photos include <strong>50% off prints</strong> for those specific photos — hover a photo and tap Quick Shop to add prints.</span>
-  <button class="banner-view-btn" onclick="document.getElementById('gallery')?.scrollIntoView({behavior:'smooth',block:'start'})">View Photos</button>
+  <button class="banner-view-btn" onclick="openPrintsModal()">View Photos</button>
   <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
 </div>
 
@@ -781,6 +806,23 @@ input::placeholder { color:rgba(255,255,255,0.3); }
         <div class="print-discount-banner" id="qs-print-banner" style="display:none"></div>
         <div id="qs-prints"></div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Prints Upsell Modal -->
+<div class="pu-overlay" id="pu-overlay" onclick="if(event.target===this)closePrintsModal()">
+  <div class="pu-modal">
+    <div class="pu-header">
+      <div>
+        <div class="pu-title">Add Prints to Your Order</div>
+        <div class="pu-subtitle" id="pu-subtitle">50% off prints for your selected digital photos</div>
+      </div>
+      <button class="pu-close" onclick="closePrintsModal()">✕</button>
+    </div>
+    <div class="pu-photo-list" id="pu-photo-list"></div>
+    <div class="pu-footer">
+      <button class="pu-done-btn" onclick="closePrintsModal()">Done</button>
     </div>
   </div>
 </div>
@@ -2442,6 +2484,104 @@ function openQuickShop(i) {
 
 function closeQuickShop() {
   document.getElementById('qs-overlay').classList.remove('open');
+}
+
+// ── Prints Upsell Modal ──
+function openPrintsModal() {
+  const photos = [...selectedPhotos].map(i => ({ idx: i, photo: allPhotos[i] })).filter(x => x.photo);
+  if (!photos.length) return;
+
+  // Subtitle with free shipping note
+  const FREE_SHIP_THRESHOLD = 3;
+  const need = FREE_SHIP_THRESHOLD - printCart.length;
+  const subtitleEl = document.getElementById('pu-subtitle');
+  if (subtitleEl) {
+    const shipNote = need > 0
+      ? ` · Add ${need} more print${need !== 1 ? 's' : ''} for free shipping`
+      : ` · Free shipping included!`;
+    subtitleEl.innerHTML = `50% off prints for your selected digital photos<span style="color:#4ade80">${shipNote}</span>`;
+  }
+
+  // Photo rows
+  const listEl = document.getElementById('pu-photo-list');
+  listEl.innerHTML = photos.map(({ idx, photo }) => {
+    const src = imgCache[photo.path] || `/api/photo?path=${enc(photo.path)}&size=thumb&v=3`;
+    if (!imgCache[photo.path]) imgCache[photo.path] = src;
+    const sizesHtml = PRINT_SIZES.map((s, si) => {
+      return `<option value="${si}">${s.label} Print — $${s.price / 2}</option>`;
+    }).join('');
+    const framesHtml = FRAME_OPTIONS.map((f, fi) => {
+      const fPrice = f.priceKey === 0 ? '' : ` — +$${FRAME_PRICES[0]}`;
+      return `<option value="${fi}">${f.label}${fPrice}</option>`;
+    }).join('');
+    return `<div class="pu-row">
+      <img class="pu-thumb" src="${src}" alt="">
+      <div class="pu-row-info">
+        <div class="pu-row-name">${photo.filename || ''}</div>
+        <div class="pu-price-row">
+          <span class="pu-price" id="pu-price-${idx}">$${PRINT_SIZES[0].price / 2}</span>
+          <span class="pu-price-was" id="pu-was-${idx}">$${PRINT_SIZES[0].price}</span>
+        </div>
+      </div>
+      <div class="pu-selects">
+        <select class="pu-size-select" id="pu-size-${idx}" onchange="updatePuPrice(${idx})">
+          ${sizesHtml}
+        </select>
+        <select class="pu-size-select" id="pu-frame-${idx}">
+          ${framesHtml}
+        </select>
+      </div>
+      <button class="pu-add-btn" onclick="addPrintFromModal(${idx})">Add</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('pu-overlay').classList.add('open');
+}
+
+function closePrintsModal() {
+  document.getElementById('pu-overlay').classList.remove('open');
+}
+
+function updatePuPrice(photoIdx) {
+  const sizeSel = document.getElementById(`pu-size-${photoIdx}`);
+  if (!sizeSel) return;
+  const si = parseInt(sizeSel.value);
+  const priceEl = document.getElementById(`pu-price-${photoIdx}`);
+  const wasEl   = document.getElementById(`pu-was-${photoIdx}`);
+  if (priceEl) priceEl.textContent = `$${PRINT_SIZES[si].price / 2}`;
+  if (wasEl)   wasEl.textContent   = `$${PRINT_SIZES[si].price}`;
+  // Update frame prices to match the selected size
+  const frameSel = document.getElementById(`pu-frame-${photoIdx}`);
+  if (frameSel) {
+    Array.from(frameSel.options).forEach((opt, fi) => {
+      const f = FRAME_OPTIONS[fi];
+      opt.textContent = f.priceKey === 0 ? f.label : `${f.label} — +$${FRAME_PRICES[si]}`;
+    });
+  }
+}
+
+function addPrintFromModal(photoIdx) {
+  const sizeSel  = document.getElementById(`pu-size-${photoIdx}`);
+  const frameSel = document.getElementById(`pu-frame-${photoIdx}`);
+  if (!sizeSel) return;
+  const si         = parseInt(sizeSel.value);
+  const fi         = frameSel ? parseInt(frameSel.value) : 0;
+  const sale       = PRINT_SIZES[si].price / 2;
+  const photo      = allPhotos[photoIdx];
+  const frame      = FRAME_OPTIONS[fi];
+  const framePrice = frame.priceKey === 0 ? 0 : FRAME_PRICES[si];
+  // Detect orientation from cached image
+  let orientation = 'landscape';
+  if (imgCache[photo.path]) {
+    const tmp = new Image();
+    tmp.src = imgCache[photo.path];
+    if (tmp.naturalHeight > tmp.naturalWidth) orientation = 'portrait';
+  }
+  printCart.push({ photoIdx, sizeIdx: si, filename: photo.filename, size: PRINT_SIZES[si].label, price: sale, frame: frame.label, framePrice, orientation });
+  closePrintsModal();
+  recalcPrintPrices();
+  updateCart();
+  showToast(`${PRINT_SIZES[si].label} print added!`);
 }
 
 function selectPhotoFromQS(i) {
