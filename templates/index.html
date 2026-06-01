@@ -249,10 +249,10 @@ input[type="range"]::-webkit-slider-thumb {
 /* Print upsell banner */
 .print-upsell-banner {
   display:none; position:fixed; top:0; left:0; right:0; z-index:99990;
-  background:#F5C518; color:#0c2336; padding:0.75rem 180px 0.75rem 2rem;
+  background:#F5C518; color:#0c2336; padding:0.75rem 1.5rem;
   align-items:center; justify-content:center; gap:1rem;
   font-size:0.9rem; font-weight:500; text-align:center;
-  flex-wrap:wrap;
+  white-space:nowrap; overflow:hidden;
 }
 .print-upsell-banner.show { display:flex; }
 .print-upsell-banner strong { font-weight:800; }
@@ -409,11 +409,21 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 }
 .cartview-rm-btn:hover { border-color:#e53e3e; color:#e53e3e; }
 .cartview-total {
-  display:flex; justify-content:space-between; align-items:center;
+  display:block;
   padding:0.9rem 0 0; margin-top:0.5rem;
   border-top:1px solid rgba(255,255,255,0.1); font-size:1rem; font-weight:700;
 }
-.cartview-total span:last-child { color:#F5C518; font-size:1.2rem; }
+.cartview-total .cv-row {
+  display:flex; justify-content:space-between; align-items:baseline;
+  margin-bottom:6px;
+}
+.cartview-total .cv-row.cv-total { margin-bottom:0; padding-top:8px; border-top:1px solid rgba(255,255,255,0.1); }
+.cartview-total .cv-row .cv-label { color:rgba(255,255,255,0.75); font-size:0.9rem; }
+.cartview-total .cv-row .cv-amt { color:rgba(255,255,255,0.75); font-size:0.9rem; }
+.cartview-total .cv-row.cv-total .cv-label { color:#fff; font-size:1rem; font-weight:700; }
+.cartview-total .cv-row.cv-total .cv-amt { color:#F5C518; font-size:1.2rem; font-weight:700; }
+.cartview-total .cv-row.cv-free .cv-amt { color:#4ade80; }
+.cartview-total .cv-tax { font-size:0.75rem; color:rgba(255,255,255,0.35); text-align:right; margin-top:6px; font-style:italic; }
 .cartview-actions { display:flex; gap:0.75rem; margin-top:1.2rem; }
 .cartview-actions .btn, .cartview-actions .btn-ghost { flex:1; text-align:center; }
 
@@ -722,7 +732,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
-  <span style="flex:1;min-width:0;">🎉 Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>. <button class="banner-view-btn" onclick="openPrintsModal()">View Photos →</button></span>
+  <span>Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>. <button class="banner-view-btn" onclick="openPrintsModal()">View Photos →</button></span>
   <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
 </div>
 
@@ -749,10 +759,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       <button class="qs-close" onclick="closeCartView()">✕</button>
     </div>
     <div id="cartview-body"></div>
-    <div class="cartview-total">
-      <span>Total</span>
-      <span id="cartview-total-price">$0</span>
-    </div>
+    <div class="cartview-total"></div>
     <div class="cartview-actions">
       <button class="btn-ghost" onclick="closeCartView()">Continue Shopping</button>
       <button class="btn" onclick="closeCartView(); openCheckout()">Checkout →</button>
@@ -1873,14 +1880,16 @@ function renderCartView() {
   const cvTotalEl = document.querySelector('.cartview-total');
   if (cvTotalEl) {
     let totalHtml = '';
-    if (shipping > 0) {
-      totalHtml += `<div style="display:flex;justify-content:space-between;font-size:0.88rem;color:rgba(255,255,255,0.55);margin-bottom:4px;"><span>Subtotal</span><span>$${subtotal}</span></div>`;
-      totalHtml += `<div style="display:flex;justify-content:space-between;font-size:0.88rem;color:rgba(255,255,255,0.55);margin-bottom:8px;"><span>Shipping</span><span>$${shipping}</span></div>`;
-    } else if (freeShip) {
-      totalHtml += `<div style="display:flex;justify-content:space-between;font-size:0.88rem;color:#4ade80;margin-bottom:8px;"><span>Shipping</span><span>Free</span></div>`;
+    if (shipping > 0 || freeShip) {
+      totalHtml += `<div class="cv-row"><span class="cv-label">Subtotal</span><span class="cv-amt">$${subtotal}</span></div>`;
+      if (shipping > 0) {
+        totalHtml += `<div class="cv-row"><span class="cv-label">Shipping</span><span class="cv-amt">$${shipping}</span></div>`;
+      } else {
+        totalHtml += `<div class="cv-row cv-free"><span class="cv-label">Shipping</span><span class="cv-amt">Free</span></div>`;
+      }
     }
-    totalHtml += `<div style="display:flex;justify-content:space-between;align-items:center;padding-top:${shipping > 0 || freeShip ? '8px' : '0'};border-top:${shipping > 0 || freeShip ? '1px solid rgba(255,255,255,0.1)' : 'none'};font-size:1rem;font-weight:700;"><span>Total</span><span style="color:#F5C518;font-size:1.2rem;">$${grandTotal}</span></div>`;
-    totalHtml += `<div style="font-size:0.72rem;color:rgba(255,255,255,0.3);text-align:right;margin-top:5px;">Taxes calculated at next step</div>`;
+    totalHtml += `<div class="cv-row cv-total"><span class="cv-label">Total</span><span class="cv-amt">$${grandTotal}</span></div>`;
+    totalHtml += `<div class="cv-tax">Taxes are calculated at the next step</div>`;
     cvTotalEl.innerHTML = totalHtml;
   }
 
