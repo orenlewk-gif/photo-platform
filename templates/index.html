@@ -249,7 +249,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* Print upsell banner */
 .print-upsell-banner {
   display:none; position:fixed; top:0; left:0; right:0; z-index:99990;
-  background:#F5C518; color:#0c2336; padding:0.75rem 1rem 0.75rem 2rem;
+  background:#F5C518; color:#0c2336; padding:0.75rem 180px 0.75rem 2rem;
   align-items:center; justify-content:center; gap:1rem;
   font-size:0.9rem; font-weight:500; text-align:center;
   flex-wrap:wrap;
@@ -723,7 +723,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
-  <span style="flex:1;min-width:0;">🎉 Your selected digital photos include <strong>50% off prints</strong> for those specific photos — hover a photo and tap Quick Shop to add prints.</span>
+  <span style="flex:1;min-width:0;">🎉 Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>. Hover a photo and tap Quick Shop to add prints.</span>
   <div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0;">
     <button class="banner-view-btn" onclick="openPrintsModal()">View Photos</button>
     <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
@@ -2006,8 +2006,11 @@ function calcShipping() {
     return frameRates[0] + frameRates.slice(1).reduce((s, r) => s + r * 0.5, 0);
   }
 
-  // No frames → unframed prints only, take max PRINT_SHIPPING
-  if (unframed.length) return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
+  // No frames → unframed prints only; free shipping at 3+
+  if (unframed.length) {
+    if (unframed.length >= 3) return 0;
+    return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
+  }
 
   return 0;
 }
@@ -2579,6 +2582,7 @@ function updatePuPrice(photoIdx) {
 function addPrintFromModal(photoIdx) {
   const sizeSel  = document.getElementById(`pu-size-${photoIdx}`);
   const frameSel = document.getElementById(`pu-frame-${photoIdx}`);
+  const btn      = document.querySelector(`#pu-photo-list .pu-row [onclick="addPrintFromModal(${photoIdx})"]`);
   if (!sizeSel) return;
   const si         = parseInt(sizeSel.value);
   const fi         = frameSel ? parseInt(frameSel.value) : 0;
@@ -2586,7 +2590,6 @@ function addPrintFromModal(photoIdx) {
   const photo      = allPhotos[photoIdx];
   const frame      = FRAME_OPTIONS[fi];
   const framePrice = frame.priceKey === 0 ? 0 : FRAME_PRICES[si];
-  // Detect orientation from cached image
   let orientation = 'landscape';
   if (imgCache[photo.path]) {
     const tmp = new Image();
@@ -2594,10 +2597,25 @@ function addPrintFromModal(photoIdx) {
     if (tmp.naturalHeight > tmp.naturalWidth) orientation = 'portrait';
   }
   printCart.push({ photoIdx, sizeIdx: si, filename: photo.filename, size: PRINT_SIZES[si].label, price: sale, frame: frame.label, framePrice, orientation });
-  closePrintsModal();
   recalcPrintPrices();
   updateCart();
-  showToast(`${PRINT_SIZES[si].label} print added!`);
+  // Show confirmation on button without closing modal
+  if (btn) {
+    btn.textContent = 'Added ✓';
+    btn.style.background = '#4ade80';
+    setTimeout(() => { btn.textContent = 'Add'; btn.style.background = ''; }, 2000);
+  }
+  // Update shipping note in subtitle
+  const FREE_SHIP_THRESHOLD = 3;
+  const unframedCount = printCart.filter(p => !p.frame || p.frame === 'No Frame').length;
+  const need = FREE_SHIP_THRESHOLD - unframedCount;
+  const subtitleEl = document.getElementById('pu-subtitle');
+  if (subtitleEl) {
+    const shipNote = need > 0
+      ? ` · Add ${need} more unframed print${need !== 1 ? 's' : ''} for free shipping`
+      : ` · Free shipping included on unframed prints!`;
+    subtitleEl.innerHTML = `50% off prints for your selected digital photos<span style="color:#4ade80">${shipNote}</span>`;
+  }
 }
 
 function selectPhotoFromQS(i) {
