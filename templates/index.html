@@ -723,11 +723,8 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <!-- Print upsell banner -->
 <div class="print-upsell-banner" id="print-upsell-banner">
-  <span style="flex:1;min-width:0;">🎉 Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>. Hover a photo and tap Quick Shop to add prints.</span>
-  <div style="display:flex;align-items:center;gap:0.6rem;flex-shrink:0;">
-    <button class="banner-view-btn" onclick="openPrintsModal()">View Photos</button>
-    <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
-  </div>
+  <span style="flex:1;min-width:0;">🎉 Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>. <button class="banner-view-btn" onclick="openPrintsModal()">View Photos →</button></span>
+  <button onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
 </div>
 
 <!-- Cart bar -->
@@ -2076,12 +2073,21 @@ function renderCheckoutLines() {
 
   // ── totals section ─────────────────────────────────────────────────────────
   let totalsHtml = '';
+  const unframedCount = allCheckoutPrints.filter(p => !p.frame || p.frame === 'No Frame').length;
+  const freeShipping  = unframedCount >= 3 && !allCheckoutPrints.some(p => p.frame && p.frame !== 'No Frame');
   if (shipping > 0) {
     totalsHtml += `<div class="totals-row">
       <span>Subtotal</span><span class="amt">$${subtotal}</span>
     </div>
     <div class="totals-row">
       <span>Shipping</span><span class="amt">$${shipping}</span>
+    </div>`;
+  } else if (freeShipping) {
+    totalsHtml += `<div class="totals-row">
+      <span>Subtotal</span><span class="amt">$${subtotal}</span>
+    </div>
+    <div class="totals-row" style="color:#4ade80;">
+      <span>Shipping</span><span class="amt">Free</span>
     </div>`;
   }
   totalsHtml += `<div class="totals-row total-final">

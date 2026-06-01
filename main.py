@@ -484,16 +484,22 @@ def to_r2_key(path: str) -> str:
     idx = path.find("images/")
     return path[idx:] if idx >= 0 else path
 
+def _thumb_r2_key(r2_key: str) -> str:
+    """maps images/foo/bar.jpg → thumbs/foo/bar.jpg"""
+    if r2_key.startswith("images/"):
+        return "thumbs/" + r2_key[len("images/"):]
+    return "thumbs/" + r2_key
+
 @app.get("/api/photo")
 def get_photo(path: str, size: str = Query("medium")):
     """
-    size=thumb  → 450px  q72  (gallery thumbnails)
-    size=medium → 1200px q85  (lightbox — default)
-    size=full   → 1800px q88  (download-quality)
+    size=thumb  → 450px  q72  (gallery thumbnails — served from pre-generated R2 thumb when available)
+    size=medium → 1800px q90  (lightbox)
+    size=full   → 2400px q92  (download-quality)
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
-        "thumb":  (1000, 85),
+        "thumb":  (450,  72),
         "medium": (1800, 90),
         "full":   (2400, 92),
     }
@@ -503,16 +509,45 @@ def get_photo(path: str, size: str = Query("medium")):
     try:
         key = to_r2_key(path)
         if os.getenv("R2_ENDPOINT_URL"):
+            # For thumbs: try pre-generated version first (much faster — no processing)
+            if size == "thumb":
+                tkey = _thumb_r2_key(key)
+                try:
+                    obj = s3.get_object(Bucket=R2_BUCKET, Key=tkey)
+                    buf = BytesIO(obj["Body"].read())
+                    buf.seek(0)
+                    return SR(buf, media_type="image/jpeg",
+                              headers={"Cache-Control": f"public, max-age={cache_secs}"})
+                except s3.exceptions.NoSuchKey:
+                    pass  # fall through to generate on the fly
+                except Exception:
+                    pass  # fall through to generate on the fly
+
             obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
             img = Image.open(obj["Body"]).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
             img = apply_watermark(img, size)
             buf = BytesIO()
-            img.save(buf, format="JPEG", quality=quality)
+            img.save(buf, format="JPEG", quality=quality, optimize=True)
+
+            # Cache the newly generated thumb to R2 for next time
+            if size == "thumb":
+                try:
+                    buf.seek(0)
+                    s3.put_object(
+                        Bucket=R2_BUCKET,
+                        Key=_thumb_r2_key(key),
+                        Body=buf.read(),
+                        ContentType="image/jpeg",
+                        CacheControl="public, max-age=31536000",
+                    )
+                except Exception:
+                    pass  # non-fatal
+
             buf.seek(0)
             return SR(buf, media_type="image/jpeg",
-                      headers={"Cache-Control": f"private, max-age={cache_secs}"})
+                      headers={"Cache-Control": f"public, max-age={cache_secs}"})
         elif os.path.exists(path):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)
