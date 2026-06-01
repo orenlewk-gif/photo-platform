@@ -262,9 +262,9 @@ input[type="range"]::-webkit-slider-thumb {
   cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0;
 }
 .print-upsell-banner .banner-view-btn {
-  background:#0c2336; color:#F5C518; border:none; border-radius:20px;
-  padding:4px 14px; font-size:0.82rem; font-weight:700; cursor:pointer;
-  white-space:nowrap; flex-shrink:0;
+  background:#0c2336; color:#F5C518; border:2px solid #F5C518; border-radius:6px;
+  padding:3px 12px; font-size:0.82rem; font-weight:700; cursor:pointer;
+  white-space:nowrap; display:inline-block; vertical-align:middle; margin-left:6px;
 }
 
 /* ── Prints Upsell Modal ── */
@@ -1615,10 +1615,12 @@ function getUpsellMsg(count) {
 }
 
 function recalcPrintPrices() {
-  // Half price only if the specific photo for this print is also selected as a digital
+  // Use photoPath for matching (more stable than index across re-renders)
+  const selectedPaths = new Set([...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean));
   printCart.forEach(p => {
     const base = PRINT_SIZES[p.sizeIdx].price;
-    p.price = selectedPhotos.has(p.photoIdx) ? base / 2 : base;
+    const isSelected = p.photoPath ? selectedPaths.has(p.photoPath) : selectedPhotos.has(p.photoIdx);
+    p.price = isSelected ? base / 2 : base;
   });
 }
 
@@ -2602,7 +2604,7 @@ function addPrintFromModal(photoIdx) {
     tmp.src = imgCache[photo.path];
     if (tmp.naturalHeight > tmp.naturalWidth) orientation = 'portrait';
   }
-  printCart.push({ photoIdx, sizeIdx: si, filename: photo.filename, size: PRINT_SIZES[si].label, price: sale, frame: frame.label, framePrice, orientation });
+  printCart.push({ photoIdx, photoPath: photo.path, sizeIdx: si, filename: photo.filename, size: PRINT_SIZES[si].label, price: sale, frame: frame.label, framePrice, orientation });
   recalcPrintPrices();
   updateCart();
   // Show confirmation on button without closing modal
@@ -2701,6 +2703,7 @@ function confirmFrame() {
   const framePrice = frame.priceKey === 0 ? 0 : FRAME_PRICES[sizeIdx];
   printCart.push({
     photoIdx,
+    photoPath:   photo.path,
     sizeIdx,
     filename:    photo.filename,
     size:        PRINT_SIZES[sizeIdx].label,
