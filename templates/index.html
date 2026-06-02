@@ -394,6 +394,12 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   line-height:1;
 }
 .cartview-thumb .cv-remove:hover { background:#e53e3e; }
+.cv-more-badge {
+  display:flex; align-items:center; justify-content:center;
+  width:76px; height:76px; border-radius:8px; flex-shrink:0;
+  background:rgba(255,255,255,0.07); border:2px solid rgba(255,255,255,0.12);
+  color:rgba(255,255,255,0.65); font-size:1rem; font-weight:700; letter-spacing:0.5px;
+}
 .cartview-print-row {
   display:flex; align-items:center; justify-content:space-between;
   padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06);
@@ -1784,18 +1790,30 @@ function renderCartView() {
 
     if (digitalCount > 0) {
       html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}</div>`;
-      html += `<div class="cartview-photo-grid">`;
       const photos = isCurrent
         ? [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean)
         : (fc.selectedPhotos || []);
-      photos.forEach(p => {
-        const src = imgCache[p.path] || '';
-        html += `<div class="cartview-thumb">
-          <img src="${src}" alt="${p.filename}" />
-          <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
-        </div>`;
-      });
-      html += `</div>`;
+      const COLLAPSE_THRESHOLD = 10;
+      if (digitalCount > COLLAPSE_THRESHOLD) {
+        // Collapsed: one thumb + +N badge
+        const first = photos[0];
+        const firstSrc = first ? (imgCache[first.path] || '') : '';
+        html += `<div class="cartview-photo-grid">`;
+        html += `<div class="cartview-thumb"><img src="${firstSrc}" alt="" /></div>`;
+        html += `<div class="cv-more-badge">+${digitalCount - 1}</div>`;
+        html += `</div>`;
+      } else {
+        // Full grid with remove buttons
+        html += `<div class="cartview-photo-grid">`;
+        photos.forEach(p => {
+          const src = imgCache[p.path] || '';
+          html += `<div class="cartview-thumb">
+            <img src="${src}" alt="${p.filename}" />
+            <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
+          </div>`;
+        });
+        html += `</div>`;
+      }
     }
 
     // Prints within this folder
