@@ -1163,15 +1163,15 @@ async function showGallery(date, location, family, ln) {
     ];
   }
 
+  // ── Folder-cart: save previous folder BEFORE pricing changes ──
+  saveCurrentFolder();
+
   // Fetch pricing for this location
   const pricingLoc = location || '';
   const pRes = await fetch(`/api/pricing?location=${enc(pricingLoc)}`);
   currentPricing = await pRes.json();
 
   hideSpinner();
-
-  // ── Folder-cart: save previous folder, then load this folder's saved state ──
-  saveCurrentFolder();
   currentFolderKey   = getFolderKey(date, location, family);
   currentFolderLabel = family || location || 'Gallery';
   allPhotos = photos;
@@ -1192,7 +1192,7 @@ async function showGallery(date, location, family, ln) {
     </div>
     <div class="gallery-controls">
       ${!(family || ln) ? `<div class="filter-bar">
-        <input type="text" id="filter-input" placeholder="Describe what you're looking for… e.g. red jacket, jumping, family portrait" />
+        <input type="text" id="filter-input" placeholder="Search by color… e.g. red, blue, pink, yellow" />
         <button class="btn" onclick="runFilter('${escQ(date||'')}','${escQ(location||'')}')">Filter</button>
       </div>` : ''}
       <div class="size-slider-wrap">
