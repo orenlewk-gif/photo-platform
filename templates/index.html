@@ -399,7 +399,18 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   width:76px; height:76px; border-radius:8px; flex-shrink:0;
   background:rgba(255,255,255,0.07); border:2px solid rgba(255,255,255,0.12);
   color:rgba(255,255,255,0.65); font-size:1rem; font-weight:700; letter-spacing:0.5px;
+  cursor:pointer; transition:background 0.15s;
 }
+.cv-more-badge:hover { background:rgba(255,255,255,0.13); color:#fff; }
+/* Folder photos modal */
+.fp-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88); z-index:200100; align-items:center; justify-content:center; padding:1rem; }
+.fp-overlay.open { display:flex; }
+.fp-modal { background:#0e2233; border-radius:14px; padding:1.5rem; max-width:600px; width:100%; max-height:85vh; display:flex; flex-direction:column; gap:1rem; }
+.fp-header { display:flex; justify-content:space-between; align-items:center; }
+.fp-title { font-size:1rem; font-weight:700; color:#fff; }
+.fp-close { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:50%; width:32px; height:32px; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.fp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; overflow-y:auto; }
+.fp-grid img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:7px; display:block; }
 .cartview-print-row {
   display:flex; align-items:center; justify-content:space-between;
   padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06);
@@ -859,6 +870,17 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   <button class="frame-lb-arrow" id="frame-lb-prev" onclick="event.stopPropagation();stepFrameLB(-1)">&#8249;</button>
   <img id="frame-lb-img" class="frame-lb-img" src="" alt="Frame" onclick="event.stopPropagation()" />
   <button class="frame-lb-arrow" id="frame-lb-next" onclick="event.stopPropagation();stepFrameLB(1)">&#8250;</button>
+</div>
+
+<!-- Folder photos modal (collapsed cart view) -->
+<div class="fp-overlay" id="fp-overlay" onclick="if(event.target===this)closeFolderPhotosModal()">
+  <div class="fp-modal">
+    <div class="fp-header">
+      <span class="fp-title" id="fp-title">Selected Photos</span>
+      <button class="fp-close" onclick="closeFolderPhotosModal()">✕</button>
+    </div>
+    <div class="fp-grid" id="fp-grid"></div>
+  </div>
 </div>
 
 <div class="lb-overlay" id="lb">
@@ -1795,12 +1817,13 @@ function renderCartView() {
         : (fc.selectedPhotos || []);
       const COLLAPSE_THRESHOLD = 10;
       if (digitalCount > COLLAPSE_THRESHOLD) {
-        // Collapsed: one thumb + +N badge
+        // Collapsed: one thumb + clickable +N badge
         const first = photos[0];
-        const firstSrc = first ? (imgCache[first.path] || '') : '';
-        html += `<div class="cartview-photo-grid">`;
-        html += `<div class="cartview-thumb"><img src="${firstSrc}" alt="" /></div>`;
-        html += `<div class="cv-more-badge">+${digitalCount - 1}</div>`;
+        const firstSrc = first ? `/api/photo?path=${enc(first.path)}&size=thumb&v=3` : '';
+        const escapedKey = escQ(key);
+        html += `<div class="cartview-photo-grid" style="cursor:pointer;" onclick="openFolderPhotosModal('${escapedKey}')">`;
+        html += `<div class="cartview-thumb" style="cursor:pointer;"><img src="${firstSrc}" alt="" /></div>`;
+        html += `<div class="cv-more-badge" style="cursor:pointer;">+${digitalCount - 1}</div>`;
         html += `</div>`;
       } else {
         // Full grid with remove buttons
@@ -2614,6 +2637,26 @@ function openPrintsModal() {
 
 function closePrintsModal() {
   document.getElementById('pu-overlay').classList.remove('open');
+}
+
+function openFolderPhotosModal(key) {
+  const fc = key === currentFolderKey
+    ? { selectedPhotos: [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean), label: currentFolderLabel }
+    : folderCarts[key];
+  if (!fc) return;
+  const photos = fc.selectedPhotos || [];
+  const label  = fc.label || key;
+  document.getElementById('fp-title').textContent = `${label} — ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
+  const grid = document.getElementById('fp-grid');
+  grid.innerHTML = photos.map(p => {
+    const src = `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+    return `<img src="${src}" alt="${p.filename || ''}" loading="lazy" />`;
+  }).join('');
+  document.getElementById('fp-overlay').classList.add('open');
+}
+
+function closeFolderPhotosModal() {
+  document.getElementById('fp-overlay').classList.remove('open');
 }
 
 function updatePuPrice(photoIdx) {
