@@ -1707,12 +1707,7 @@ function updateCart() {
   document.getElementById('cart-count-text').textContent = summary.join(' + ') + (summary.length > 0 ? ' selected' : '');
   document.getElementById('cart-price-text').textContent = `$${total}`;
   // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
-  const printsWithoutDigital = printCart.filter(p => !selectedPhotos.has(p.photoIdx));
-  const cartUpsell = count > 0
-    ? getUpsellMsg(count)
-    : (printsWithoutDigital.length > 0
-        ? `Select a photo's digital file to get <strong>50% off</strong> its print!`
-        : '');
+  const cartUpsell = count > 0 ? getUpsellMsg(count) : '';
   // Free shipping incentive — only applies to unframed prints
   let shippingMsg = '';
   const unframedPrints = printCart.filter(p => !p.frame || p.frame === 'No Frame');
