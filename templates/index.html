@@ -908,13 +908,15 @@ let allPhotos      = [];
 let imgCache       = {};
 let cur            = 0;
 let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
-let currentPricing = null;
-let lockedTier     = null;        // tier the customer chose in Quick Shop (current folder)
+let currentPricing  = null;
+let currentLocation = '';        // location string for the current gallery
+let lockedTier      = null;      // tier the customer chose in Quick Shop (current folder)
 
 // ── Per-folder cart ──
 // Key = "date||location||family"; each entry holds that folder's selections/package/prints
-let folderCarts       = {};
-let currentFolderKey  = null;    // key for the gallery currently being viewed
+let folderCarts        = {};
+let pricingCache       = {};     // location → pricing; avoids re-fetching
+let currentFolderKey   = null;   // key for the gallery currently being viewed
 let currentFolderLabel = '';     // display name (e.g. "Mountain Biking")
 
 // ── Folder-cart helpers ──
@@ -931,12 +933,14 @@ function saveCurrentFolder() {
     delete folderCarts[currentFolderKey];
     return;
   }
+  if (currentPricing) pricingCache[currentLocation] = currentPricing;
   folderCarts[currentFolderKey] = {
     selectedPaths:  photos.map(p => p.path),
     selectedPhotos: photos,   // full objects needed for cart-view thumbnails
     lockedTier:     lockedTier ? { ...lockedTier } : null,
     printCart:      JSON.parse(JSON.stringify(printCart)),
     pricing:        currentPricing,
+    location:       currentLocation,
     label:          currentFolderLabel,
   };
 }
@@ -1191,7 +1195,9 @@ async function showGallery(date, location, family, ln) {
   // Fetch pricing for this location
   const pricingLoc = location || '';
   const pRes = await fetch(`/api/pricing?location=${enc(pricingLoc)}`);
-  currentPricing = await pRes.json();
+  currentPricing  = await pRes.json();
+  currentLocation = pricingLoc;
+  pricingCache[pricingLoc] = currentPricing;
 
   hideSpinner();
   currentFolderKey   = getFolderKey(date, location, family);
@@ -1768,6 +1774,17 @@ async function runFilter(date, location) {
 function openCartView() {
   renderCartView();
   document.getElementById('cartview-overlay').classList.add('open');
+  // Async: fetch pricing for any non-current folder that isn't already cached
+  Object.values(folderCarts).forEach(async fc => {
+    if (fc.location === undefined || fc.location === currentLocation) return;
+    if (pricingCache[fc.location]) return;
+    try {
+      const res = await fetch(`/api/pricing?location=${enc(fc.location)}`);
+      pricingCache[fc.location] = await res.json();
+      fc.pricing = pricingCache[fc.location]; // patch the stored entry too
+      renderCartView(); // re-render with corrected pricing
+    } catch(e) {}
+  });
 }
 
 function closeCartView() {
@@ -1798,7 +1815,11 @@ function renderCartView() {
     const isCurrent      = key === currentFolderKey;
     const label          = fc.label || key;
     const digitalCount   = fc.selectedPaths?.length || 0;
-    const folderPricing  = isCurrent ? currentPricing : fc.pricing;
+    // Use pricingCache keyed by location — self-heals stale localStorage pricing
+    const folderPricing  = isCurrent ? currentPricing
+                         : (fc.location !== undefined && pricingCache[fc.location])
+                           ? pricingCache[fc.location]
+                           : fc.pricing;
     const digitalPrice   = calcPriceFor(digitalCount, folderPricing);
     const folderPrints   = isCurrent ? printCart : (fc.printCart || []);
     const printPrice     = folderPrints.reduce((s, p) => s + p.price + p.framePrice, 0);
@@ -1808,7 +1829,10 @@ function renderCartView() {
 
     if (!digitalCount && !folderPrints.length) return;
 
-    html += `<div class="cartview-section-label" style="margin-top:${html?'1.4rem':'0'}">${label}</div>`;
+    const removeBtn = !isCurrent
+      ? `<button onclick="removeFolderFromCart('${escQ(key)}')" style="background:none;border:none;color:rgba(255,255,255,0.35);font-size:0.75rem;cursor:pointer;padding:0;margin-left:auto;text-decoration:underline;">Remove</button>`
+      : '';
+    html += `<div class="cartview-section-label" style="margin-top:${html?'1.4rem':'0'};display:flex;align-items:center;">${label}${removeBtn}</div>`;
 
     if (digitalCount > 0) {
       html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}</div>`;
@@ -1956,6 +1980,13 @@ function removeFolderDigital(key, path) {
   fc.selectedPaths  = (fc.selectedPaths  || []).filter(p => p !== path);
   fc.selectedPhotos = (fc.selectedPhotos || []).filter(p => p.path !== path);
   if (!fc.selectedPaths.length && !fc.printCart?.length) delete folderCarts[key];
+  updateHeaderCartBtn();
+  renderCartView();
+  saveCart();
+}
+
+function removeFolderFromCart(key) {
+  delete folderCarts[key];
   updateHeaderCartBtn();
   renderCartView();
   saveCart();
