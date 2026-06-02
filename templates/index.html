@@ -1707,7 +1707,12 @@ function updateCart() {
   document.getElementById('cart-count-text').textContent = summary.join(' + ') + (summary.length > 0 ? ' selected' : '');
   document.getElementById('cart-price-text').textContent = `$${total}`;
   // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
-  const cartUpsell = count > 0 ? getUpsellMsg(count) : '';
+  const upgradeMsg = count > 0 ? getUpsellMsg(count) : '';
+  // Print upsell — only show when digital selected but no prints yet
+  const printMsg = (count > 0 && printCart.length === 0)
+    ? `Get <strong>50% off prints</strong> for your selected photos!`
+    : '';
+  const cartUpsell = upgradeMsg || printMsg;
   // Free shipping incentive — only applies to unframed prints
   let shippingMsg = '';
   const unframedPrints = printCart.filter(p => !p.frame || p.frame === 'No Frame');
@@ -1721,11 +1726,8 @@ function updateCart() {
     }
   }
   const upsellEl = document.getElementById('cart-upsell-text');
-  if (cartUpsell && shippingMsg) {
-    upsellEl.innerHTML = cartUpsell + `<span style="margin:0 8px;opacity:0.35;">|</span>` + shippingMsg;
-  } else {
-    upsellEl.innerHTML = cartUpsell || shippingMsg;
-  }
+  const parts = [cartUpsell, shippingMsg].filter(Boolean);
+  upsellEl.innerHTML = parts.join(`<span style="margin:0 8px;opacity:0.35;">|</span>`);
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
   saveCart();
