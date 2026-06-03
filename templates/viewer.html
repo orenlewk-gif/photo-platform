@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crystal Images — Photo Viewer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&display=swap" rel="stylesheet" />
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: #0c2336;
+  color: #fff;
+  min-height: 100vh;
+}
+
+/* ── Header ── */
+.header {
+  background: #0a1e2e;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  padding: 0.9rem 2rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.header img { width: 42px; height: 42px; border-radius: 50%; object-fit: cover; }
+.header-title { font-size: 1.1rem; font-weight: 700; color: #F5C518; letter-spacing: 0.5px; }
+.header-sub { font-size: 0.78rem; color: rgba(255,255,255,0.4); }
+
+/* ── Main layout ── */
+.container { max-width: 1300px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+/* ── Breadcrumb ── */
+.breadcrumb {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.82rem; color: rgba(255,255,255,0.4);
+  margin-bottom: 1.5rem; flex-wrap: wrap;
+}
+.breadcrumb a {
+  color: #F5C518; text-decoration: none; font-weight: 500;
+}
+.breadcrumb a:hover { text-decoration: underline; }
+.breadcrumb .sep { opacity: 0.3; }
+
+/* ── Section title ── */
+.section-title {
+  font-size: 1.5rem; font-weight: 700;
+  margin-bottom: 1.5rem; color: #fff;
+}
+.section-title span { color: rgba(255,255,255,0.35); font-size: 0.9rem; font-weight: 400; margin-left: 0.5rem; }
+
+/* ── Date grid ── */
+.date-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.date-card {
+  background: #0a1e2e;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 1.2rem 1.4rem;
+  cursor: pointer;
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+}
+.date-card:hover {
+  border-color: rgba(245,197,24,0.5);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.4);
+}
+.date-card .dc-date { font-size: 1rem; font-weight: 700; margin-bottom: 0.4rem; }
+.date-card .dc-locs { font-size: 0.78rem; color: rgba(255,255,255,0.4); line-height: 1.6; }
+
+/* ── Location grid ── */
+.location-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+.location-card {
+  background: #0a1e2e;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 1.4rem;
+  cursor: pointer;
+  transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+  display: flex; align-items: center; gap: 0.75rem;
+}
+.location-card:hover {
+  border-color: rgba(245,197,24,0.5);
+  transform: translateY(-3px);
+  box-shadow: 0 10px 28px rgba(0,0,0,0.4);
+}
+.location-card .lc-icon { font-size: 1.6rem; flex-shrink: 0; }
+.location-card .lc-name { font-size: 0.95rem; font-weight: 600; }
+
+/* ── Photo grid ── */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.photo-card {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #0a1e2e;
+  border: 2px solid transparent;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  aspect-ratio: 4/3;
+}
+.photo-card:hover {
+  border-color: rgba(245,197,24,0.6);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.photo-card img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  transition: opacity 0.2s;
+}
+.photo-card .pc-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0);
+  display: flex; align-items: flex-end;
+  transition: background 0.15s;
+}
+.photo-card:hover .pc-overlay { background: rgba(0,0,0,0.18); }
+.photo-card .pc-name {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.6);
+  background: linear-gradient(to top, rgba(0,0,0,0.6), transparent);
+  width: 100%;
+}
+
+/* ── Spinner ── */
+.spinner-wrap { display:flex; justify-content:center; padding: 4rem 0; }
+.spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(245,197,24,0.2);
+  border-top-color: #F5C518;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Photo count badge ── */
+.count-badge {
+  background: rgba(245,197,24,0.15);
+  border: 1px solid rgba(245,197,24,0.3);
+  color: #F5C518;
+  font-size: 0.75rem; font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  display: inline-block;
+  margin-left: 0.6rem;
+  vertical-align: middle;
+}
+
+/* ── Lightbox ── */
+.lb-overlay {
+  display: none; position: fixed; inset: 0;
+  background: rgba(0,0,0,0.96);
+  z-index: 99999;
+  align-items: center; justify-content: center; flex-direction: column;
+}
+.lb-overlay.open { display: flex; }
+.lb-inner {
+  position: relative; display: flex; flex-direction: column;
+  align-items: center; width: 94vw; max-width: 1200px;
+}
+.lb-img-wrap {
+  position: relative; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+#lb-photo {
+  max-width: 100%; max-height: 82vh; object-fit: contain;
+  border-radius: 6px; display: block;
+  box-shadow: 0 0 80px rgba(0,0,0,0.9);
+  transition: opacity 0.15s ease;
+}
+.lb-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(245,197,24,0.92); color: #0c2336;
+  border: none; border-radius: 50%;
+  width: 52px; height: 52px; font-size: 24px; font-weight: bold;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s, transform 0.2s; z-index: 10; user-select: none;
+}
+.lb-arrow:hover { background: #F5C518; transform: translateY(-50%) scale(1.08); }
+.lb-arrow.left  { left: -68px; }
+.lb-arrow.right { right: -68px; }
+@media(max-width:860px){ .lb-arrow.left{ left:6px; } .lb-arrow.right{ right:6px; } }
+.lb-close {
+  position: fixed; top: 16px; right: 20px;
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+  color: #fff; border-radius: 50%; width: 44px; height: 44px;
+  font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.2s; z-index: 100001;
+}
+.lb-close:hover { background: rgba(255,255,255,0.22); }
+.lb-info {
+  margin-top: 14px; text-align: center;
+  color: rgba(255,255,255,0.7); font-size: 0.88rem; line-height: 1.7;
+}
+.lb-filename { color: rgba(255,255,255,0.3); font-size: 0.72rem; margin-top: 4px; }
+.lb-counter  { margin-top: 8px; color: rgba(255,255,255,0.25); font-size: 0.72rem; letter-spacing: 1px; }
+
+/* ── Responsive ── */
+@media(max-width:640px){
+  .container { padding: 1.2rem 1rem; }
+  .photo-grid { grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap:7px; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/JRM_3584-copy-2.jpeg" alt="Crystal Images" onerror="this.style.display='none'" />
+  <div>
+    <div class="header-title">Crystal Images</div>
+    <div class="header-sub">Photo Viewer</div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="breadcrumb" id="breadcrumb"></div>
+  <div id="main-view"></div>
+</div>
+
+<!-- Lightbox -->
+<div class="lb-overlay" id="lb">
+  <button class="lb-close" onclick="closeLB()">✕</button>
+  <div class="lb-inner">
+    <div class="lb-img-wrap">
+      <button class="lb-arrow left"  onclick="stepLB(-1)">&#8592;</button>
+      <img id="lb-photo" src="" alt="" />
+      <button class="lb-arrow right" onclick="stepLB(1)">&#8594;</button>
+    </div>
+    <div class="lb-info"    id="lb-info"></div>
+    <div class="lb-filename" id="lb-fn"></div>
+    <div class="lb-counter"  id="lb-ct"></div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let state = { view: 'days' }; // view: 'days' | 'locations' | 'photos'
+let allDates   = [];
+let curPhotos  = [];
+let lbIndex    = 0;
+
+const enc = s => encodeURIComponent(s);
+
+function formatDate(d) {
+  // d = "2026-05-08"
+  try {
+    const [y, m, day] = d.split('-');
+    return new Date(y, m - 1, day).toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+  } catch { return d; }
+}
+
+// ── Routing ────────────────────────────────────────────────────────────────
+async function navigate(newState) {
+  state = newState;
+  renderBreadcrumb();
+  if (state.view === 'days')      await renderDays();
+  if (state.view === 'locations') await renderLocations();
+  if (state.view === 'photos')    await renderPhotos();
+}
+
+// ── Breadcrumb ─────────────────────────────────────────────────────────────
+function renderBreadcrumb() {
+  const el = document.getElementById('breadcrumb');
+  const parts = [];
+  parts.push(`<a href="#" onclick="navigate({view:'days'});return false;">All Days</a>`);
+  if (state.date) {
+    if (state.view === 'locations') {
+      parts.push(`<span class="sep">/</span><span>${formatDate(state.date)}</span>`);
+    } else {
+      parts.push(`<span class="sep">/</span><a href="#" onclick="navigate({view:'locations',date:'${state.date}'});return false;">${formatDate(state.date)}</a>`);
+    }
+  }
+  if (state.location) {
+    parts.push(`<span class="sep">/</span><span>${state.location}</span>`);
+  }
+  el.innerHTML = parts.join(' ');
+}
+
+// ── Days view ──────────────────────────────────────────────────────────────
+async function renderDays() {
+  const view = document.getElementById('main-view');
+  view.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  if (!allDates.length) {
+    const res  = await fetch('/api/local/dates');
+    allDates   = await res.json();
+  }
+  if (!allDates.length) {
+    view.innerHTML = '<p style="color:rgba(255,255,255,0.4);padding:2rem 0;">No photos found in the images folder.</p>';
+    return;
+  }
+  let html = `<div class="section-title">All Days <span>${allDates.length} day${allDates.length !== 1 ? 's' : ''}</span></div>`;
+  html += '<div class="date-grid">';
+  allDates.forEach(d => {
+    const locs = d.locations.join(', ') || '—';
+    html += `<div class="date-card" onclick="navigate({view:'locations',date:'${d.date}'})">
+      <div class="dc-date">${formatDate(d.date)}</div>
+      <div class="dc-locs">${locs}</div>
+    </div>`;
+  });
+  html += '</div>';
+  view.innerHTML = html;
+}
+
+// ── Locations view ─────────────────────────────────────────────────────────
+async function renderLocations() {
+  const view = document.getElementById('main-view');
+  view.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const dateData = allDates.find(d => d.date === state.date);
+  const locations = dateData ? dateData.locations : [];
+  let html = `<div class="section-title">${formatDate(state.date)}</div>`;
+  html += '<div class="location-grid">';
+  locations.forEach(loc => {
+    html += `<div class="location-card" onclick="navigate({view:'photos',date:'${state.date}',location:'${loc.replace(/'/g,"\\'")}'})" >
+      <div class="lc-icon">📍</div>
+      <div class="lc-name">${loc}</div>
+    </div>`;
+  });
+  html += '</div>';
+  view.innerHTML = html;
+}
+
+// ── Photos view ────────────────────────────────────────────────────────────
+async function renderPhotos() {
+  const view = document.getElementById('main-view');
+  view.innerHTML = '<div class="spinner-wrap"><div class="spinner"></div></div>';
+  const res  = await fetch(`/api/local/browse?date=${enc(state.date)}&location=${enc(state.location)}`);
+  const data = await res.json();
+  curPhotos  = data.photos || [];
+
+  let html = `<div class="section-title">${state.location} <span class="count-badge">${curPhotos.length} photos</span></div>`;
+  html += '<div class="photo-grid">';
+  curPhotos.forEach((p, i) => {
+    const src = `/api/local/photo?path=${enc(p.path)}&size=thumb`;
+    html += `<div class="photo-card" onclick="openLB(${i})">
+      <img src="${src}" alt="${p.filename}" loading="lazy" />
+      <div class="pc-overlay"><div class="pc-name">${p.filename}</div></div>
+    </div>`;
+  });
+  html += '</div>';
+  view.innerHTML = html;
+}
+
+// ── Lightbox ───────────────────────────────────────────────────────────────
+function openLB(i) {
+  lbIndex = i;
+  renderLB();
+  document.getElementById('lb').classList.add('open');
+}
+function closeLB() {
+  document.getElementById('lb').classList.remove('open');
+}
+function stepLB(dir) {
+  lbIndex = (lbIndex + dir + curPhotos.length) % curPhotos.length;
+  renderLB();
+}
+function renderLB() {
+  const p   = curPhotos[lbIndex];
+  const src = `/api/local/photo?path=${enc(p.path)}&size=full`;
+  const ph  = document.getElementById('lb-photo');
+  ph.style.opacity = '0';
+  ph.onload = () => ph.style.opacity = '1';
+  ph.src    = src;
+  document.getElementById('lb-info').innerHTML = `<strong>${state.location}</strong> &nbsp;·&nbsp; ${formatDate(state.date)}`;
+  document.getElementById('lb-fn').textContent = p.filename;
+  document.getElementById('lb-ct').textContent = `${lbIndex + 1} / ${curPhotos.length}`;
+}
+
+// Keyboard nav
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('lb').classList.contains('open')) return;
+  if (e.key === 'ArrowRight') stepLB(1);
+  if (e.key === 'ArrowLeft')  stepLB(-1);
+  if (e.key === 'Escape')     closeLB();
+});
+document.getElementById('lb').addEventListener('click', e => {
+  if (e.target === document.getElementById('lb')) closeLB();
+});
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+navigate({ view: 'days' });
+</script>
+</body>
+</html>
