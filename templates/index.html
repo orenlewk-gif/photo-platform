@@ -1239,7 +1239,7 @@ async function showGallery(date, location, family, ln) {
         <span>⊞</span>
       </div>
     </div>
-    <div class="gallery" id="gallery" style="--cols:6"></div>`;
+    <div class="gallery" id="gallery" style="--cols:${isMobile ? 2 : 6}"></div>`;
 
   renderThumbs(photos);
   // Re-highlight any photos that were already selected in this folder
@@ -1256,7 +1256,7 @@ async function showGallery(date, location, family, ln) {
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
     let cols = [8, 7, 6, 5, 4][parseInt(this.value) - 1];
-    if (isMobile) cols = Math.min(cols, 3);
+    if (isMobile) cols = Math.min(Math.max(cols, 2), 4);
     document.getElementById('gallery').style.setProperty('--cols', cols);
   });
 }
