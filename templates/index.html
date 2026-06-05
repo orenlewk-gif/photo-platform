@@ -196,8 +196,7 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-loc  { color:rgba(255,255,255,.75); font-size:.75rem; font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .thumb-date { color:rgba(255,255,255,.4); font-size:.7rem; }
 @media(max-width:640px) {
-  .thumb-date { display:none; }
-  .thumb-meta { padding:6px 8px; }
+  .thumb-meta { display:none; }
   .ln-bar { flex-direction:column; gap:0.6rem; padding:0.9rem 1rem; }
   .ln-input-wrap { width:100%; }
   .ln-bar .btn { width:100%; }
@@ -1262,8 +1261,12 @@ async function showGallery(date, location, family, ln) {
   });
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
-    let cols = [8, 7, 6, 5, 4][parseInt(this.value) - 1];
-    if (isMobile) cols = Math.min(Math.max(cols, 2), 4);
+    let cols;
+    if (isMobile) {
+      cols = [4, 4, 3, 2, 2][parseInt(this.value) - 1];
+    } else {
+      cols = [8, 7, 6, 5, 4][parseInt(this.value) - 1];
+    }
     document.getElementById('gallery').style.setProperty('--cols', cols);
   });
 }
