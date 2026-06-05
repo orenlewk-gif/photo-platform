@@ -140,6 +140,9 @@ input[type="range"]::-webkit-slider-thumb {
 /* Gallery grid */
 .gallery { display:grid; gap:10px; }
 .gallery { grid-template-columns: repeat(var(--cols,3), 1fr); }
+@media(max-width:640px) {
+  .gallery { grid-template-columns: repeat(clamp(2, var(--cols,3), 4), 1fr) !important; }
+}
 
 /* Thumbnail cards */
 .thumb-card {
@@ -253,6 +256,14 @@ input[type="range"]::-webkit-slider-thumb {
   align-items:center; justify-content:center;
   font-size:0.88rem; font-weight:500; text-align:center;
   white-space:nowrap;
+}
+@media(max-width:640px) {
+  .print-upsell-banner { padding:0.6rem 2.5rem 0.6rem 0.75rem; overflow:hidden; justify-content:flex-start; }
+  .print-upsell-banner > span { display:block; white-space:nowrap; animation:marquee 18s linear infinite; }
+  @keyframes marquee {
+    0%   { transform:translateX(100vw); }
+    100% { transform:translateX(-100%); }
+  }
 }
 .print-upsell-banner.show { display:flex; }
 .print-upsell-banner strong { font-weight:800; }
