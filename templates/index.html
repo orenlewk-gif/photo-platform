@@ -2073,7 +2073,9 @@ function buildFrameOptions(currentFrameLabel, sizeIdx) {
 
 // ── Checkout ──
 function openCheckout() {
-  if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0) return;
+  const folderHasItems = Object.values(folderCarts).some(fc =>
+    (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0);
+  if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0 && !folderHasItems) return;
   const photos = [...selectedPhotos].map(i => allPhotos[i]);
 
   // Thumbnails row
