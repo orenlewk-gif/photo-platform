@@ -195,7 +195,13 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-meta { padding:9px 12px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
 .thumb-loc  { color:rgba(255,255,255,.75); font-size:.75rem; font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .thumb-date { color:rgba(255,255,255,.4); font-size:.7rem; }
-@media(max-width:640px) { .thumb-date { display:none; } .thumb-meta { padding:6px 8px; } }
+@media(max-width:640px) {
+  .thumb-date { display:none; }
+  .thumb-meta { padding:6px 8px; }
+  .ln-bar { flex-direction:column; gap:0.6rem; padding:0.9rem 1rem; }
+  .ln-input-wrap { width:100%; }
+  .ln-bar .btn { width:100%; }
+}
 
 .thumb-shop-btn {
   background:#F5C518; color:#0c2336; border:none;
