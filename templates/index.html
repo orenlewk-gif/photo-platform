@@ -195,6 +195,7 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-meta { padding:9px 12px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
 .thumb-loc  { color:rgba(255,255,255,.75); font-size:.75rem; font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .thumb-date { color:rgba(255,255,255,.4); font-size:.7rem; }
+@media(max-width:640px) { .thumb-date { display:none; } .thumb-meta { padding:6px 8px; } }
 
 .thumb-shop-btn {
   background:#F5C518; color:#0c2336; border:none;
@@ -1239,7 +1240,7 @@ async function showGallery(date, location, family, ln) {
         <span>⊞</span>
       </div>
     </div>
-    <div class="gallery" id="gallery" style="--cols:6"></div>`;
+    <div class="gallery" id="gallery" style="--cols:${window.innerWidth<=640?2:6}"></div>`;
 
   renderThumbs(photos);
   // Re-highlight any photos that were already selected in this folder
