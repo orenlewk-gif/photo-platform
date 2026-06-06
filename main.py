@@ -963,6 +963,305 @@ def download_file(token: str, idx: int):
 
 
 # ─────────────────────────────────────────
+# ADMIN
+# ─────────────────────────────────────────
+
+ADMIN_PASSWORD  = os.getenv("ADMIN_PASSWORD", "")
+ADMIN_COOKIE    = "ci_admin_session"
+ADMIN_SECRET    = os.getenv("ADMIN_PASSWORD", "fallback-secret")  # signs cookie
+STRIPE_RATE     = 0.029
+STRIPE_FIXED    = 0.30
+
+def _make_session_token():
+    raw = f"{ADMIN_SECRET}:{datetime.now(timezone.utc).date()}"
+    return hmac.new(ADMIN_SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
+
+def _admin_authed(request: Request) -> bool:
+    token = request.cookies.get(ADMIN_COOKIE, "")
+    expected = _make_session_token()
+    return hmac.compare_digest(token, expected)
+
+ADMIN_LOGIN_HTML = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Admin Login</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
+.card{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px}
+h2{color:#F5C518;font-size:1.3rem;margin-bottom:1.5rem;text-align:center}
+input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;
+  padding:.75rem 1rem;color:#fff;font-size:1rem;margin-bottom:1rem;outline:none}
+input:focus{border-color:#F5C518}
+button{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8px;
+  padding:.75rem;font-size:1rem;font-weight:700;cursor:pointer}
+.err{color:#e53e3e;font-size:.85rem;text-align:center;margin-top:.5rem}
+</style></head><body>
+<div class="card">
+  <h2>Crystal Images Admin</h2>
+  <form method="post" action="/admin/login">
+    <input type="password" name="password" placeholder="Password" autofocus />
+    <button type="submit">Sign In</button>
+    {error}
+  </form>
+</div></body></html>"""
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_get(request: Request):
+    if not _admin_authed(request):
+        return HTMLResponse(ADMIN_LOGIN_HTML.format(error=""))
+    return RedirectResponse("/admin/dashboard")
+
+@app.post("/admin/login")
+async def admin_login(request: Request):
+    form = await request.form()
+    pw   = form.get("password", "")
+    if not ADMIN_PASSWORD or not hmac.compare_digest(pw, ADMIN_PASSWORD):
+        return HTMLResponse(ADMIN_LOGIN_HTML.format(
+            error='<p class="err">Incorrect password.</p>'), status_code=401)
+    token = _make_session_token()
+    resp  = RedirectResponse("/admin/dashboard", status_code=303)
+    resp.set_cookie(ADMIN_COOKIE, token, httponly=True, samesite="strict", max_age=86400)
+    return resp
+
+@app.get("/admin/logout")
+def admin_logout():
+    resp = RedirectResponse("/admin")
+    resp.delete_cookie(ADMIN_COOKIE)
+    return resp
+
+def _fetch_wc_orders(after: str = None, before: str = None, per_page: int = 100):
+    params = {"status": "completed", "per_page": per_page, "orderby": "date", "order": "desc"}
+    if after:  params["after"]  = after
+    if before: params["before"] = before
+    try:
+        r = http_requests.get(f"{WC_BASE}/orders", params=params,
+                              auth=(WC_KEY, WC_SECRET), timeout=15)
+        return r.json() if r.ok else []
+    except Exception:
+        return []
+
+def _list_tokens():
+    """List all download tokens from R2."""
+    tokens = {}
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]  # downloads/{token}.json
+                token = key.replace("downloads/", "").replace(".json", "")
+                tokens[token] = key
+    except Exception:
+        pass
+    return tokens
+
+def _get_token_by_order_id(order_id):
+    """Find download token matching a WooCommerce order ID."""
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                token = key.replace("downloads/", "").replace(".json", "")
+                rec = _load_token(token)
+                if rec and str(rec.get("order_id")) == str(order_id):
+                    return token, rec
+    except Exception:
+        pass
+    return None, None
+
+def _stripe_fee(total: float) -> float:
+    return round(total * STRIPE_RATE + STRIPE_FIXED, 2)
+
+def _order_row(order) -> dict:
+    billing    = order.get("billing", {})
+    total      = float(order.get("total", 0))
+    stripe_fee = _stripe_fee(total)
+    fee_lines  = order.get("fee_lines", [])
+    shipping   = sum(float(f.get("total", 0)) for f in fee_lines if "ship" in f.get("name","").lower())
+    ship_addr  = ""
+    sa         = order.get("shipping", {})
+    if sa.get("address_1"):
+        parts = [sa.get("address_1",""), sa.get("address_2",""), sa.get("city",""),
+                 sa.get("state",""), sa.get("postcode",""), sa.get("country","")]
+        ship_addr = ", ".join(p for p in parts if p)
+    meta       = {m["key"]: m["value"] for m in order.get("meta_data", [])}
+    filenames  = meta.get("_photo_filenames", "")
+    location   = meta.get("_photo_location", "")
+    date_raw   = meta.get("_photo_date", "")
+    line_items = order.get("line_items", [])
+    what_ordered = ", ".join(li.get("name","") for li in line_items)
+    return {
+        "order_id":   order.get("id"),
+        "date":       order.get("date_created","")[:10],
+        "first":      billing.get("first_name",""),
+        "last":       billing.get("last_name",""),
+        "email":      billing.get("email",""),
+        "what":       what_ordered,
+        "filenames":  filenames,
+        "location":   location,
+        "photo_date": date_raw,
+        "total":      total,
+        "stripe_fee": stripe_fee,
+        "net":        round(total - stripe_fee, 2),
+        "shipping":   shipping,
+        "ship_addr":  ship_addr,
+    }
+
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+def admin_dashboard(request: Request, days: int = 30):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    orders = _fetch_wc_orders(after=after)
+    rows   = [_order_row(o) for o in orders]
+    total_rev  = sum(r["total"]      for r in rows)
+    total_fees = sum(r["stripe_fee"] for r in rows)
+    total_net  = sum(r["net"]        for r in rows)
+
+    def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
+    trs = ""
+    for r in rows:
+        trs += f"""<tr>
+          {td(r['date'])}
+          {td(f"{r['first']} {r['last']}")}
+          {td(r['email'])}
+          {td(r['what'])}
+          {td(r['filenames'] or '—', 'mono')}
+          {td(f"${r['total']:.2f}")}
+          {td(f"${r['stripe_fee']:.2f}", 'fee')}
+          {td(f"${r['net']:.2f}", 'net')}
+          {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
+          {td(r['ship_addr'] or '—')}
+          {td(f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn">↺ Regen Link</a>')}
+        </tr>"""
+
+    period_opts = "".join(
+        f'<option value="{d}" {"selected" if d==days else ""}>{label}</option>'
+        for d, label in [(7,"Last 7 days"),(14,"Last 14 days"),(30,"Last 30 days"),(60,"Last 60 days"),(90,"Last 90 days")]
+    )
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Admin — Crystal Images</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#0c2336;font-family:'Segoe UI',sans-serif;color:#fff;min-height:100vh}}
+.topbar{{background:#0a1e2e;border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 2rem;
+  display:flex;align-items:center;justify-content:space-between}}
+.topbar h1{{color:#F5C518;font-size:1.1rem;font-weight:700}}
+.topbar a{{color:rgba(255,255,255,.4);font-size:.85rem;text-decoration:none}}
+.topbar a:hover{{color:#fff}}
+.container{{padding:1.5rem 2rem}}
+.stats{{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}}
+.stat{{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;
+  padding:1rem 1.5rem;flex:1;min-width:150px}}
+.stat .label{{font-size:.72rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}}
+.stat .val{{font-size:1.4rem;font-weight:700;color:#F5C518}}
+.controls{{display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap}}
+select{{background:#0a1e2e;border:1px solid rgba(255,255,255,.15);color:#fff;
+  padding:.5rem .9rem;border-radius:8px;font-size:.9rem;cursor:pointer}}
+.export-btn{{background:#F5C518;color:#0c2336;border:none;border-radius:8px;
+  padding:.5rem 1.2rem;font-weight:700;cursor:pointer;font-size:.9rem;text-decoration:none}}
+.wrap{{overflow-x:auto}}
+table{{width:100%;border-collapse:collapse;font-size:.82rem;min-width:1100px}}
+th{{background:#0a1e2e;color:rgba(255,255,255,.5);font-weight:600;font-size:.72rem;
+  letter-spacing:.8px;text-transform:uppercase;padding:.6rem .75rem;text-align:left;
+  border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}}
+td{{padding:.65rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}}
+tr:hover td{{background:rgba(255,255,255,.02)}}
+.mono{{font-family:monospace;font-size:.75rem;color:rgba(255,255,255,.55);max-width:220px;
+  word-break:break-all;white-space:normal}}
+.fee{{color:#e53e3e}}
+.net{{color:#4ade80;font-weight:600}}
+.regen-btn{{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.3);
+  color:#F5C518;padding:.3rem .8rem;border-radius:6px;font-size:.78rem;
+  text-decoration:none;white-space:nowrap}}
+.regen-btn:hover{{background:rgba(245,197,24,.25)}}
+.empty{{text-align:center;padding:3rem;color:rgba(255,255,255,.3)}}
+</style></head><body>
+<div class="topbar">
+  <h1>Crystal Images — Admin</h1>
+  <a href="/admin/logout">Sign out</a>
+</div>
+<div class="container">
+  <div class="stats">
+    <div class="stat"><div class="label">Orders</div><div class="val">{len(rows)}</div></div>
+    <div class="stat"><div class="label">Revenue</div><div class="val">${total_rev:.2f}</div></div>
+    <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#e53e3e">${total_fees:.2f}</div></div>
+    <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
+  </div>
+  <div class="controls">
+    <form method="get">
+      <select name="days" onchange="this.form.submit()">{period_opts}</select>
+    </form>
+    <a class="export-btn" href="/admin/export?days={days}">↓ Export CSV</a>
+  </div>
+  <div class="wrap">
+  <table>
+    <thead><tr>
+      <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th>
+      <th>Photo Files</th><th>Total</th><th>Stripe Fee</th><th>Net</th>
+      <th>Shipping $</th><th>Shipping Address</th><th>Action</th>
+    </tr></thead>
+    <tbody>{trs if trs else '<tr><td colspan="11" class="empty">No completed orders in this period.</td></tr>'}</tbody>
+  </table>
+  </div>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+@app.get("/admin/export")
+def admin_export(request: Request, days: int = 30):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    import csv, io
+    after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    orders = _fetch_wc_orders(after=after)
+    rows   = [_order_row(o) for o in orders]
+    buf    = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Date","First Name","Last Name","Email","What Ordered",
+                     "Photo Files","Location","Photo Date","Total","Stripe Fee",
+                     "Net","Shipping Cost","Shipping Address"])
+    for r in rows:
+        writer.writerow([r["date"], r["first"], r["last"], r["email"], r["what"],
+                         r["filenames"], r["location"], r["photo_date"],
+                         f"${r['total']:.2f}", f"${r['stripe_fee']:.2f}",
+                         f"${r['net']:.2f}",
+                         f"${r['shipping']:.2f}" if r["shipping"] else "",
+                         r["ship_addr"]])
+    filename = f"crystal-images-orders-{datetime.now().strftime('%Y%m%d')}.csv"
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+@app.get("/admin/regen/{order_id}")
+def admin_regen(request: Request, order_id: int):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    token, rec = _get_token_by_order_id(order_id)
+    if not rec:
+        return HTMLResponse("<h2 style='font-family:sans-serif;color:#e53e3e;padding:2rem'>Order not found in download records.</h2>")
+    new_token  = str(uuid.uuid4()).replace("-", "")
+    new_expires = (datetime.now(timezone.utc) + timedelta(days=DOWNLOAD_EXPIRE_DAYS)).isoformat()
+    rec["expires"] = new_expires
+    _store_token(new_token, rec)
+    new_url = f"{SITE_URL}/download/{new_token}"
+    html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Link Regenerated</title>
+<style>body{{background:#0c2336;font-family:'Segoe UI',sans-serif;color:#fff;padding:2rem;}}
+.card{{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:2rem;max-width:560px;}}
+h2{{color:#4ade80;margin-bottom:1rem}}p{{color:rgba(255,255,255,.6);font-size:.9rem;margin-bottom:.75rem}}
+.url{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;
+  padding:.75rem 1rem;font-family:monospace;font-size:.85rem;word-break:break-all;color:#F5C518;margin-bottom:1.25rem}}
+a.back{{color:#F5C518;font-size:.9rem}}</style></head><body>
+<div class="card">
+  <h2>✓ Download Link Regenerated</h2>
+  <p>Customer: <strong>{rec.get('customer','')} ({rec.get('email','')})</strong></p>
+  <p>New link (valid 30 days):</p>
+  <div class="url">{new_url}</div>
+  <p>Copy and send this to the customer.</p>
+  <a class="back" href="/admin/dashboard">← Back to dashboard</a>
+</div></body></html>"""
+    return HTMLResponse(html)
+
+
+# ─────────────────────────────────────────
 # FRONTEND
 # ─────────────────────────────────────────
 
