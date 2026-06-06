@@ -1152,6 +1152,7 @@ def admin_dashboard(request: Request, days: int = 30,
         f'<option value="{d}" {"selected" if d==days else ""}>{label}</option>'
         for d, label in [(7,"Last 7 days"),(14,"Last 14 days"),(30,"Last 30 days"),(60,"Last 60 days"),(90,"Last 90 days")]
     )
+    export_qs = f"date_from={date_from}&date_to={date_to}" if custom else f"days={days}"
 
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Admin — Crystal Images</title>
@@ -1216,7 +1217,7 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
         placeholder="To" />
       <button type="submit" style="background:rgba(245,197,24,.15);border:1px solid rgba(245,197,24,.4);color:#F5C518;padding:.45rem 1rem;border-radius:8px;cursor:pointer;font-size:.85rem;">Apply</button>
     </form>
-    <a class="export-btn" href="/admin/export?{'date_from='+date_from+'&date_to='+date_to if custom else 'days='+str(days)}">↓ Export CSV</a>
+    <a class="export-btn" href="/admin/export?{export_qs}">↓ Export CSV</a>
   </div>
   <div class="wrap">
   <table>
