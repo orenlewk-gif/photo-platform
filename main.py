@@ -984,16 +984,16 @@ def _admin_authed(request: Request) -> bool:
 ADMIN_LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Admin Login</title>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#0c2336;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}
-.card{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px}
-h2{color:#F5C518;font-size:1.3rem;margin-bottom:1.5rem;text-align:center}
-input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;
-  padding:.75rem 1rem;color:#fff;font-size:1rem;margin-bottom:1rem;outline:none}
-input:focus{border-color:#F5C518}
-button{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8px;
-  padding:.75rem;font-size:1rem;font-weight:700;cursor:pointer}
-.err{color:#e53e3e;font-size:.85rem;text-align:center;margin-top:.5rem}
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#0c2336;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}}
+.card{{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px}}
+h2{{color:#F5C518;font-size:1.3rem;margin-bottom:1.5rem;text-align:center}}
+input{{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;
+  padding:.75rem 1rem;color:#fff;font-size:1rem;margin-bottom:1rem;outline:none}}
+input:focus{{border-color:#F5C518}}
+button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8px;
+  padding:.75rem;font-size:1rem;font-weight:700;cursor:pointer}}
+.err{{color:#e53e3e;font-size:.85rem;text-align:center;margin-top:.5rem}}
 </style></head><body>
 <div class="card">
   <h2>Crystal Images Admin</h2>
