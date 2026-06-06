@@ -1074,6 +1074,7 @@ def _stripe_fee(total: float) -> float:
 def _order_row(order) -> dict:
     billing    = order.get("billing", {})
     total      = float(order.get("total", 0))
+    discount   = float(order.get("discount_total", 0))
     stripe_fee = _stripe_fee(total)
     fee_lines  = order.get("fee_lines", [])
     shipping   = sum(float(f.get("total", 0)) for f in fee_lines if "ship" in f.get("name","").lower())
@@ -1083,27 +1084,31 @@ def _order_row(order) -> dict:
         parts = [sa.get("address_1",""), sa.get("address_2",""), sa.get("city",""),
                  sa.get("state",""), sa.get("postcode",""), sa.get("country","")]
         ship_addr = ", ".join(p for p in parts if p)
-    meta       = {m["key"]: m["value"] for m in order.get("meta_data", [])}
-    filenames  = meta.get("_photo_filenames", "")
-    location   = meta.get("_photo_location", "")
-    date_raw   = meta.get("_photo_date", "")
-    line_items = order.get("line_items", [])
+    meta         = {m["key"]: m["value"] for m in order.get("meta_data", [])}
+    filenames    = meta.get("_photo_filenames", "")
+    location     = meta.get("_photo_location", "")
+    date_raw     = meta.get("_photo_date", "")
+    line_items   = order.get("line_items", [])
     what_ordered = ", ".join(li.get("name","") for li in line_items)
+    coupon_lines = order.get("coupon_lines", [])
+    coupon_code  = ", ".join(c.get("code","") for c in coupon_lines) if coupon_lines else ""
     return {
-        "order_id":   order.get("id"),
-        "date":       order.get("date_created","")[:10],
-        "first":      billing.get("first_name",""),
-        "last":       billing.get("last_name",""),
-        "email":      billing.get("email",""),
-        "what":       what_ordered,
-        "filenames":  filenames,
-        "location":   location,
-        "photo_date": date_raw,
-        "total":      total,
-        "stripe_fee": stripe_fee,
-        "net":        round(total - stripe_fee, 2),
-        "shipping":   shipping,
-        "ship_addr":  ship_addr,
+        "order_id":    order.get("id"),
+        "date":        order.get("date_created","")[:10],
+        "first":       billing.get("first_name",""),
+        "last":        billing.get("last_name",""),
+        "email":       billing.get("email",""),
+        "what":        what_ordered,
+        "filenames":   filenames,
+        "location":    location,
+        "photo_date":  date_raw,
+        "total":       total,
+        "discount":    discount,
+        "stripe_fee":  stripe_fee,
+        "net":         round(total - stripe_fee - discount, 2),
+        "shipping":    shipping,
+        "ship_addr":   ship_addr,
+        "coupon_code": coupon_code,
     }
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
@@ -1134,8 +1139,10 @@ def admin_dashboard(request: Request, days: int = 30,
           {td(r['what'])}
           {td(r['filenames'] or '—', 'mono')}
           {td(f"${r['total']:.2f}")}
+          {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
           {td(f"${r['stripe_fee']:.2f}", 'fee')}
           {td(f"${r['net']:.2f}", 'net')}
+          {td(r['coupon_code'] or '—')}
           {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
           {td(r['ship_addr'] or '—')}
           {td(f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn">↺ Regen Link</a>')}
@@ -1215,8 +1222,8 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
   <table>
     <thead><tr>
       <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th>
-      <th>Photo Files</th><th>Total</th><th>Stripe Fee</th><th>Net</th>
-      <th>Shipping $</th><th>Shipping Address</th><th>Action</th>
+      <th>Photo Files</th><th>Total</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
+      <th>Coupon Code</th><th>Shipping $</th><th>Shipping Address</th><th>Action</th>
     </tr></thead>
     <tbody>{trs if trs else '<tr><td colspan="11" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
@@ -1239,13 +1246,15 @@ def admin_export(request: Request, days: int = 30,
     buf    = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["Date","First Name","Last Name","Email","What Ordered",
-                     "Photo Files","Location","Photo Date","Total","Stripe Fee",
-                     "Net","Shipping Cost","Shipping Address"])
+                     "Photo Files","Location","Photo Date","Total","Discount",
+                     "Stripe Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
     for r in rows:
         writer.writerow([r["date"], r["first"], r["last"], r["email"], r["what"],
                          r["filenames"], r["location"], r["photo_date"],
-                         f"${r['total']:.2f}", f"${r['stripe_fee']:.2f}",
-                         f"${r['net']:.2f}",
+                         f"${r['total']:.2f}",
+                         f"-${r['discount']:.2f}" if r["discount"] else "",
+                         f"${r['stripe_fee']:.2f}", f"${r['net']:.2f}",
+                         r["coupon_code"],
                          f"${r['shipping']:.2f}" if r["shipping"] else "",
                          r["ship_addr"]])
     filename = f"crystal-images-orders-{datetime.now().strftime('%Y%m%d')}.csv"
