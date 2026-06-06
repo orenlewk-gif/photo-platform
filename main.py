@@ -1107,11 +1107,18 @@ def _order_row(order) -> dict:
     }
 
 @app.get("/admin/dashboard", response_class=HTMLResponse)
-def admin_dashboard(request: Request, days: int = 30):
+def admin_dashboard(request: Request, days: int = 30,
+                    date_from: str = "", date_to: str = ""):
     if not _admin_authed(request):
         return RedirectResponse("/admin")
-    after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    orders = _fetch_wc_orders(after=after)
+    custom = bool(date_from and date_to)
+    if custom:
+        after  = f"{date_from}T00:00:00"
+        before = f"{date_to}T23:59:59"
+        orders = _fetch_wc_orders(after=after, before=before)
+    else:
+        after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        orders = _fetch_wc_orders(after=after)
     rows   = [_order_row(o) for o in orders]
     total_rev  = sum(r["total"]      for r in rows)
     total_fees = sum(r["stripe_fee"] for r in rows)
@@ -1189,10 +1196,20 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
   </div>
   <div class="controls">
-    <form method="get">
-      <select name="days" onchange="this.form.submit()">{period_opts}</select>
+    <form method="get" style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+      <select name="days" onchange="this.form.submit();document.getElementById('custom').style.display='none'">
+        {period_opts}
+      </select>
+      <span style="color:rgba(255,255,255,.3);font-size:.85rem;">or</span>
+      <input type="date" name="date_from" value="{date_from}"
+        style="background:#0a1e2e;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.45rem .75rem;border-radius:8px;font-size:.85rem;"
+        placeholder="From" />
+      <input type="date" name="date_to" value="{date_to}"
+        style="background:#0a1e2e;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.45rem .75rem;border-radius:8px;font-size:.85rem;"
+        placeholder="To" />
+      <button type="submit" style="background:rgba(245,197,24,.15);border:1px solid rgba(245,197,24,.4);color:#F5C518;padding:.45rem 1rem;border-radius:8px;cursor:pointer;font-size:.85rem;">Apply</button>
     </form>
-    <a class="export-btn" href="/admin/export?days={days}">↓ Export CSV</a>
+    <a class="export-btn" href="/admin/export?{'date_from='+date_from+'&date_to='+date_to if custom else 'days='+str(days)}">↓ Export CSV</a>
   </div>
   <div class="wrap">
   <table>
@@ -1208,12 +1225,16 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
     return HTMLResponse(html)
 
 @app.get("/admin/export")
-def admin_export(request: Request, days: int = 30):
+def admin_export(request: Request, days: int = 30,
+                 date_from: str = "", date_to: str = ""):
     if not _admin_authed(request):
         return RedirectResponse("/admin")
     import csv, io
-    after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    orders = _fetch_wc_orders(after=after)
+    if date_from and date_to:
+        orders = _fetch_wc_orders(after=f"{date_from}T00:00:00", before=f"{date_to}T23:59:59")
+    else:
+        after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        orders = _fetch_wc_orders(after=after)
     rows   = [_order_row(o) for o in orders]
     buf    = io.StringIO()
     writer = csv.writer(buf)
