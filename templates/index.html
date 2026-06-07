@@ -548,6 +548,34 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 }
 .email-input-wrap input::placeholder { color:rgba(255,255,255,0.3); }
 #email-error { display:none; color:#e74c3c; font-size:0.78rem; margin-top:0.5rem; padding-left:0.25rem; }
+.checkout-coupon-section {
+  padding:1.25rem 2rem;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
+.coupon-input-row { display:flex; gap:0.5rem; align-items:center; }
+.coupon-input-wrap {
+  flex:1; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14);
+  border-radius:10px; padding:0.75rem 1rem; display:flex; align-items:center;
+  transition:border-color 0.2s;
+}
+.coupon-input-wrap:focus-within { border-color:rgba(245,197,24,0.5); }
+.coupon-input-wrap input {
+  flex:1; background:transparent; border:none; outline:none;
+  color:#fff; font-size:0.9rem; font-family:'DM Sans',sans-serif; letter-spacing:1px;
+}
+.coupon-input-wrap input::placeholder { color:rgba(255,255,255,0.3); letter-spacing:0; }
+.coupon-input-wrap input:disabled { color:rgba(255,255,255,0.6); }
+.coupon-apply-btn {
+  background:rgba(245,197,24,0.12); border:1px solid rgba(245,197,24,0.3);
+  color:#F5C518; border-radius:10px; padding:0.75rem 1.1rem;
+  font-size:0.88rem; font-weight:700; cursor:pointer; white-space:nowrap;
+  font-family:'DM Sans',sans-serif; transition:background 0.2s;
+}
+.coupon-apply-btn:hover { background:rgba(245,197,24,0.22); }
+.coupon-apply-btn:disabled { opacity:0.45; cursor:not-allowed; }
+#coupon-feedback { margin-top:0.5rem; font-size:0.8rem; display:none; }
+#coupon-feedback.success { color:#4ade80; display:block; }
+#coupon-feedback.error { color:#e74c3c; display:block; }
 .checkout-shipping-section {
   padding:1.5rem 2rem;
   border-bottom:1px solid rgba(255,255,255,0.08);
@@ -814,6 +842,16 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       <div id="checkout-lines"></div>
     </div>
     <div class="checkout-totals-section" id="checkout-totals-section"></div>
+    <div class="checkout-coupon-section">
+      <div class="email-section-label">Coupon Code</div>
+      <div class="coupon-input-row">
+        <div class="coupon-input-wrap">
+          <input type="text" id="coupon-input" placeholder="Enter code" />
+        </div>
+        <button class="coupon-apply-btn" id="coupon-apply-btn" onclick="applyCoupon()">Apply</button>
+      </div>
+      <div id="coupon-feedback"></div>
+    </div>
     <div class="checkout-email-section">
       <div class="email-section-label" id="checkout-email-label">Contact Information</div>
       <div class="email-input-wrap">
@@ -2195,26 +2233,45 @@ function renderCheckoutLines() {
   document.getElementById('checkout-lines').innerHTML = linesHtml;
 
   // ── totals section ─────────────────────────────────────────────────────────
-  let totalsHtml = '';
+  // Calculate coupon discount
+  let discountAmt = 0;
+  if (appliedCoupon) {
+    if (appliedCoupon.discount_type === 'percent') {
+      discountAmt = Math.round(subtotal * (appliedCoupon.amount / 100) * 100) / 100;
+    } else {
+      discountAmt = Math.min(appliedCoupon.amount, subtotal);
+    }
+    discountAmt = Math.round(discountAmt * 100) / 100;
+  }
+
   const unframedCount = allCheckoutPrints.filter(p => !p.frame || p.frame === 'No Frame').length;
   const freeShipping  = unframedCount >= 3 && !allCheckoutPrints.some(p => p.frame && p.frame !== 'No Frame');
+  const grandTotal    = Math.max(0, subtotal + shipping - discountAmt);
+
+  let totalsHtml = '';
+  const showSubtotal = shipping > 0 || freeShipping || discountAmt > 0;
+  if (showSubtotal) {
+    totalsHtml += `<div class="totals-row">
+      <span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span>
+    </div>`;
+  }
   if (shipping > 0) {
     totalsHtml += `<div class="totals-row">
-      <span>Subtotal</span><span class="amt">$${subtotal}</span>
-    </div>
-    <div class="totals-row">
-      <span>Shipping</span><span class="amt">$${shipping}</span>
+      <span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span>
     </div>`;
   } else if (freeShipping) {
-    totalsHtml += `<div class="totals-row">
-      <span>Subtotal</span><span class="amt">$${subtotal}</span>
-    </div>
-    <div class="totals-row" style="color:#4ade80;">
+    totalsHtml += `<div class="totals-row" style="color:#4ade80;">
       <span>Shipping</span><span class="amt">Free</span>
     </div>`;
   }
+  if (discountAmt > 0) {
+    totalsHtml += `<div class="totals-row" style="color:#4ade80;">
+      <span>Coupon (${appliedCoupon.code.toUpperCase()})</span>
+      <span class="amt">-$${discountAmt.toFixed(2)}</span>
+    </div>`;
+  }
   totalsHtml += `<div class="totals-row total-final">
-    <span>Total</span><span class="amt">$${total}</span>
+    <span>Total</span><span class="amt">$${grandTotal.toFixed(2)}</span>
   </div>
   <div class="tax-note">Taxes are calculated at the next step</div>`;
 
@@ -2223,6 +2280,74 @@ function renderCheckoutLines() {
 
 function closeCheckout() {
   document.getElementById('checkout-overlay').classList.remove('open');
+  // Reset coupon state
+  appliedCoupon = null;
+  const ci = document.getElementById('coupon-input');
+  if (ci) { ci.value = ''; ci.disabled = false; }
+  const cb = document.getElementById('coupon-apply-btn');
+  if (cb) { cb.textContent = 'Apply'; cb.onclick = applyCoupon; cb.disabled = false; }
+  const cf = document.getElementById('coupon-feedback');
+  if (cf) { cf.className = ''; cf.style.display = 'none'; cf.textContent = ''; }
+}
+
+async function applyCoupon() {
+  const input    = document.getElementById('coupon-input');
+  const btn      = document.getElementById('coupon-apply-btn');
+  const feedback = document.getElementById('coupon-feedback');
+  const code     = input.value.trim();
+  if (!code) return;
+
+  btn.disabled    = true;
+  btn.textContent = 'Checking…';
+  feedback.className   = '';
+  feedback.style.display = 'none';
+
+  try {
+    const resp = await fetch(`/api/validate-coupon?code=${encodeURIComponent(code)}`);
+    const data = await resp.json();
+    if (!resp.ok || !data.valid) {
+      feedback.textContent   = data.error || 'Invalid coupon code';
+      feedback.className     = 'error';
+      appliedCoupon          = null;
+      btn.disabled           = false;
+      btn.textContent        = 'Apply';
+    } else {
+      appliedCoupon          = data;
+      input.value            = data.code.toUpperCase();
+      input.disabled         = true;
+      btn.disabled           = false;
+      btn.textContent        = 'Remove';
+      btn.onclick            = removeCoupon;
+      const label = data.discount_type === 'percent'
+        ? `✓ ${data.amount}% off applied`
+        : `✓ $${data.amount.toFixed(2)} off applied`;
+      feedback.textContent   = label;
+      feedback.className     = 'success';
+      renderCheckoutLines();
+    }
+  } catch(e) {
+    feedback.textContent = 'Could not verify coupon — try again.';
+    feedback.className   = 'error';
+    appliedCoupon        = null;
+    btn.disabled         = false;
+    btn.textContent      = 'Apply';
+  }
+}
+
+function removeCoupon() {
+  appliedCoupon = null;
+  const input    = document.getElementById('coupon-input');
+  const btn      = document.getElementById('coupon-apply-btn');
+  const feedback = document.getElementById('coupon-feedback');
+  input.value    = '';
+  input.disabled = false;
+  btn.textContent = 'Apply';
+  btn.onclick     = applyCoupon;
+  btn.disabled    = false;
+  feedback.className    = '';
+  feedback.style.display = 'none';
+  feedback.textContent  = '';
+  renderCheckoutLines();
 }
 
 function updateCheckoutBtn() {
@@ -2298,7 +2423,23 @@ async function submitToWooCommerce() {
     location:  loc,
     date:      date,
     email:     email,
-    last_name: photos[0]?.last_name || ''
+    last_name: photos[0]?.last_name || '',
+    coupon_code: appliedCoupon ? appliedCoupon.code : '',
+    coupon_discount: (() => {
+      if (!appliedCoupon) return 0;
+      saveCurrentFolder();
+      let sub = 0;
+      Object.entries(folderCarts).forEach(([key, fc]) => {
+        const pricing = key === currentFolderKey ? currentPricing : fc.pricing;
+        sub += calcPriceFor(fc.selectedPaths?.length || 0, pricing);
+      });
+      sub += allPrints.reduce((s, p) => s + p.price + p.framePrice, 0);
+      sub += frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
+      if (appliedCoupon.discount_type === 'percent') {
+        return Math.round(sub * (appliedCoupon.amount / 100) * 100) / 100;
+      }
+      return Math.min(appliedCoupon.amount, sub);
+    })()
   };
 
   try {
@@ -2560,6 +2701,7 @@ const FRAME_OPTIONS = [
 
 let printCart      = [];
 let frameCart      = [];   // [{variation_id, size, orientation, price, quantity}]
+let appliedCoupon  = null; // { code, discount_type, amount } once validated
 let frameStoreItems = [];  // cached from /api/frames
 let pendingPrint   = null;
 let selectedFrameIdx = 0;

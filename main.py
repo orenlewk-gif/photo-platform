@@ -647,6 +647,42 @@ def get_frame_photos():
     return {"photos": result}
 
 
+@app.get("/api/validate-coupon")
+def validate_coupon(code: str = Query("")):
+    if not code.strip():
+        return JSONResponse(status_code=400, content={"valid": False, "error": "No code provided"})
+    resp = http_requests.get(
+        f"{WC_BASE}/coupons",
+        params={"code": code.strip(), "per_page": 1},
+        auth=(WC_KEY, WC_SECRET),
+        timeout=10
+    )
+    if not resp.ok:
+        return JSONResponse(status_code=502, content={"valid": False, "error": "Could not reach store"})
+    coupons = resp.json()
+    if not coupons:
+        return JSONResponse(status_code=404, content={"valid": False, "error": "Invalid coupon code"})
+    coupon = coupons[0]
+    # Check expiry
+    expiry = coupon.get("date_expires")
+    if expiry:
+        exp_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) > exp_dt:
+            return JSONResponse(status_code=400, content={"valid": False, "error": "This coupon has expired"})
+    # Check usage limit
+    usage_limit = coupon.get("usage_limit")
+    if usage_limit:
+        if int(coupon.get("usage_count", 0)) >= int(usage_limit):
+            return JSONResponse(status_code=400, content={"valid": False, "error": "Coupon usage limit reached"})
+    return {
+        "valid":         True,
+        "code":          coupon.get("code", code).lower(),
+        "discount_type": coupon.get("discount_type", "percent"),
+        "amount":        float(coupon.get("amount", 0)),
+        "description":   coupon.get("description", ""),
+    }
+
+
 @app.post("/api/checkout")
 async def create_checkout(request: Request):
     try:
@@ -659,7 +695,9 @@ async def create_checkout(request: Request):
         frames        = body.get("frames", [])
         location      = body.get("location", "")
         date          = body.get("date", "")
-        last_name     = body.get("last_name", "").strip()
+        last_name        = body.get("last_name", "").strip()
+        coupon_code      = body.get("coupon_code", "").strip()
+        coupon_discount  = float(body.get("coupon_discount", 0))
 
         line_items = []
         fee_lines  = []
@@ -740,6 +778,13 @@ async def create_checkout(request: Request):
             else:
                 max_rate = max(PRINT_SHIP[int(p.get("size_idx", 0))] for p in unframed)
                 fee_lines.append({"name": "Shipping", "total": str(max_rate)})
+
+        # ── Coupon discount as negative fee line ─────────────────────────────
+        if coupon_code and coupon_discount > 0:
+            fee_lines.append({
+                "name":  f"Coupon ({coupon_code.upper()})",
+                "total": str(-round(coupon_discount, 2)),
+            })
 
         paths = body.get("digital_paths", [])
         meta = [
