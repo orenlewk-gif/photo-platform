@@ -795,13 +795,22 @@ async def create_checkout(request: Request):
         ]
 
         customer_email = body.get("email", "")
+        billing_data   = body.get("billing", {})
+        shipping_data  = body.get("shipping", {})
+
+        # Ensure email is always set in billing
+        if billing_data:
+            billing_data["email"] = customer_email
+        else:
+            billing_data = {"email": customer_email}
 
         order_data = {
             "status":     "pending",
             "line_items": line_items,
             "fee_lines":  fee_lines,
             "meta_data":  meta,
-            "billing":    {"email": customer_email},
+            "billing":    billing_data,
+            "shipping":   shipping_data,
         }
         resp = http_requests.post(
             f"{WC_BASE}/orders",
@@ -1343,3 +1352,7 @@ a.back{{color:#F5C518;font-size:.9rem}}</style></head><body>
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(open("templates/index.html").read())
+
+@app.get("/checkout", response_class=HTMLResponse)
+def checkout_page():
+    return HTMLResponse(open("templates/checkout.html").read())

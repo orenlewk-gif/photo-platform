@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout — Crystal Images</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #f4f4f0;
+      font-family: 'DM Sans', sans-serif;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    .co-header {
+      background: #0a1e2e;
+      padding: 0 2rem;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .co-logo {
+      color: #F5C518;
+      font-family: 'Playfair Display', serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .co-back {
+      color: rgba(255,255,255,0.6);
+      font-size: 0.85rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: color 0.2s;
+    }
+    .co-back:hover { color: #fff; }
+
+    /* ── Page layout ── */
+    .co-page {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+      display: grid;
+      grid-template-columns: 1fr 420px;
+      gap: 2rem;
+      align-items: start;
+    }
+    .co-page h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.6rem;
+      margin-bottom: 1.5rem;
+      grid-column: 1 / -1;
+    }
+
+    /* ── Cards ── */
+    .co-card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.75rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+    .co-card:last-child { margin-bottom: 0; }
+    .co-card-title {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #6b7280;
+      margin-bottom: 1.25rem;
+    }
+
+    /* ── Form fields ── */
+    .co-field { display: flex; flex-direction: column; flex: 1; margin-bottom: 1rem; }
+    .co-field:last-child { margin-bottom: 0; }
+    .co-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 0.4rem;
+    }
+    .co-input {
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #1a1a2e;
+      font-size: 0.95rem;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .co-input:focus {
+      border-color: #0a1e2e;
+      box-shadow: 0 0 0 3px rgba(10,30,46,0.08);
+    }
+    .co-input.invalid {
+      border-color: #e74c3c;
+      background: #fff8f8;
+    }
+    .co-input::placeholder { color: #9ca3af; }
+    select.co-input option { background: #fff; color: #1a1a2e; }
+    .co-row { display: flex; gap: 0.75rem; }
+    .co-error {
+      display: none;
+      color: #e74c3c;
+      font-size: 0.75rem;
+      margin-top: 0.35rem;
+    }
+    .co-error.show { display: block; }
+
+    /* Same-as-billing */
+    .co-same-label {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: #374151;
+      margin-bottom: 1rem;
+    }
+    .co-same-label input[type="checkbox"] {
+      width: 16px; height: 16px;
+      cursor: pointer;
+      accent-color: #0a1e2e;
+      flex-shrink: 0;
+    }
+
+    /* ── Submit button ── */
+    .co-submit {
+      width: 100%;
+      background: #0a1e2e;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 1rem;
+      font-size: 1rem;
+      font-weight: 700;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      margin-top: 1.5rem;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .co-submit:hover:not(:disabled) { background: #0d2840; }
+    .co-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Order summary (right column) ── */
+    .co-summary { position: sticky; top: 1.5rem; }
+    .co-thumbs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 1.25rem;
+    }
+    .co-thumb {
+      width: 62px; height: 62px;
+      border-radius: 8px;
+      object-fit: cover;
+      background: #e5e7eb;
+    }
+    .co-thumb-more {
+      width: 62px; height: 62px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #6b7280;
+      border: 1px solid #e5e7eb;
+    }
+
+    /* Line items */
+    .co-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 0.55rem 0;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 0.88rem;
+    }
+    .co-item:last-of-type { border-bottom: none; }
+    .co-item-name { color: #374151; flex: 1; padding-right: 1rem; }
+    .co-item-sub { font-size: 0.75rem; color: #9ca3af; margin-top: 2px; }
+    .co-item-price { font-weight: 600; color: #1a1a2e; white-space: nowrap; }
+
+    /* Coupon */
+    .co-coupon-row { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+    .co-coupon-input {
+      flex: 1;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 0.65rem 0.9rem;
+      font-size: 0.88rem;
+      font-family: 'DM Sans', sans-serif;
+      outline: none;
+      letter-spacing: 1px;
+      transition: border-color 0.2s;
+    }
+    .co-coupon-input:focus { border-color: #0a1e2e; }
+    .co-coupon-btn {
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-size: 0.85rem;
+      font-weight: 700;
+      font-family: 'DM Sans', sans-serif;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .co-coupon-btn:hover { background: #e5e7eb; }
+    #co-coupon-feedback { font-size: 0.78rem; margin-top: 0.4rem; }
+    #co-coupon-feedback.success { color: #16a34a; }
+    #co-coupon-feedback.error   { color: #e74c3c; }
+
+    /* Totals */
+    .co-totals { margin-top: 1.25rem; border-top: 1px solid #e5e7eb; padding-top: 1rem; }
+    .co-total-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.88rem;
+      color: #6b7280;
+      padding: 0.3rem 0;
+    }
+    .co-total-row .amt { font-weight: 600; color: #1a1a2e; }
+    .co-total-row.discount .amt { color: #16a34a; }
+    .co-total-row.free-ship .amt { color: #16a34a; }
+    .co-total-final {
+      display: flex;
+      justify-content: space-between;
+      font-size: 1rem;
+      font-weight: 700;
+      color: #1a1a2e;
+      padding-top: 0.75rem;
+      margin-top: 0.5rem;
+      border-top: 2px solid #1a1a2e;
+    }
+    .co-total-final .amt { font-size: 1.2rem; }
+    .co-tax-note {
+      font-size: 0.72rem;
+      color: #9ca3af;
+      text-align: right;
+      margin-top: 0.5rem;
+    }
+
+    /* Mobile summary toggle */
+    .co-summary-toggle {
+      display: none;
+      background: #0a1e2e;
+      color: #fff;
+      padding: 0.85rem 1.25rem;
+      border-radius: 10px;
+      margin-bottom: 1.25rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .co-summary-toggle .amt { color: #F5C518; }
+
+    /* Empty / error state */
+    .co-empty {
+      text-align: center;
+      padding: 3rem 1rem;
+      color: #6b7280;
+    }
+    .co-empty a { color: #0a1e2e; font-weight: 600; }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .co-page {
+        grid-template-columns: 1fr;
+        padding: 1.25rem 1rem 3rem;
+        gap: 0;
+      }
+      .co-page h1 { font-size: 1.3rem; margin-bottom: 1rem; }
+      .co-summary { position: static; order: -1; }
+      .co-summary-toggle { display: flex; }
+      .co-summary-inner { display: none; }
+      .co-summary-inner.open { display: block; }
+      .co-row { flex-direction: column; gap: 0; }
+      .co-field[style*="flex:0 0"] { flex: 1 !important; max-width: 100% !important; }
+    }
+  </style>
+</head>
+<body>
+
+<header class="co-header">
+  <a class="co-logo" href="/">Crystal Images</a>
+  <a class="co-back" href="/" id="back-link">← Back to photos</a>
+</header>
+
+<div class="co-page">
+  <h1>Checkout</h1>
+
+  <!-- ── LEFT: Form ── -->
+  <div class="co-form-col">
+
+    <!-- Contact -->
+    <div class="co-card">
+      <div class="co-card-title">Contact Information</div>
+      <div class="co-field">
+        <label class="co-label">Email Address *</label>
+        <input type="email" id="co-email" class="co-input" placeholder="your@email.com" oninput="validateForm()" />
+        <div class="co-error" id="err-email">Please enter a valid email address.</div>
+      </div>
+    </div>
+
+    <!-- Billing -->
+    <div class="co-card">
+      <div class="co-card-title">Billing Address</div>
+      <div class="co-row">
+        <div class="co-field">
+          <label class="co-label">First Name *</label>
+          <input type="text" id="bill-first" class="co-input" placeholder="First name" oninput="validateForm()" />
+          <div class="co-error" id="err-bill-first">Required</div>
+        </div>
+        <div class="co-field">
+          <label class="co-label">Last Name *</label>
+          <input type="text" id="bill-last" class="co-input" placeholder="Last name" oninput="validateForm()" />
+          <div class="co-error" id="err-bill-last">Required</div>
+        </div>
+      </div>
+      <div class="co-field">
+        <label class="co-label">Street Address *</label>
+        <input type="text" id="bill-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
+        <div class="co-error" id="err-bill-address">Required</div>
+      </div>
+      <div class="co-row">
+        <div class="co-field">
+          <label class="co-label">City *</label>
+          <input type="text" id="bill-city" class="co-input" placeholder="City" oninput="validateForm()" />
+          <div class="co-error" id="err-bill-city">Required</div>
+        </div>
+        <div class="co-field" style="flex:0 0 150px">
+          <label class="co-label">State *</label>
+          <select id="bill-state" class="co-input" onchange="validateForm()">
+            <option value="">Select…</option>
+            <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+            <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+            <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+            <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+            <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+            <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+            <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+            <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+            <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+            <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+            <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+            <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+            <option>WI</option><option>WY</option>
+          </select>
+          <div class="co-error" id="err-bill-state">Required</div>
+        </div>
+      </div>
+      <div class="co-row">
+        <div class="co-field" style="flex:0 0 180px">
+          <label class="co-label">ZIP Code *</label>
+          <input type="text" id="bill-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="validateForm()" />
+          <div class="co-error" id="err-bill-zip">Required</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Shipping (prints/frames only) -->
+    <div class="co-card" id="shipping-card" style="display:none">
+      <div class="co-card-title">Shipping Address</div>
+      <label class="co-same-label">
+        <input type="checkbox" id="ship-same" checked onchange="toggleShipping()" />
+        <span>Same as billing address</span>
+      </label>
+      <div id="ship-fields" style="display:none">
+        <div class="co-row">
+          <div class="co-field">
+            <label class="co-label">First Name *</label>
+            <input type="text" id="ship-first" class="co-input" placeholder="First name" oninput="validateForm()" />
+          </div>
+          <div class="co-field">
+            <label class="co-label">Last Name *</label>
+            <input type="text" id="ship-last" class="co-input" placeholder="Last name" oninput="validateForm()" />
+          </div>
+        </div>
+        <div class="co-field">
+          <label class="co-label">Street Address *</label>
+          <input type="text" id="ship-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
+        </div>
+        <div class="co-row">
+          <div class="co-field">
+            <label class="co-label">City *</label>
+            <input type="text" id="ship-city" class="co-input" placeholder="City" oninput="validateForm()" />
+          </div>
+          <div class="co-field" style="flex:0 0 150px">
+            <label class="co-label">State *</label>
+            <select id="ship-state" class="co-input" onchange="validateForm()">
+              <option value="">Select…</option>
+              <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+              <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+              <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+              <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+              <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+              <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+              <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+              <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+              <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+              <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+              <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+              <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+              <option>WI</option><option>WY</option>
+            </select>
+          </div>
+        </div>
+        <div class="co-row">
+          <div class="co-field" style="flex:0 0 180px">
+            <label class="co-label">ZIP Code *</label>
+            <input type="text" id="ship-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="validateForm()" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <button class="co-submit" id="co-submit-btn" disabled onclick="placeOrder()">
+      Continue to Payment →
+    </button>
+
+  </div>
+
+  <!-- ── RIGHT: Order Summary ── -->
+  <div class="co-summary">
+
+    <!-- Mobile toggle -->
+    <div class="co-summary-toggle" onclick="toggleMobileSummary()">
+      <span>Order Summary</span>
+      <span class="amt" id="mobile-total">$0</span>
+    </div>
+
+    <div class="co-summary-inner" id="summary-inner">
+      <div class="co-card">
+        <div class="co-card-title">Your Order</div>
+        <div class="co-thumbs" id="co-thumbs"></div>
+        <div id="co-items"></div>
+
+        <!-- Coupon -->
+        <div class="co-coupon-row">
+          <input type="text" class="co-coupon-input" id="co-coupon-input" placeholder="Coupon code" />
+          <button class="co-coupon-btn" id="co-coupon-btn" onclick="applyCoupon()">Apply</button>
+        </div>
+        <div id="co-coupon-feedback"></div>
+
+        <!-- Totals -->
+        <div class="co-totals" id="co-totals"></div>
+        <div class="co-tax-note">Taxes are calculated at payment</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Cart state ───────────────────────────────────────────────────────────────
+let cartData     = null;
+let appliedCoupon = null;
+
+const PRINT_SHIPPING = [8, 8, 13, 13];
+const FRAME_SHIPPING = [20, 25, 30, 65];
+
+function calcPriceFor(count, pricing) {
+  if (!pricing || !count) return 0;
+  const tiers = pricing.tiers || [];
+  let price = 0;
+  for (let i = tiers.length - 1; i >= 0; i--) {
+    const t = tiers[i];
+    if (t.count === 'all' || count >= t.count) { price = t.price; break; }
+  }
+  if (!price && tiers.length) price = tiers[0].price;
+  return price;
+}
+
+function calcShipping(prints, frames) {
+  const framed   = prints.filter(p => p.frame && p.frame !== 'No Frame');
+  const unframed = prints.filter(p => !p.frame || p.frame === 'No Frame');
+  const frameRates = [
+    ...framed.map(p => FRAME_SHIPPING[p.sizeIdx || 0]),
+    ...frames.flatMap(f => Array(f.quantity || 1).fill(FRAME_SHIPPING[f.sizeIdx || 0])),
+  ].sort((a,b) => b-a);
+  if (frameRates.length) return frameRates[0] + frameRates.slice(1).reduce((s,r) => s + r*0.5, 0);
+  if (unframed.length >= 3) return 0;
+  if (unframed.length) return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx || 0]));
+  return 0;
+}
+
+// ── Load cart from localStorage ──────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  // Wire up back link
+  try {
+    const raw = localStorage.getItem('ci_checkout_cart');
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d.returnUrl) document.getElementById('back-link').href = d.returnUrl;
+    }
+  } catch(e) {}
+
+  try {
+    const raw = localStorage.getItem('ci_checkout_cart');
+    if (!raw) { showEmpty(); return; }
+    cartData = JSON.parse(raw);
+    if (!cartData || (!Object.keys(cartData.folderCarts || {}).length &&
+        !cartData.printCart?.length && !cartData.frameCart?.length)) {
+      showEmpty(); return;
+    }
+  } catch(e) { showEmpty(); return; }
+
+  // Show shipping card if prints or frames
+  const allPrints = getAllPrints();
+  const frames    = cartData.frameCart || [];
+  if (allPrints.length > 0 || frames.length > 0) {
+    document.getElementById('shipping-card').style.display = 'block';
+  }
+
+  // Open summary on desktop
+  document.getElementById('summary-inner').classList.add('open');
+
+  renderSummary();
+  loadThumbs();
+  validateForm();
+});
+
+function showEmpty() {
+  document.querySelector('.co-form-col').innerHTML = `
+    <div class="co-empty">
+      <p style="font-size:1.1rem;margin-bottom:1rem;">Your cart is empty.</p>
+      <a href="/">← Back to photos</a>
+    </div>`;
+  document.querySelector('.co-summary').style.display = 'none';
+}
+
+function getAllDigital() {
+  const photos = [];
+  const fc = cartData.folderCarts || {};
+  Object.values(fc).forEach(f => { if (f.selectedPhotos) photos.push(...f.selectedPhotos); });
+  return photos;
+}
+
+function getAllPrints() {
+  const prints = [];
+  const fc = cartData.folderCarts || {};
+  Object.values(fc).forEach(f => { if (f.printCart) prints.push(...f.printCart); });
+  if (cartData.printCart) prints.push(...cartData.printCart);
+  // Deduplicate by filename+size
+  const seen = new Set();
+  return prints.filter(p => {
+    const key = p.filename + p.size;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+}
+
+// ── Thumbnails ───────────────────────────────────────────────────────────────
+async function loadThumbs() {
+  const digital = getAllDigital();
+  const prints  = getAllPrints();
+  const allPhotos = [...digital, ...prints.map(p => ({ path: p.path || p.photoPath }))];
+  const show = allPhotos.slice(0, 5);
+  const extra = allPhotos.length - show.length;
+  const container = document.getElementById('co-thumbs');
+  container.innerHTML = '';
+
+  for (const p of show) {
+    if (!p?.path) continue;
+    const img = document.createElement('img');
+    img.className = 'co-thumb';
+    img.alt = '';
+    try {
+      const resp = await fetch(`/api/photo?path=${encodeURIComponent(p.path)}&size=thumb`);
+      const blob = await resp.blob();
+      img.src = URL.createObjectURL(blob);
+    } catch(e) { img.src = ''; }
+    container.appendChild(img);
+  }
+  if (extra > 0) {
+    const more = document.createElement('div');
+    more.className = 'co-thumb-more';
+    more.textContent = `+${extra}`;
+    container.appendChild(more);
+  }
+}
+
+// ── Render summary ───────────────────────────────────────────────────────────
+function renderSummary() {
+  const fc      = cartData.folderCarts || {};
+  const frames  = cartData.frameCart || [];
+  const prints  = getAllPrints();
+
+  let itemsHtml  = '';
+  let digTotal   = 0;
+  let printTotal = 0;
+  let frameTotal = 0;
+
+  // Digital folders
+  Object.entries(fc).forEach(([key, folder]) => {
+    const n = folder.selectedPhotos?.length || 0;
+    if (!n) return;
+    const price = calcPriceFor(n, folder.pricing);
+    digTotal += price;
+    const label = folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos';
+    itemsHtml += `<div class="co-item">
+      <div class="co-item-name">Digital Photos — ${label}
+        <div class="co-item-sub">${n} photo${n !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="co-item-price">$${price.toFixed(2)}</div>
+    </div>`;
+  });
+
+  // Prints
+  prints.forEach(p => {
+    const total = (p.price || 0) + (p.framePrice || 0);
+    printTotal += total;
+    const frameLabel = p.frame && p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
+    itemsHtml += `<div class="co-item">
+      <div class="co-item-name">${p.size} Print${frameLabel}
+        <div class="co-item-sub">${p.filename}</div>
+      </div>
+      <div class="co-item-price">$${total.toFixed(2)}</div>
+    </div>`;
+  });
+
+  // Frames
+  frames.forEach(f => {
+    const total = (f.price || 0) * (f.quantity || 1);
+    frameTotal += total;
+    itemsHtml += `<div class="co-item">
+      <div class="co-item-name">${f.size} Frame (${f.orientation}) ×${f.quantity}</div>
+      <div class="co-item-price">$${total.toFixed(2)}</div>
+    </div>`;
+  });
+
+  document.getElementById('co-items').innerHTML = itemsHtml;
+
+  // Totals
+  const subtotal = digTotal + printTotal + frameTotal;
+  const shipping = calcShipping(prints, frames);
+  const unframed = prints.filter(p => !p.frame || p.frame === 'No Frame');
+  const freeShip = unframed.length >= 3 && !prints.some(p => p.frame && p.frame !== 'No Frame');
+
+  let discountAmt = 0;
+  if (appliedCoupon) {
+    discountAmt = appliedCoupon.discount_type === 'percent'
+      ? Math.round(subtotal * (appliedCoupon.amount / 100) * 100) / 100
+      : Math.min(appliedCoupon.amount, subtotal);
+    discountAmt = Math.round(discountAmt * 100) / 100;
+  }
+
+  const grandTotal = Math.max(0, subtotal + shipping - discountAmt);
+
+  let totalsHtml = '';
+  const showSub  = shipping > 0 || freeShip || discountAmt > 0;
+  if (showSub) {
+    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
+  }
+  if (shipping > 0) {
+    totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
+  } else if (freeShip) {
+    totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
+  }
+  if (discountAmt > 0) {
+    totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
+  }
+  totalsHtml += `<div class="co-total-final"><span>Total</span><span class="amt">$${grandTotal.toFixed(2)}</span></div>`;
+
+  document.getElementById('co-totals').innerHTML = totalsHtml;
+  document.getElementById('mobile-total').textContent = `$${grandTotal.toFixed(2)}`;
+}
+
+// ── Coupon ───────────────────────────────────────────────────────────────────
+async function applyCoupon() {
+  const input    = document.getElementById('co-coupon-input');
+  const btn      = document.getElementById('co-coupon-btn');
+  const feedback = document.getElementById('co-coupon-feedback');
+  const code     = input.value.trim();
+  if (!code) return;
+
+  btn.disabled    = true;
+  btn.textContent = 'Checking…';
+  feedback.className   = '';
+  feedback.textContent = '';
+
+  try {
+    const resp = await fetch(`/api/validate-coupon?code=${encodeURIComponent(code)}`);
+    const data = await resp.json();
+    if (!resp.ok || !data.valid) {
+      feedback.textContent = data.error || 'Invalid coupon code';
+      feedback.className   = 'error';
+      appliedCoupon = null;
+      btn.disabled    = false;
+      btn.textContent = 'Apply';
+    } else {
+      appliedCoupon   = data;
+      input.value     = data.code.toUpperCase();
+      input.disabled  = true;
+      btn.disabled    = false;
+      btn.textContent = 'Remove';
+      btn.onclick     = removeCoupon;
+      const label = data.discount_type === 'percent'
+        ? `✓ ${data.amount}% off applied`
+        : `✓ $${data.amount.toFixed(2)} off applied`;
+      feedback.textContent = label;
+      feedback.className   = 'success';
+      renderSummary();
+    }
+  } catch(e) {
+    feedback.textContent = 'Could not verify — try again.';
+    feedback.className   = 'error';
+    appliedCoupon = null;
+    btn.disabled    = false;
+    btn.textContent = 'Apply';
+  }
+}
+
+function removeCoupon() {
+  appliedCoupon = null;
+  const input    = document.getElementById('co-coupon-input');
+  const btn      = document.getElementById('co-coupon-btn');
+  const feedback = document.getElementById('co-coupon-feedback');
+  input.value    = '';
+  input.disabled = false;
+  btn.textContent = 'Apply';
+  btn.onclick     = applyCoupon;
+  btn.disabled    = false;
+  feedback.className    = '';
+  feedback.textContent  = '';
+  renderSummary();
+}
+
+// ── Validation ───────────────────────────────────────────────────────────────
+function validateForm() {
+  const email      = document.getElementById('co-email')?.value.trim() || '';
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const billIds = ['bill-first','bill-last','bill-address','bill-city','bill-state','bill-zip'];
+  const billValid = billIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
+
+  const shipCard = document.getElementById('shipping-card');
+  const needsShip = shipCard && shipCard.style.display !== 'none';
+  const shipSame  = document.getElementById('ship-same')?.checked ?? true;
+  let shipValid   = true;
+  if (needsShip && !shipSame) {
+    const shipIds = ['ship-first','ship-last','ship-address','ship-city','ship-state','ship-zip'];
+    shipValid = shipIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
+  }
+
+  const valid = emailValid && billValid && shipValid;
+  const btn   = document.getElementById('co-submit-btn');
+  btn.disabled      = !valid;
+}
+
+function toggleShipping() {
+  const same   = document.getElementById('ship-same')?.checked ?? true;
+  const fields = document.getElementById('ship-fields');
+  if (fields) fields.style.display = same ? 'none' : 'block';
+  validateForm();
+}
+
+function toggleMobileSummary() {
+  document.getElementById('summary-inner').classList.toggle('open');
+}
+
+// ── Place Order ──────────────────────────────────────────────────────────────
+async function placeOrder() {
+  const btn = document.getElementById('co-submit-btn');
+  btn.textContent = 'Processing…';
+  btn.disabled    = true;
+
+  const email = document.getElementById('co-email').value.trim();
+  const billing = {
+    first_name: document.getElementById('bill-first').value.trim(),
+    last_name:  document.getElementById('bill-last').value.trim(),
+    address_1:  document.getElementById('bill-address').value.trim(),
+    city:       document.getElementById('bill-city').value.trim(),
+    state:      document.getElementById('bill-state').value.trim(),
+    postcode:   document.getElementById('bill-zip').value.trim(),
+    country:    'US',
+    email:      email,
+  };
+
+  const shipSame = document.getElementById('ship-same')?.checked ?? true;
+  const shipping = shipSame ? { ...billing } : {
+    first_name: document.getElementById('ship-first').value.trim(),
+    last_name:  document.getElementById('ship-last').value.trim(),
+    address_1:  document.getElementById('ship-address').value.trim(),
+    city:       document.getElementById('ship-city').value.trim(),
+    state:      document.getElementById('ship-state').value.trim(),
+    postcode:   document.getElementById('ship-zip').value.trim(),
+    country:    'US',
+  };
+
+  // Build payload
+  const fc      = cartData.folderCarts || {};
+  const frames  = cartData.frameCart || [];
+  const prints  = getAllPrints();
+
+  const allDigital = getAllDigital();
+  let digPrice = 0;
+  Object.values(fc).forEach(f => {
+    digPrice += calcPriceFor(f.selectedPhotos?.length || 0, f.pricing);
+  });
+
+  const loc      = allDigital[0]?.location || prints[0]?.location || '';
+  const date     = allDigital[0]?.date     || prints[0]?.date     || '';
+  const lastName = allDigital[0]?.last_name || '';
+
+  // Coupon discount
+  const subtotal    = digPrice + prints.reduce((s,p) => s+(p.price||0)+(p.framePrice||0), 0)
+                    + frames.reduce((s,f) => s+(f.price||0)*(f.quantity||1), 0);
+  let discountAmt   = 0;
+  if (appliedCoupon) {
+    discountAmt = appliedCoupon.discount_type === 'percent'
+      ? Math.round(subtotal * (appliedCoupon.amount / 100) * 100) / 100
+      : Math.min(appliedCoupon.amount, subtotal);
+    discountAmt = Math.round(discountAmt * 100) / 100;
+  }
+
+  const payload = {
+    digital_count:     allDigital.length,
+    digital_price:     digPrice,
+    digital_filenames: allDigital.map(p => p.filename),
+    digital_paths:     allDigital.map(p => p.path),
+    prints: prints.map(p => ({
+      filename:    p.filename,
+      size:        p.size,
+      size_idx:    p.sizeIdx || 0,
+      orientation: p.orientation || 'landscape',
+      price:       p.price || 0,
+      frame:       p.frame || '',
+      frame_price: p.framePrice || 0,
+    })),
+    frames: frames.map(f => ({
+      variation_id: f.variation_id,
+      size:         f.size,
+      sizeIdx:      f.sizeIdx || 0,
+      orientation:  f.orientation,
+      price:        f.price,
+      quantity:     f.quantity,
+    })),
+    location:        loc,
+    date:            date,
+    email:           email,
+    last_name:       lastName,
+    billing:         billing,
+    shipping:        shipping,
+    coupon_code:     appliedCoupon ? appliedCoupon.code : '',
+    coupon_discount: discountAmt,
+  };
+
+  try {
+    const resp = await fetch('/api/checkout', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    if (data.checkout_url) {
+      localStorage.removeItem('ci_checkout_cart');
+      window.location.href = data.checkout_url;
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch(e) {
+    alert('Checkout failed — please try again.');
+    btn.textContent = 'Continue to Payment →';
+    btn.disabled    = false;
+  }
+}
+</script>
+</body>
+</html>

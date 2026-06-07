@@ -576,30 +576,46 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 #coupon-feedback { margin-top:0.5rem; font-size:0.8rem; display:none; }
 #coupon-feedback.success { color:#4ade80; display:block; }
 #coupon-feedback.error { color:#e74c3c; display:block; }
+.checkout-billing-section {
+  padding:1.5rem 2rem;
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
 .checkout-shipping-section {
   padding:1.5rem 2rem;
   border-bottom:1px solid rgba(255,255,255,0.08);
   display:none;
 }
 .checkout-shipping-section.visible { display:block; }
-.shipping-row { display:flex; gap:0.75rem; margin-bottom:0.75rem; }
-.shipping-row:last-child { margin-bottom:0; }
-.shipping-field { display:flex; flex-direction:column; flex:1; }
-.shipping-field label {
-  font-size:0.68rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
-  color:rgba(255,255,255,0.35); margin-bottom:0.4rem;
+.co-section-label {
+  font-size:0.72rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
+  color:rgba(255,255,255,0.35); margin-bottom:0.85rem;
 }
-.shipping-field input, .shipping-field select {
+.co-field { display:flex; flex-direction:column; flex:1; margin-bottom:0.75rem; }
+.co-field:last-child { margin-bottom:0; }
+.co-label {
+  font-size:0.68rem; font-weight:700; letter-spacing:1px; text-transform:uppercase;
+  color:rgba(255,255,255,0.4); margin-bottom:0.4rem;
+}
+.co-input {
   background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14);
   border-radius:8px; padding:0.75rem 1rem; color:#fff;
   font-size:0.9rem; font-family:'DM Sans',sans-serif; outline:none;
-  transition:border-color 0.2s;
+  transition:border-color 0.2s; width:100%; box-sizing:border-box;
 }
-.shipping-field input:focus, .shipping-field select:focus {
-  border-color:rgba(245,197,24,0.5);
+.co-input:focus { border-color:rgba(245,197,24,0.5); }
+.co-input::placeholder { color:rgba(255,255,255,0.25); }
+.co-input.invalid { border-color:#e74c3c !important; background:rgba(231,76,60,0.06); }
+select.co-input option { background:#0a1e2e; color:#fff; }
+.co-error { display:none; color:#e74c3c; font-size:0.75rem; margin-top:0.3rem; }
+.co-error.show { display:block; }
+.co-row { display:flex; gap:0.75rem; }
+.co-same-as-billing {
+  display:flex; align-items:center; gap:0.6rem; cursor:pointer;
+  margin-bottom:0.85rem; font-size:0.88rem; color:rgba(255,255,255,0.65);
 }
-.shipping-field input::placeholder { color:rgba(255,255,255,0.25); }
-.shipping-field select option { background:#0a1e2e; color:#fff; }
+.co-same-as-billing input[type="checkbox"] {
+  width:16px; height:16px; cursor:pointer; accent-color:#F5C518; flex-shrink:0;
+}
 .checkout-actions-section {
   padding:1.25rem 2rem 1.75rem;
   display:flex; gap:0.75rem;
@@ -852,13 +868,119 @@ input::placeholder { color:rgba(255,255,255,0.3); }
       </div>
       <div id="coupon-feedback"></div>
     </div>
-    <div class="checkout-email-section">
-      <div class="email-section-label" id="checkout-email-label">Contact Information</div>
-      <div class="email-input-wrap">
-        <span class="email-icon">✉</span>
-        <input type="email" id="checkout-email" placeholder="your@email.com" oninput="updateCheckoutBtn()" />
+    <div class="checkout-billing-section">
+      <div class="co-section-label">Contact Information</div>
+      <div class="co-field">
+        <label class="co-label">Email *</label>
+        <input type="email" id="checkout-email" class="co-input" placeholder="your@email.com" oninput="updateCheckoutBtn()" />
+        <div class="co-error" id="email-error">Please enter a valid email address.</div>
       </div>
-      <div id="email-error">Please enter a valid email address.</div>
+      <div class="co-section-label" style="margin-top:1.25rem">Billing Address</div>
+      <div class="co-row">
+        <div class="co-field">
+          <label class="co-label">First Name *</label>
+          <input type="text" id="bill-first" class="co-input" placeholder="First name" oninput="updateCheckoutBtn()" />
+          <div class="co-error" id="err-bill-first">Required</div>
+        </div>
+        <div class="co-field">
+          <label class="co-label">Last Name *</label>
+          <input type="text" id="bill-last" class="co-input" placeholder="Last name" oninput="updateCheckoutBtn()" />
+          <div class="co-error" id="err-bill-last">Required</div>
+        </div>
+      </div>
+      <div class="co-field">
+        <label class="co-label">Street Address *</label>
+        <input type="text" id="bill-address" class="co-input" placeholder="House number and street name" oninput="updateCheckoutBtn()" />
+        <div class="co-error" id="err-bill-address">Required</div>
+      </div>
+      <div class="co-row">
+        <div class="co-field">
+          <label class="co-label">City *</label>
+          <input type="text" id="bill-city" class="co-input" placeholder="City" oninput="updateCheckoutBtn()" />
+          <div class="co-error" id="err-bill-city">Required</div>
+        </div>
+        <div class="co-field" style="flex:0 0 150px">
+          <label class="co-label">State *</label>
+          <select id="bill-state" class="co-input" onchange="updateCheckoutBtn()">
+            <option value="">Select…</option>
+            <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+            <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+            <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+            <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+            <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+            <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+            <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+            <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+            <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+            <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+            <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+            <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+            <option>WI</option><option>WY</option>
+          </select>
+          <div class="co-error" id="err-bill-state">Required</div>
+        </div>
+      </div>
+      <div class="co-row">
+        <div class="co-field" style="max-width:160px">
+          <label class="co-label">ZIP Code *</label>
+          <input type="text" id="bill-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="updateCheckoutBtn()" />
+          <div class="co-error" id="err-bill-zip">Required</div>
+        </div>
+      </div>
+    </div>
+    <div class="checkout-shipping-section" id="checkout-shipping-section">
+      <div class="co-section-label">Shipping Address</div>
+      <label class="co-same-as-billing">
+        <input type="checkbox" id="ship-same" checked onchange="toggleShippingFields()" />
+        <span>Same as billing address</span>
+      </label>
+      <div id="ship-fields" style="display:none">
+        <div class="co-row">
+          <div class="co-field">
+            <label class="co-label">First Name *</label>
+            <input type="text" id="ship-first" class="co-input" placeholder="First name" oninput="updateCheckoutBtn()" />
+          </div>
+          <div class="co-field">
+            <label class="co-label">Last Name *</label>
+            <input type="text" id="ship-last" class="co-input" placeholder="Last name" oninput="updateCheckoutBtn()" />
+          </div>
+        </div>
+        <div class="co-field">
+          <label class="co-label">Street Address *</label>
+          <input type="text" id="ship-address" class="co-input" placeholder="House number and street name" oninput="updateCheckoutBtn()" />
+        </div>
+        <div class="co-row">
+          <div class="co-field">
+            <label class="co-label">City *</label>
+            <input type="text" id="ship-city" class="co-input" placeholder="City" oninput="updateCheckoutBtn()" />
+          </div>
+          <div class="co-field" style="flex:0 0 150px">
+            <label class="co-label">State *</label>
+            <select id="ship-state" class="co-input" onchange="updateCheckoutBtn()">
+              <option value="">Select…</option>
+              <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
+              <option>CA</option><option>CO</option><option>CT</option><option>DE</option>
+              <option>FL</option><option>GA</option><option>HI</option><option>ID</option>
+              <option>IL</option><option>IN</option><option>IA</option><option>KS</option>
+              <option>KY</option><option>LA</option><option>ME</option><option>MD</option>
+              <option>MA</option><option>MI</option><option>MN</option><option>MS</option>
+              <option>MO</option><option>MT</option><option>NE</option><option>NV</option>
+              <option>NH</option><option>NJ</option><option>NM</option><option>NY</option>
+              <option>NC</option><option>ND</option><option>OH</option><option>OK</option>
+              <option>OR</option><option>PA</option><option>RI</option><option>SC</option>
+              <option>SD</option><option>TN</option><option>TX</option><option>UT</option>
+              <option>VT</option><option>VA</option><option>WA</option><option>WV</option>
+              <option>WI</option><option>WY</option>
+            </select>
+          </div>
+        </div>
+        <div class="co-row">
+          <div class="co-field" style="max-width:160px">
+            <label class="co-label">ZIP Code *</label>
+            <input type="text" id="ship-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="updateCheckoutBtn()" />
+          </div>
+        </div>
+      </div>
     </div>
     <div class="checkout-actions-section">
       <button class="btn-ghost" onclick="closeCheckout()">← Back</button>
@@ -2114,6 +2236,21 @@ function openCheckout() {
   const folderHasItems = Object.values(folderCarts).some(fc =>
     (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0);
   if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0 && !folderHasItems) return;
+
+  // Save cart state and navigate to checkout page
+  saveCurrentFolder();
+  localStorage.setItem('ci_checkout_cart', JSON.stringify({
+    folderCarts:      folderCarts,
+    printCart:        printCart,
+    frameCart:        frameCart,
+    currentFolderKey: currentFolderKey,
+    returnUrl:        window.location.href,
+    timestamp:        Date.now(),
+  }));
+  window.location.href = '/checkout';
+}
+
+function openCheckout_UNUSED() {
   const photos = [...selectedPhotos].map(i => allPhotos[i]);
 
   // Thumbnails row
@@ -2141,7 +2278,13 @@ function openCheckout() {
   // Show shipping section for print or frame orders
   const shipSection = document.getElementById('checkout-shipping-section');
   if (shipSection) {
-    shipSection.classList.toggle('visible', printCart.length > 0 || frameCart.length > 0);
+    const needsShip = printCart.length > 0 || frameCart.length > 0;
+    shipSection.classList.toggle('visible', needsShip);
+    // Reset same-as-billing when reopening
+    const shipSameEl = document.getElementById('ship-same');
+    if (shipSameEl) { shipSameEl.checked = true; }
+    const shipFields = document.getElementById('ship-fields');
+    if (shipFields) shipFields.style.display = 'none';
   }
 
   renderCheckoutLines();
@@ -2280,7 +2423,7 @@ function renderCheckoutLines() {
 
 function closeCheckout() {
   document.getElementById('checkout-overlay').classList.remove('open');
-  // Reset coupon state
+  // Reset coupon
   appliedCoupon = null;
   const ci = document.getElementById('coupon-input');
   if (ci) { ci.value = ''; ci.disabled = false; }
@@ -2288,6 +2431,18 @@ function closeCheckout() {
   if (cb) { cb.textContent = 'Apply'; cb.onclick = applyCoupon; cb.disabled = false; }
   const cf = document.getElementById('coupon-feedback');
   if (cf) { cf.className = ''; cf.style.display = 'none'; cf.textContent = ''; }
+  // Reset billing/shipping fields
+  ['checkout-email','bill-first','bill-last','bill-address','bill-city','bill-state','bill-zip',
+   'ship-first','ship-last','ship-address','ship-city','ship-state','ship-zip'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.value = ''; el.classList.remove('invalid'); }
+  });
+  document.querySelectorAll('.co-error').forEach(el => el.classList.remove('show'));
+  const shipSameEl = document.getElementById('ship-same');
+  if (shipSameEl) shipSameEl.checked = true;
+  const shipFields = document.getElementById('ship-fields');
+  if (shipFields) shipFields.style.display = 'none';
+  updateCheckoutBtn();
 }
 
 async function applyCoupon() {
@@ -2351,24 +2506,63 @@ function removeCoupon() {
 }
 
 function updateCheckoutBtn() {
-  const email = document.getElementById('checkout-email')?.value.trim() || '';
-  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const email      = document.getElementById('checkout-email')?.value.trim() || '';
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const billingIds = ['bill-first','bill-last','bill-address','bill-city','bill-state','bill-zip'];
+  const billingValid = billingIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
+
+  const shipSection = document.getElementById('checkout-shipping-section');
+  const needsShip   = shipSection && shipSection.classList.contains('visible');
+  const shipSame    = document.getElementById('ship-same')?.checked ?? true;
+  let shippingValid = true;
+  if (needsShip && !shipSame) {
+    const shipIds = ['ship-first','ship-last','ship-address','ship-city','ship-state','ship-zip'];
+    shippingValid = shipIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
+  }
+
+  const valid = emailValid && billingValid && shippingValid;
   const btn   = document.getElementById('wc-checkout-btn');
-  const err   = document.getElementById('email-error');
-  btn.disabled    = !valid;
-  btn.style.opacity    = valid ? '1' : '0.45';
-  btn.style.cursor     = valid ? 'pointer' : 'not-allowed';
-  if (err) err.style.display = 'none';
+  btn.disabled       = !valid;
+  btn.style.opacity  = valid ? '1' : '0.45';
+  btn.style.cursor   = valid ? 'pointer' : 'not-allowed';
+}
+
+function toggleShippingFields() {
+  const same   = document.getElementById('ship-same')?.checked ?? true;
+  const fields = document.getElementById('ship-fields');
+  if (fields) fields.style.display = same ? 'none' : 'block';
+  updateCheckoutBtn();
 }
 
 async function submitToWooCommerce() {
-  const emailInput = document.getElementById('checkout-email');
-  const email = emailInput?.value.trim() || '';
+  const email = document.getElementById('checkout-email')?.value.trim() || '';
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     const err = document.getElementById('email-error');
-    if (err) err.style.display = 'block';
+    if (err) { err.classList.add('show'); document.getElementById('checkout-email')?.classList.add('invalid'); }
     return;
   }
+
+  const billing = {
+    first_name: document.getElementById('bill-first')?.value.trim() || '',
+    last_name:  document.getElementById('bill-last')?.value.trim()  || '',
+    address_1:  document.getElementById('bill-address')?.value.trim() || '',
+    city:       document.getElementById('bill-city')?.value.trim()  || '',
+    state:      document.getElementById('bill-state')?.value.trim() || '',
+    postcode:   document.getElementById('bill-zip')?.value.trim()   || '',
+    country:    'US',
+    email:      email,
+  };
+  const shipSame = document.getElementById('ship-same')?.checked ?? true;
+  const shipping = shipSame ? { ...billing } : {
+    first_name: document.getElementById('ship-first')?.value.trim()   || '',
+    last_name:  document.getElementById('ship-last')?.value.trim()    || '',
+    address_1:  document.getElementById('ship-address')?.value.trim() || '',
+    city:       document.getElementById('ship-city')?.value.trim()    || '',
+    state:      document.getElementById('ship-state')?.value.trim()   || '',
+    postcode:   document.getElementById('ship-zip')?.value.trim()     || '',
+    country:    'US',
+  };
 
   const btn = document.getElementById('wc-checkout-btn');
   btn.textContent = 'Processing…';
@@ -2424,6 +2618,8 @@ async function submitToWooCommerce() {
     date:      date,
     email:     email,
     last_name: photos[0]?.last_name || '',
+    billing:   billing,
+    shipping:  shipping,
     coupon_code: appliedCoupon ? appliedCoupon.code : '',
     coupon_discount: (() => {
       if (!appliedCoupon) return 0;
