@@ -659,22 +659,21 @@ async def create_checkout(request: Request):
         frames        = body.get("frames", [])
         location      = body.get("location", "")
         date          = body.get("date", "")
+        last_name     = body.get("last_name", "").strip()
 
         line_items = []
         fee_lines  = []
 
         if digital_count > 0:
-            price_str = str(float(digital_price))
-            # Individual filenames as meta so they show on the order
-            file_meta = [{"key": f"File {i+1}", "value": fn}
-                         for i, fn in enumerate(filenames)]
+            price_str    = str(float(digital_price))
+            display_name = last_name if last_name else location
             line_items.append({
                 "product_id": WC_DIGITAL_PRODUCT_ID,
                 "quantity":   digital_count,
-                "name":       f"Digital Photos — {location}",
+                "name":       f"Digital Photos — {display_name}",
                 "subtotal":   price_str,
                 "total":      price_str,
-                "meta_data":  file_meta,
+                "meta_data":  [{"key": "Photos", "value": f"{digital_count} digital photo{'s' if digital_count != 1 else ''}"}],
             })
 
         for p in prints:

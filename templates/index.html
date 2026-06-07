@@ -2295,9 +2295,10 @@ async function submitToWooCommerce() {
       price:        f.price,
       quantity:     f.quantity,
     })),
-    location: loc,
-    date:     date,
-    email:    email
+    location:  loc,
+    date:      date,
+    email:     email,
+    last_name: photos[0]?.last_name || ''
   };
 
   try {
