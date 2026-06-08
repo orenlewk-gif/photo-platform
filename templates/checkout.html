@@ -476,15 +476,27 @@ const PRINT_SHIPPING = [8, 8, 13, 13];
 const FRAME_SHIPPING = [20, 25, 30, 65];
 
 function calcPriceFor(count, pricing) {
-  if (!pricing || !count) return 0;
-  const tiers = pricing.tiers || [];
-  let price = 0;
-  for (let i = tiers.length - 1; i >= 0; i--) {
-    const t = tiers[i];
-    if (t.count === 'all' || count >= t.count) { price = t.price; break; }
+  if (!pricing || !pricing.tiers || count === 0) return 0;
+  const tiers      = pricing.tiers;
+  const allTier    = tiers.find(t => t.count === 'all');
+  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+  const singleTier = tiers.find(t => t.count === 1);
+  const singleUnit = singleTier ? singleTier.price : 25;
+  let best = count * singleUnit;
+  const bundles = tiers
+    .filter(t => !t.max && typeof t.count === 'number' && t.count > 1 && t.count <= count)
+    .sort((a, b) => b.count - a.count);
+  for (const tier of bundles) {
+    const cost = Math.floor(count / tier.count) * tier.price + (count % tier.count) * singleUnit;
+    if (cost < best) best = cost;
   }
-  if (!price && tiers.length) price = tiers[0].price;
-  return price;
+  if (maxTiers.length) {
+    const cap = maxTiers.find(t => count <= t.count);
+    if (cap && cap.price < best) best = cap.price;
+  } else if (allTier && best > allTier.price) {
+    best = allTier.price;
+  }
+  return best;
 }
 
 function calcShipping(prints, frames) {
