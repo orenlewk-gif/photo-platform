@@ -869,8 +869,8 @@ async def wc_webhook(request: Request):
     except Exception:
         return Response(status_code=400)
 
-    # Only act when order is completed
-    if order.get("status") != "completed":
+    # Only act when order is processing (payment confirmed)
+    if order.get("status") != "processing":
         return Response(status_code=200)
 
     # Pull stored photo paths from order meta
