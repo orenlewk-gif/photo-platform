@@ -31,11 +31,13 @@ if os.path.exists("frames"):
 # R2 CLIENT
 # ─────────────────────────────────────────
 
+from botocore.config import Config as BotocoreConfig
 s3 = boto3.client(
     "s3",
     endpoint_url=os.getenv("R2_ENDPOINT_URL"),
     aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
+    config=BotocoreConfig(signature_version="s3v4"),
 )
 R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 
@@ -910,10 +912,10 @@ async def wc_webhook(request: Request):
 
     # Send customer note via WooCommerce (triggers email to customer)
     note_text = (
-        f"Hi {customer_name or 'there'}! Your Crystal Images photos are ready.\n\n"
-        f"Click the link below to access your download page:\n{download_url}\n\n"
+        f"Your photos are ready to download! Click the link below to access your download page:\n\n"
+        f"{download_url}\n\n"
         f"Your download link is valid for {DOWNLOAD_EXPIRE_DAYS} days. "
-        f"If it expires, just contact us and we'll resend your photos anytime."
+        f"If it expires, just contact us at bigskyphotos.com and we'll resend your photos anytime."
     )
     http_requests.post(
         f"{WC_BASE}/orders/{order_id}/notes",
