@@ -987,11 +987,47 @@ def download_page(token: str):
   </div>
 
   <div class="card">
-    <div class="license-title">⬇ Download Your Photos ({len(rec['paths'])} files)</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
+      <div class="license-title" style="margin-bottom:0;">⬇ Download Your Photos ({len(rec['paths'])} files)</div>
+      <a href="/download/{token}/all" download="crystal-images-order-{rec['order_id']}.zip"
+         style="background:#F2C94C;color:#0d1f2d;padding:0.5rem 1.25rem;border-radius:6px;
+                font-weight:700;font-size:0.9rem;text-decoration:none;white-space:nowrap;">
+        ⬇ Download All
+      </a>
+    </div>
     {photo_rows}
   </div>
 </div></body></html>"""
     return HTMLResponse(html)
+
+
+@app.get("/download/{token}/all")
+def download_all(token: str):
+    import zipfile
+    rec = _load_token(token)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "Invalid link"})
+    expires_dt = datetime.fromisoformat(rec["expires"])
+    if datetime.now(timezone.utc) > expires_dt:
+        return JSONResponse(status_code=410, content={"error": "Link expired"})
+
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for path in rec["paths"]:
+            key = to_r2_key(path)
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+                zf.writestr(os.path.basename(path), obj["Body"].read())
+            except Exception as e:
+                print(f"  zip: skipped {key}: {e}")
+    buf.seek(0)
+    filename = f"crystal-images-order-{rec['order_id']}.zip"
+    from fastapi.responses import Response as FastAPIResponse
+    return FastAPIResponse(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.get("/download/{token}/{idx}")
