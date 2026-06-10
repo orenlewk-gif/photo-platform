@@ -250,6 +250,15 @@ input[type="range"]::-webkit-slider-thumb {
 .frame-actions { display:flex; gap:0.75rem; }
 .frame-actions .btn { flex:1; width:auto; }
 .frame-actions .btn-ghost { flex:1; text-align:center; }
+.frame-img-wrap { position:relative; margin-bottom:0.75rem; border-radius:10px; overflow:hidden; background:#fff; line-height:0; }
+.frame-img-wrap img { width:100%; max-height:260px; object-fit:contain; background:#fff; border-radius:10px; cursor:pointer; display:block; }
+.frame-img-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(242,201,76,0.92); color:#0c2336; border:none; border-radius:50%; width:38px; height:38px; font-size:22px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:2; transition:background .2s; }
+.frame-img-arrow:hover { background:#F5C518; }
+.frame-img-arrow.left { left:8px; }
+.frame-img-arrow.right { right:8px; }
+.frame-img-arrow.hidden { display:none; }
+.frame-img-counter.hidden { display:none; }
+.frame-img-counter { text-align:center; font-size:0.78rem; color:rgba(255,255,255,0.45); margin-bottom:0.5rem; }
 
 /* Toast */
 .toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#F5C518; color:#0c2336; font-weight:700; padding:0.6rem 1.4rem; border-radius:8px; z-index:999999; font-size:0.9rem; pointer-events:none; animation:fadeInOut 2.5s forwards; }
@@ -1033,8 +1042,12 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   <div class="frame-modal">
     <h3>Add a Frame?</h3>
     <p class="frame-sub">Rustic Big Sky Picture Frame for your <span id="frame-size-label"></span> print</p>
-    <img id="frame-preview-img" src="" alt="Rustic Big Sky Picture Frame"
-         style="width:100%;border-radius:10px;margin-bottom:1rem;object-fit:cover;max-height:260px;" />
+    <div class="frame-img-wrap">
+      <button class="frame-img-arrow left hidden" id="frame-modal-prev" onclick="stepFrameModalGallery(-1)">&#8249;</button>
+      <img id="frame-preview-img" src="" alt="Rustic Big Sky Picture Frame" onclick="enlargeFrameModalPhoto()" />
+      <button class="frame-img-arrow right hidden" id="frame-modal-next" onclick="stepFrameModalGallery(1)">&#8250;</button>
+    </div>
+    <div class="frame-img-counter hidden" id="frame-modal-counter"></div>
     <div id="frame-yes-price" style="text-align:center;font-size:1rem;color:rgba(255,255,255,0.6);margin-bottom:1.25rem;"></div>
     <div class="frame-actions">
       <button class="btn-ghost" onclick="selectFrame(0);confirmFrame()">No Thanks</button>
@@ -2903,6 +2916,8 @@ let appliedCoupon  = null; // { code, discount_type, amount } once validated
 let frameStoreItems = [];  // cached from /api/frames
 let pendingPrint   = null;
 let selectedFrameIdx = 0;
+let frameModalGalleryPhotos = [];
+let frameModalGalleryIdx = 0;
 
 // ── Quick Shop ──
 function openQuickShop(i) {
@@ -3153,22 +3168,61 @@ function addPrint(photoIdx, sizeIdx, price) {
   document.getElementById('frame-overlay').classList.add('open');
 }
 
+const FRAME_MODAL_GALLERY = [
+  Array.from({length:7}, (_,i) => `/frames/frame_5x7_landscape_${i+1}.jpg`),
+  Array.from({length:6}, (_,i) => `/frames/frame_8x10_landscape_${i+1}.jpg`),
+  Array.from({length:5}, (_,i) => `/frames/frame_10x13_landscape_${i+1}.jpg`),
+  Array.from({length:9}, (_,i) => `/frames/frame_16x20_landscape_${i+1}.jpg`),
+];
+
+function _updateFrameModalImage() {
+  const imgEl     = document.getElementById('frame-preview-img');
+  const prevBtn   = document.getElementById('frame-modal-prev');
+  const nextBtn   = document.getElementById('frame-modal-next');
+  const counterEl = document.getElementById('frame-modal-counter');
+  const photos    = frameModalGalleryPhotos;
+  const idx       = frameModalGalleryIdx;
+  if (imgEl) imgEl.src = photos[idx] || '';
+  const multi = photos.length > 1;
+  if (prevBtn)   prevBtn.classList.toggle('hidden', !multi);
+  if (nextBtn)   nextBtn.classList.toggle('hidden', !multi);
+  if (counterEl) {
+    counterEl.textContent = multi ? `${idx+1} of ${photos.length}` : '';
+    counterEl.classList.toggle('hidden', !multi);
+  }
+}
+
+function stepFrameModalGallery(dir) {
+  const n = frameModalGalleryPhotos.length;
+  if (!n) return;
+  frameModalGalleryIdx = (frameModalGalleryIdx + dir + n) % n;
+  _updateFrameModalImage();
+}
+
+function enlargeFrameModalPhoto() {
+  const src = frameModalGalleryPhotos[frameModalGalleryIdx];
+  if (!src) return;
+  // Open lightbox with the modal gallery photos
+  _frameLBSize = '__modal__';
+  framePhotos['__modal__'] = frameModalGalleryPhotos;
+  _frameLBIdx = frameModalGalleryIdx;
+  _updateFrameLB();
+  document.getElementById('frame-lb').classList.add('open');
+}
+
 function renderFrameGrid(sizeIdx) {
   const si         = sizeIdx !== undefined ? sizeIdx : (pendingPrint ? pendingPrint.sizeIdx : 0);
   const framePrice = FRAME_PRICES[si];
   const SIZES      = ['5x7', '8x10', '10x13', '16x20'];
   const sizeLabel  = SIZES[si] || '5x7';
-  const imgEl      = document.getElementById('frame-preview-img');
   const priceEl    = document.getElementById('frame-yes-price');
-  const framePics = [
-    '/frames/frame_5x7_landscape_5.jpg',
-    '/frames/frame_8x10_landscape_5.jpg',
-    '/frames/frame_10x13_portrait_3.jpg',
-    '/frames/frame_16x20_landscape_7.jpg',
-  ];
-  if (imgEl) imgEl.src = framePics[si] || framePics[0];
+  const labelEl    = document.getElementById('frame-size-label');
+  frameModalGalleryPhotos = FRAME_MODAL_GALLERY[si] || FRAME_MODAL_GALLERY[0];
+  frameModalGalleryIdx    = 0;
+  if (labelEl) labelEl.textContent = sizeLabel;
   if (priceEl) priceEl.textContent = `+$${framePrice} — shipped to your door`;
   selectedFrameIdx = 0;
+  _updateFrameModalImage();
 }
 
 function selectFrame(fi) {
