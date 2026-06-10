@@ -914,8 +914,9 @@ async def wc_webhook(request: Request):
     note_text = (
         f"Your photos are ready to download! Click the link below to access your download page:\n\n"
         f"{download_url}\n\n"
+        f"Love your photos? Here's 50% off on any unframed print order! Use code PRINTS50.\n\n"
         f"Your download link is valid for {DOWNLOAD_EXPIRE_DAYS} days. "
-        f"If it expires, just contact us at bigskyphotos.com and we'll resend your photos anytime."
+        f"If it expires, just contact us at info@bigskyphotos.com and we'll resend your photos anytime."
     )
     http_requests.post(
         f"{WC_BASE}/orders/{order_id}/notes",
@@ -982,7 +983,7 @@ def download_page(token: str):
     <div style="margin-top:0.75rem;font-size:0.8rem;color:rgba(255,255,255,0.4)">
       By downloading you agree to these terms.
       Links expire <strong style="color:rgba(255,255,255,0.6)">{expire_str}</strong> —
-      contact us anytime at bigskyphotos.com to resend.
+      contact us anytime at info@bigskyphotos.com to resend.
     </div>
   </div>
 
