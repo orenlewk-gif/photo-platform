@@ -1032,11 +1032,13 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 <div class="frame-overlay" id="frame-overlay">
   <div class="frame-modal">
     <h3>Add a Frame?</h3>
-    <p class="frame-sub">Optionally add a frame to your <span id="frame-size-label"></span></p>
-    <div class="frame-grid" id="frame-grid"></div>
+    <p class="frame-sub">Rustic Big Sky Picture Frame for your <span id="frame-size-label"></span> print</p>
+    <img id="frame-preview-img" src="" alt="Rustic Big Sky Picture Frame"
+         style="width:100%;border-radius:10px;margin-bottom:1rem;object-fit:cover;max-height:260px;" />
+    <div id="frame-yes-price" style="text-align:center;font-size:1rem;color:rgba(255,255,255,0.6);margin-bottom:1.25rem;"></div>
     <div class="frame-actions">
-      <button class="btn-ghost" onclick="closeFrame()">Cancel</button>
-      <button class="btn" onclick="confirmFrame()">Add to Cart</button>
+      <button class="btn-ghost" onclick="selectFrame(0);confirmFrame()">No Thanks</button>
+      <button class="btn" onclick="selectFrame(1);confirmFrame()">Yes, Add Frame</button>
     </div>
   </div>
 </div>
@@ -3154,20 +3156,13 @@ function addPrint(photoIdx, sizeIdx, price) {
 function renderFrameGrid(sizeIdx) {
   const si         = sizeIdx !== undefined ? sizeIdx : (pendingPrint ? pendingPrint.sizeIdx : 0);
   const framePrice = FRAME_PRICES[si];
-  const orient     = pendingPrint ? pendingPrint.orientation : 'landscape';
-
-  document.getElementById('frame-grid').innerHTML = FRAME_OPTIONS.map((f, fi) => {
-    const price  = f.priceKey === 0 ? 0 : framePrice;
-    const imgUrl = orient === 'portrait' ? f.portraitImg : f.landscapeImg;
-    const visual = imgUrl
-      ? `<img src="${imgUrl}" alt="${f.label}" style="width:100%;border-radius:6px;margin-bottom:0.5rem;aspect-ratio:${orient==='portrait'?'2/3':'3/2'};object-fit:cover;" />`
-      : `<div style="font-size:1.4rem;margin-bottom:0.4rem">${f.icon}</div>`;
-    return `<div class="frame-option ${fi === 0 ? 'selected' : ''}" onclick="selectFrame(${fi})">
-      ${visual}
-      <div class="frame-name">${f.label}</div>
-      <div class="frame-fprice ${price === 0 ? 'free' : ''}">${price === 0 ? 'No extra cost' : '+$' + price}</div>
-    </div>`;
-  }).join('');
+  const SIZES      = ['5x7', '8x10', '10x13', '16x20'];
+  const sizeLabel  = SIZES[si] || '5x7';
+  const imgEl      = document.getElementById('frame-preview-img');
+  const priceEl    = document.getElementById('frame-yes-price');
+  if (imgEl) imgEl.src = `/frames/frame_${sizeLabel}_landscape_1.jpg`;
+  if (priceEl) priceEl.textContent = `+$${framePrice} — shipped to your door`;
+  selectedFrameIdx = 0;
 }
 
 function selectFrame(fi) {
