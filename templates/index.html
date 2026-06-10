@@ -1825,8 +1825,24 @@ function getUpsellMsg(count) {
       extra:   nextPrice - curPrice,
       more:    tCount - count,
       isMax:   !!t.max,
+      isAll:   false,
     });
   });
+
+  // Include "all photos" tier if there are more photos to add
+  const allTier = tiers.find(t => t.count === 'all');
+  if (allTier && count < allPhotos.length) {
+    const extra = allTier.price - curPrice;
+    const more  = allPhotos.length - count;
+    candidates.push({
+      count: allPhotos.length,
+      price: allTier.price,
+      extra: extra,
+      more:  more,
+      isMax: false,
+      isAll: true,
+    });
+  }
 
   if (!candidates.length) return '';
 
@@ -1836,14 +1852,19 @@ function getUpsellMsg(count) {
   // 1. If adding photos actually saves money, surface that first
   const saveTier = candidates.find(c => c.extra < 0);
   if (saveTier) {
-    const moreLabel = saveTier.more === 1 ? 'one more photo from this folder' : `${saveTier.more} more photos from this folder`;
-    return `Add <strong>${moreLabel}</strong> and <strong>save $${Math.abs(saveTier.extra)}</strong> → ${saveTier.isMax?'up to ':''}${saveTier.count} photos for $${saveTier.price}`;
+    const moreLabel = saveTier.isAll ? `the remaining ${saveTier.more} photos` :
+                      saveTier.more === 1 ? 'one more photo from this folder' : `${saveTier.more} more photos from this folder`;
+    return `Add <strong>${moreLabel}</strong> and <strong>save $${Math.abs(saveTier.extra)}</strong> → all ${saveTier.count} photos for $${saveTier.price}`;
   }
 
   // 2. Otherwise show the nearest (lowest extra) tier — this correctly steps 1→3, 3→5, etc.
   candidates.sort((a, b) => a.more - b.more);
   const nearest = candidates[0];
   if (nearest && nearest.extra > 0) {
+    if (nearest.isAll) {
+      const moreLabel = nearest.more === 1 ? 'the last photo' : `the remaining ${nearest.more} photos`;
+      return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} more</strong> → get all ${nearest.count} photos for $${nearest.price}`;
+    }
     const moreLabel = nearest.more === 1 ? 'one more photo from this folder' : `${nearest.more} more photos from this folder`;
     return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} extra</strong> → ${nearest.isMax?'up to ':''}${nearest.count} photos for $${nearest.price}`;
   }
