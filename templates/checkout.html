@@ -338,6 +338,10 @@
         <input type="text" id="bill-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
         <div class="co-error" id="err-bill-address">Required</div>
       </div>
+      <div class="co-field">
+        <label class="co-label">Address Line 2</label>
+        <input type="text" id="bill-address2" class="co-input" placeholder="Apartment, suite, unit (optional)" />
+      </div>
       <div class="co-row">
         <div class="co-field">
           <label class="co-label">City *</label>
@@ -395,6 +399,10 @@
         <div class="co-field">
           <label class="co-label">Street Address *</label>
           <input type="text" id="ship-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
+        </div>
+        <div class="co-field">
+          <label class="co-label">Address Line 2</label>
+          <input type="text" id="ship-address2" class="co-input" placeholder="Apartment, suite, unit (optional)" />
         </div>
         <div class="co-row">
           <div class="co-field">
@@ -798,6 +806,7 @@ async function placeOrder() {
     first_name: document.getElementById('bill-first').value.trim(),
     last_name:  document.getElementById('bill-last').value.trim(),
     address_1:  document.getElementById('bill-address').value.trim(),
+    address_2:  document.getElementById('bill-address2')?.value.trim() || '',
     city:       document.getElementById('bill-city').value.trim(),
     state:      document.getElementById('bill-state').value.trim(),
     postcode:   document.getElementById('bill-zip').value.trim(),
@@ -810,6 +819,7 @@ async function placeOrder() {
     first_name: document.getElementById('ship-first').value.trim(),
     last_name:  document.getElementById('ship-last').value.trim(),
     address_1:  document.getElementById('ship-address').value.trim(),
+    address_2:  document.getElementById('ship-address2')?.value.trim() || '',
     city:       document.getElementById('ship-city').value.trim(),
     state:      document.getElementById('ship-state').value.trim(),
     postcode:   document.getElementById('ship-zip').value.trim(),
