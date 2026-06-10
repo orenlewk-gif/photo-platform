@@ -3160,7 +3160,13 @@ function renderFrameGrid(sizeIdx) {
   const sizeLabel  = SIZES[si] || '5x7';
   const imgEl      = document.getElementById('frame-preview-img');
   const priceEl    = document.getElementById('frame-yes-price');
-  if (imgEl) imgEl.src = `/frames/frame_8x10_landscape_5.jpg`;
+  const framePics = [
+    '/frames/frame_5x7_landscape_5.jpg',
+    '/frames/frame_8x10_landscape_5.jpg',
+    '/frames/frame_10x13_portrait_3.jpg',
+    '/frames/frame_16x20_landscape_7.jpg',
+  ];
+  if (imgEl) imgEl.src = framePics[si] || framePics[0];
   if (priceEl) priceEl.textContent = `+$${framePrice} — shipped to your door`;
   selectedFrameIdx = 0;
 }
