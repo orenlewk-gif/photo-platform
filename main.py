@@ -1136,34 +1136,20 @@ def download_all(token: str):
     if datetime.now(timezone.utc) > expires_dt:
         return JSONResponse(status_code=410, content={"error": "Link expired"})
 
-    def _iter_zip():
-        """Stream the zip file, yielding bytes after each photo is added.
-        This lets the browser show the download prompt immediately instead of
-        waiting for all photos to be fetched from R2."""
-        buf = BytesIO()
-        pos = 0
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-            for path in rec["paths"]:
-                key = to_r2_key(path)
-                try:
-                    obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-                    zf.writestr(os.path.basename(path), obj["Body"].read())
-                    buf.seek(pos)
-                    chunk = buf.read()
-                    if chunk:
-                        yield chunk
-                    pos = buf.tell()
-                except Exception as e:
-                    print(f"  zip: skipped {key}: {e}")
-        # Yield central directory written on ZipFile close
-        buf.seek(pos)
-        tail = buf.read()
-        if tail:
-            yield tail
-
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for path in rec["paths"]:
+            key = to_r2_key(path)
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+                zf.writestr(os.path.basename(path), obj["Body"].read())
+            except Exception as e:
+                print(f"  zip: skipped {key}: {e}")
+    buf.seek(0)
     filename = f"crystal-images-order-{rec['order_id']}.zip"
-    return StreamingResponse(
-        _iter_zip(),
+    from fastapi.responses import Response as FastAPIResponse
+    return FastAPIResponse(
+        content=buf.read(),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
