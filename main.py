@@ -529,9 +529,14 @@ def get_pricing(location: str = Query(None)):
         return default
     with open("pricing.json", "r") as f:
         pricing = json.load(f)
+    combos = pricing.get("combos", [])
     if location and location in pricing.get("activities", {}):
-        return pricing["activities"][location]
-    return pricing.get("default", default)
+        result = dict(pricing["activities"][location])
+        result["combos"] = combos
+        return result
+    result = dict(pricing.get("default", default))
+    result["combos"] = combos
+    return result
 
 
 def to_r2_key(path: str) -> str:
@@ -859,6 +864,32 @@ async def create_checkout(request: Request):
                 "name":  f"Coupon ({coupon_code.upper()})",
                 "total": str(-round(coupon_discount, 2)),
             })
+
+        # ── Combo discount as negative fee line ───────────────────────────────
+        _combos = []
+        if os.path.exists("pricing.json"):
+            with open("pricing.json") as _pf:
+                _combos = json.load(_pf).get("combos", [])
+        for _combo in _combos:
+            _clocs    = set(_combo.get("locations", []))
+            _min_each = _combo.get("min_each", 1)
+            _lc       = {}
+            for _album in digital_albums:
+                _loc = _album.get("location", "")
+                if _loc in _clocs:
+                    _lc[_loc] = _lc.get(_loc, 0) + int(_album.get("count", 0))
+            if all(_lc.get(l, 0) >= _min_each for l in _clocs):
+                _normal = sum(
+                    float(a.get("price", 0)) for a in digital_albums
+                    if a.get("location", "") in _clocs
+                )
+                _disc = round(_normal - float(_combo.get("price", 0)), 2)
+                if _disc > 0:
+                    fee_lines.append({
+                        "name":  _combo.get("label", "Package Deal"),
+                        "total": str(-_disc),
+                    })
+                    break  # Only one combo at a time
 
         paths = body.get("digital_paths", [])
         meta = [

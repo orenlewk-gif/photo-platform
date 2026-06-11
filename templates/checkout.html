@@ -477,8 +477,9 @@
 
 <script>
 // ── Cart state ───────────────────────────────────────────────────────────────
-let cartData     = null;
+let cartData      = null;
 let appliedCoupon = null;
+let globalCombos  = [];     // combo deals loaded from /api/pricing
 
 const PRINT_SHIPPING = [8, 8, 13, 13];
 const FRAME_SHIPPING = [15, 15, 25, 50];
@@ -547,6 +548,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (allPrints.length > 0 || frames.length > 0) {
     document.getElementById('shipping-card').style.display = 'block';
   }
+
+  // Load combo deals from pricing API
+  fetch('/api/pricing').then(r => r.json()).then(d => {
+    if (d.combos) { globalCombos = d.combos; renderSummary(); }
+  }).catch(() => {});
 
   // Open summary on desktop
   document.getElementById('summary-inner').classList.add('open');
@@ -667,6 +673,33 @@ function renderSummary() {
 
   document.getElementById('co-items').innerHTML = itemsHtml;
 
+  // ── Combo discount ────────────────────────────────────────────────────────
+  let comboDiscountAmt = 0;
+  let comboLabelText   = '';
+  for (const combo of globalCombos) {
+    const locs    = combo.locations || [];
+    const minEach = combo.min_each  || 1;
+    const locCounts = {};
+    let comboBaseTotal = 0;
+    Object.values(fc).forEach(folder => {
+      const n   = folder.selectedPhotos?.length || 0;
+      if (!n) return;
+      const loc = folder.location || '';
+      if (locs.includes(loc)) {
+        locCounts[loc] = (locCounts[loc] || 0) + n;
+        comboBaseTotal += calcPriceFor(n, folder.pricing);
+      }
+    });
+    if (locs.every(loc => (locCounts[loc] || 0) >= minEach)) {
+      const disc = Math.round((comboBaseTotal - combo.price) * 100) / 100;
+      if (disc > 0) {
+        comboDiscountAmt = disc;
+        comboLabelText   = combo.label || 'Package Deal';
+        break;
+      }
+    }
+  }
+
   // Totals
   const subtotal = digTotal + printTotal + frameTotal;
   const shipping = calcShipping(prints, frames);
@@ -681,10 +714,10 @@ function renderSummary() {
     discountAmt = Math.round(discountAmt * 100) / 100;
   }
 
-  const grandTotal = Math.max(0, subtotal + shipping - discountAmt);
+  const grandTotal = Math.max(0, subtotal + shipping - discountAmt - comboDiscountAmt);
 
   let totalsHtml = '';
-  const showSub  = shipping > 0 || freeShip || discountAmt > 0;
+  const showSub  = shipping > 0 || freeShip || discountAmt > 0 || comboDiscountAmt > 0;
   if (showSub) {
     totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
   }
@@ -692,6 +725,9 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
   } else if (freeShip) {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
+  }
+  if (comboDiscountAmt > 0) {
+    totalsHtml += `<div class="co-total-row discount"><span>${comboLabelText}</span><span class="amt">-$${comboDiscountAmt.toFixed(2)}</span></div>`;
   }
   if (discountAmt > 0) {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;

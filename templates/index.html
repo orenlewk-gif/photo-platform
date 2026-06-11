@@ -137,6 +137,22 @@ input[type="range"]::-webkit-slider-thumb {
 .tier-pill.all-pill:hover { background:rgba(242,201,76,0.3); }
 .pricing-hint { font-size:0.75rem; color:rgba(255,255,255,0.3); margin-left:auto; }
 
+/* Combo deal banner */
+.combo-banner {
+  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+  background:linear-gradient(135deg,rgba(255,193,7,0.13),rgba(255,152,0,0.1));
+  border:1px solid rgba(255,193,7,0.35); border-radius:10px;
+  padding:0.85rem 1.1rem; margin-bottom:1rem;
+}
+.combo-banner-icon { font-size:1.4rem; flex-shrink:0; }
+.combo-banner-text { flex:1; font-size:0.88rem; line-height:1.45; color:rgba(255,255,255,0.82); }
+.combo-banner-text strong { color:#ffd54f; }
+.combo-banner-btn {
+  background:rgba(255,193,7,0.85); color:#111; border:none; border-radius:6px;
+  padding:0.48rem 1rem; font-size:0.84rem; font-weight:700; cursor:pointer; white-space:nowrap;
+}
+.combo-banner-btn:hover { background:#ffc107; }
+
 /* Gallery grid */
 .gallery { display:grid; gap:10px; }
 .gallery { grid-template-columns: repeat(var(--cols,3), 1fr); }
@@ -467,6 +483,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .cartview-total .cv-row.cv-total .cv-label { color:#fff; font-size:1rem; font-weight:700; }
 .cartview-total .cv-row.cv-total .cv-amt { color:#F5C518; font-size:1.2rem; font-weight:700; }
 .cartview-total .cv-row.cv-free .cv-amt { color:#4ade80; }
+.cartview-total .cv-row.cv-discount .cv-amt { color:#ffd54f; }
 .cartview-total .cv-tax { font-size:0.75rem; color:rgba(255,255,255,0.35); text-align:right; margin-top:6px; font-style:italic; }
 .cartview-actions { display:flex; gap:0.75rem; margin-top:1.2rem; }
 .cartview-actions .btn, .cartview-actions .btn-ghost { flex:1; text-align:center; }
@@ -1108,6 +1125,7 @@ let lockedTier      = null;      // tier the customer chose in Quick Shop (curre
 // Key = "date||location||family"; each entry holds that folder's selections/package/prints
 let folderCarts        = {};
 let pricingCache       = {};     // location → pricing; avoids re-fetching
+let globalCombos       = [];     // combo deals loaded from /api/pricing
 let currentFolderKey   = null;   // key for the gallery currently being viewed
 let currentFolderLabel = '';     // display name (e.g. "Mountain Biking")
 let currentGroup       = null;   // active trail/time sub-folder (non-portrait locations)
@@ -1176,6 +1194,39 @@ function calcPriceFor(count, pricing) {
     best = allTier.price;
   }
   return best;
+}
+
+// Returns {combo, discount, locCounts} if a combo deal is fully active, or null
+function checkCombo() {
+  if (!globalCombos.length) return null;
+  for (const combo of globalCombos) {
+    const locs    = combo.locations || [];
+    const minEach = combo.min_each  || 1;
+    const locCounts = {};
+    // Count current folder live (may not yet be saved to folderCarts)
+    if (currentLocation && locs.includes(currentLocation)) {
+      locCounts[currentLocation] = selectedPhotos.size;
+    }
+    // Count all other saved folders
+    for (const [key, fc] of Object.entries(folderCarts)) {
+      if (key === currentFolderKey) continue;
+      const loc = fc.location || '';
+      if (locs.includes(loc)) {
+        locCounts[loc] = (locCounts[loc] || 0) + (fc.selectedPaths?.length || 0);
+      }
+    }
+    if (!locs.every(loc => (locCounts[loc] || 0) >= minEach)) continue;
+    // Calculate the normal (non-combo) total for the participating locations
+    let normalTotal = 0;
+    for (const loc of locs) {
+      const count   = locCounts[loc] || 0;
+      const pricing = loc === currentLocation ? currentPricing : pricingCache[loc];
+      if (pricing) normalTotal += calcPriceFor(count, pricing);
+    }
+    const discount = normalTotal - combo.price;
+    if (discount > 0) return { combo, discount, locCounts };
+  }
+  return null;
 }
 
 // ── History-aware navigation ──
@@ -1400,7 +1451,9 @@ async function showGallery(date, location, family, ln, group) {
   // Fetch pricing for this location
   const pricingLoc = location || '';
   const pRes = await fetch(`/api/pricing?location=${enc(pricingLoc)}`);
-  currentPricing  = await pRes.json();
+  const pricingFull = await pRes.json();
+  if (pricingFull.combos) globalCombos = pricingFull.combos;
+  currentPricing  = pricingFull;
   currentLocation = pricingLoc;
   pricingCache[pricingLoc] = currentPricing;
 
@@ -1415,6 +1468,18 @@ async function showGallery(date, location, family, ln, group) {
   // Only show last name search for portrait/family galleries
   document.getElementById('ln-bar').style.display = (family || ln) ? '' : 'none';
 
+  // Combo banner — shown on portrait locations that participate in a combo deal
+  const comboForLoc = globalCombos.find(c => (c.locations || []).includes(location));
+  const comboBannerHtml = comboForLoc ? `
+    <div class="combo-banner">
+      <div class="combo-banner-icon">📸</div>
+      <div class="combo-banner-text">
+        <strong>$${comboForLoc.price} Package for Both Portrait Sessions</strong> — Select ${comboForLoc.min_each}+
+        photos from each portrait location to unlock this deal. Use the button to grab all photos from this session.
+      </div>
+      <button class="combo-banner-btn" onclick="selectAllPhotos()">Add All Photos from This Session</button>
+    </div>` : '';
+
   const el = document.getElementById('view-gallery');
   el.innerHTML = `
     <div class="gallery-header">
@@ -1423,6 +1488,7 @@ async function showGallery(date, location, family, ln, group) {
       ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
+    ${comboBannerHtml}
     <div class="gallery-controls">
       ${!(family || ln) ? `<div class="filter-bar">
         <input type="text" id="filter-input" placeholder="Search by color… e.g. red, blue, pink, yellow" />
@@ -1955,8 +2021,19 @@ function updateCart() {
       shippingMsg = `Free shipping included on your prints!`;
     }
   }
+  // Combo deal notice
+  let comboMsg = '';
+  const comboActive = checkCombo();
+  if (comboActive) {
+    comboMsg = `🎉 <strong>${comboActive.combo.label}</strong> active — $${comboActive.combo.price} total for both portrait sessions (saves $${comboActive.discount})`;
+  } else {
+    const nearCombo = globalCombos.find(c => (c.locations || []).includes(currentLocation));
+    if (nearCombo && count > 0) {
+      comboMsg = `Add ${nearCombo.min_each}+ from <strong>each</strong> portrait session for the <strong>$${nearCombo.price} package</strong>`;
+    }
+  }
   const upsellEl = document.getElementById('cart-upsell-text');
-  const parts = [cartUpsell, shippingMsg].filter(Boolean);
+  const parts = [comboMsg || cartUpsell, shippingMsg].filter(Boolean);
   upsellEl.innerHTML = parts.join(`<span style="margin:0 8px;opacity:0.35;">|</span>`);
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
@@ -2158,13 +2235,15 @@ function renderCartView() {
     });
   }
 
-  const frameTotal  = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
-  const shipping    = calcShipping();
-  const grandTotal  = grandDigitalPrice + grandPrintPrice + frameTotal + shipping;
-  const subtotal    = grandDigitalPrice + grandPrintPrice + frameTotal;
-  const unframedAll = [...Object.values(folderCarts), { printCart }]
+  const frameTotal    = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
+  const shipping      = calcShipping();
+  const comboResult   = checkCombo();
+  const comboDiscount = comboResult ? comboResult.discount : 0;
+  const subtotal      = grandDigitalPrice + grandPrintPrice + frameTotal;
+  const grandTotal    = subtotal + shipping - comboDiscount;
+  const unframedAll   = [...Object.values(folderCarts), { printCart }]
     .flatMap(fc => (fc.printCart || [])).filter(p => !p.frame || p.frame === 'No Frame');
-  const freeShip    = shipping === 0 && unframedAll.length >= 3;
+  const freeShip      = shipping === 0 && unframedAll.length >= 3;
 
   if (!html) html = '<div class="msg" style="padding:1rem 0">Your cart is empty.</div>';
 
@@ -2174,13 +2253,16 @@ function renderCartView() {
   const cvTotalEl = document.querySelector('.cartview-total');
   if (cvTotalEl) {
     let totalHtml = '';
-    if (shipping > 0 || freeShip) {
+    if (shipping > 0 || freeShip || comboDiscount > 0) {
       totalHtml += `<div class="cv-row"><span class="cv-label">Subtotal</span><span class="cv-amt">$${subtotal}</span></div>`;
       if (shipping > 0) {
         totalHtml += `<div class="cv-row"><span class="cv-label">Shipping</span><span class="cv-amt">$${shipping}</span></div>`;
-      } else {
+      } else if (freeShip) {
         totalHtml += `<div class="cv-row cv-free"><span class="cv-label">Shipping</span><span class="cv-amt">Free</span></div>`;
       }
+    }
+    if (comboDiscount > 0) {
+      totalHtml += `<div class="cv-row cv-discount"><span class="cv-label">${comboResult.combo.label}</span><span class="cv-amt">-$${comboDiscount}</span></div>`;
     }
     totalHtml += `<div class="cv-row cv-total"><span class="cv-label">Total</span><span class="cv-amt">$${grandTotal}</span></div>`;
     totalHtml += `<div class="cv-tax">Taxes are calculated at the next step</div>`;
