@@ -3357,7 +3357,7 @@ function renderFrameGrid(sizeIdx) {
   frameModalGalleryPhotos = FRAME_MODAL_GALLERY[si] || FRAME_MODAL_GALLERY[0];
   frameModalGalleryIdx    = 0;
   if (labelEl) labelEl.textContent = sizeLabel;
-  if (priceEl) priceEl.textContent = `+$${framePrice} — shipped to your door`;
+  if (priceEl) priceEl.textContent = `+$${framePrice} + Shipping`;
   selectedFrameIdx = 0;
   _updateFrameModalImage();
 }
