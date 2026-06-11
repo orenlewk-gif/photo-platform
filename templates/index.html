@@ -137,21 +137,29 @@ input[type="range"]::-webkit-slider-thumb {
 .tier-pill.all-pill:hover { background:rgba(242,201,76,0.3); }
 .pricing-hint { font-size:0.75rem; color:rgba(255,255,255,0.3); margin-left:auto; }
 
-/* Combo deal banner */
+/* Combo deal text */
 .combo-banner {
-  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
-  background:linear-gradient(135deg,rgba(255,193,7,0.13),rgba(255,152,0,0.1));
-  border:1px solid rgba(255,193,7,0.35); border-radius:10px;
-  padding:0.85rem 1.1rem; margin-bottom:1rem;
+  text-align: center;
+  margin-bottom: 1.25rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.65);
 }
-.combo-banner-icon { font-size:1.4rem; flex-shrink:0; }
-.combo-banner-text { flex:1; font-size:0.88rem; line-height:1.45; color:rgba(255,255,255,0.82); }
-.combo-banner-text strong { color:#ffd54f; }
+.combo-banner strong { color: rgba(255,255,255,0.9); font-weight: 600; }
 .combo-banner-btn {
-  background:rgba(255,193,7,0.85); color:#111; border:none; border-radius:6px;
-  padding:0.48rem 1rem; font-size:0.84rem; font-weight:700; cursor:pointer; white-space:nowrap;
+  display: block;
+  margin-top: 0.45rem;
+  background: none;
+  border: none;
+  color: #F5C518;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
-.combo-banner-btn:hover { background:#ffc107; }
+.combo-banner-btn:hover { color: #ffd54f; }
 
 /* Gallery grid */
 .gallery { display:grid; gap:10px; }
@@ -1472,23 +1480,20 @@ async function showGallery(date, location, family, ln, group) {
   const comboForLoc = globalCombos.find(c => (c.locations || []).includes(location));
   const comboBannerHtml = comboForLoc ? `
     <div class="combo-banner">
-      <div class="combo-banner-icon">📸</div>
-      <div class="combo-banner-text">
-        <strong>$${comboForLoc.price} Package for Both Portrait Sessions</strong> — Select ${comboForLoc.min_each}+
-        photos from each portrait location to unlock this deal. Use the button to grab all photos from this session.
-      </div>
-      <button class="combo-banner-btn" onclick="selectAllPhotos()">Add All Photos from This Session</button>
+      <strong>$${comboForLoc.price} for both portrait sessions</strong> — select ${comboForLoc.min_each}+ photos from
+      each location and the deal applies automatically at checkout.<br>
+      <button class="combo-banner-btn" onclick="selectAllPhotos()">Add all photos from this session</button>
     </div>` : '';
 
   const el = document.getElementById('view-gallery');
   el.innerHTML = `
+    ${comboBannerHtml}
     <div class="gallery-header">
       <span class="gallery-title">${title}</span>
       <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
       ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
-    ${comboBannerHtml}
     <div class="gallery-controls">
       ${!(family || ln) ? `<div class="filter-bar">
         <input type="text" id="filter-input" placeholder="Search by color… e.g. red, blue, pink, yellow" />
