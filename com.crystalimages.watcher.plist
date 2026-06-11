@@ -6,18 +6,18 @@
     <string>com.crystalimages.watcher</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/python3</string>
-        <string>/Users/labserver/Desktop/photo-platform/watch_photos.py</string>
+        <string>/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python</string>
+        <string>/Users/labserver/photo-platform/watch_photos.py</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/labserver/Desktop/photo-platform</string>
+    <string>/Users/labserver/photo-platform</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/Users/labserver/Desktop/photo-platform/watcher.log</string>
+    <string>/Users/labserver/photo-platform/watcher.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/labserver/Desktop/photo-platform/watcher.log</string>
+    <string>/Users/labserver/photo-platform/watcher.log</string>
 </dict>
 </plist>
