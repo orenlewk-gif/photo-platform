@@ -1914,7 +1914,17 @@ function getUpsellMsg(count) {
     });
   }
 
-  if (!candidates.length) return '';
+  // If already priced at a max tier, show how many more photos are still included
+  if (!candidates.length) {
+    const maxTiersSorted = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+    for (const mt of maxTiersSorted) {
+      if (curPrice === mt.price && count < mt.count) {
+        const remaining = mt.count - count;
+        return `<strong>${remaining} more photo${remaining!==1?'s':''}</strong> still included in your <strong>${mt.label}</strong> package`;
+      }
+    }
+    return '';
+  }
 
   // Sort: cheapest extra first, then by proximity
   candidates.sort((a, b) => a.extra - b.extra || a.more - b.more);
@@ -1995,16 +2005,21 @@ function updateCart() {
   const shipping     = calcShipping();
   const total        = digitalPrice + otherPrice + printPrice + framePrice + shipping;
 
+  // Count text: current folder only (so it matches what the customer sees highlighted)
   let summary = [];
   if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
     summary.push(`${lockedTier.label} — ${count}/${lockedTier.count} photos selected`);
-  } else if (totalPhotoCount > 0) {
-    summary.push(`${totalPhotoCount} photo${totalPhotoCount!==1?'s':''}`);
+  } else if (count > 0) {
+    summary.push(`${count} photo${count!==1?'s':''}`);
   }
   if (printCount > 0) summary.push(`${printCount} print${printCount!==1?'s':''}`);
   const frameQty = frameCart.reduce((s, f) => s + f.quantity, 0);
   if (frameQty > 0) summary.push(`${frameQty} frame${frameQty!==1?'s':''}`);
-  document.getElementById('cart-count-text').textContent = summary.join(' + ') + (summary.length > 0 ? ' selected' : '');
+  // Fallback when current folder is empty but other folders have items
+  const countText = summary.length > 0
+    ? summary.join(' + ') + ' selected'
+    : `${totalPhotoCount} photo${totalPhotoCount!==1?'s':''} in cart`;
+  document.getElementById('cart-count-text').textContent = countText;
   document.getElementById('cart-price-text').textContent = `$${total}`;
   // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
   const upgradeMsg = count > 0 ? getUpsellMsg(count) : '';
@@ -2025,19 +2040,14 @@ function updateCart() {
       shippingMsg = `Free shipping included on your prints!`;
     }
   }
-  // Combo deal notice
+  // Combo active notice (only when deal is actually triggered — no teaser)
   let comboMsg = '';
   const comboActive = checkCombo();
   if (comboActive) {
     comboMsg = `🎉 <strong>${comboActive.combo.label}</strong> active — $${comboActive.combo.price} total for both portrait sessions (saves $${comboActive.discount})`;
-  } else {
-    const nearCombo = globalCombos.find(c => (c.locations || []).includes(currentLocation));
-    if (nearCombo && count > 0) {
-      comboMsg = `Add ${nearCombo.min_each}+ from <strong>each</strong> portrait session for the <strong>$${nearCombo.price} package</strong>`;
-    }
   }
   const upsellEl = document.getElementById('cart-upsell-text');
-  const parts = [comboMsg || cartUpsell, shippingMsg].filter(Boolean);
+  const parts = [comboMsg || upgradeMsg, printMsg, shippingMsg].filter(Boolean);
   upsellEl.innerHTML = parts.join(`<span style="margin:0 8px;opacity:0.35;">|</span>`);
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
