@@ -861,6 +861,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
     <div class="cartview-total"></div>
     <div class="cartview-actions">
       <button class="btn-ghost" onclick="closeCartView()">Continue Shopping</button>
+      <button class="btn-ghost btn-secondary" onclick="clearCart(); closeCartView()">Remove All</button>
       <button class="btn" onclick="closeCartView(); openCheckout()">Checkout →</button>
     </div>
   </div>
@@ -1968,10 +1969,23 @@ function updateCart() {
   const count      = selectedPhotos.size;
   const printCount = printCart.length;
   updateHeaderCartBtn();
-  if (count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
+
+  // Include all saved folders in totals (not just current)
+  let otherPhotos = 0;
+  let otherPrice  = 0;
+  Object.entries(folderCarts).forEach(([key, fc]) => {
+    if (key === currentFolderKey) return;
+    const n = fc.selectedPaths?.length || 0;
+    otherPhotos += n;
+    const p = (fc.location !== undefined && pricingCache[fc.location]) ? pricingCache[fc.location] : fc.pricing;
+    otherPrice  += calcPriceFor(n, p);
+  });
+  const totalPhotoCount = count + otherPhotos;
+
+  if (totalPhotoCount === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
-    document.getElementById('print-upsell-banner').classList.remove('show');  // always hide banner when folder is empty
+    document.getElementById('print-upsell-banner').classList.remove('show');
     saveCart();
     return;
   }
@@ -1979,13 +1993,13 @@ function updateCart() {
   const printPrice   = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
   const framePrice   = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
   const shipping     = calcShipping();
-  const total        = digitalPrice + printPrice + framePrice + shipping;
+  const total        = digitalPrice + otherPrice + printPrice + framePrice + shipping;
 
   let summary = [];
   if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
     summary.push(`${lockedTier.label} — ${count}/${lockedTier.count} photos selected`);
-  } else if (count > 0) {
-    summary.push(`${count} photo${count!==1?'s':''}`);
+  } else if (totalPhotoCount > 0) {
+    summary.push(`${totalPhotoCount} photo${totalPhotoCount!==1?'s':''}`);
   }
   if (printCount > 0) summary.push(`${printCount} print${printCount!==1?'s':''}`);
   const frameQty = frameCart.reduce((s, f) => s + f.quantity, 0);
