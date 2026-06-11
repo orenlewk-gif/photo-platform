@@ -53,7 +53,7 @@
       "locations": ["Lone Peak Portraits", "Explorer Gondola"],
       "label": "Package for Both",
       "price": 95,
-      "requires": "all"
+      "min_each": 3
     }
   ]
 }
