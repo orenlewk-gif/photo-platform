@@ -19,8 +19,14 @@ from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from PIL import Image
-import torch
 import boto3
+
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except Exception:
+    TORCH_AVAILABLE = False
+    print("⚠️  torch not available — CLIP embeddings disabled (portrait upload still works)")
 import requests as http_requests
 from dotenv import load_dotenv
 
@@ -29,6 +35,9 @@ load_dotenv()
 BASE_DIR     = "images"
 INDEX_FILE   = "images.json"
 SKIP_CLIP_IF = "portrait"
+
+# Portrait locations use last_name sub-folders; all others use group sub-folders
+PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola"}
 EXTENSIONS   = {".jpg", ".jpeg", ".png"}
 DEBOUNCE     = 3.0   # seconds to wait after last event before flushing
 
@@ -112,12 +121,22 @@ def delete_from_r2(abs_path):
 def extract_meta(abs_path):
     rel   = os.path.relpath(abs_path, start=os.path.abspath(BASE_DIR))
     parts = rel.split(os.sep)
-    date      = parts[0] if len(parts) > 0 else "unknown"
-    activity  = parts[1] if len(parts) > 1 else "unknown"
-    last_name = parts[2] if len(parts) > 3 else ""
-    return date, activity, last_name
+    date     = parts[0] if len(parts) > 0 else "unknown"
+    activity = parts[1] if len(parts) > 1 else "unknown"
+    sub      = parts[2] if len(parts) > 3 else ""  # sub-folder (family or group)
+
+    # Determine whether this is a portrait location or an activity group
+    from re import sub as re_sub
+    loc_clean = re_sub(r'^[\d\-_\s]+', '', activity).replace('-', ' ').replace('_', ' ').strip().title()
+    is_portrait = loc_clean.lower() in PORTRAIT_LOCATIONS
+
+    last_name = sub if is_portrait else ""
+    group     = "" if is_portrait else sub
+    return date, activity, last_name, group
 
 def compute_embedding(abs_path, activity):
+    if not TORCH_AVAILABLE:
+        return None
     if SKIP_CLIP_IF in activity.lower():
         return None
     m, p = get_model()
@@ -126,12 +145,13 @@ def compute_embedding(abs_path, activity):
         return m.get_image_features(**p(images=img, return_tensors="pt"))[0].tolist()
 
 def make_entry(abs_path):
-    date, activity, last_name = extract_meta(abs_path)
+    date, activity, last_name, group = extract_meta(abs_path)
     return {
         "path":      abs_path,
         "date":      date,
         "location":  activity,
         "last_name": last_name,
+        "group":     group,
         "embedding": compute_embedding(abs_path, activity),
     }
 

@@ -2121,6 +2121,30 @@ function renderCartView() {
   let grandDigitalPrice = 0;
   let grandPrintPrice   = 0;
 
+  // ── Pre-calculate combo adjusted prices ──────────────────────────────────
+  // When combo is active, each combo album shows its share of the combo price
+  // (e.g. $95 / 2 albums = $47.50) instead of full price + discount line.
+  const comboResult    = checkCombo();
+  const comboAdjPrices = {};  // folder key -> adjusted price
+  if (comboResult) {
+    const combo   = comboResult.combo;
+    const locs    = combo.locations || [];
+    // Identify which folder keys belong to the active combo
+    const comboKeys = Object.keys(folderCarts).filter(k => {
+      const loc = (k === currentFolderKey) ? currentLocation : (folderCarts[k]?.location || '');
+      const n   = (k === currentFolderKey) ? selectedPhotos.size : (folderCarts[k]?.selectedPaths?.length || 0);
+      return n > 0 && locs.includes(loc);
+    });
+    if (comboKeys.length > 0) {
+      const share = Math.round((combo.price / comboKeys.length) * 100) / 100;
+      comboKeys.forEach((k, i) => {
+        comboAdjPrices[k] = (i === comboKeys.length - 1)
+          ? Math.round((combo.price - share * (comboKeys.length - 1)) * 100) / 100
+          : share;
+      });
+    }
+  }
+
   // ── Gather all folders that have content ──
   const allKeys = Object.keys(folderCarts).filter(k => {
     const fc = folderCarts[k];
@@ -2142,7 +2166,9 @@ function renderCartView() {
                          : (fc.location !== undefined && pricingCache[fc.location])
                            ? pricingCache[fc.location]
                            : fc.pricing;
-    const digitalPrice   = calcPriceFor(digitalCount, folderPricing);
+    const digitalPrice   = comboAdjPrices.hasOwnProperty(key)
+                           ? comboAdjPrices[key]
+                           : calcPriceFor(digitalCount, folderPricing);
     const folderPrints   = isCurrent ? printCart : (fc.printCart || []);
     const printPrice     = folderPrints.reduce((s, p) => s + p.price + p.framePrice, 0);
 
@@ -2254,10 +2280,8 @@ function renderCartView() {
 
   const frameTotal    = frameCart.reduce((s, f) => s + f.price * f.quantity, 0);
   const shipping      = calcShipping();
-  const comboResult   = checkCombo();
-  const comboDiscount = comboResult ? comboResult.discount : 0;
   const subtotal      = grandDigitalPrice + grandPrintPrice + frameTotal;
-  const grandTotal    = subtotal + shipping - comboDiscount;
+  const grandTotal    = subtotal + shipping;
   const unframedAll   = [...Object.values(folderCarts), { printCart }]
     .flatMap(fc => (fc.printCart || [])).filter(p => !p.frame || p.frame === 'No Frame');
   const freeShip      = shipping === 0 && unframedAll.length >= 3;
@@ -2270,16 +2294,13 @@ function renderCartView() {
   const cvTotalEl = document.querySelector('.cartview-total');
   if (cvTotalEl) {
     let totalHtml = '';
-    if (shipping > 0 || freeShip || comboDiscount > 0) {
+    if (shipping > 0 || freeShip) {
       totalHtml += `<div class="cv-row"><span class="cv-label">Subtotal</span><span class="cv-amt">$${subtotal}</span></div>`;
       if (shipping > 0) {
         totalHtml += `<div class="cv-row"><span class="cv-label">Shipping</span><span class="cv-amt">$${shipping}</span></div>`;
       } else if (freeShip) {
         totalHtml += `<div class="cv-row cv-free"><span class="cv-label">Shipping</span><span class="cv-amt">Free</span></div>`;
       }
-    }
-    if (comboDiscount > 0) {
-      totalHtml += `<div class="cv-row cv-discount"><span class="cv-label">${comboResult.combo.label}</span><span class="cv-amt">-$${comboDiscount}</span></div>`;
     }
     totalHtml += `<div class="cv-row cv-total"><span class="cv-label">Total</span><span class="cv-amt">$${grandTotal}</span></div>`;
     totalHtml += `<div class="cv-tax">Taxes are calculated at the next step</div>`;

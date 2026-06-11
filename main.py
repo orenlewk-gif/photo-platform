@@ -771,13 +771,42 @@ async def create_checkout(request: Request):
         line_items = []
         fee_lines  = []
 
+        # ── Pre-calculate combo price adjustments ────────────────────────────
+        # Instead of a negative discount fee line, each combo album gets its
+        # share of the combo price (e.g. $95 / 2 locations = $47.50 each).
+        _combos_cfg = []
+        if os.path.exists("pricing.json"):
+            with open("pricing.json") as _pf:
+                _combos_cfg = json.load(_pf).get("combos", [])
+        _combo_adj = {}  # index in digital_albums -> adjusted price
+        for _combo in _combos_cfg:
+            _clocs    = set(_combo.get("locations", []))
+            _min_each = _combo.get("min_each", 1)
+            _lc       = {}
+            _idxs     = []
+            for _i, _album in enumerate(digital_albums):
+                _loc = _album.get("location", "")
+                if _loc in _clocs:
+                    _lc[_loc] = _lc.get(_loc, 0) + int(_album.get("count", 0))
+                    _idxs.append(_i)
+            if _idxs and all(_lc.get(l, 0) >= _min_each for l in _clocs):
+                _combo_price = float(_combo.get("price", 0))
+                _share       = round(_combo_price / len(_idxs), 2)
+                for _j, _idx in enumerate(_idxs):
+                    # Last album absorbs any rounding remainder
+                    _combo_adj[_idx] = (
+                        round(_combo_price - _share * (len(_idxs) - 1), 2)
+                        if _j == len(_idxs) - 1 else _share
+                    )
+                break  # Only one active combo at a time
+
         if digital_albums:
-            # One line item per album
-            for album in digital_albums:
+            # One line item per album (adjusted price for combo albums)
+            for _i, album in enumerate(digital_albums):
                 count = int(album.get("count", 0))
                 if count == 0:
                     continue
-                album_price = str(float(album.get("price", 0)))
+                album_price = str(_combo_adj.get(_i, float(album.get("price", 0))))
                 album_name  = album.get("last_name") or album.get("location") or "Photos"
                 line_items.append({
                     "product_id": WC_DIGITAL_PRODUCT_ID,
@@ -872,31 +901,7 @@ async def create_checkout(request: Request):
                 "total": str(-round(coupon_discount, 2)),
             })
 
-        # ── Combo discount as negative fee line ───────────────────────────────
-        _combos = []
-        if os.path.exists("pricing.json"):
-            with open("pricing.json") as _pf:
-                _combos = json.load(_pf).get("combos", [])
-        for _combo in _combos:
-            _clocs    = set(_combo.get("locations", []))
-            _min_each = _combo.get("min_each", 1)
-            _lc       = {}
-            for _album in digital_albums:
-                _loc = _album.get("location", "")
-                if _loc in _clocs:
-                    _lc[_loc] = _lc.get(_loc, 0) + int(_album.get("count", 0))
-            if all(_lc.get(l, 0) >= _min_each for l in _clocs):
-                _normal = sum(
-                    float(a.get("price", 0)) for a in digital_albums
-                    if a.get("location", "") in _clocs
-                )
-                _disc = round(_normal - float(_combo.get("price", 0)), 2)
-                if _disc > 0:
-                    fee_lines.append({
-                        "name":  _combo.get("label", "Package Deal"),
-                        "total": str(-_disc),
-                    })
-                    break  # Only one combo at a time
+        # (Combo pricing is handled above by adjusting per-album line item prices)
 
         paths = body.get("digital_paths", [])
         meta = [

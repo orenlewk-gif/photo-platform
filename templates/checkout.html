@@ -633,11 +633,41 @@ function renderSummary() {
   let printTotal = 0;
   let frameTotal = 0;
 
+  // ── Pre-calculate combo adjusted prices ──────────────────────────────────
+  // Each combo album gets its share of the combo price ($95/2 = $47.50 each)
+  // rather than showing a discount line.
+  const comboAdjPrices = {};  // folder key -> adjusted price
+  for (const combo of globalCombos) {
+    const locs    = combo.locations || [];
+    const minEach = combo.min_each  || 1;
+    const locCounts = {};
+    const comboKeys = [];
+    Object.entries(fc).forEach(([key, folder]) => {
+      const n   = folder.selectedPhotos?.length || 0;
+      const loc = folder.location || '';
+      if (n && locs.includes(loc)) {
+        locCounts[loc] = (locCounts[loc] || 0) + n;
+        comboKeys.push(key);
+      }
+    });
+    if (comboKeys.length && locs.every(loc => (locCounts[loc] || 0) >= minEach)) {
+      const share = Math.round((combo.price / comboKeys.length) * 100) / 100;
+      comboKeys.forEach((k, i) => {
+        comboAdjPrices[k] = (i === comboKeys.length - 1)
+          ? Math.round((combo.price - share * (comboKeys.length - 1)) * 100) / 100
+          : share;
+      });
+      break;
+    }
+  }
+
   // Digital folders
   Object.entries(fc).forEach(([key, folder]) => {
     const n = folder.selectedPhotos?.length || 0;
     if (!n) return;
-    const price = calcPriceFor(n, folder.pricing);
+    const price = comboAdjPrices.hasOwnProperty(key)
+      ? comboAdjPrices[key]
+      : calcPriceFor(n, folder.pricing);
     digTotal += price;
     const label = folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos';
     itemsHtml += `<div class="co-item">
@@ -673,33 +703,6 @@ function renderSummary() {
 
   document.getElementById('co-items').innerHTML = itemsHtml;
 
-  // ── Combo discount ────────────────────────────────────────────────────────
-  let comboDiscountAmt = 0;
-  let comboLabelText   = '';
-  for (const combo of globalCombos) {
-    const locs    = combo.locations || [];
-    const minEach = combo.min_each  || 1;
-    const locCounts = {};
-    let comboBaseTotal = 0;
-    Object.values(fc).forEach(folder => {
-      const n   = folder.selectedPhotos?.length || 0;
-      if (!n) return;
-      const loc = folder.location || '';
-      if (locs.includes(loc)) {
-        locCounts[loc] = (locCounts[loc] || 0) + n;
-        comboBaseTotal += calcPriceFor(n, folder.pricing);
-      }
-    });
-    if (locs.every(loc => (locCounts[loc] || 0) >= minEach)) {
-      const disc = Math.round((comboBaseTotal - combo.price) * 100) / 100;
-      if (disc > 0) {
-        comboDiscountAmt = disc;
-        comboLabelText   = combo.label || 'Package Deal';
-        break;
-      }
-    }
-  }
-
   // Totals
   const subtotal = digTotal + printTotal + frameTotal;
   const shipping = calcShipping(prints, frames);
@@ -714,10 +717,10 @@ function renderSummary() {
     discountAmt = Math.round(discountAmt * 100) / 100;
   }
 
-  const grandTotal = Math.max(0, subtotal + shipping - discountAmt - comboDiscountAmt);
+  const grandTotal = Math.max(0, subtotal + shipping - discountAmt);
 
   let totalsHtml = '';
-  const showSub  = shipping > 0 || freeShip || discountAmt > 0 || comboDiscountAmt > 0;
+  const showSub  = shipping > 0 || freeShip || discountAmt > 0;
   if (showSub) {
     totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
   }
@@ -725,9 +728,6 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
   } else if (freeShip) {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
-  }
-  if (comboDiscountAmt > 0) {
-    totalsHtml += `<div class="co-total-row discount"><span>${comboLabelText}</span><span class="amt">-$${comboDiscountAmt.toFixed(2)}</span></div>`;
   }
   if (discountAmt > 0) {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
