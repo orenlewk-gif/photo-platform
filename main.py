@@ -291,6 +291,13 @@ def get_locations(date: str = Query(None)):
 @app.get("/api/subfolders")
 def get_subfolders(date: str, location: str):
     """Return sub-folders for a location — last names for portrait locations, groups for activities."""
+    def pick_four(photos):
+        n = len(photos)
+        if n <= 4:
+            return photos
+        step = n / 4
+        return [photos[int(i * step)] for i in range(4)]
+
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
     subfolders = {}
     for item in data:
