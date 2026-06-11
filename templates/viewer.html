@@ -704,15 +704,20 @@ function removeFavByIdx(fi) {
 }
 
 function openLBFromFav(fi) {
-  // Try to open the photo in lightbox if it's in the current gallery
+  // Load all favorites into the lightbox so any photo can be enlarged,
+  // regardless of which folder is currently open.
   const favs = loadFavorites();
-  const fav  = favs[fi];
-  if (!fav) return;
-  const idx = allPhotos.findIndex(p => p.path === fav.path);
-  if (idx !== -1) {
-    closeFavoritesModal();
-    openLB(idx);
-  }
+  if (!fi && fi !== 0 || fi >= favs.length) return;
+  closeFavoritesModal();
+  // Temporarily replace allPhotos with the favorites list for LB navigation
+  allPhotos = favs.map(f => ({
+    path:     f.path,
+    date:     f.date,
+    location: f.location,
+    filename: f.filename,
+  }));
+  selectedPhotos = new Set(allPhotos.map((_, i) => i)); // all selected in this view
+  openLB(fi);
 }
 
 // ── Filter (client-side text match on filename/location) ──
