@@ -306,6 +306,15 @@ def get_subfolders(date: str, location: str):
         if clean_location(item["location"]) != location:
             continue
         key = (item.get("last_name", "") if is_portrait else item.get("group", "")).strip()
+        # Fallback: if group/last_name field is missing, parse the sub-folder from the path
+        if not key:
+            parts = item.get("path", "").replace("\\", "/").split("/")
+            try:
+                img_idx = next(i for i, p in enumerate(parts) if p == "images")
+                if len(parts) > img_idx + 4:   # images/date/location/subfolder/filename
+                    key = parts[img_idx + 3]
+            except StopIteration:
+                pass
         if not key:
             continue
         if key not in subfolders:
