@@ -11,20 +11,18 @@
   "activities": {
     "Adventure Zip Line": {
       "tiers": [
-        {"label": "1 Photo",          "count": 1,  "price": 30},
-        {"label": "3 Photos",         "count": 3,  "price": 65},
-        {"label": "5 Photos",         "count": 5,  "price": 80},
-        {"label": "Up to 10 Photos",  "count": 10, "price": 90,  "max": true},
-        {"label": "Up to 30 Photos",  "count": 30, "price": 100, "max": true}
+        {"label": "1 Photo",          "count": 1,  "price": 25},
+        {"label": "2 Photos",         "count": 2,  "price": 35},
+        {"label": "3 Photos",         "count": 3,  "price": 45},
+        {"label": "Up to 20 Photos",  "count": 20, "price": 60,  "max": true}
       ]
     },
     "Nature Zip Line": {
       "tiers": [
-        {"label": "1 Photo",          "count": 1,  "price": 30},
-        {"label": "3 Photos",         "count": 3,  "price": 65},
-        {"label": "5 Photos",         "count": 5,  "price": 80},
-        {"label": "Up to 10 Photos",  "count": 10, "price": 90,  "max": true},
-        {"label": "Up to 30 Photos",  "count": 30, "price": 100, "max": true}
+        {"label": "1 Photo",          "count": 1,  "price": 25},
+        {"label": "2 Photos",         "count": 2,  "price": 35},
+        {"label": "3 Photos",         "count": 3,  "price": 45},
+        {"label": "Up to 20 Photos",  "count": 20, "price": 60,  "max": true}
       ]
     },
     "Mountain Biking": {
