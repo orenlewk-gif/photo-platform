@@ -774,7 +774,7 @@ async def create_checkout(request: Request):
 
         # ── Shipping logic (mirrors frontend calcShipping) ───────────────────
         PRINT_SHIP = [8, 8, 13, 13]
-        FRAME_SHIP = [20, 25, 30, 65]
+        FRAME_SHIP = [15, 15, 25, 50]
 
         framed   = [p for p in prints if p.get("frame") and p["frame"] != "No Frame"]
         unframed = [p for p in prints if not p.get("frame") or p["frame"] == "No Frame"]
