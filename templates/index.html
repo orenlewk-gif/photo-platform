@@ -1110,10 +1110,11 @@ let folderCarts        = {};
 let pricingCache       = {};     // location → pricing; avoids re-fetching
 let currentFolderKey   = null;   // key for the gallery currently being viewed
 let currentFolderLabel = '';     // display name (e.g. "Mountain Biking")
+let currentGroup       = null;   // active trail/time sub-folder (non-portrait locations)
 
 // ── Folder-cart helpers ──
-function getFolderKey(date, location, family) {
-  return [date, location, family].filter(Boolean).join('||');
+function getFolderKey(date, location, family, group) {
+  return [date, location, family || group].filter(Boolean).join('||');
 }
 
 // Save the current gallery's selections/package/prints into folderCarts
@@ -1183,6 +1184,7 @@ function navigate(state, replace = false) {
   if (state.date)     params.set('date',     state.date);
   if (state.location) params.set('location', state.location);
   if (state.family)   params.set('family',   state.family);
+  if (state.group)    params.set('group',    state.group);
   if (state.ln)       params.set('ln',       state.ln);
   const url = params.toString() ? '?' + params.toString() : '/';
   if (replace) history.replaceState(state, '', url);
@@ -1200,8 +1202,8 @@ async function renderState(state) {
   switch (state.view) {
     case 'days':      await showDays();                                  break;
     case 'locations': await showLocations(state.date);                   break;
-    case 'families':  await showFamilies(state.date, state.location);    break;
-    case 'gallery':   await showGallery(state.date, state.location, state.family, state.ln); break;
+    case 'families':  await showFamilies(state.date, state.location);                              break;
+    case 'gallery':   await showGallery(state.date, state.location, state.family, state.ln, state.group); break;
   }
 }
 
@@ -1260,11 +1262,13 @@ async function init() {
   const date   = params.get('date');
   const loc    = params.get('location');
   const family = params.get('family');
+  const group  = params.get('group');
   const ln     = params.get('ln');
 
   const view = params.get('view');
   if (view === 'frames')   { showView('frames'); showFramesView(); }
   else if (ln)             navigate({ view:'gallery', ln }, true);
+  else if (group)          navigate({ view:'gallery', date, location:loc, group }, true);
   else if (family)         navigate({ view:'gallery', date, location:loc, family }, true);
   else if (loc)            navigate({ view:'families', date, location:loc }, true);
   else if (date)           navigate({ view:'locations', date }, true);
@@ -1321,10 +1325,10 @@ async function showLocations(date) {
   lazyLoad(el);
 }
 
-// ── View: Families (sub-folders) or straight to gallery ──
+// ── View: Families / Groups (sub-folders) or straight to gallery ──
 async function showFamilies(date, location) {
   showSpinner();
-  const res  = await fetch(`/api/families?date=${enc(date)}&location=${enc(location)}`);
+  const res  = await fetch(`/api/subfolders?date=${enc(date)}&location=${enc(location)}`);
   const data = await res.json();
   hideSpinner();
 
@@ -1333,18 +1337,24 @@ async function showFamilies(date, location) {
     { label:formatDateLong(date),  state:{ view:'locations', date } }
   ];
 
-  if (!data.has_families) {
+  if (!data.has_items) {
     navigate({ view:'gallery', date, location }, true);
     return;
   }
+
+  const isPortrait = data.type === 'portrait';
 
   showView('families');
   setBreadcrumb(crumbs, location);
   document.getElementById('ln-bar').style.display = '';
 
   const el = document.getElementById('view-families');
-  el.innerHTML = `<div class="grid">${data.families.map(f => `
-    <div class="grid-card" onclick='navigate({view:"gallery",date:"${date}",location:"${escQ(location)}",family:"${escQ(f.name)}"})'>
+  el.innerHTML = `<div class="grid">${data.items.map(f => {
+    const clickState = isPortrait
+      ? `{view:"gallery",date:"${date}",location:"${escQ(location)}",family:"${escQ(f.name)}"}`
+      : `{view:"gallery",date:"${date}",location:"${escQ(location)}",group:"${escQ(f.name)}"}`;
+    return `
+    <div class="grid-card" onclick='navigate(${clickState})'>
       <div class="collage-inner"><div class="collage-2x2">
         ${[0,1,2,3].map(i => f.previews[i]
           ? `<img data-path="${escA(f.previews[i])}" src="" alt="" />`
@@ -1352,13 +1362,14 @@ async function showFamilies(date, location) {
         ).join('')}
       </div></div>
       <div class="card-title">${f.name}</div>
-    </div>`).join('')}
+    </div>`;
+  }).join('')}
   </div>`;
   lazyLoad(el);
 }
 
 // ── View: Gallery ──
-async function showGallery(date, location, family, ln) {
+async function showGallery(date, location, family, ln, group) {
   showSpinner();
   let photos, title, crumbs;
 
@@ -1370,10 +1381,11 @@ async function showGallery(date, location, family, ln) {
     crumbs = [{ label:'All Days', state:{ view:'days' } }];
   } else {
     const familyParam = family ? `&family=${enc(family)}` : '';
-    const res = await fetch(`/api/browse?date=${enc(date)}&location=${enc(location)}${familyParam}`);
+    const groupParam  = group  ? `&group=${enc(group)}`   : '';
+    const res = await fetch(`/api/browse?date=${enc(date)}&location=${enc(location)}${familyParam}${groupParam}`);
     const d   = await res.json();
     photos = d.photos;
-    title  = family || location;
+    title  = family || group || location;
     crumbs = [
       { label:'All Days',           state:{ view:'days' } },
       { label:formatDateLong(date), state:{ view:'locations', date } },
@@ -1383,6 +1395,7 @@ async function showGallery(date, location, family, ln) {
 
   // ── Folder-cart: save previous folder BEFORE pricing changes ──
   saveCurrentFolder();
+  currentGroup = group || null;
 
   // Fetch pricing for this location
   const pricingLoc = location || '';
@@ -1392,8 +1405,8 @@ async function showGallery(date, location, family, ln) {
   pricingCache[pricingLoc] = currentPricing;
 
   hideSpinner();
-  currentFolderKey   = getFolderKey(date, location, family);
-  currentFolderLabel = family || location || 'Gallery';
+  currentFolderKey   = getFolderKey(date, location, family, group);
+  currentFolderLabel = family || group || location || 'Gallery';
   allPhotos = photos;
   loadFolderData(currentFolderKey, photos);
 
@@ -1963,8 +1976,9 @@ async function runFilter(date, location) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 60000);
     let url = `/api/search?query=${enc(q)}`;
-    if (date)     url += `&date=${enc(date)}`;
-    if (location) url += `&location=${enc(location)}`;
+    if (date)         url += `&date=${enc(date)}`;
+    if (location)     url += `&location=${enc(location)}`;
+    if (currentGroup) url += `&group=${enc(currentGroup)}`;
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timer);
     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || e.detail || `HTTP ${res.status}`); }
@@ -2757,12 +2771,13 @@ function renderLnDropdown() {
   const dd = document.getElementById('ln-dropdown');
   if (!dd) return;
   if (!_lnResults.length) { dd.style.display = 'none'; return; }
-  dd.innerHTML = _lnResults.map((r, i) =>
-    `<div class="ln-dd-item${i === _lnActive ? ' ln-dd-active' : ''}" onmousedown="selectLnResult(${i})">
-      <span class="ln-dd-name">${r.last_name}</span>
+  dd.innerHTML = _lnResults.map((r, i) => {
+    const name = r.type === 'group' ? r.group : r.last_name;
+    return `<div class="ln-dd-item${i === _lnActive ? ' ln-dd-active' : ''}" onmousedown="selectLnResult(${i})">
+      <span class="ln-dd-name">${name}</span>
       <span class="ln-dd-meta">${r.location}&nbsp;&nbsp;·&nbsp;&nbsp;${formatDateLong(r.date)}</span>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
   dd.style.display = '';
 }
 
@@ -2777,8 +2792,11 @@ function selectLnResult(i) {
   if (!r) return;
   hideLnDropdown();
   document.getElementById('ln-input').value = '';
-  // Navigate directly to that person's gallery folder
-  navigate({ view: 'gallery', date: r.date, location: r.location, family: r.last_name });
+  if (r.type === 'group') {
+    navigate({ view: 'gallery', date: r.date, location: r.location, group: r.group });
+  } else {
+    navigate({ view: 'gallery', date: r.date, location: r.location, family: r.last_name });
+  }
 }
 
 // Fallback: old cross-gallery search (used when no dropdown result is selected)

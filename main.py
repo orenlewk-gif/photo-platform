@@ -45,6 +45,11 @@ R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 # HELPERS
 # ─────────────────────────────────────────
 
+# Locations that use last-name sub-folders (portrait style)
+PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola"}
+# Locations whose group/sub-folder names are searchable
+SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
+
 def clean_location(raw):
     cleaned = re.sub(r'^[\d\-_\s]+', '', raw)
     return cleaned.replace('-', ' ').replace('_', ' ').strip().title()
@@ -283,6 +288,34 @@ def get_locations(date: str = Query(None)):
     return {"locations": locations}
 
 
+@app.get("/api/subfolders")
+def get_subfolders(date: str, location: str):
+    """Return sub-folders for a location — last names for portrait locations, groups for activities."""
+    is_portrait = location.lower() in PORTRAIT_LOCATIONS
+    subfolders = {}
+    for item in data:
+        if item["date"] != date:
+            continue
+        if clean_location(item["location"]) != location:
+            continue
+        key = (item.get("last_name", "") if is_portrait else item.get("group", "")).strip()
+        if not key:
+            continue
+        if key not in subfolders:
+            subfolders[key] = []
+        subfolders[key].append(item["path"])
+
+    items = [
+        {"name": name, "previews": pick_four(subfolders[name])}
+        for name in sorted(subfolders.keys())
+    ]
+    return {
+        "type":      "portrait" if is_portrait else "group",
+        "items":     items,
+        "has_items": len(items) > 0
+    }
+
+
 @app.get("/api/families")
 def get_families(date: str, location: str):
     """Return last-name subfolders for a location, plus preview photos for each."""
@@ -322,29 +355,44 @@ def last_name_search(q: str = Query("")):
     seen = set()
     results = []
     for item in data:
-        ln = item.get("last_name", "").strip()
-        if not ln:
-            continue
-        ln_lower = ln.lower()
-        # Prefix match first; fall back to fuzzy
-        if not ln_lower.startswith(q_lower) and fuzz.partial_ratio(q_lower, ln_lower) < 75:
-            continue
         loc = clean_location(item["location"])
-        key = (ln_lower, item["date"], loc)
-        if key not in seen:
-            seen.add(key)
-            results.append({
-                "last_name": ln,
-                "date":      item["date"],
-                "location":  loc,
-            })
 
-    # Exact/prefix matches first, then alphabetical, then by date
-    results.sort(key=lambda x: (
-        not x["last_name"].lower().startswith(q_lower),
-        x["last_name"].lower(),
-        x["date"],
-    ))
+        # Last-name search (portrait locations)
+        ln = item.get("last_name", "").strip()
+        if ln:
+            ln_lower = ln.lower()
+            if ln_lower.startswith(q_lower) or fuzz.partial_ratio(q_lower, ln_lower) >= 75:
+                key = ("ln", ln_lower, item["date"], loc)
+                if key not in seen:
+                    seen.add(key)
+                    results.append({
+                        "last_name": ln,
+                        "date":      item["date"],
+                        "location":  loc,
+                        "type":      "family",
+                    })
+
+        # Group/trail search (Mountain Biking only)
+        if loc.lower() in SEARCHABLE_GROUP_LOCATIONS:
+            g = item.get("group", "").strip()
+            if g:
+                g_lower = g.lower()
+                if g_lower.startswith(q_lower) or fuzz.partial_ratio(q_lower, g_lower) >= 75:
+                    key = ("grp", g_lower, item["date"], loc)
+                    if key not in seen:
+                        seen.add(key)
+                        results.append({
+                            "group":    g,
+                            "date":     item["date"],
+                            "location": loc,
+                            "type":     "group",
+                        })
+
+    def sort_key(x):
+        name = x.get("last_name") or x.get("group", "")
+        return (not name.lower().startswith(q_lower), name.lower(), x["date"])
+
+    results.sort(key=sort_key)
     return {"results": results[:20]}
 
 
@@ -353,11 +401,12 @@ def natural_sort_key(path):
     return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', name)]
 
 @app.get("/api/browse")
-def browse(date: str, location: str, family: str = Query(None)):
+def browse(date: str, location: str, family: str = Query(None), group: str = Query(None)):
     pool = [item for item in data
             if item["date"] == date
             and clean_location(item["location"]) == location
-            and (not family or item.get("last_name","").strip().lower() == family.lower())]
+            and (not family or item.get("last_name","").strip().lower() == family.lower())
+            and (not group  or item.get("group","").strip().lower()     == group.lower())]
     pool.sort(key=lambda x: natural_sort_key(x["path"]))
     results = []
     for item in pool:
@@ -377,14 +426,15 @@ def search(
     last_name: str  = Query(None),
     date:      str  = Query(None),
     location:  str  = Query(None),
+    group:     str  = Query(None),
 ):
     try:
-        return _search(query, last_name, date, location)
+        return _search(query, last_name, date, location, group)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
-def _search(query, last_name, date, location):
+def _search(query, last_name, date, location, group=None):
     if not query and not last_name:
         return JSONResponse(status_code=400, content={"error": "Provide query or last_name"})
 
@@ -411,6 +461,9 @@ def _search(query, last_name, date, location):
             continue
         # Location filter
         if location and clean_location(item["location"]) != location:
+            continue
+        # Group filter — only return photos from this trail/time slot
+        if group and item.get("group","").strip().lower() != group.lower():
             continue
         # Last name filter — only return photos that belong to this family
         if ln_filter:

@@ -20,8 +20,8 @@ s3 = boto3.client(
 )
 R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 
-# Portrait folders are found by last name — no CLIP needed
-SKIP_CLIP_IF = "portrait"
+# Portrait locations use last-name sub-folders and don't need CLIP
+PORTRAIT_LOCATIONS = ["lone peak portraits", "explorer gondola"]
 
 # Lazy-load model only if needed
 model     = None
@@ -86,16 +86,30 @@ if not image_paths:
 skipped_clip = 0
 for img_path in tqdm(image_paths):
     try:
-        # Folder structure: {date}/{activity}/image.jpg
-        #                or {date}/{activity}/{last_name}/image.jpg
+        # Folder structure:
+        #   {date}/{location}/image.jpg                        (activity, no sub-folder)
+        #   {date}/{location}/{last_name}/image.jpg            (portrait — Lone Peak, Explorer Gondola)
+        #   {date}/{location}/{group}/image.jpg                (activity with groups — Mountain Biking, Zip Lines)
         rel_path  = os.path.relpath(img_path, BASE_DIR)
         parts     = rel_path.split(os.sep)
         date      = parts[0] if len(parts) > 0 else "unknown"
         activity  = parts[1] if len(parts) > 1 else "unknown"
-        last_name = parts[2] if len(parts) > 3 else ""
 
-        # Skip CLIP for portrait/family folders — they're searched by last name
-        if SKIP_CLIP_IF in activity.lower():
+        is_portrait = any(p in activity.lower() for p in PORTRAIT_LOCATIONS)
+
+        if len(parts) > 3:          # sub-folder present
+            if is_portrait:
+                last_name = parts[2]
+                group     = ""
+            else:
+                group     = parts[2]
+                last_name = ""
+        else:
+            last_name = ""
+            group     = ""
+
+        # Skip CLIP for portrait locations — searched by last name only
+        if is_portrait:
             embedding = None
             skipped_clip += 1
         else:
@@ -110,6 +124,7 @@ for img_path in tqdm(image_paths):
             "date":      date,
             "location":  activity,
             "last_name": last_name,
+            "group":     group,
             "embedding": embedding
         })
 
