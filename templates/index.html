@@ -1914,17 +1914,7 @@ function getUpsellMsg(count) {
     });
   }
 
-  // If already priced at a max tier, show how many more photos are still included
-  if (!candidates.length) {
-    const maxTiersSorted = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
-    for (const mt of maxTiersSorted) {
-      if (curPrice === mt.price && count < mt.count) {
-        const remaining = mt.count - count;
-        return `<strong>${remaining} more photo${remaining!==1?'s':''}</strong> still included in your <strong>${mt.label}</strong> package`;
-      }
-    }
-    return '';
-  }
+  if (!candidates.length) return '';
 
   // Sort: cheapest extra first, then by proximity
   candidates.sort((a, b) => a.extra - b.extra || a.more - b.more);
@@ -1947,6 +1937,18 @@ function getUpsellMsg(count) {
     }
     const moreLabel = nearest.more === 1 ? 'one more photo from this folder' : `${nearest.more} more photos from this folder`;
     return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} extra</strong> → ${nearest.isMax?'up to ':''}${nearest.count} photos for $${nearest.price}`;
+  }
+
+  // Already at the cheapest tier — $0 extra to add more photos
+  if (nearest && nearest.extra === 0) {
+    if (nearest.isMax) {
+      const mt = tiers.find(t => t.max && t.count === nearest.count);
+      const label = mt ? mt.label : `Up to ${nearest.count} Photos`;
+      return `<strong>${nearest.more} more photo${nearest.more!==1?'s':''}</strong> still included in your <strong>${label}</strong> package`;
+    }
+    if (nearest.isAll) {
+      return `Add all <strong>${nearest.more} remaining photo${nearest.more!==1?'s':''}</strong> — already covered at $${nearest.price}`;
+    }
   }
 
   return '';
