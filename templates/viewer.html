@@ -703,21 +703,33 @@ function removeFavByIdx(fi) {
   renderFavoritesModal();
 }
 
+let _savedPhotosForFav = null; // restore allPhotos after closing fav lightbox
+
 function openLBFromFav(fi) {
-  // Load all favorites into the lightbox so any photo can be enlarged,
+  // Load favorites into the lightbox so any photo can be enlarged,
   // regardless of which folder is currently open.
+  // Navigation in the lightbox only goes through the favorited photos.
   const favs = loadFavorites();
-  if (!fi && fi !== 0 || fi >= favs.length) return;
+  if ((fi === null || fi === undefined) || fi >= favs.length) return;
   closeFavoritesModal();
-  // Temporarily replace allPhotos with the favorites list for LB navigation
+  // Save current gallery so we can restore it when lightbox closes
+  _savedPhotosForFav = allPhotos;
   allPhotos = favs.map(f => ({
     path:     f.path,
     date:     f.date,
     location: f.location,
-    filename: f.filename,
+    filename: f.filename || f.path.split('/').pop(),
   }));
-  selectedPhotos = new Set(allPhotos.map((_, i) => i)); // all selected in this view
   openLB(fi);
+}
+
+function closeLBFromFav() {
+  // Restore gallery photos if we opened lightbox from favorites
+  if (_savedPhotosForFav !== null) {
+    allPhotos = _savedPhotosForFav;
+    _savedPhotosForFav = null;
+  }
+  closeLB();
 }
 
 // ── Filter (client-side text match on filename/location) ──
@@ -848,7 +860,13 @@ function lazyLoad(container) {
 
 // ── Lightbox ──
 function openLB(i)   { cur = i; renderLB(); document.getElementById('lb').classList.add('open'); }
-function closeLB()   { document.getElementById('lb').classList.remove('open'); }
+function closeLB()   {
+  document.getElementById('lb').classList.remove('open');
+  if (_savedPhotosForFav !== null) {
+    allPhotos = _savedPhotosForFav;
+    _savedPhotosForFav = null;
+  }
+}
 function stepLB(dir) { cur = (cur + dir + allPhotos.length) % allPhotos.length; renderLB(); }
 
 function renderLB() {
