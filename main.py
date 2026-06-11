@@ -690,8 +690,10 @@ async def create_checkout(request: Request):
     try:
         body = await request.json()
 
-        digital_count = body.get("digital_count", 0)
-        digital_price = body.get("digital_price", 0)
+        digital_albums = body.get("digital_albums", [])
+        # Fallback for legacy payloads
+        digital_count = body.get("digital_count", sum(a.get("count", 0) for a in digital_albums))
+        digital_price = body.get("digital_price", sum(a.get("price", 0) for a in digital_albums))
         filenames     = body.get("digital_filenames", [])
         prints        = body.get("prints", [])
         frames        = body.get("frames", [])
@@ -704,7 +706,24 @@ async def create_checkout(request: Request):
         line_items = []
         fee_lines  = []
 
-        if digital_count > 0:
+        if digital_albums:
+            # One line item per album
+            for album in digital_albums:
+                count = int(album.get("count", 0))
+                if count == 0:
+                    continue
+                album_price = str(float(album.get("price", 0)))
+                album_name  = album.get("last_name") or album.get("location") or "Photos"
+                line_items.append({
+                    "product_id": WC_DIGITAL_PRODUCT_ID,
+                    "quantity":   count,
+                    "name":       f"Digital Photos — {album_name}",
+                    "subtotal":   album_price,
+                    "total":      album_price,
+                    "meta_data":  [{"key": "Photos", "value": f"{count} digital photo{'s' if count != 1 else ''}"}],
+                })
+        elif digital_count > 0:
+            # Legacy fallback: single combined line item
             price_str    = str(float(digital_price))
             display_name = last_name if last_name else location
             line_items.append({

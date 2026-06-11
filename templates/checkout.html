@@ -852,9 +852,25 @@ async function placeOrder() {
     discountAmt = Math.round(discountAmt * 100) / 100;
   }
 
+  // Build per-album digital data for separate line items
+  const digitalAlbums = [];
+  Object.entries(fc).forEach(([key, folder]) => {
+    const n = folder.selectedPhotos?.length || 0;
+    if (!n) return;
+    const price = calcPriceFor(n, folder.pricing);
+    const label = folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos';
+    digitalAlbums.push({
+      last_name: label,
+      location:  folder.location || '',
+      count:     n,
+      price:     price,
+      filenames: folder.selectedPhotos.map(p => p.filename),
+      paths:     folder.selectedPhotos.map(p => p.path),
+    });
+  });
+
   const payload = {
-    digital_count:     allDigital.length,
-    digital_price:     digPrice,
+    digital_albums:    digitalAlbums,
     digital_filenames: allDigital.map(p => p.filename),
     digital_paths:     allDigital.map(p => p.path),
     prints: prints.map(p => ({
