@@ -35,17 +35,25 @@
     },
     "Lone Peak Portraits": {
       "tiers": [
-        {"label": "1 Photo",    "count": 1,     "price": 55},
-        {"label": "2 Photos",   "count": 2,     "price": 95},
-        {"label": "All Photos", "count": "all", "price": 120}
+        {"label": "1 Photo",    "count": 1,     "price": 45},
+        {"label": "2 Photos",   "count": 2,     "price": 75},
+        {"label": "All Photos", "count": "all", "price": 85}
       ]
     },
     "Explorer Gondola": {
       "tiers": [
-        {"label": "1 Photo",    "count": 1,     "price": 55},
-        {"label": "2 Photos",   "count": 2,     "price": 95},
-        {"label": "All Photos", "count": "all", "price": 120}
+        {"label": "1 Photo",    "count": 1,     "price": 45},
+        {"label": "2 Photos",   "count": 2,     "price": 75},
+        {"label": "All Photos", "count": "all", "price": 85}
       ]
     }
-  }
+  },
+  "combos": [
+    {
+      "locations": ["Lone Peak Portraits", "Explorer Gondola"],
+      "label": "Package for Both",
+      "price": 95,
+      "requires": "all"
+    }
+  ]
 }
