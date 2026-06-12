@@ -6,7 +6,7 @@
     <string>com.crystalimages.watcher</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python</string>
+        <string>/usr/local/bin/python3.11</string>
         <string>/Users/labserver/photo-platform/watch_photos.py</string>
     </array>
     <key>WorkingDirectory</key>
