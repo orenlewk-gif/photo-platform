@@ -622,21 +622,10 @@ async function loadThumbs() {
   }
 }
 
-// ── Render summary ───────────────────────────────────────────────────────────
-function renderSummary() {
-  const fc      = cartData.folderCarts || {};
-  const frames  = cartData.frameCart || [];
-  const prints  = getAllPrints();
-
-  let itemsHtml  = '';
-  let digTotal   = 0;
-  let printTotal = 0;
-  let frameTotal = 0;
-
-  // ── Pre-calculate combo adjusted prices ──────────────────────────────────
-  // Each combo album gets its share of the combo price ($95/2 = $47.50 each)
-  // rather than showing a discount line.
-  const comboAdjPrices = {};  // folder key -> adjusted price
+// ── Shared combo price helper ─────────────────────────────────────────────
+// Returns {folderKey -> adjustedPrice} when a combo deal is active, else {}.
+function calcComboAdjPrices(fc) {
+  const comboAdjPrices = {};
   for (const combo of globalCombos) {
     const locs    = combo.locations || [];
     const minEach = combo.min_each  || 1;
@@ -660,6 +649,22 @@ function renderSummary() {
       break;
     }
   }
+  return comboAdjPrices;
+}
+
+// ── Render summary ───────────────────────────────────────────────────────────
+function renderSummary() {
+  const fc      = cartData.folderCarts || {};
+  const frames  = cartData.frameCart || [];
+  const prints  = getAllPrints();
+
+  let itemsHtml  = '';
+  let digTotal   = 0;
+  let printTotal = 0;
+  let frameTotal = 0;
+
+  // ── Pre-calculate combo adjusted prices ──────────────────────────────────
+  const comboAdjPrices = calcComboAdjPrices(fc);
 
   // Digital folders
   Object.entries(fc).forEach(([key, folder]) => {
@@ -868,16 +873,20 @@ async function placeOrder() {
   const prints  = getAllPrints();
 
   const allDigital = getAllDigital();
+  const comboAdj   = calcComboAdjPrices(fc);
   let digPrice = 0;
-  Object.values(fc).forEach(f => {
-    digPrice += calcPriceFor(f.selectedPhotos?.length || 0, f.pricing);
+  Object.entries(fc).forEach(([key, f]) => {
+    const n = f.selectedPhotos?.length || 0;
+    digPrice += comboAdj.hasOwnProperty(key)
+      ? comboAdj[key]
+      : calcPriceFor(n, f.pricing);
   });
 
   const loc      = allDigital[0]?.location || prints[0]?.location || '';
   const date     = allDigital[0]?.date     || prints[0]?.date     || '';
   const lastName = allDigital[0]?.last_name || '';
 
-  // Coupon discount
+  // Coupon discount — calculated on combo-adjusted subtotal
   const subtotal    = digPrice + prints.reduce((s,p) => s+(p.price||0)+(p.framePrice||0), 0)
                     + frames.reduce((s,f) => s+(f.price||0)*(f.quantity||1), 0);
   let discountAmt   = 0;

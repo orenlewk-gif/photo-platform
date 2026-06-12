@@ -1305,6 +1305,12 @@ function restoreSelectedPhotos() {
 
 async function init() {
   loadCart();
+  // Pre-load combos so the cart bar shows the correct total even before entering a gallery
+  try {
+    const pRes = await fetch('/api/pricing?location=');
+    const pData = await pRes.json();
+    if (pData.combos) globalCombos = pData.combos;
+  } catch(e) {}
   const params = new URLSearchParams(location.search);
   const date   = params.get('date');
   const loc    = params.get('location');
