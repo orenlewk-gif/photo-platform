@@ -1204,11 +1204,13 @@ function checkCombo() {
       locCounts[currentLocation] = selectedPhotos.size;
     }
     // Count all other saved folders
+    const savedPricing = {};  // loc -> pricing (from saved folderCarts)
     for (const [key, fc] of Object.entries(folderCarts)) {
       if (key === currentFolderKey) continue;
       const loc = fc.location || '';
       if (locs.includes(loc)) {
         locCounts[loc] = (locCounts[loc] || 0) + (fc.selectedPaths?.length || 0);
+        if (fc.pricing) savedPricing[loc] = fc.pricing;
       }
     }
     if (!locs.every(loc => (locCounts[loc] || 0) >= minEach)) continue;
@@ -1216,7 +1218,8 @@ function checkCombo() {
     let normalTotal = 0;
     for (const loc of locs) {
       const count   = locCounts[loc] || 0;
-      const pricing = loc === currentLocation ? currentPricing : pricingCache[loc];
+      const pricing = loc === currentLocation ? currentPricing
+                    : (pricingCache[loc] || savedPricing[loc]);
       if (pricing) normalTotal += calcPriceFor(count, pricing);
     }
     const discount = normalTotal - combo.price;
