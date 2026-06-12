@@ -954,6 +954,7 @@ async function placeOrder() {
     const data = await resp.json();
     if (data.checkout_url) {
       localStorage.removeItem('ci_checkout_cart');
+      localStorage.removeItem('bsp_cart_v1');
       window.location.href = data.checkout_url;
     } else {
       throw new Error(data.error || 'Unknown error');
