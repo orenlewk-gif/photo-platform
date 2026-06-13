@@ -1320,7 +1320,7 @@ def _order_row(order) -> dict:
                  sa.get("state",""), sa.get("postcode",""), sa.get("country","")]
         ship_addr = ", ".join(p for p in parts if p)
     meta         = {m["key"]: m["value"] for m in order.get("meta_data", [])}
-    filenames    = meta.get("_photo_filenames", "")
+    filenames    = meta.get("_photo_files", "")
     location     = meta.get("_photo_location", "")
     date_raw     = meta.get("_photo_date", "")
     line_items   = order.get("line_items", [])
