@@ -1364,15 +1364,30 @@ def admin_dashboard(request: Request, days: int = 30,
     total_fees = sum(r["stripe_fee"] for r in rows)
     total_net  = sum(r["net"]        for r in rows)
 
+    import json as _json
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
     trs = ""
     for r in rows:
-        trs += f"""<tr>
+        first_file = (r['filenames'] or '').split(',')[0].strip() or '—'
+        detail_data = _json.dumps({
+            "name":     f"{r['first']} {r['last']}",
+            "email":    r['email'],
+            "what":     r['what'],
+            "files":    r['filenames'] or '—',
+            "total":    f"${r['total']:.2f}",
+            "discount": f"-${r['discount']:.2f}" if r['discount'] else '—',
+            "fee":      f"${r['stripe_fee']:.2f}",
+            "net":      f"${r['net']:.2f}",
+            "coupon":   r['coupon_code'] or '—',
+            "shipping": f"${r['shipping']:.2f}" if r['shipping'] else '—',
+            "address":  r['ship_addr'] or '—',
+        }).replace("'", "&#39;").replace('"', '&quot;')
+        trs += f"""<tr class="order-row" onclick="showDetail('{detail_data}')" style="cursor:pointer">
           {td(r['date'])}
           {td(f"{r['first']} {r['last']}")}
           {td(r['email'])}
           {td(r['what'])}
-          {td(r['filenames'] or '—', 'mono')}
+          {td(first_file, 'mono')}
           {td(f"${r['total']:.2f}")}
           {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
           {td(f"${r['stripe_fee']:.2f}", 'fee')}
@@ -1380,7 +1395,7 @@ def admin_dashboard(request: Request, days: int = 30,
           {td(r['coupon_code'] or '—')}
           {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
           {td(r['ship_addr'] or '—')}
-          {td(f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn">↺ Regen Link</a>')}
+          {td(f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>')}
         </tr>"""
 
     period_opts = "".join(
@@ -1426,7 +1441,43 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
   text-decoration:none;white-space:nowrap}}
 .regen-btn:hover{{background:rgba(245,197,24,.25)}}
 .empty{{text-align:center;padding:3rem;color:rgba(255,255,255,.3)}}
+.order-row:hover td{{background:rgba(255,255,255,.04);cursor:pointer}}
+.modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}}
+.modal-overlay.open{{display:flex}}
+.modal{{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;overflow-y:auto}}
+.modal h2{{color:#F5C518;font-size:1rem;margin-bottom:1rem}}
+.modal-row{{display:flex;gap:1rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}}
+.modal-row:last-child{{border-bottom:none}}
+.modal-label{{color:rgba(255,255,255,.4);min-width:110px;flex-shrink:0}}
+.modal-val{{color:#fff;word-break:break-word}}
+.modal-close{{float:right;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer;margin-top:-4px}}
+.modal-close:hover{{color:#fff}}
 </style></head><body>
+<div class="modal-overlay" id="detail-modal" onclick="closeDetail(event)">
+  <div class="modal">
+    <h2>Order Details <button class="modal-close" onclick="document.getElementById('detail-modal').classList.remove('open')">✕</button></h2>
+    <div id="detail-body"></div>
+  </div>
+</div>
+<script>
+function showDetail(encoded) {{
+  const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
+  const fields = [
+    ['Name', d.name], ['Email', d.email], ['Ordered', d.what],
+    ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
+    ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
+    ['Billing Address', d.address], ['Photo Files', d.files],
+  ];
+  document.getElementById('detail-body').innerHTML = fields.map(([l,v]) =>
+    `<div class="modal-row"><span class="modal-label">${{l}}</span><span class="modal-val">${{v}}</span></div>`
+  ).join('');
+  document.getElementById('detail-modal').classList.add('open');
+}}
+function closeDetail(e) {{
+  if (e.target === document.getElementById('detail-modal'))
+    document.getElementById('detail-modal').classList.remove('open');
+}}
+</script>
 <div class="topbar">
   <h1>Crystal Images — Admin</h1>
   <a href="/admin/logout">Sign out</a>
@@ -1459,7 +1510,7 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
     <thead><tr>
       <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th>
       <th>Photo Files</th><th>Total</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
-      <th>Coupon Code</th><th>Shipping $</th><th>Shipping Address</th><th>Action</th>
+      <th>Coupon Code</th><th>Shipping $</th><th>Billing Address</th><th>Action</th>
     </tr></thead>
     <tbody>{trs if trs else '<tr><td colspan="11" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
