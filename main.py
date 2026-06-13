@@ -1155,20 +1155,38 @@ def download_all(token: str):
     if datetime.now(timezone.utc) > expires_dt:
         return JSONResponse(status_code=410, content={"error": "Link expired"})
 
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-        for path in rec["paths"]:
+    paths = rec["paths"]
+    filename = f"crystal-images-order-{rec['order_id']}.zip"
+
+    def iter_zip():
+        buf = BytesIO()
+        last_pos = 0
+        zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
+        for path in paths:
             key = to_r2_key(path)
             try:
                 obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-                zf.writestr(os.path.basename(path), obj["Body"].read())
+                data = obj["Body"].read()
+                zf.writestr(os.path.basename(path), data)
+                # Yield only the new bytes written since last flush
+                cur_pos = buf.tell()
+                buf.seek(last_pos)
+                chunk = buf.read(cur_pos - last_pos)
+                last_pos = cur_pos
+                if chunk:
+                    yield chunk
             except Exception as e:
                 print(f"  zip: skipped {key}: {e}")
-    buf.seek(0)
-    filename = f"crystal-images-order-{rec['order_id']}.zip"
-    from fastapi.responses import Response as FastAPIResponse
-    return FastAPIResponse(
-        content=buf.read(),
+        # Close writes the central directory — yield those final bytes
+        zf.close()
+        buf.seek(last_pos)
+        remainder = buf.read()
+        if remainder:
+            yield remainder
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(
+        iter_zip(),
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
