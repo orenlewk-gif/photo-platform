@@ -46,6 +46,13 @@
         {"label": "2 Photos",   "count": 2,     "price": 75},
         {"label": "All Photos", "count": "all", "price": 85}
       ]
+    },
+    "Ramcharger Portraits": {
+      "tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 45},
+        {"label": "2 Photos",   "count": 2,     "price": 75},
+        {"label": "All Photos", "count": "all", "price": 85}
+      ]
     }
   },
   "combos": [

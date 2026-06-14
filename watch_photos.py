@@ -37,7 +37,7 @@ INDEX_FILE   = "images.json"
 SKIP_CLIP_IF = "portrait"
 
 # Portrait locations use last_name sub-folders; all others use group sub-folders
-PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola"}
+PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits"}
 EXTENSIONS   = {".jpg", ".jpeg", ".png"}
 DEBOUNCE     = 3.0   # seconds to wait after last event before flushing
 
