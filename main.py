@@ -193,8 +193,6 @@ def get_model():
         print("CLIP model loaded.")
     return model, processor
 
-# Pre-load CLIP in background so it's ready before the first search request
-threading.Thread(target=get_model, daemon=True).start()
 
 if os.path.exists("images.json"):
     with open("images.json", "r") as f:
