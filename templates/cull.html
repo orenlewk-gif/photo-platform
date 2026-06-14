@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crystal Images — Cull</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;height:100vh;display:grid;grid-template-rows:56px 1fr;overflow:hidden}
+/* Topbar */
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem}
+.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518;white-space:nowrap}
+.topbar select,.topbar input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;padding:.4rem .75rem;font-size:.85rem;outline:none;-webkit-appearance:none}
+.topbar select option{background:#091928}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none;white-space:nowrap}
+.topbar a:hover{color:#F5C518}
+/* Layout */
+.layout{display:grid;grid-template-columns:220px 1fr;height:100%;overflow:hidden}
+/* Sidebar */
+.sidebar{background:#091928;border-right:1px solid rgba(255,255,255,.08);overflow-y:auto;padding:1rem 0}
+.sidebar-section{padding:.5rem 1rem;font-size:.7rem;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.1em;margin-top:.5rem}
+.folder-item{padding:.6rem 1rem;cursor:pointer;font-size:.875rem;color:rgba(255,255,255,.7);display:flex;justify-content:space-between;align-items:center;border-left:3px solid transparent;transition:.15s}
+.folder-item:hover{background:rgba(255,255,255,.04);color:#fff}
+.folder-item.active{background:rgba(245,197,24,.08);border-left-color:#F5C518;color:#F5C518}
+.folder-badge{background:rgba(255,255,255,.12);border-radius:10px;padding:.1rem .45rem;font-size:.7rem;color:rgba(255,255,255,.5)}
+.folder-badge.pending{background:rgba(245,197,24,.15);color:#F5C518}
+.folder-item.unassigned{color:rgba(255,165,0,.8)}
+/* Main */
+.main{overflow-y:auto;display:flex;flex-direction:column}
+/* Toolbar */
+.toolbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);padding:.75rem 1.25rem;display:flex;gap:.6rem;align-items:center;flex-shrink:0;flex-wrap:wrap}
+.toolbar-info{font-size:.85rem;color:rgba(255,255,255,.5);margin-right:auto}
+.toolbar-sel{font-size:.8rem;color:#F5C518}
+.btn{border:none;border-radius:6px;padding:.45rem .9rem;font-size:.82rem;cursor:pointer;font-weight:600;display:flex;align-items:center;gap:.35rem;white-space:nowrap}
+.btn-folder{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.3);color:#F5C518}
+.btn-folder:hover{background:rgba(245,197,24,.2)}
+.btn-live{background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);color:#4ade80}
+.btn-live:hover{background:rgba(74,222,128,.2)}
+.btn-reject{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:#f87171}
+.btn-reject:hover{background:rgba(248,113,113,.2)}
+.btn-clear{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6)}
+.btn-clear:hover{background:rgba(255,255,255,.1)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+/* Grid */
+.photo-grid{padding:1.25rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.75rem;align-content:start;flex:1}
+.photo-card{position:relative;border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid transparent;transition:border-color .15s;aspect-ratio:4/3}
+.photo-card img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;user-select:none}
+.photo-card.selected{border-color:#F5C518}
+.photo-card.selected::after{content:'✓';position:absolute;top:.4rem;right:.4rem;background:#F5C518;color:#0c2336;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700}
+.photo-card .photo-meta{position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,rgba(0,0,0,.7));padding:.4rem .5rem .35rem;font-size:.68rem;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-card .photo-photog{position:absolute;top:.4rem;left:.4rem;background:rgba(0,0,0,.5);border-radius:4px;padding:.15rem .4rem;font-size:.65rem;color:rgba(255,255,255,.7)}
+/* Empty */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:rgba(255,255,255,.3);gap:.75rem}
+.empty-icon{font-size:3rem}
+/* Lightbox */
+.lb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1000;display:none;flex-direction:column;align-items:center;justify-content:center}
+.lb-overlay.open{display:flex}
+.lb-img{max-width:92vw;max-height:85vh;border-radius:8px;object-fit:contain}
+.lb-close{position:absolute;top:1rem;right:1.5rem;font-size:2rem;cursor:pointer;color:rgba(255,255,255,.7);line-height:1}
+.lb-close:hover{color:#fff}
+.lb-nav{position:absolute;top:50%;transform:translateY(-50%);font-size:2rem;cursor:pointer;color:rgba(255,255,255,.5);padding:1rem;user-select:none}
+.lb-nav:hover{color:#fff}
+.lb-prev{left:.5rem}
+.lb-next{right:.5rem}
+.lb-info{position:absolute;bottom:1.5rem;color:rgba(255,255,255,.5);font-size:.85rem;text-align:center}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:1.5rem;width:340px}
+.modal h3{margin-bottom:1rem;color:rgba(255,255,255,.9)}
+.modal input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;padding:.65rem .9rem;font-size:.95rem;outline:none;margin-bottom:1rem}
+.modal input:focus{border-color:#F5C518}
+.modal-btns{display:flex;gap:.6rem}
+.modal-btns .btn{flex:1;justify-content:center}
+/* Toast */
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
+.toast.show{opacity:1}
+.section-header{padding:.6rem 1.25rem;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.06);font-size:.8rem;color:rgba(255,255,255,.5);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.section-header .go-live-btn{background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);color:#4ade80;border-radius:5px;padding:.25rem .65rem;font-size:.75rem;font-weight:600;cursor:pointer}
+.section-header .go-live-btn:hover{background:rgba(74,222,128,.25)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — CULL</div>
+  <input type="date" id="dateFilter" onchange="loadPending()">
+  <select id="locationFilter" onchange="loadPending()">
+    <option value="">All Locations</option>
+    <option>Lone Peak Portraits</option>
+    <option>Explorer Gondola</option>
+    <option>Ramcharger Portraits</option>
+    <option>Mountain Biking</option>
+    <option>Adventure Zip Line</option>
+  </select>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/dashboard">Dashboard</a>
+  <a href="/admin/trash" style="margin-left:.5rem">🗑 Trash</a>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-section">Folders</div>
+    <div id="folderList"></div>
+  </div>
+  <div class="main" id="main">
+    <div class="toolbar" id="toolbar" style="display:none">
+      <span class="toolbar-info" id="toolbarInfo"></span>
+      <span class="toolbar-sel" id="toolbarSel"></span>
+      <button class="btn btn-folder" onclick="openFolderModal()" id="btnFolder" disabled>📁 New Folder</button>
+      <button class="btn btn-reject" onclick="rejectSelected()" id="btnReject" disabled>✕ Reject</button>
+      <button class="btn btn-clear" onclick="clearSelection()">Clear</button>
+    </div>
+    <div id="photoArea" style="flex:1;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lb-overlay" id="lightbox">
+  <span class="lb-close" onclick="closeLb()">✕</span>
+  <span class="lb-nav lb-prev" onclick="lbNav(-1)">‹</span>
+  <img class="lb-img" id="lbImg" src="">
+  <span class="lb-nav lb-next" onclick="lbNav(1)">›</span>
+  <div class="lb-info" id="lbInfo"></div>
+</div>
+
+<!-- Folder Modal -->
+<div class="modal-overlay" id="folderModal">
+  <div class="modal">
+    <h3>Create Folder</h3>
+    <input type="text" id="folderName" placeholder="Last name or trail name…">
+    <div class="modal-btns">
+      <button class="btn btn-clear" onclick="closeFolderModal()">Cancel</button>
+      <button class="btn btn-folder" onclick="assignFolder()">Create & Assign</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let allItems    = [];
+let selected    = new Set();
+let lbIndex     = 0;
+let lbItems     = [];
+let currentDate = '';
+let currentLoc  = '';
+
+// Init
+window.addEventListener('load', () => {
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('dateFilter').value = today;
+  loadPending();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (document.getElementById('lightbox').classList.contains('open')) {
+    if (e.key === 'Escape') closeLb();
+    if (e.key === 'ArrowRight') lbNav(1);
+    if (e.key === 'ArrowLeft')  lbNav(-1);
+    return;
+  }
+  if (e.key === 'Escape') clearSelection();
+  if ((e.key === 'Backspace' || e.key === 'Delete') && selected.size > 0
+      && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault();
+    rejectSelected();
+  }
+});
+
+async function loadPending() {
+  currentDate = document.getElementById('dateFilter').value;
+  currentLoc  = document.getElementById('locationFilter').value;
+  const params = new URLSearchParams();
+  if (currentDate) params.set('date', currentDate);
+  if (currentLoc)  params.set('location', currentLoc);
+  try {
+    const res  = await fetch('/api/pending?' + params);
+    const d    = await res.json();
+    allItems   = d.items || [];
+    selected.clear();
+    renderAll();
+  } catch(e) {
+    showToast('Failed to load photos');
+  }
+}
+
+function renderAll() {
+  renderFolders();
+  renderGrid();
+}
+
+function renderFolders() {
+  const folders   = [...new Set(allItems.map(i => i.folder || ''))];
+  const sideEl    = document.getElementById('folderList');
+  sideEl.innerHTML = '';
+
+  const allEl = document.createElement('div');
+  allEl.className = 'folder-item' + (currentFolder === null ? ' active' : '');
+  allEl.innerHTML = `<span>All Photos</span><span class="folder-badge pending">${allItems.length}</span>`;
+  allEl.onclick = () => { currentFolder = null; renderGrid(); updateFolderActive(); };
+  sideEl.appendChild(allEl);
+
+  if (folders.includes('')) {
+    const n = allItems.filter(i => !i.folder).length;
+    const el = document.createElement('div');
+    el.className = 'folder-item unassigned' + (currentFolder === '' ? ' active' : '');
+    el.innerHTML = `<span>⬜ Unassigned</span><span class="folder-badge pending">${n}</span>`;
+    el.onclick = () => { currentFolder = ''; renderGrid(); updateFolderActive(); };
+    sideEl.appendChild(el);
+  }
+
+  folders.filter(f => f !== '').sort().forEach(folder => {
+    const n  = allItems.filter(i => i.folder === folder).length;
+    const el = document.createElement('div');
+    el.className = 'folder-item' + (currentFolder === folder ? ' active' : '');
+    el.innerHTML = `<span>📁 ${folder}</span><span class="folder-badge pending">${n}</span>`;
+    el.onclick = () => { currentFolder = folder; renderGrid(); updateFolderActive(); };
+    sideEl.appendChild(el);
+  });
+}
+
+function updateFolderActive() {
+  document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('active'));
+  // handled by re-render
+  renderFolders();
+}
+
+let currentFolder = null;
+
+function renderGrid() {
+  const photoArea = document.getElementById('photoArea');
+  const toolbar   = document.getElementById('toolbar');
+  photoArea.innerHTML = '';
+
+  let display = currentFolder === null ? allItems :
+                allItems.filter(i => (i.folder || '') === currentFolder);
+
+  if (allItems.length === 0) {
+    toolbar.style.display = 'none';
+    photoArea.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><div>No pending photos for this date</div></div>`;
+    return;
+  }
+  toolbar.style.display = 'flex';
+
+  const folders = currentFolder === null
+    ? [...new Set(allItems.map(i => i.folder || ''))].sort((a,b) => a === '' ? -1 : b === '' ? 1 : a.localeCompare(b))
+    : [currentFolder];
+
+  lbItems = display;
+
+  folders.forEach(folder => {
+    const items = allItems.filter(i => (i.folder || '') === folder);
+    if (!items.length) return;
+
+    const sectionDiv = document.createElement('div');
+
+    const header = document.createElement('div');
+    header.className = 'section-header';
+    const folderLabel = folder ? `📁 ${folder}` : '⬜ Unassigned';
+    header.innerHTML = `<span style="color:${folder ? '#fff' : 'rgba(255,165,0,.8)'}">${folderLabel} <span style="color:rgba(255,255,255,.4);font-size:.75rem">(${items.length})</span></span>`;
+    if (folder) {
+      const liveBtn = document.createElement('button');
+      liveBtn.className = 'go-live-btn';
+      liveBtn.textContent = '▶ Go Live';
+      liveBtn.onclick = () => goLive(currentDate, currentLoc || items[0]?.location, folder);
+      header.appendChild(liveBtn);
+    }
+    sectionDiv.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'photo-grid';
+
+    items.forEach((item, i) => {
+      const card = document.createElement('div');
+      card.className = 'photo-card' + (selected.has(item.key) ? ' selected' : '');
+      card.dataset.key = item.key;
+
+      const img = document.createElement('img');
+      img.src = item.thumb_url;
+      img.loading = 'lazy';
+      card.appendChild(img);
+
+      if (item.photographer_name) {
+        const ph = document.createElement('div');
+        ph.className = 'photo-photog';
+        ph.textContent = item.photographer_name;
+        card.appendChild(ph);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'photo-meta';
+      meta.textContent = item.filename;
+      card.appendChild(meta);
+
+      card.addEventListener('click', e => handleCardClick(e, item.key, items, i));
+      card.addEventListener('dblclick', () => openLb(item, items));
+      grid.appendChild(card);
+    });
+
+    sectionDiv.appendChild(grid);
+    photoArea.appendChild(sectionDiv);
+  });
+
+  updateToolbar();
+}
+
+let lastClickedKey = null;
+let lastClickedItems = [];
+
+function handleCardClick(e, key, items, idx) {
+  if (e.shiftKey && lastClickedKey) {
+    const lastIdx = lastClickedItems.findIndex(i => i.key === lastClickedKey);
+    const [lo, hi] = [Math.min(lastIdx, idx), Math.max(lastIdx, idx)];
+    items.slice(lo, hi + 1).forEach(i => selected.add(i.key));
+  } else if (e.metaKey || e.ctrlKey) {
+    selected.has(key) ? selected.delete(key) : selected.add(key);
+  } else {
+    selected.clear();
+    selected.add(key);
+  }
+  lastClickedKey   = key;
+  lastClickedItems = items;
+  updateCardStates();
+  updateToolbar();
+}
+
+function updateCardStates() {
+  document.querySelectorAll('.photo-card').forEach(card => {
+    card.classList.toggle('selected', selected.has(card.dataset.key));
+  });
+}
+
+function updateToolbar() {
+  const count = selected.size;
+  document.getElementById('toolbarSel').textContent  = count ? `${count} selected` : '';
+  document.getElementById('toolbarInfo').textContent = `${allItems.length} pending`;
+  document.getElementById('btnFolder').disabled  = count === 0;
+  document.getElementById('btnReject').disabled  = count === 0;
+}
+
+function clearSelection() {
+  selected.clear();
+  updateCardStates();
+  updateToolbar();
+}
+
+// Folder assignment
+function openFolderModal() {
+  if (!selected.size) return;
+  document.getElementById('folderName').value = '';
+  document.getElementById('folderModal').classList.add('open');
+  setTimeout(() => document.getElementById('folderName').focus(), 100);
+}
+function closeFolderModal() {
+  document.getElementById('folderModal').classList.remove('open');
+}
+document.getElementById('folderName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') assignFolder();
+  if (e.key === 'Escape') closeFolderModal();
+});
+
+async function assignFolder() {
+  const name = document.getElementById('folderName').value.trim();
+  if (!name) return;
+  closeFolderModal();
+  try {
+    await fetch('/api/cull/organize', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({keys: [...selected], folder: name})
+    });
+    allItems.forEach(i => { if (selected.has(i.key)) i.folder = name; });
+    selected.clear();
+    renderAll();
+    showToast(`Moved to "${name}"`);
+  } catch(e) {
+    showToast('Failed to assign folder');
+  }
+}
+
+// Reject
+async function rejectSelected() {
+  if (!selected.size) return;
+  const count = selected.size;
+  if (!confirm(`Reject ${count} photo${count !== 1 ? 's' : ''}? They will go to Trash (7 days to restore).`)) return;
+  try {
+    await fetch('/api/cull/reject', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({keys: [...selected]})
+    });
+    const keys = new Set(selected);
+    allItems = allItems.filter(i => !keys.has(i.key));
+    selected.clear();
+    renderAll();
+    showToast(`${count} photo${count !== 1 ? 's' : ''} sent to Trash`);
+  } catch(e) {
+    showToast('Failed to reject photos');
+  }
+}
+
+// Go Live
+async function goLive(date, location, folder) {
+  if (!location) { showToast('Select a location filter first'); return; }
+  const n = allItems.filter(i => (i.folder || '') === folder && i.location === location).length;
+  if (!confirm(`Go Live: publish ${n} photo${n !== 1 ? 's' : ''} from "${folder || 'Unassigned'}" to the live site?`)) return;
+  try {
+    const res = await fetch('/api/cull/golive', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({date, location, folder: folder || ''})
+    });
+    const d = await res.json();
+    if (d.published !== undefined) {
+      allItems = allItems.filter(i => !(i.location === location && (i.folder || '') === folder));
+      selected.clear();
+      renderAll();
+      showToast(`✅ ${d.published} photo${d.published !== 1 ? 's' : ''} are now live!`);
+    } else {
+      showToast('Error: ' + (d.error || 'Unknown'));
+    }
+  } catch(e) {
+    showToast('Failed to go live');
+  }
+}
+
+// Lightbox
+function openLb(item, items) {
+  lbItems = items;
+  lbIndex = items.findIndex(i => i.key === item.key);
+  showLb();
+  document.getElementById('lightbox').classList.add('open');
+}
+function showLb() {
+  const item = lbItems[lbIndex];
+  if (!item) return;
+  document.getElementById('lbImg').src = item.thumb_url;
+  document.getElementById('lbInfo').textContent = `${item.filename}  (${lbIndex + 1} / ${lbItems.length})`;
+}
+function lbNav(dir) {
+  lbIndex = (lbIndex + dir + lbItems.length) % lbItems.length;
+  showLb();
+}
+function closeLb() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+// Toast
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>

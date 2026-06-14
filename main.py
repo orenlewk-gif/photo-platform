@@ -1428,9 +1428,9 @@ def admin_dashboard(request: Request, days: int = 30,
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:#0c2336;font-family:'Segoe UI',sans-serif;color:#fff;min-height:100vh}}
 .topbar{{background:#0a1e2e;border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 2rem;
-  display:flex;align-items:center;justify-content:space-between}}
-.topbar h1{{color:#F5C518;font-size:1.1rem;font-weight:700}}
-.topbar a{{color:rgba(255,255,255,.4);font-size:.85rem;text-decoration:none}}
+  display:flex;align-items:center;gap:1.25rem}}
+.topbar h1{{color:#F5C518;font-size:1.1rem;font-weight:700;margin-right:auto}}
+.topbar a{{color:rgba(255,255,255,.4);font-size:.85rem;text-decoration:none;white-space:nowrap}}
 .topbar a:hover{{color:#fff}}
 .container{{padding:1.5rem 2rem}}
 .stats{{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}}
@@ -1498,6 +1498,9 @@ function closeDetail(e) {{
 </script>
 <div class="topbar">
   <h1>Crystal Images — Admin</h1>
+  <a href="/admin/cull">📷 Cull</a>
+  <a href="/admin/trash">🗑 Trash</a>
+  <a href="/admin/photographers">👥 Photographers</a>
   <a href="/admin/logout">Sign out</a>
 </div>
 <div class="container">
@@ -1597,6 +1600,463 @@ a.back{{color:#F5C518;font-size:.9rem}}</style></head><body>
 
 
 # ─────────────────────────────────────────
+# PHOTO MANAGEMENT — HELPERS & DATA
+# ─────────────────────────────────────────
+
+LOCATIONS_LIST = [
+    "Lone Peak Portraits",
+    "Explorer Gondola",
+    "Ramcharger Portraits",
+    "Mountain Biking",
+    "Adventure Zip Line",
+]
+
+def _r2_json_load(key, default=None):
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return default if default is not None else []
+
+def _r2_json_save(key, payload):
+    s3.put_object(
+        Bucket=R2_BUCKET, Key=key,
+        Body=json.dumps(payload, default=str).encode(),
+        ContentType="application/json",
+    )
+
+def _load_photographers():  return _r2_json_load("meta/photographers.json", [])
+def _save_photographers(d): _r2_json_save("meta/photographers.json", d)
+def _load_pending_meta():   return _r2_json_load("meta/pending_meta.json", [])
+def _save_pending_meta(d):  _r2_json_save("meta/pending_meta.json", d)
+def _load_clock_records():  return _r2_json_load("meta/clock_records.json", [])
+def _save_clock_records(d): _r2_json_save("meta/clock_records.json", d)
+def _load_trash_meta():     return _r2_json_load("meta/trash_meta.json", [])
+def _save_trash_meta(d):    _r2_json_save("meta/trash_meta.json", d)
+
+def _auth_photographer(pin: str):
+    for p in _load_photographers():
+        if p.get("pin") == pin:
+            return p
+    return None
+
+def _presigned_get(key: str, expires: int = 3600) -> str:
+    try:
+        return s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": R2_BUCKET, "Key": key},
+            ExpiresIn=expires,
+        )
+    except Exception:
+        return ""
+
+# ─────────────────────────────────────────
+# PHOTO MANAGEMENT — API
+# ─────────────────────────────────────────
+
+# ── Photographer auth ──
+@app.post("/api/photographer/auth")
+async def photographer_auth(request: Request):
+    body = await request.json()
+    p = _auth_photographer(body.get("pin", ""))
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    records = _load_clock_records()
+    active = next((r for r in reversed(records)
+                   if r["photographer_id"] == p["id"] and not r.get("clock_out")), None)
+    return {"photographer": {k: v for k, v in p.items() if k != "pin"},
+            "clocked_in": active is not None, "active_record": active}
+
+# ── Clock in / out ──
+@app.post("/api/clock/in")
+async def clock_in(request: Request):
+    body = await request.json()
+    p = _auth_photographer(body.get("pin", ""))
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    records = _load_clock_records()
+    if any(r["photographer_id"] == p["id"] and not r.get("clock_out") for r in records):
+        return JSONResponse(status_code=400, content={"error": "Already clocked in"})
+    rec = {
+        "id": str(uuid.uuid4()),
+        "photographer_id": p["id"],
+        "photographer_name": p["name"],
+        "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "location": body.get("location", ""),
+        "clock_in": datetime.now(timezone.utc).isoformat(),
+        "clock_out": None,
+    }
+    records.append(rec)
+    _save_clock_records(records)
+    return {"record": rec}
+
+@app.post("/api/clock/out")
+async def clock_out(request: Request):
+    body = await request.json()
+    p = _auth_photographer(body.get("pin", ""))
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    records = _load_clock_records()
+    for r in reversed(records):
+        if r["photographer_id"] == p["id"] and not r.get("clock_out"):
+            r["clock_out"] = datetime.now(timezone.utc).isoformat()
+            _save_clock_records(records)
+            ci = datetime.fromisoformat(r["clock_in"])
+            co = datetime.fromisoformat(r["clock_out"])
+            hours = round((co - ci).total_seconds() / 3600, 2)
+            return {"record": r, "hours": hours}
+    return JSONResponse(status_code=400, content={"error": "Not clocked in"})
+
+@app.get("/api/clock/status")
+def clock_status_ep(pin: str = Query(...)):
+    p = _auth_photographer(pin)
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    records = _load_clock_records()
+    active = next((r for r in reversed(records)
+                   if r["photographer_id"] == p["id"] and not r.get("clock_out")), None)
+    return {"clocked_in": active is not None, "record": active,
+            "photographer": {k: v for k, v in p.items() if k != "pin"}}
+
+# ── Upload ──
+@app.post("/api/upload/presign")
+async def upload_presign(request: Request):
+    body = await request.json()
+    p = _auth_photographer(body.get("pin", ""))
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    date     = body.get("date", datetime.now().strftime("%Y-%m-%d"))
+    location = body.get("location", "")
+    files    = body.get("files", [])
+    if not location or not files:
+        return JSONResponse(status_code=400, content={"error": "Missing location or files"})
+
+    loc_slug     = location.lower().replace(" ", "-")
+    pending_meta = _load_pending_meta()
+    existing     = {m["key"] for m in pending_meta}
+    new_meta     = []
+    urls         = []
+
+    for f in files:
+        filename = os.path.basename(f["name"])
+        key      = f"pending/{date}/{loc_slug}/{filename}"
+        presigned = s3.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": R2_BUCKET, "Key": key,
+                    "ContentType": f.get("type", "image/jpeg")},
+            ExpiresIn=7200,
+        )
+        urls.append({"key": key, "url": presigned, "filename": filename})
+        if key not in existing:
+            new_meta.append({
+                "key": key, "filename": filename,
+                "date": date, "location": location,
+                "photographer_id": p["id"],
+                "photographer_name": p["name"],
+                "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                "status": "pending", "folder": None,
+            })
+
+    if new_meta:
+        pending_meta.extend(new_meta)
+        _save_pending_meta(pending_meta)
+
+    return {"urls": urls}
+
+# ── Pending (cull feed) ──
+@app.get("/api/pending/dates")
+def pending_dates():
+    meta  = _load_pending_meta()
+    dates = sorted({m["date"] for m in meta if m.get("status") == "pending"}, reverse=True)
+    return {"dates": dates}
+
+@app.get("/api/pending")
+def get_pending(date: str = Query(None), location: str = Query(None)):
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+    meta  = _load_pending_meta()
+    items = [m for m in meta
+             if m.get("status") == "pending" and m.get("date") == date
+             and (not location or m.get("location","").lower() == location.lower())]
+    for item in items:
+        item["thumb_url"] = _presigned_get(item["key"])
+    return {"items": items, "date": date}
+
+@app.post("/api/cull/organize")
+async def cull_organize(request: Request):
+    body   = await request.json()
+    keys   = body.get("keys", [])
+    folder = body.get("folder", "").strip()
+    if not keys or not folder:
+        return JSONResponse(status_code=400, content={"error": "Missing keys or folder"})
+    meta = _load_pending_meta()
+    for m in meta:
+        if m["key"] in keys:
+            m["folder"] = folder
+    _save_pending_meta(meta)
+    return {"updated": len(keys)}
+
+@app.post("/api/cull/reject")
+async def cull_reject(request: Request):
+    body = await request.json()
+    keys = body.get("keys", [])
+    if not keys:
+        return JSONResponse(status_code=400, content={"error": "No keys"})
+    meta       = _load_pending_meta()
+    trash_meta = _load_trash_meta()
+    now        = datetime.now(timezone.utc)
+    purge_at   = (now + timedelta(days=7)).isoformat()
+    count      = 0
+    for m in meta:
+        if m["key"] not in keys or m.get("status") != "pending":
+            continue
+        uid       = str(uuid.uuid4())[:8]
+        trash_key = f"trash/{uid}_{m['filename']}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
+                           Key=trash_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
+        except Exception as e:
+            print(f"Trash move failed {m['key']}: {e}")
+            continue
+        trash_meta.append({
+            "key": trash_key, "original_key": m["key"],
+            "filename": m["filename"], "date": m["date"],
+            "location": m["location"], "folder": m.get("folder"),
+            "photographer_id": m.get("photographer_id"),
+            "photographer_name": m.get("photographer_name", ""),
+            "trashed_at": now.isoformat(), "purge_at": purge_at,
+        })
+        m["status"] = "trashed"
+        count += 1
+    _save_pending_meta(meta)
+    _save_trash_meta(trash_meta)
+    return {"trashed": count}
+
+@app.post("/api/cull/golive")
+async def cull_golive(request: Request):
+    global data
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "")
+    folder   = (body.get("folder") or "").strip()
+    meta     = _load_pending_meta()
+    to_pub   = [
+        m for m in meta
+        if m.get("status") == "pending"
+        and m.get("date") == date
+        and m.get("location", "").lower() == location.lower()
+        and (m.get("folder") or "").lower() == folder.lower()
+    ]
+    if not to_pub:
+        return JSONResponse(status_code=404, content={"error": "No pending photos found"})
+
+    loc_slug    = location.lower().replace(" ", "-")
+    folder_slug = folder.lower().replace(" ", "-") if folder else ""
+    is_portrait = location.lower() in PORTRAIT_LOCATIONS
+    existing    = {item["path"] for item in data}
+    published   = []
+
+    for m in to_pub:
+        if folder_slug:
+            img_key = f"images/{date}/{loc_slug}/{folder_slug}/{m['filename']}"
+        else:
+            img_key = f"images/{date}/{loc_slug}/{m['filename']}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
+                           Key=img_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
+        except Exception as e:
+            print(f"Go Live failed {m['key']}: {e}")
+            continue
+        m["status"] = "live"
+        m["live_key"] = img_key
+        if img_key not in existing:
+            data.append({
+                "path":            img_key,
+                "date":            date,
+                "location":        location,
+                "last_name":       folder if is_portrait else "",
+                "group":           "" if is_portrait else folder,
+                "embedding":       None,
+                "photographer_id": m.get("photographer_id"),
+            })
+            existing.add(img_key)
+        published.append(img_key)
+
+    _save_pending_meta(meta)
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(),
+                  ContentType="application/json")
+    return {"published": len(published)}
+
+# ── Trash ──
+@app.get("/api/trash")
+def get_trash_ep(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    trash = _load_trash_meta()
+    now   = datetime.now(timezone.utc)
+    out   = []
+    for t in trash:
+        days_left = max(0, (datetime.fromisoformat(t["purge_at"]) - now).days)
+        out.append({**t, "days_left": days_left,
+                    "thumb_url": _presigned_get(t["key"])})
+    return {"items": out}
+
+@app.post("/api/trash/restore")
+async def trash_restore(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body      = await request.json()
+    trash_key = body.get("key", "")
+    trash     = _load_trash_meta()
+    item      = next((t for t in trash if t["key"] == trash_key), None)
+    if not item:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    try:
+        s3.copy_object(Bucket=R2_BUCKET,
+                       CopySource={"Bucket": R2_BUCKET, "Key": trash_key},
+                       Key=item["original_key"])
+        s3.delete_object(Bucket=R2_BUCKET, Key=trash_key)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    pending = _load_pending_meta()
+    for m in pending:
+        if m["key"] == item["original_key"]:
+            m["status"] = "pending"
+            break
+    else:
+        pending.append({
+            "key": item["original_key"], "filename": item["filename"],
+            "date": item["date"], "location": item["location"],
+            "photographer_id": item.get("photographer_id"),
+            "photographer_name": item.get("photographer_name", ""),
+            "uploaded_at": item.get("trashed_at", ""),
+            "status": "pending", "folder": item.get("folder"),
+        })
+    _save_pending_meta(pending)
+    _save_trash_meta([t for t in trash if t["key"] != trash_key])
+    return {"restored": True}
+
+@app.post("/api/trash/empty")
+async def trash_empty(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    trash = _load_trash_meta()
+    for t in trash:
+        try:
+            s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
+        except Exception:
+            pass
+    _save_trash_meta([])
+    return {"emptied": len(trash)}
+
+@app.post("/api/trash/autopurge")
+async def trash_autopurge():
+    trash = _load_trash_meta()
+    now   = datetime.now(timezone.utc)
+    keep, purged = [], 0
+    for t in trash:
+        if datetime.fromisoformat(t["purge_at"]) <= now:
+            try:
+                s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
+                purged += 1
+            except Exception:
+                keep.append(t)
+        else:
+            keep.append(t)
+    _save_trash_meta(keep)
+    return {"purged": purged}
+
+# ── Photographer management (admin) ──
+@app.get("/api/photographers")
+def list_photographers(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"photographers": _load_photographers()}
+
+@app.post("/api/photographers")
+async def add_photographer(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    name = body.get("name", "").strip()
+    pin  = body.get("pin", "").strip()
+    if not name or not pin:
+        return JSONResponse(status_code=400, content={"error": "Name and PIN required"})
+    photographers = _load_photographers()
+    if any(p["pin"] == pin for p in photographers):
+        return JSONResponse(status_code=400, content={"error": "PIN already in use"})
+    p = {"id": str(uuid.uuid4())[:8], "name": name, "pin": pin,
+         "default_location": body.get("default_location", ""),
+         "created_at": datetime.now(timezone.utc).isoformat()}
+    photographers.append(p)
+    _save_photographers(photographers)
+    return {"photographer": p}
+
+@app.put("/api/photographers/{pid}")
+async def update_photographer(pid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    photographers = _load_photographers()
+    for p in photographers:
+        if p["id"] == pid:
+            for field in ("name", "pin", "default_location"):
+                if field in body:
+                    p[field] = body[field]
+            _save_photographers(photographers)
+            return {"photographer": p}
+    return JSONResponse(status_code=404, content={"error": "Not found"})
+
+@app.delete("/api/photographers/{pid}")
+async def delete_photographer(pid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    photographers = [p for p in _load_photographers() if p["id"] != pid]
+    _save_photographers(photographers)
+    return {"deleted": True}
+
+@app.get("/api/photographers/commission")
+def photographer_commission(request: Request,
+                             date_from: str = Query(""),
+                             date_to:   str = Query("")):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not date_from:
+        date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
+    if not date_to:
+        date_to = datetime.now().strftime("%Y-%m-%d")
+    photographers = _load_photographers()
+    records       = _load_clock_records()
+    pending_meta  = _load_pending_meta()
+    result = []
+    for p in photographers:
+        pid    = p["id"]
+        shifts = [r for r in records
+                  if r["photographer_id"] == pid
+                  and date_from <= r.get("date", "") <= date_to]
+        hours  = 0.0
+        for s in shifts:
+            if s.get("clock_in") and s.get("clock_out"):
+                ci = datetime.fromisoformat(s["clock_in"])
+                co = datetime.fromisoformat(s["clock_out"])
+                hours += (co - ci).total_seconds() / 3600
+        uploads = [m for m in pending_meta
+                   if m.get("photographer_id") == pid
+                   and date_from <= m.get("date", "") <= date_to]
+        result.append({
+            "id": pid, "name": p["name"],
+            "shifts": len(shifts), "hours": round(hours, 2),
+            "photos_uploaded": len(uploads),
+            "clock_records": shifts,
+        })
+    return {"commission": result, "date_from": date_from, "date_to": date_to}
+
+# ─────────────────────────────────────────
 # FRONTEND
 # ─────────────────────────────────────────
 
@@ -1607,3 +2067,29 @@ def index():
 @app.get("/checkout", response_class=HTMLResponse)
 def checkout_page():
     return HTMLResponse(open("templates/checkout.html").read())
+
+@app.get("/upload", response_class=HTMLResponse)
+def upload_page():
+    return HTMLResponse(open("templates/upload.html").read())
+
+@app.get("/clockin", response_class=HTMLResponse)
+def clockin_page():
+    return HTMLResponse(open("templates/clockin.html").read())
+
+@app.get("/admin/cull", response_class=HTMLResponse)
+def cull_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    return HTMLResponse(open("templates/cull.html").read())
+
+@app.get("/admin/trash", response_class=HTMLResponse)
+def trash_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    return HTMLResponse(open("templates/trash.html").read())
+
+@app.get("/admin/photographers", response_class=HTMLResponse)
+def photographers_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    return HTMLResponse(open("templates/photographers.html").read())

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crystal Images — Photographers</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem;height:56px}
+.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
+.topbar a:hover{color:#F5C518}
+.main{padding:1.5rem;max-width:1100px;margin:0 auto}
+h2{font-size:1.2rem;font-weight:600;margin-bottom:1.25rem;color:rgba(255,255,255,.9)}
+.section{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}
+/* Add form */
+.form-row{display:flex;gap:.75rem;flex-wrap:wrap}
+.form-group{flex:1;min-width:140px}
+label{display:block;font-size:.75rem;color:rgba(255,255,255,.45);margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.06em}
+input,select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;padding:.6rem .85rem;font-size:.9rem;outline:none;-webkit-appearance:none}
+input:focus,select:focus{border-color:#F5C518}
+select option{background:#0a1e2e}
+.btn{border:none;border-radius:7px;padding:.55rem 1.1rem;font-size:.82rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap}
+.btn-add{background:#F5C518;color:#0c2336}
+.btn-add:hover{background:#e6b800}
+.btn-edit{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7)}
+.btn-edit:hover{background:rgba(255,255,255,.12)}
+.btn-del{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.25);color:#f87171}
+.btn-del:hover{background:rgba(248,113,113,.2)}
+/* Table */
+table{width:100%;border-collapse:collapse;font-size:.875rem}
+th{text-align:left;color:rgba(255,255,255,.4);font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;padding:.6rem .75rem;border-bottom:1px solid rgba(255,255,255,.08)}
+td{padding:.7rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:rgba(255,255,255,.02)}
+.pin-cell{font-family:monospace;letter-spacing:.1em;color:#F5C518}
+.actions{display:flex;gap:.4rem}
+/* Commission */
+.date-range{display:flex;gap:.75rem;align-items:flex-end;margin-bottom:1.25rem;flex-wrap:wrap}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;margin-bottom:1.25rem}
+.stat-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1rem}
+.stat-name{font-size:1rem;font-weight:600;margin-bottom:.75rem}
+.stat-row{display:flex;justify-content:space-between;font-size:.82rem;color:rgba(255,255,255,.6);margin-bottom:.3rem}
+.stat-row span:last-child{color:#fff}
+/* Clock records */
+.records-table{width:100%;border-collapse:collapse;font-size:.82rem;margin-top:.75rem}
+.records-table th{color:rgba(255,255,255,.35);font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;padding:.4rem .6rem;border-bottom:1px solid rgba(255,255,255,.06);text-align:left}
+.records-table td{padding:.45rem .6rem;border-bottom:1px solid rgba(255,255,255,.04);color:rgba(255,255,255,.7)}
+.empty-row{text-align:center;color:rgba(255,255,255,.3);padding:1.5rem}
+/* inline edit */
+.edit-row input{padding:.35rem .6rem;font-size:.82rem;border-radius:5px}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — PHOTOGRAPHERS</div>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/dashboard">Dashboard</a>
+  <a href="/admin/cull" style="margin-left:.75rem">Cull</a>
+</div>
+
+<div class="main">
+
+  <!-- Add Photographer -->
+  <div class="section">
+    <h2>Add Photographer</h2>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Name</label>
+        <input type="text" id="newName" placeholder="First Last">
+      </div>
+      <div class="form-group" style="flex:0;min-width:120px">
+        <label>PIN</label>
+        <input type="text" id="newPin" placeholder="e.g. 4821" maxlength="8">
+      </div>
+      <div class="form-group">
+        <label>Default Location</label>
+        <select id="newLoc">
+          <option value="">None</option>
+          <option>Lone Peak Portraits</option>
+          <option>Explorer Gondola</option>
+          <option>Ramcharger Portraits</option>
+          <option>Mountain Biking</option>
+          <option>Adventure Zip Line</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:0;align-self:flex-end">
+        <button class="btn btn-add" onclick="addPhotographer()">+ Add</button>
+      </div>
+    </div>
+    <div style="color:#f87171;font-size:.8rem;margin-top:.6rem;display:none" id="addErr"></div>
+  </div>
+
+  <!-- Photographer List -->
+  <div class="section">
+    <h2>Photographers</h2>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>PIN</th><th>Default Location</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="photoTable">
+        <tr><td colspan="4" class="empty-row">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Commission -->
+  <div class="section">
+    <h2>Commission & Hours</h2>
+    <div class="date-range">
+      <div class="form-group">
+        <label>From</label>
+        <input type="date" id="commFrom">
+      </div>
+      <div class="form-group">
+        <label>To</label>
+        <input type="date" id="commTo">
+      </div>
+      <button class="btn btn-edit" onclick="loadCommission()">Apply</button>
+    </div>
+    <div class="stats-grid" id="statsGrid"></div>
+    <div id="clockDetail"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let photographers = [];
+
+window.addEventListener('load', () => {
+  const today = new Date().toISOString().split('T')[0];
+  const monthAgo = new Date(Date.now() - 30*24*3600*1000).toISOString().split('T')[0];
+  document.getElementById('commFrom').value = monthAgo;
+  document.getElementById('commTo').value   = today;
+  loadPhotographers();
+  loadCommission();
+});
+
+async function loadPhotographers() {
+  try {
+    const res = await fetch('/api/photographers');
+    const d   = await res.json();
+    photographers = d.photographers || [];
+    renderTable();
+  } catch(e) {
+    showToast('Failed to load photographers');
+  }
+}
+
+function renderTable() {
+  const tbody = document.getElementById('photoTable');
+  if (!photographers.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No photographers yet</td></tr>';
+    return;
+  }
+  tbody.innerHTML = photographers.map(p => `
+    <tr id="row_${p.id}">
+      <td>${p.name}</td>
+      <td class="pin-cell">${p.pin}</td>
+      <td>${p.default_location || '—'}</td>
+      <td class="actions">
+        <button class="btn btn-edit" onclick="editRow('${p.id}')">Edit</button>
+        <button class="btn btn-del" onclick="deletePhotographer('${p.id}')">Remove</button>
+      </td>
+    </tr>
+    <tr id="editrow_${p.id}" style="display:none" class="edit-row">
+      <td><input type="text" id="ename_${p.id}" value="${p.name}"></td>
+      <td><input type="text" id="epin_${p.id}" value="${p.pin}" maxlength="8"></td>
+      <td>
+        <select id="eloc_${p.id}">
+          <option value="">None</option>
+          <option ${p.default_location==='Lone Peak Portraits'?'selected':''}>Lone Peak Portraits</option>
+          <option ${p.default_location==='Explorer Gondola'?'selected':''}>Explorer Gondola</option>
+          <option ${p.default_location==='Ramcharger Portraits'?'selected':''}>Ramcharger Portraits</option>
+          <option ${p.default_location==='Mountain Biking'?'selected':''}>Mountain Biking</option>
+          <option ${p.default_location==='Adventure Zip Line'?'selected':''}>Adventure Zip Line</option>
+        </select>
+      </td>
+      <td class="actions">
+        <button class="btn btn-add" onclick="saveEdit('${p.id}')">Save</button>
+        <button class="btn btn-edit" onclick="cancelEdit('${p.id}')">Cancel</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function editRow(id) {
+  document.getElementById('row_' + id).style.display = 'none';
+  document.getElementById('editrow_' + id).style.display = '';
+}
+function cancelEdit(id) {
+  document.getElementById('row_' + id).style.display = '';
+  document.getElementById('editrow_' + id).style.display = 'none';
+}
+
+async function saveEdit(id) {
+  const name = document.getElementById('ename_' + id).value.trim();
+  const pin  = document.getElementById('epin_'  + id).value.trim();
+  const loc  = document.getElementById('eloc_'  + id).value;
+  if (!name || !pin) { showToast('Name and PIN required'); return; }
+  try {
+    await fetch(`/api/photographers/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, pin, default_location: loc})
+    });
+    await loadPhotographers();
+    showToast('Saved');
+  } catch(e) {
+    showToast('Failed to save');
+  }
+}
+
+async function addPhotographer() {
+  const name = document.getElementById('newName').value.trim();
+  const pin  = document.getElementById('newPin').value.trim();
+  const loc  = document.getElementById('newLoc').value;
+  const errEl = document.getElementById('addErr');
+  errEl.style.display = 'none';
+  if (!name || !pin) { errEl.textContent='Name and PIN required.'; errEl.style.display='block'; return; }
+  try {
+    const res = await fetch('/api/photographers', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, pin, default_location: loc})
+    });
+    if (!res.ok) {
+      const d = await res.json();
+      errEl.textContent = d.error || 'Failed to add.';
+      errEl.style.display = 'block';
+      return;
+    }
+    document.getElementById('newName').value = '';
+    document.getElementById('newPin').value  = '';
+    document.getElementById('newLoc').value  = '';
+    await loadPhotographers();
+    showToast('Photographer added');
+  } catch(e) {
+    showToast('Failed to add');
+  }
+}
+
+async function deletePhotographer(id) {
+  const p = photographers.find(x => x.id === id);
+  if (!confirm(`Remove ${p?.name}? Their upload history will remain.`)) return;
+  try {
+    await fetch(`/api/photographers/${id}`, {method:'DELETE'});
+    await loadPhotographers();
+    showToast('Removed');
+  } catch(e) {
+    showToast('Failed to remove');
+  }
+}
+
+async function loadCommission() {
+  const from = document.getElementById('commFrom').value;
+  const to   = document.getElementById('commTo').value;
+  try {
+    const res  = await fetch(`/api/photographers/commission?date_from=${from}&date_to=${to}`);
+    const d    = await res.json();
+    const data = d.commission || [];
+    const grid = document.getElementById('statsGrid');
+    const detail = document.getElementById('clockDetail');
+
+    if (!data.length) {
+      grid.innerHTML = '<div style="color:rgba(255,255,255,.4);font-size:.875rem">No data for this period</div>';
+      detail.innerHTML = '';
+      return;
+    }
+
+    grid.innerHTML = data.map(p => `
+      <div class="stat-card">
+        <div class="stat-name">${p.name}</div>
+        <div class="stat-row"><span>Shifts</span><span>${p.shifts}</span></div>
+        <div class="stat-row"><span>Hours</span><span>${p.hours.toFixed(2)}</span></div>
+        <div class="stat-row"><span>Photos Uploaded</span><span>${p.photos_uploaded}</span></div>
+      </div>
+    `).join('');
+
+    // Clock records detail
+    const clockHtml = data.map(p => {
+      if (!p.clock_records?.length) return '';
+      const rows = p.clock_records.map(r => {
+        const ci = r.clock_in  ? new Date(r.clock_in).toLocaleString()  : '—';
+        const co = r.clock_out ? new Date(r.clock_out).toLocaleString() : 'Active';
+        let hrs = '—';
+        if (r.clock_in && r.clock_out) {
+          hrs = ((new Date(r.clock_out) - new Date(r.clock_in)) / 3600000).toFixed(2) + 'h';
+        }
+        return `<tr><td>${r.date}</td><td>${r.location||'—'}</td><td>${ci}</td><td>${co}</td><td>${hrs}</td></tr>`;
+      }).join('');
+      return `
+        <div style="margin-bottom:1.25rem">
+          <div style="font-weight:600;margin-bottom:.5rem;color:rgba(255,255,255,.8)">${p.name} — Clock Records</div>
+          <table class="records-table">
+            <thead><tr><th>Date</th><th>Location</th><th>Clock In</th><th>Clock Out</th><th>Hours</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }).join('');
+    detail.innerHTML = clockHtml;
+
+  } catch(e) {
+    showToast('Failed to load commission data');
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>

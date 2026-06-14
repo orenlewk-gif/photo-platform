@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crystal Images — Trash</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem;height:56px}
+.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
+.topbar a:hover{color:#F5C518}
+.main{padding:1.5rem;max-width:1400px;margin:0 auto}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:gap}
+.page-title{font-size:1.3rem;font-weight:600}
+.page-sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-top:.2rem}
+.btn{border:none;border-radius:7px;padding:.5rem 1rem;font-size:.82rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.35rem}
+.btn-empty{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:#f87171}
+.btn-empty:hover{background:rgba(248,113,113,.2)}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
+.photo-card{background:#091928;border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden}
+.photo-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.photo-info{padding:.75rem}
+.photo-name{font-size:.82rem;color:rgba(255,255,255,.8);margin-bottom:.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.photo-meta{font-size:.75rem;color:rgba(255,255,255,.4);margin-bottom:.5rem;line-height:1.4}
+.days-badge{display:inline-block;border-radius:4px;padding:.15rem .4rem;font-size:.7rem;font-weight:600;margin-bottom:.6rem}
+.days-ok{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
+.days-warn{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+.days-danger{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.2)}
+.btn-restore{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);width:100%}
+.btn-restore:hover{background:rgba(255,255,255,.1);color:#fff}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;color:rgba(255,255,255,.3);gap:.75rem;text-align:center}
+.empty-icon{font-size:3rem}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — TRASH</div>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/cull">← Back to Cull</a>
+  <a href="/admin/dashboard" style="margin-left:.75rem">Dashboard</a>
+</div>
+
+<div class="main">
+  <div class="page-header">
+    <div>
+      <div class="page-title">Trash</div>
+      <div class="page-sub">Photos auto-purge after 7 days. Restore to put them back in Cull.</div>
+    </div>
+    <button class="btn btn-empty" onclick="emptyTrash()">🗑 Empty Trash</button>
+  </div>
+
+  <div id="grid"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let items = [];
+
+window.addEventListener('load', loadTrash);
+
+async function loadTrash() {
+  try {
+    const res = await fetch('/api/trash');
+    const d   = await res.json();
+    items = d.items || [];
+    render();
+  } catch(e) {
+    showToast('Failed to load trash');
+  }
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  if (!items.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">🗑</div><div>Trash is empty</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = '';
+  const g = document.createElement('div');
+  g.className = 'photo-grid';
+  items.forEach(item => {
+    const card = document.createElement('div');
+    card.className = 'photo-card';
+
+    const daysClass = item.days_left <= 1 ? 'days-danger' : item.days_left <= 3 ? 'days-warn' : 'days-ok';
+    const daysText  = item.days_left === 0 ? 'Purging today' : `${item.days_left}d remaining`;
+
+    card.innerHTML = `
+      <img class="photo-thumb" src="${item.thumb_url}" loading="lazy">
+      <div class="photo-info">
+        <div class="photo-name">${item.filename}</div>
+        <div class="photo-meta">
+          ${item.location}${item.folder ? ' › ' + item.folder : ''}<br>
+          ${item.date}${item.photographer_name ? ' · ' + item.photographer_name : ''}
+        </div>
+        <div class="days-badge ${daysClass}">${daysText}</div>
+        <button class="btn btn-restore" onclick="restore('${item.key}')">↩ Restore to Cull</button>
+      </div>`;
+    g.appendChild(card);
+  });
+  grid.appendChild(g);
+}
+
+async function restore(key) {
+  try {
+    const res = await fetch('/api/trash/restore', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({key})
+    });
+    if (!res.ok) throw new Error();
+    items = items.filter(i => i.key !== key);
+    render();
+    showToast('Photo restored to Cull');
+  } catch(e) {
+    showToast('Failed to restore photo');
+  }
+}
+
+async function emptyTrash() {
+  if (!items.length) { showToast('Trash is already empty'); return; }
+  if (!confirm(`Permanently delete all ${items.length} photos in trash? This cannot be undone.`)) return;
+  try {
+    await fetch('/api/trash/empty', {method:'POST'});
+    items = [];
+    render();
+    showToast('Trash emptied');
+  } catch(e) {
+    showToast('Failed to empty trash');
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Crystal Images — Clock In/Out</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}
+.logo{font-size:1.1rem;letter-spacing:.12em;color:#F5C518;margin-bottom:2rem;text-align:center}
+.card{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2rem;width:100%;max-width:380px;text-align:center}
+h2{font-size:1.1rem;margin-bottom:1.5rem;color:rgba(255,255,255,.7)}
+label{display:block;font-size:.8rem;color:rgba(255,255,255,.5);margin-bottom:.35rem;text-transform:uppercase;letter-spacing:.06em;text-align:left}
+input,select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;padding:.75rem 1rem;font-size:1rem;outline:none;margin-bottom:1.25rem;text-align:left;-webkit-appearance:none}
+input:focus,select:focus{border-color:#F5C518}
+select option{background:#0a1e2e}
+.btn{width:100%;border:none;border-radius:12px;padding:1.25rem;font-size:1.1rem;font-weight:700;cursor:pointer;letter-spacing:.04em;transition:opacity .2s}
+.btn-in{background:#4ade80;color:#0a1e2e}
+.btn-out{background:#f87171;color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.err{color:#f87171;font-size:.85rem;margin-bottom:1rem;display:none}
+.screen{display:none}
+.screen.active{display:block}
+/* clocked in state */
+.name-tag{font-size:1.3rem;font-weight:700;margin-bottom:.25rem}
+.location-tag{font-size:.9rem;color:rgba(255,255,255,.5);margin-bottom:1.5rem}
+.timer{font-size:3rem;font-weight:700;color:#F5C518;letter-spacing:.05em;margin:1.5rem 0;font-variant-numeric:tabular-nums}
+.timer-label{font-size:.8rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.1em;margin-bottom:1.5rem}
+.divider{border:none;border-top:1px solid rgba(255,255,255,.08);margin:1.5rem 0}
+.tag-out{color:rgba(255,255,255,.4);font-size:.8rem;cursor:pointer;margin-top:1rem;display:inline-block}
+.tag-out:hover{color:#F5C518}
+</style>
+</head>
+<body>
+<div class="logo">CRYSTAL IMAGES</div>
+
+<!-- PIN Screen -->
+<div class="card screen active" id="screenPin">
+  <h2>Photographer Login</h2>
+  <div class="err" id="pinErr">Invalid PIN. Try again.</div>
+  <label>PIN</label>
+  <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" placeholder="Enter your PIN" autocomplete="off">
+  <button class="btn btn-in" onclick="doLogin()">Continue</button>
+</div>
+
+<!-- Clocked Out Screen -->
+<div class="card screen" id="screenOut">
+  <div class="name-tag" id="outName"></div>
+  <div class="location-tag">Not clocked in</div>
+  <label>Location</label>
+  <select id="clockInLocation">
+    <option value="">Select location…</option>
+    <option>Lone Peak Portraits</option>
+    <option>Explorer Gondola</option>
+    <option>Ramcharger Portraits</option>
+    <option>Mountain Biking</option>
+    <option>Adventure Zip Line</option>
+  </select>
+  <button class="btn btn-in" onclick="doClockIn()">Clock In</button>
+  <div class="err" id="inErr"></div>
+  <hr class="divider">
+  <span class="tag-out" onclick="logout()">Log out</span>
+</div>
+
+<!-- Clocked In Screen -->
+<div class="card screen" id="screenIn">
+  <div class="name-tag" id="inName"></div>
+  <div class="location-tag" id="inLocation"></div>
+  <div class="timer" id="timer">00:00:00</div>
+  <div class="timer-label">Time on shift</div>
+  <button class="btn btn-out" onclick="doClockOut()">Clock Out</button>
+  <div class="err" id="outErr"></div>
+  <hr class="divider">
+  <span class="tag-out" onclick="logout()">Log out</span>
+</div>
+
+<!-- Clocked Out Confirm -->
+<div class="card screen" id="screenConfirm">
+  <div style="font-size:3rem;margin-bottom:1rem">👋</div>
+  <div class="name-tag" id="confirmName"></div>
+  <div style="margin:1rem 0;color:rgba(255,255,255,.6);font-size:.95rem">Shift complete</div>
+  <div style="font-size:2rem;font-weight:700;color:#4ade80" id="confirmHours"></div>
+  <div style="font-size:.8rem;color:rgba(255,255,255,.4);margin-top:.25rem">hours worked</div>
+  <hr class="divider">
+  <button class="btn btn-in" onclick="clockInAgain()" style="margin-bottom:.75rem">Clock In Again</button>
+  <button class="btn" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.6)" onclick="logout()">Log Out</button>
+</div>
+
+<script>
+let photographer = null;
+let timerInterval = null;
+let clockInTime = null;
+
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('ci_photographer');
+  if (saved) {
+    try {
+      photographer = JSON.parse(saved);
+      checkStatus();
+    } catch(e) {}
+  }
+  // Restore last location
+  const lastLoc = localStorage.getItem('ci_last_location');
+  if (lastLoc) document.getElementById('clockInLocation').value = lastLoc;
+});
+
+document.getElementById('pinInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+async function doLogin() {
+  const pin = document.getElementById('pinInput').value.trim();
+  if (!pin) return;
+  try {
+    const res = await fetch('/api/photographer/auth', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pin})
+    });
+    if (!res.ok) { document.getElementById('pinErr').style.display='block'; return; }
+    const d = await res.json();
+    photographer = {...d.photographer, pin};
+    localStorage.setItem('ci_photographer', JSON.stringify(photographer));
+    document.getElementById('pinErr').style.display = 'none';
+    if (d.clocked_in && d.active_record) {
+      clockInTime = new Date(d.active_record.clock_in);
+      showClockedIn(d.active_record.location);
+    } else {
+      showClockedOut();
+    }
+  } catch(e) {
+    document.getElementById('pinErr').style.display = 'block';
+  }
+}
+
+async function checkStatus() {
+  try {
+    const res = await fetch(`/api/clock/status?pin=${encodeURIComponent(photographer.pin)}`);
+    if (!res.ok) { logout(); return; }
+    const d = await res.json();
+    if (d.clocked_in && d.record) {
+      clockInTime = new Date(d.record.clock_in);
+      showClockedIn(d.record.location);
+    } else {
+      showClockedOut();
+    }
+  } catch(e) {
+    showClockedOut();
+  }
+}
+
+function showClockedOut() {
+  document.getElementById('outName').textContent = photographer.name;
+  if (photographer.default_location)
+    document.getElementById('clockInLocation').value = photographer.default_location;
+  stopTimer();
+  show('screenOut');
+}
+
+function showClockedIn(location) {
+  document.getElementById('inName').textContent = photographer.name;
+  document.getElementById('inLocation').textContent = location || 'On shift';
+  startTimer();
+  show('screenIn');
+}
+
+async function doClockIn() {
+  const location = document.getElementById('clockInLocation').value;
+  const errEl = document.getElementById('inErr');
+  errEl.style.display = 'none';
+  if (!location) { errEl.textContent = 'Please select a location.'; errEl.style.display='block'; return; }
+  localStorage.setItem('ci_last_location', location);
+  try {
+    const res = await fetch('/api/clock/in', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pin: photographer.pin, location})
+    });
+    if (!res.ok) { errEl.textContent = 'Failed to clock in.'; errEl.style.display='block'; return; }
+    const d = await res.json();
+    clockInTime = new Date(d.record.clock_in);
+    showClockedIn(location);
+  } catch(e) {
+    errEl.textContent = 'Network error. Try again.';
+    errEl.style.display = 'block';
+  }
+}
+
+async function doClockOut() {
+  const errEl = document.getElementById('outErr');
+  errEl.style.display = 'none';
+  try {
+    const res = await fetch('/api/clock/out', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pin: photographer.pin})
+    });
+    if (!res.ok) { errEl.textContent = 'Failed to clock out.'; errEl.style.display='block'; return; }
+    const d = await res.json();
+    stopTimer();
+    document.getElementById('confirmName').textContent = photographer.name;
+    document.getElementById('confirmHours').textContent = d.hours.toFixed(2);
+    show('screenConfirm');
+  } catch(e) {
+    errEl.textContent = 'Network error. Try again.';
+    errEl.style.display = 'block';
+  }
+}
+
+function clockInAgain() {
+  showClockedOut();
+}
+
+function startTimer() {
+  stopTimer();
+  const el = document.getElementById('timer');
+  timerInterval = setInterval(() => {
+    if (!clockInTime) return;
+    const diff = Math.floor((Date.now() - clockInTime.getTime()) / 1000);
+    const h = String(Math.floor(diff / 3600)).padStart(2,'0');
+    const m = String(Math.floor((diff % 3600) / 60)).padStart(2,'0');
+    const s = String(diff % 60).padStart(2,'0');
+    el.textContent = `${h}:${m}:${s}`;
+  }, 1000);
+}
+
+function stopTimer() {
+  clearInterval(timerInterval);
+  timerInterval = null;
+}
+
+function logout() {
+  stopTimer();
+  localStorage.removeItem('ci_photographer');
+  photographer = null;
+  clockInTime = null;
+  document.getElementById('pinInput').value = '';
+  show('screenPin');
+}
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+</script>
+</body>
+</html>

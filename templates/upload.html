@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Crystal Images — Upload</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}
+.logo{font-size:1.1rem;letter-spacing:.12em;color:#F5C518;margin-bottom:2rem;text-align:center}
+.card{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2rem;width:100%;max-width:420px}
+h2{font-size:1.2rem;margin-bottom:1.5rem;color:rgba(255,255,255,.9)}
+label{display:block;font-size:.8rem;color:rgba(255,255,255,.5);margin-bottom:.35rem;text-transform:uppercase;letter-spacing:.06em}
+input,select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;padding:.75rem 1rem;font-size:1rem;outline:none;margin-bottom:1.25rem;-webkit-appearance:none}
+input:focus,select:focus{border-color:#F5C518}
+select option{background:#0a1e2e}
+.btn{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8px;padding:.9rem;font-size:1rem;font-weight:700;cursor:pointer;margin-top:.5rem;letter-spacing:.04em}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-outline{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);margin-top:.75rem}
+.err{color:#f87171;font-size:.85rem;margin-bottom:1rem;display:none}
+.screen{display:none}
+.screen.active{display:block}
+/* upload screen */
+.file-drop{border:2px dashed rgba(255,255,255,.2);border-radius:12px;padding:2rem;text-align:center;cursor:pointer;margin-bottom:1.25rem;transition:border-color .2s}
+.file-drop:hover,.file-drop.dragover{border-color:#F5C518}
+.file-drop p{color:rgba(255,255,255,.5);font-size:.9rem;margin-top:.5rem}
+.file-drop .icon{font-size:2.5rem}
+#fileInput{display:none}
+.file-count{background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3);border-radius:8px;padding:.6rem 1rem;font-size:.9rem;color:#F5C518;margin-bottom:1.25rem;display:none;text-align:center}
+/* progress */
+.progress-wrap{margin-bottom:1rem}
+.progress-label{display:flex;justify-content:space-between;font-size:.8rem;color:rgba(255,255,255,.6);margin-bottom:.4rem}
+.progress-bar{background:rgba(255,255,255,.1);border-radius:4px;height:8px;overflow:hidden}
+.progress-fill{background:#F5C518;height:100%;width:0;transition:width .3s;border-radius:4px}
+.file-list{max-height:180px;overflow-y:auto;margin-bottom:1rem}
+.file-row{display:flex;justify-content:space-between;align-items:center;padding:.4rem 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.8rem;color:rgba(255,255,255,.6)}
+.file-row .status{font-size:1rem}
+/* success */
+.success-icon{font-size:4rem;text-align:center;margin-bottom:1rem}
+.success-msg{text-align:center;color:#4ade80;font-size:1.2rem;font-weight:600;margin-bottom:.5rem}
+.success-sub{text-align:center;color:rgba(255,255,255,.5);font-size:.9rem;margin-bottom:1.5rem}
+/* photographer tag */
+.photographer-tag{background:rgba(255,255,255,.06);border-radius:8px;padding:.6rem 1rem;font-size:.85rem;color:rgba(255,255,255,.6);margin-bottom:1.5rem;display:flex;justify-content:space-between;align-items:center}
+.photographer-tag strong{color:#fff}
+.tag-out{color:#F5C518;cursor:pointer;font-size:.8rem}
+</style>
+</head>
+<body>
+<div class="logo">CRYSTAL IMAGES</div>
+
+<!-- PIN Screen -->
+<div class="card screen active" id="screenPin">
+  <h2>Photographer Login</h2>
+  <div class="err" id="pinErr">Invalid PIN. Try again.</div>
+  <label>PIN</label>
+  <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" placeholder="Enter your PIN" autocomplete="off">
+  <button class="btn" onclick="doLogin()">Continue</button>
+</div>
+
+<!-- Upload Screen -->
+<div class="card screen" id="screenUpload">
+  <div class="photographer-tag">
+    <span>Logged in as <strong id="photoName"></strong></span>
+    <span class="tag-out" onclick="logout()">Log out</span>
+  </div>
+  <h2>Upload Photos</h2>
+  <label>Date</label>
+  <input type="date" id="dateInput">
+  <label>Location</label>
+  <select id="locationInput">
+    <option value="">Select location…</option>
+    <option>Lone Peak Portraits</option>
+    <option>Explorer Gondola</option>
+    <option>Ramcharger Portraits</option>
+    <option>Mountain Biking</option>
+    <option>Adventure Zip Line</option>
+  </select>
+  <div class="file-drop" onclick="document.getElementById('fileInput').click()" id="fileDrop">
+    <div class="icon">📷</div>
+    <p>Tap to select photos from SD card or camera roll</p>
+  </div>
+  <input type="file" id="fileInput" multiple accept="image/jpeg,image/jpg,image/png,.jpg,.jpeg,.png">
+  <div class="file-count" id="fileCount"></div>
+  <div class="err" id="uploadErr"></div>
+  <button class="btn" id="uploadBtn" onclick="startUpload()" disabled>Upload Photos</button>
+</div>
+
+<!-- Progress Screen -->
+<div class="card screen" id="screenProgress">
+  <h2>Uploading…</h2>
+  <div class="progress-wrap">
+    <div class="progress-label"><span id="progressText">0 of 0</span><span id="progressPct">0%</span></div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="file-list" id="fileList"></div>
+  <p style="font-size:.8rem;color:rgba(255,255,255,.4);text-align:center">You can lock your screen — upload will continue</p>
+</div>
+
+<!-- Success Screen -->
+<div class="card screen" id="screenSuccess">
+  <div class="success-icon">✅</div>
+  <div class="success-msg" id="successMsg">Upload Complete!</div>
+  <div class="success-sub" id="successSub"></div>
+  <button class="btn" onclick="uploadAnother()">Upload More</button>
+</div>
+
+<script>
+const TODAY = new Date().toISOString().split('T')[0];
+let photographer = null;
+let selectedFiles = [];
+
+// Restore session
+window.addEventListener('load', () => {
+  const saved = localStorage.getItem('ci_photographer');
+  if (saved) {
+    try {
+      photographer = JSON.parse(saved);
+      showUploadScreen();
+    } catch(e) {}
+  }
+  document.getElementById('dateInput').value = TODAY;
+  // Restore last location
+  const lastLoc = localStorage.getItem('ci_last_location');
+  if (lastLoc) document.getElementById('locationInput').value = lastLoc;
+});
+
+document.getElementById('pinInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+async function doLogin() {
+  const pin = document.getElementById('pinInput').value.trim();
+  if (!pin) return;
+  try {
+    const res = await fetch('/api/photographer/auth', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({pin})
+    });
+    if (!res.ok) { document.getElementById('pinErr').style.display='block'; return; }
+    const d = await res.json();
+    photographer = {...d.photographer, pin};
+    localStorage.setItem('ci_photographer', JSON.stringify(photographer));
+    document.getElementById('pinErr').style.display = 'none';
+    showUploadScreen();
+  } catch(e) {
+    document.getElementById('pinErr').style.display = 'block';
+  }
+}
+
+function showUploadScreen() {
+  document.getElementById('photoName').textContent = photographer.name;
+  if (photographer.default_location) {
+    document.getElementById('locationInput').value = photographer.default_location;
+  }
+  show('screenUpload');
+}
+
+function logout() {
+  localStorage.removeItem('ci_photographer');
+  photographer = null;
+  document.getElementById('pinInput').value = '';
+  selectedFiles = [];
+  show('screenPin');
+}
+
+// File selection
+document.getElementById('fileInput').addEventListener('change', e => {
+  selectedFiles = Array.from(e.target.files);
+  updateFileCount();
+});
+
+const fileDrop = document.getElementById('fileDrop');
+fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.classList.add('dragover'); });
+fileDrop.addEventListener('dragleave', () => fileDrop.classList.remove('dragover'));
+fileDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  fileDrop.classList.remove('dragover');
+  selectedFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  updateFileCount();
+});
+
+function updateFileCount() {
+  const el = document.getElementById('fileCount');
+  const btn = document.getElementById('uploadBtn');
+  if (selectedFiles.length > 0) {
+    el.textContent = `${selectedFiles.length} photo${selectedFiles.length !== 1 ? 's' : ''} selected`;
+    el.style.display = 'block';
+    btn.disabled = false;
+  } else {
+    el.style.display = 'none';
+    btn.disabled = true;
+  }
+}
+
+async function startUpload() {
+  const date     = document.getElementById('dateInput').value;
+  const location = document.getElementById('locationInput').value;
+  const errEl    = document.getElementById('uploadErr');
+  errEl.style.display = 'none';
+
+  if (!date || !location) {
+    errEl.textContent = 'Please select a date and location.';
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!selectedFiles.length) {
+    errEl.textContent = 'Please select photos to upload.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  localStorage.setItem('ci_last_location', location);
+  show('screenProgress');
+
+  // Get presigned URLs
+  let urls;
+  try {
+    const res = await fetch('/api/upload/presign', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        pin: photographer.pin,
+        date, location,
+        files: selectedFiles.map(f => ({name: f.name, type: f.type || 'image/jpeg'}))
+      })
+    });
+    const d = await res.json();
+    urls = d.urls;
+  } catch(e) {
+    show('screenUpload');
+    document.getElementById('uploadErr').textContent = 'Failed to start upload. Try again.';
+    document.getElementById('uploadErr').style.display = 'block';
+    return;
+  }
+
+  // Upload each file
+  const fileListEl  = document.getElementById('fileList');
+  const fillEl      = document.getElementById('progressFill');
+  const textEl      = document.getElementById('progressText');
+  const pctEl       = document.getElementById('progressPct');
+  fileListEl.innerHTML = '';
+
+  const rows = {};
+  urls.forEach(u => {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `<span>${u.filename}</span><span class="status" id="st_${u.filename.replace(/\./g,'_')}">⏳</span>`;
+    fileListEl.appendChild(row);
+    rows[u.key] = row;
+  });
+
+  let done = 0;
+  const total = urls.length;
+
+  for (const u of urls) {
+    const file = selectedFiles.find(f => f.name === u.filename) || selectedFiles[urls.indexOf(u)];
+    const stId = 'st_' + u.filename.replace(/\./g, '_');
+    try {
+      await fetch(u.url, {
+        method: 'PUT',
+        body: file,
+        headers: {'Content-Type': file.type || 'image/jpeg'},
+      });
+      const stEl = document.getElementById(stId);
+      if (stEl) stEl.textContent = '✅';
+    } catch(e) {
+      const stEl = document.getElementById(stId);
+      if (stEl) stEl.textContent = '❌';
+    }
+    done++;
+    const pct = Math.round((done / total) * 100);
+    fillEl.style.width = pct + '%';
+    textEl.textContent = `${done} of ${total}`;
+    pctEl.textContent  = pct + '%';
+  }
+
+  // Success
+  document.getElementById('successMsg').textContent = `Upload Complete!`;
+  document.getElementById('successSub').textContent = `${done} photo${done !== 1 ? 's' : ''} uploaded for ${location} on ${date}`;
+  show('screenSuccess');
+  selectedFiles = [];
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileCount').style.display = 'none';
+  document.getElementById('uploadBtn').disabled = true;
+}
+
+function uploadAnother() {
+  document.getElementById('dateInput').value = TODAY;
+  show('screenUpload');
+}
+
+function show(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+</script>
+</body>
+</html>
