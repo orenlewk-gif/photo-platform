@@ -146,4 +146,11 @@ if os.getenv("R2_ENDPOINT_URL"):
     s3.upload_file(INDEX_FILE, R2_BUCKET, "images.json",
                    ExtraArgs={"ContentType": "application/json"})
     print("images.json pushed to R2.")
-    print("Reload the site with: curl -X POST https://photos.bigskyphotos.com/api/reload")
+    import urllib.request
+    try:
+        SITE_URL = os.getenv("SITE_URL", "https://photos.bigskyphotos.com")
+        req = urllib.request.Request(f"{SITE_URL}/api/reload", method="POST")
+        urllib.request.urlopen(req, timeout=10)
+        print("Site reloaded.")
+    except Exception as e:
+        print(f"Reload failed (run manually): {e}")

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.crystalimages.indexer</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/python3.11</string>
+        <string>/Users/labserver/photo-platform/index_images.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/labserver/photo-platform</string>
+    <key>StartInterval</key>
+    <integer>900</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>/Users/labserver/photo-platform/indexer.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/labserver/photo-platform/indexer.log</string>
+</dict>
+</plist>
