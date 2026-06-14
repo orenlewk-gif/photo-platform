@@ -123,6 +123,9 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;height:100v
   <img class="lb-img" id="lbImg" src="">
   <span class="lb-nav lb-next" onclick="lbNav(1)">›</span>
   <div class="lb-info" id="lbInfo"></div>
+<div style="position:absolute;bottom:1.5rem;right:1.5rem;display:flex;gap:.6rem">
+  <button onclick="rejectFromLightbox()" style="background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.4);color:#f87171;border-radius:7px;padding:.5rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer">✕ Reject</button>
+</div>
 </div>
 
 <!-- Folder Modal -->
@@ -157,9 +160,14 @@ window.addEventListener('load', () => {
 // Keyboard shortcuts
 document.addEventListener('keydown', e => {
   if (document.getElementById('lightbox').classList.contains('open')) {
-    if (e.key === 'Escape') closeLb();
-    if (e.key === 'ArrowRight') lbNav(1);
-    if (e.key === 'ArrowLeft')  lbNav(-1);
+    if (e.key === 'Escape')      { closeLb(); return; }
+    if (e.key === 'ArrowRight')  { lbNav(1);  return; }
+    if (e.key === 'ArrowLeft')   { lbNav(-1); return; }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      e.preventDefault();
+      rejectFromLightbox();
+      return;
+    }
     return;
   }
   if (e.key === 'Escape') clearSelection();
@@ -445,6 +453,32 @@ function lbNav(dir) {
 }
 function closeLb() {
   document.getElementById('lightbox').classList.remove('open');
+}
+
+async function rejectFromLightbox() {
+  const item = lbItems[lbIndex];
+  if (!item) return;
+  // Move to next photo first, then reject
+  const nextIndex = lbIndex < lbItems.length - 1 ? lbIndex : lbIndex - 1;
+  lbItems.splice(lbIndex, 1);
+  allItems = allItems.filter(i => i.key !== item.key);
+  if (lbItems.length === 0) {
+    closeLb();
+  } else {
+    lbIndex = Math.min(nextIndex, lbItems.length - 1);
+    showLb();
+  }
+  try {
+    await fetch('/api/cull/reject', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({keys: [item.key]})
+    });
+    renderAll();
+    showToast('Photo sent to Trash');
+  } catch(e) {
+    showToast('Failed to reject photo');
+  }
 }
 
 // Toast
