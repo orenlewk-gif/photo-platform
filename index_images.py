@@ -49,7 +49,7 @@ else:
     already_indexed = set()
 
 # -----------------------
-# SCAN FOLDERS + UPLOAD NEW PHOTOS TO R2
+# SYNC FROM R2 → LOCAL (photos published via web upload)
 # -----------------------
 def to_r2_key(abs_path):
     rel = os.path.relpath(abs_path, start=os.getcwd())
@@ -57,6 +57,35 @@ def to_r2_key(abs_path):
     key = rel[idx:] if idx >= 0 else rel
     return key.replace(os.sep, "/")
 
+if os.getenv("R2_ENDPOINT_URL"):
+    print("Syncing new photos from R2 to local...")
+    existing_local = set()
+    for root, dirs, files in os.walk(BASE_DIR):
+        for file in files:
+            if file.lower().endswith((".jpg", ".jpeg", ".png")):
+                existing_local.add(to_r2_key(os.path.abspath(os.path.join(root, file))))
+    paginator = s3.get_paginator("list_objects_v2")
+    synced = 0
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="images/"):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            if key in existing_local:
+                continue
+            local_path = os.path.join(os.getcwd(), key.replace("/", os.sep))
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            try:
+                s3.download_file(R2_BUCKET, key, local_path)
+                synced += 1
+            except Exception as e:
+                print(f"Sync failed {key}: {e}")
+    if synced:
+        print(f"Synced {synced} new photo(s) from R2.")
+
+# -----------------------
+# SCAN FOLDERS + UPLOAD NEW PHOTOS TO R2
+# -----------------------
 image_paths = []
 for root, dirs, files in os.walk(BASE_DIR):
     for file in files:
@@ -95,7 +124,8 @@ for img_path in tqdm(image_paths):
         date      = parts[0] if len(parts) > 0 else "unknown"
         activity  = parts[1] if len(parts) > 1 else "unknown"
 
-        is_portrait = any(p in activity.lower() for p in PORTRAIT_LOCATIONS)
+        activity_normalized = activity.lower().replace("-", " ").replace("_", " ")
+        is_portrait = any(p in activity_normalized for p in PORTRAIT_LOCATIONS)
 
         if len(parts) > 3:          # sub-folder present
             if is_portrait:
@@ -147,10 +177,9 @@ if os.getenv("R2_ENDPOINT_URL"):
                    ExtraArgs={"ContentType": "application/json"})
     print("images.json pushed to R2.")
     import urllib.request
-    try:
-        SITE_URL = os.getenv("SITE_URL", "https://photos.bigskyphotos.com")
-        req = urllib.request.Request(f"{SITE_URL}/api/reload", method="POST")
-        urllib.request.urlopen(req, timeout=10)
-        print("Site reloaded.")
-    except Exception as e:
-        print(f"Reload failed (run manually): {e}")
+    for url in [os.getenv("SITE_URL", "https://photos.bigskyphotos.com"), "http://localhost:8080"]:
+        try:
+            urllib.request.urlopen(urllib.request.Request(f"{url}/api/reload", method="POST"), timeout=5)
+            print(f"Reloaded: {url}")
+        except Exception as e:
+            print(f"Reload failed for {url}: {e}")
