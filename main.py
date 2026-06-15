@@ -1727,6 +1727,32 @@ def clock_status_ep(pin: str = Query(...)):
     return {"clocked_in": active is not None, "record": active,
             "photographer": {k: v for k, v in p.items() if k != "pin"}}
 
+# ── Clock record edit / delete ──
+@app.put("/api/clock/record/{record_id}")
+async def edit_clock_record(record_id: str, request: Request):
+    body = await request.json()
+    records = _load_clock_records()
+    for r in records:
+        if r["id"] == record_id:
+            if "clock_in" in body and body["clock_in"]:
+                r["clock_in"] = body["clock_in"]
+            if "clock_out" in body:
+                r["clock_out"] = body["clock_out"] or None
+            if "location" in body:
+                r["location"] = body["location"]
+            _save_clock_records(records)
+            return {"record": r}
+    return JSONResponse(status_code=404, content={"error": "Record not found"})
+
+@app.delete("/api/clock/record/{record_id}")
+async def delete_clock_record(record_id: str):
+    records = _load_clock_records()
+    new_records = [r for r in records if r["id"] != record_id]
+    if len(new_records) == len(records):
+        return JSONResponse(status_code=404, content={"error": "Record not found"})
+    _save_clock_records(new_records)
+    return {"status": "deleted"}
+
 # ── Upload ──
 @app.post("/api/upload/presign")
 async def upload_presign(request: Request):

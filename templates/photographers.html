@@ -293,13 +293,51 @@ async function loadCommission() {
         if (r.clock_in && r.clock_out) {
           hrs = ((new Date(r.clock_out) - new Date(r.clock_in)) / 3600000).toFixed(2) + 'h';
         }
-        return `<tr><td>${r.date}</td><td>${r.location||'—'}</td><td>${ci}</td><td>${co}</td><td>${hrs}</td></tr>`;
+        return `
+          <tr id="clockrow_${r.id}">
+            <td>${r.date}</td>
+            <td>${r.location||'—'}</td>
+            <td>${ci}</td>
+            <td>${co}</td>
+            <td>${hrs}</td>
+            <td style="white-space:nowrap">
+              <button class="btn btn-edit" style="padding:.3rem .6rem;font-size:.75rem" onclick="editClockRow('${r.id}','${(r.clock_in||'').replace(/'/g,"\\'")}','${(r.clock_out||'').replace(/'/g,"\\'")}','${(r.location||'').replace(/'/g,"\\'")}')">Edit</button>
+              <button class="btn btn-del" style="padding:.3rem .6rem;font-size:.75rem" onclick="deleteClockRow('${r.id}')">Del</button>
+            </td>
+          </tr>
+          <tr id="clockedit_${r.id}" style="display:none">
+            <td colspan="6" style="padding:.75rem">
+              <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+                <div>
+                  <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">CLOCK IN</div>
+                  <input type="datetime-local" id="ci_${r.id}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .6rem;font-size:.82rem">
+                </div>
+                <div>
+                  <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">CLOCK OUT</div>
+                  <input type="datetime-local" id="co_${r.id}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .6rem;font-size:.82rem">
+                </div>
+                <div>
+                  <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">LOCATION</div>
+                  <select id="cl_${r.id}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .6rem;font-size:.82rem">
+                    <option value="">—</option>
+                    <option>Lone Peak Portraits</option>
+                    <option>Explorer Gondola</option>
+                    <option>Ramcharger Portraits</option>
+                    <option>Mountain Biking</option>
+                    <option>Adventure Zip Line</option>
+                  </select>
+                </div>
+                <button class="btn btn-add" style="padding:.4rem .8rem;font-size:.78rem" onclick="saveClockRow('${r.id}')">Save</button>
+                <button class="btn btn-edit" style="padding:.4rem .8rem;font-size:.78rem" onclick="cancelClockEdit('${r.id}')">Cancel</button>
+              </div>
+            </td>
+          </tr>`;
       }).join('');
       return `
         <div style="margin-bottom:1.25rem">
           <div style="font-weight:600;margin-bottom:.5rem;color:rgba(255,255,255,.8)">${p.name} — Clock Records</div>
           <table class="records-table">
-            <thead><tr><th>Date</th><th>Location</th><th>Clock In</th><th>Clock Out</th><th>Hours</th></tr></thead>
+            <thead><tr><th>Date</th><th>Location</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th></th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>`;
@@ -309,6 +347,57 @@ async function loadCommission() {
   } catch(e) {
     showToast('Failed to load commission data');
   }
+}
+
+function toLocalInput(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toISO(localStr) {
+  if (!localStr) return null;
+  return new Date(localStr).toISOString();
+}
+
+function editClockRow(id, ci, co, loc) {
+  document.getElementById('clockrow_' + id).style.display = 'none';
+  document.getElementById('clockedit_' + id).style.display = '';
+  document.getElementById('ci_' + id).value = toLocalInput(ci);
+  document.getElementById('co_' + id).value = toLocalInput(co);
+  const sel = document.getElementById('cl_' + id);
+  for (const opt of sel.options) if (opt.value === loc) { opt.selected = true; break; }
+}
+
+function cancelClockEdit(id) {
+  document.getElementById('clockrow_' + id).style.display = '';
+  document.getElementById('clockedit_' + id).style.display = 'none';
+}
+
+async function saveClockRow(id) {
+  const ci  = document.getElementById('ci_' + id).value;
+  const co  = document.getElementById('co_' + id).value;
+  const loc = document.getElementById('cl_' + id).value;
+  try {
+    const res = await fetch(`/api/clock/record/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({clock_in: toISO(ci), clock_out: toISO(co), location: loc})
+    });
+    if (!res.ok) { showToast('Failed to save'); return; }
+    showToast('Saved');
+    loadCommission();
+  } catch(e) { showToast('Failed to save'); }
+}
+
+async function deleteClockRow(id) {
+  if (!confirm('Delete this clock record?')) return;
+  try {
+    await fetch(`/api/clock/record/${id}`, {method:'DELETE'});
+    showToast('Deleted');
+    loadCommission();
+  } catch(e) { showToast('Failed to delete'); }
 }
 
 function showToast(msg) {
