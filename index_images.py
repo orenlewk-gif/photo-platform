@@ -57,31 +57,6 @@ def to_r2_key(abs_path):
     key = rel[idx:] if idx >= 0 else rel
     return key.replace(os.sep, "/")
 
-if os.getenv("R2_ENDPOINT_URL"):
-    print("Syncing new photos from R2 to local...")
-    existing_local = set()
-    for root, dirs, files in os.walk(BASE_DIR):
-        for file in files:
-            if file.lower().endswith((".jpg", ".jpeg", ".png")):
-                existing_local.add(to_r2_key(os.path.abspath(os.path.join(root, file))))
-    paginator = s3.get_paginator("list_objects_v2")
-    synced = 0
-    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="images/"):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            if not key.lower().endswith((".jpg", ".jpeg", ".png")):
-                continue
-            if key in existing_local:
-                continue
-            local_path = os.path.join(os.getcwd(), key.replace("/", os.sep))
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            try:
-                s3.download_file(R2_BUCKET, key, local_path)
-                synced += 1
-            except Exception as e:
-                print(f"Sync failed {key}: {e}")
-    if synced:
-        print(f"Synced {synced} new photo(s) from R2.")
 
 # -----------------------
 # SCAN FOLDERS + UPLOAD NEW PHOTOS TO R2
