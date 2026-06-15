@@ -27,12 +27,13 @@ PORTRAIT_LOCATIONS = ["lone peak portraits", "explorer gondola", "ramcharger por
 # Lazy-load model only if needed
 model     = None
 processor = None
+device    = "mps" if torch.backends.mps.is_available() else "cpu"
 
 def get_model():
     global model, processor
     if model is None:
-        print("Loading CLIP model...")
-        model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        print(f"Loading CLIP model on {device}...")
+        model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(device)
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         print("Model loaded.")
     return model, processor
@@ -130,7 +131,7 @@ for img_path in tqdm(image_paths):
         else:
             m, p = get_model()
             image = Image.open(img_path).convert("RGB")
-            inputs = p(images=image, return_tensors="pt")
+            inputs = {k: v.to(device) for k, v in p(images=image, return_tensors="pt").items()}
             with torch.no_grad():
                 embedding = m.get_image_features(**inputs)[0].tolist()
 
