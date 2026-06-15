@@ -6,6 +6,7 @@ from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
 import boto3
 from dotenv import load_dotenv
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 load_dotenv()
 
@@ -69,14 +70,23 @@ for root, dirs, files in os.walk(BASE_DIR):
             if full_path not in already_indexed:
                 image_paths.append(full_path)
 
-# Upload any new photos to R2 before indexing
+# Upload any new photos to R2 before indexing (parallel for speed)
 if image_paths and os.getenv("R2_ENDPOINT_URL"):
     print(f"Uploading {len(image_paths)} photo(s) to R2...")
-    for img_path in tqdm(image_paths, desc="Uploading"):
+    def upload_one(img_path):
         try:
             s3.upload_file(img_path, R2_BUCKET, to_r2_key(img_path))
+            return None
         except Exception as e:
-            print(f"Upload failed {img_path}: {e}")
+            return f"Upload failed {img_path}: {e}"
+    with tqdm(total=len(image_paths), desc="Uploading") as pbar:
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            futures = {ex.submit(upload_one, p): p for p in image_paths}
+            for f in as_completed(futures):
+                err = f.result()
+                if err:
+                    print(err)
+                pbar.update(1)
 
 print(f"New photos to index: {len(image_paths)}")
 
