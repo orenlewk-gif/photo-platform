@@ -151,10 +151,14 @@ if os.getenv("R2_ENDPOINT_URL"):
     s3.upload_file(INDEX_FILE, R2_BUCKET, "images.json",
                    ExtraArgs={"ContentType": "application/json"})
     print("images.json pushed to R2.")
-    import urllib.request
+    import urllib.request, ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
     for url in [os.getenv("SITE_URL", "https://photos.bigskyphotos.com"), "http://localhost:8080"]:
         try:
-            urllib.request.urlopen(urllib.request.Request(f"{url}/api/reload", method="POST"), timeout=5)
+            req = urllib.request.Request(f"{url}/api/reload", method="POST")
+            urllib.request.urlopen(req, timeout=5, context=ctx if url.startswith("https") else None)
             print(f"Reloaded: {url}")
         except Exception as e:
             print(f"Reload failed for {url}: {e}")
