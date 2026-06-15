@@ -195,12 +195,23 @@ def get_model():
 
 
 if os.path.exists("images.json"):
-    with open("images.json", "r") as f:
-        data = json.load(f)
+    try:
+        with open("images.json", "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"WARNING: local images.json corrupt ({e}), starting empty")
+        data = []
 else:
     print("images.json not found locally — downloading from R2...")
-    obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
-    data = json.loads(obj["Body"].read().decode("utf-8"))
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
+        data = json.loads(obj["Body"].read().decode("utf-8"))
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"WARNING: R2 images.json corrupt ({e}), starting empty")
+        data = []
+    except Exception as e:
+        print(f"WARNING: could not load images.json from R2 ({e}), starting empty")
+        data = []
 print(f"Loaded {len(data)} photos.")
 
 
