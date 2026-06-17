@@ -93,7 +93,8 @@ select option{background:#0a1e2e}
     <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
   </div>
   <div class="file-list" id="fileList"></div>
-  <p style="font-size:.8rem;color:rgba(255,255,255,.4);text-align:center">You can lock your screen — upload will continue</p>
+  <p style="font-size:.8rem;color:rgba(255,255,255,.4);text-align:center;margin-bottom:.75rem">You can lock your screen — upload will continue</p>
+  <button class="btn btn-outline" id="cancelBtn" onclick="cancelUpload()">Cancel</button>
 </div>
 
 <!-- Success Screen -->
@@ -108,6 +109,7 @@ select option{background:#0a1e2e}
 const TODAY = new Date().toISOString().split('T')[0];
 let photographer = null;
 let selectedFiles = [];
+let cancelled = false;
 
 // Restore session
 window.addEventListener('load', () => {
@@ -211,6 +213,7 @@ async function startUpload() {
   }
 
   localStorage.setItem('ci_last_location', location);
+  cancelled = false;
   show('screenProgress');
 
   // Get presigned URLs
@@ -255,6 +258,7 @@ async function startUpload() {
   const CONCURRENCY = 6;
 
   async function uploadOne(u, index) {
+    if (cancelled) return;
     const file = selectedFiles.find(f => f.name === u.filename) || selectedFiles[index];
     const stId = 'st_' + u.filename.replace(/\./g, '_');
     try {
@@ -291,6 +295,15 @@ async function startUpload() {
   document.getElementById('fileInput').value = '';
   document.getElementById('fileCount').style.display = 'none';
   document.getElementById('uploadBtn').disabled = true;
+}
+
+function cancelUpload() {
+  cancelled = true;
+  selectedFiles = [];
+  document.getElementById('fileInput').value = '';
+  document.getElementById('fileCount').style.display = 'none';
+  document.getElementById('uploadBtn').disabled = true;
+  show('screenUpload');
 }
 
 function uploadAnother() {
