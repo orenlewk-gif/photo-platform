@@ -252,9 +252,10 @@ async function startUpload() {
 
   let done = 0;
   const total = urls.length;
+  const CONCURRENCY = 6;
 
-  for (const u of urls) {
-    const file = selectedFiles.find(f => f.name === u.filename) || selectedFiles[urls.indexOf(u)];
+  async function uploadOne(u, index) {
+    const file = selectedFiles.find(f => f.name === u.filename) || selectedFiles[index];
     const stId = 'st_' + u.filename.replace(/\./g, '_');
     try {
       await fetch(u.url, {
@@ -274,6 +275,13 @@ async function startUpload() {
     textEl.textContent = `${done} of ${total}`;
     pctEl.textContent  = pct + '%';
   }
+
+  // Upload up to CONCURRENCY files at a time
+  const queue = urls.map((u, i) => () => uploadOne(u, i));
+  const workers = Array.from({length: Math.min(CONCURRENCY, queue.length)}, async () => {
+    while (queue.length) await queue.shift()();
+  });
+  await Promise.all(workers);
 
   // Success
   document.getElementById('successMsg').textContent = `Upload Complete!`;
