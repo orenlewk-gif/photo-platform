@@ -109,6 +109,7 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;height:100v
       <span class="toolbar-info" id="toolbarInfo"></span>
       <span class="toolbar-sel" id="toolbarSel"></span>
       <button class="btn btn-folder" onclick="openFolderModal()" id="btnFolder" disabled>📁 New Folder</button>
+      <button class="btn btn-clear" onclick="unassignSelected()" id="btnUnassign" disabled>⬜ Unassign</button>
       <button class="btn btn-reject" onclick="rejectSelected()" id="btnReject" disabled>✕ Reject</button>
       <button class="btn btn-clear" onclick="clearSelection()">Clear</button>
     </div>
@@ -136,6 +137,18 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;height:100v
     <div class="modal-btns">
       <button class="btn btn-clear" onclick="closeFolderModal()">Cancel</button>
       <button class="btn btn-folder" onclick="assignFolder()">Create & Assign</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Modal -->
+<div class="modal-overlay" id="renameModal">
+  <div class="modal">
+    <h3>Rename Folder</h3>
+    <input type="text" id="renameName" placeholder="New folder name…">
+    <div class="modal-btns">
+      <button class="btn btn-clear" onclick="closeRenameModal()">Cancel</button>
+      <button class="btn btn-folder" onclick="confirmRename()">Rename</button>
     </div>
   </div>
 </div>
@@ -270,11 +283,19 @@ function renderGrid() {
     const folderLabel = folder ? `📁 ${folder}` : '⬜ Unassigned';
     header.innerHTML = `<span style="color:${folder ? '#fff' : 'rgba(255,165,0,.8)'}">${folderLabel} <span style="color:rgba(255,255,255,.4);font-size:.75rem">(${items.length})</span></span>`;
     if (folder) {
+      const btnWrap = document.createElement('div');
+      btnWrap.style.cssText = 'display:flex;gap:.4rem;align-items:center';
+      const renameBtn = document.createElement('button');
+      renameBtn.style.cssText = 'background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:5px;padding:.25rem .6rem;font-size:.75rem;font-weight:600;cursor:pointer';
+      renameBtn.textContent = '✏ Rename';
+      renameBtn.onclick = (e) => { e.stopPropagation(); openRenameModal(folder); };
       const liveBtn = document.createElement('button');
       liveBtn.className = 'go-live-btn';
       liveBtn.textContent = '▶ Go Live';
       liveBtn.onclick = () => goLive(currentDate, currentLoc || items[0]?.location, folder);
-      header.appendChild(liveBtn);
+      btnWrap.appendChild(renameBtn);
+      btnWrap.appendChild(liveBtn);
+      header.appendChild(btnWrap);
     }
     sectionDiv.appendChild(header);
 
@@ -344,8 +365,9 @@ function updateToolbar() {
   const count = selected.size;
   document.getElementById('toolbarSel').textContent  = count ? `${count} selected` : '';
   document.getElementById('toolbarInfo').textContent = `${allItems.length} pending`;
-  document.getElementById('btnFolder').disabled  = count === 0;
-  document.getElementById('btnReject').disabled  = count === 0;
+  document.getElementById('btnFolder').disabled   = count === 0;
+  document.getElementById('btnUnassign').disabled = count === 0;
+  document.getElementById('btnReject').disabled   = count === 0;
 }
 
 function clearSelection() {
@@ -385,6 +407,58 @@ async function assignFolder() {
     showToast(`Moved to "${name}"`);
   } catch(e) {
     showToast('Failed to assign folder');
+  }
+}
+
+// Unassign
+async function unassignSelected() {
+  if (!selected.size) return;
+  try {
+    await fetch('/api/cull/organize', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({keys: [...selected], folder: ''})
+    });
+    allItems.forEach(i => { if (selected.has(i.key)) i.folder = ''; });
+    selected.clear();
+    renderAll();
+    showToast('Moved to Unassigned');
+  } catch(e) {
+    showToast('Failed to unassign');
+  }
+}
+
+// Rename folder
+let renamingFolder = '';
+function openRenameModal(folder) {
+  renamingFolder = folder;
+  document.getElementById('renameName').value = folder;
+  document.getElementById('renameModal').classList.add('open');
+  setTimeout(() => document.getElementById('renameName').focus(), 100);
+}
+function closeRenameModal() {
+  document.getElementById('renameModal').classList.remove('open');
+}
+document.getElementById('renameName').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmRename();
+  if (e.key === 'Escape') closeRenameModal();
+});
+async function confirmRename() {
+  const newName = document.getElementById('renameName').value.trim();
+  if (!newName || newName === renamingFolder) { closeRenameModal(); return; }
+  closeRenameModal();
+  try {
+    await fetch('/api/cull/rename-folder', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({old_folder: renamingFolder, new_folder: newName})
+    });
+    allItems.forEach(i => { if (i.folder === renamingFolder) i.folder = newName; });
+    if (currentFolder === renamingFolder) currentFolder = newName;
+    renderAll();
+    showToast(`Renamed to "${newName}"`);
+  } catch(e) {
+    showToast('Failed to rename');
   }
 }
 

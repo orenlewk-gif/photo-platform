@@ -1235,7 +1235,7 @@ STRIPE_RATE     = 0.029
 STRIPE_FIXED    = 0.30
 
 def _make_session_token():
-    raw = f"{ADMIN_SECRET}:{datetime.now(timezone.utc).date()}"
+    raw = f"{ADMIN_SECRET}:admin-session"
     return hmac.new(ADMIN_SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
 
 def _admin_authed(request: Request) -> bool:
@@ -1822,14 +1822,30 @@ async def cull_organize(request: Request):
     body   = await request.json()
     keys   = body.get("keys", [])
     folder = body.get("folder", "").strip()
-    if not keys or not folder:
-        return JSONResponse(status_code=400, content={"error": "Missing keys or folder"})
+    if not keys:
+        return JSONResponse(status_code=400, content={"error": "Missing keys"})
     meta = _load_pending_meta()
     for m in meta:
         if m["key"] in keys:
             m["folder"] = folder
     _save_pending_meta(meta)
     return {"updated": len(keys)}
+
+@app.post("/api/cull/rename-folder")
+async def cull_rename_folder(request: Request):
+    body       = await request.json()
+    old_folder = body.get("old_folder", "").strip()
+    new_folder = body.get("new_folder", "").strip()
+    if not old_folder or not new_folder:
+        return JSONResponse(status_code=400, content={"error": "Missing folder names"})
+    meta = _load_pending_meta()
+    updated = 0
+    for m in meta:
+        if m.get("folder", "") == old_folder:
+            m["folder"] = new_folder
+            updated += 1
+    _save_pending_meta(meta)
+    return {"updated": updated}
 
 @app.post("/api/cull/reject")
 async def cull_reject(request: Request):
