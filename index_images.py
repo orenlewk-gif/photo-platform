@@ -39,16 +39,23 @@ def get_model():
     return model, processor
 
 # -----------------------
-# LOAD EXISTING INDEX
+# LOAD EXISTING INDEX — R2 is authoritative
 # -----------------------
-if os.path.exists(INDEX_FILE):
-    with open(INDEX_FILE, "r") as f:
-        results = json.load(f)
-    already_indexed = {item["path"] for item in results}
-    print(f"Already indexed: {len(results)} photos")
-else:
-    results = []
-    already_indexed = set()
+results = []
+try:
+    obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
+    results = json.loads(obj["Body"].read().decode("utf-8"))
+    with open(INDEX_FILE, "w") as f:
+        json.dump(results, f)
+    print(f"Loaded {len(results)} photos from R2 (authoritative)")
+except Exception:
+    if os.path.exists(INDEX_FILE):
+        with open(INDEX_FILE, "r") as f:
+            results = json.load(f)
+        print(f"Loaded {len(results)} photos from local fallback")
+    else:
+        print("No existing index found, starting fresh")
+already_indexed = {item["path"] for item in results}
 
 # -----------------------
 # SYNC FROM R2 → LOCAL (photos published via web upload)
