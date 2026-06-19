@@ -155,6 +155,47 @@ for img_path in tqdm(image_paths):
         print(f"Error processing {img_path}: {e}")
 
 # -----------------------
+# HEAL: add any R2 images/ entries missing from index (web-uploaded go-live photos)
+# -----------------------
+PORTRAIT_LOCATIONS_SET = set(PORTRAIT_LOCATIONS)
+existing_paths = {item["path"] for item in results}
+healed = 0
+try:
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="images/"):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.lower().endswith((".jpg", ".jpeg", ".png")):
+                continue
+            parts = key.split("/")
+            if len(parts) < 4:
+                continue
+            r2_date, r2_loc = parts[1], parts[2]
+            r2_loc_norm = r2_loc.lower()
+            r2_is_portrait = any(p in r2_loc_norm for p in PORTRAIT_LOCATIONS_SET)
+            r2_last_name = parts[3] if len(parts) > 4 and r2_is_portrait else ""
+            r2_group     = parts[3] if len(parts) > 4 and not r2_is_portrait else ""
+            canonical_path = os.path.join(os.getcwd(), key.replace("/", os.sep))
+            if canonical_path in existing_paths:
+                continue
+            if any(item.get("path", "").endswith(key.replace("images/", "", 1)) for item in results):
+                continue
+            results.append({
+                "path":      canonical_path,
+                "date":      r2_date,
+                "location":  r2_loc,
+                "last_name": r2_last_name,
+                "group":     r2_group,
+                "embedding": None,
+            })
+            existing_paths.add(canonical_path)
+            healed += 1
+    if healed:
+        print(f"Healed {healed} missing R2 photos back into index.")
+except Exception as e:
+    print(f"Heal step failed (non-fatal): {e}")
+
+# -----------------------
 # SAVE JSON + PUSH TO R2
 # -----------------------
 with open(INDEX_FILE, "w") as f:
