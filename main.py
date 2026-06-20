@@ -2201,7 +2201,21 @@ def download_all_zip(request: Request, batch_id: str = Query(...)):
             m["status"] = "downloaded"
     _save_pending_meta(meta)
 
-    # Move to trash in background thread
+    # Read all photo bytes from R2 BEFORE starting trash move (prevents race condition)
+    photographer_name = items[0].get("photographer_name", "photos").replace(" ", "_")
+    date = items[0].get("date", "")
+    folder_label = items[0].get("folder", "").replace(" ", "_") or "upload"
+
+    file_data = []
+    for key, folder_name, filename in keys_to_zip:
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+            data_bytes = obj["Body"].read()
+            file_data.append((folder_name, filename, data_bytes))
+        except Exception as e:
+            print(f"zip fetch failed {key}: {e}")
+
+    # Move to trash in background thread (files already read into memory)
     def move_to_trash():
         trash_meta = _load_trash_meta()
         for orig_key, folder_name, filename in keys_to_zip:
@@ -2222,27 +2236,18 @@ def download_all_zip(request: Request, batch_id: str = Query(...)):
 
     threading.Thread(target=move_to_trash, daemon=True).start()
 
-    photographer_name = items[0].get("photographer_name", "photos").replace(" ", "_")
-    date = items[0].get("date", "")
-    folder_label = items[0].get("folder", "").replace(" ", "_") or "upload"
-
     def iter_zip():
         buf = BytesIO()
         last_pos = 0
         zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
-        for key, folder_name, filename in keys_to_zip:
-            try:
-                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-                data_bytes = obj["Body"].read()
-                zf.writestr(f"{folder_name}/{filename}", data_bytes)
-                cur_pos = buf.tell()
-                buf.seek(last_pos)
-                chunk = buf.read(cur_pos - last_pos)
-                last_pos = cur_pos
-                if chunk:
-                    yield chunk
-            except Exception as e:
-                print(f"zip skip {key}: {e}")
+        for folder_name, filename, data_bytes in file_data:
+            zf.writestr(f"{folder_name}/{filename}", data_bytes)
+            cur_pos = buf.tell()
+            buf.seek(last_pos)
+            chunk = buf.read(cur_pos - last_pos)
+            last_pos = cur_pos
+            if chunk:
+                yield chunk
         zf.close()
         buf.seek(last_pos)
         remainder = buf.read()
