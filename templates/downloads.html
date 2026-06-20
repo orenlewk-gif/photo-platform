@@ -12,26 +12,29 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:
 .topbar-spacer{flex:1}
 .topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
 .topbar a:hover{color:#F5C518}
-.main{padding:1.5rem;max-width:900px;margin:0 auto}
+.main{padding:1.5rem;max-width:860px;margin:0 auto}
 .header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem}
 h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 .refresh-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);border-radius:7px;padding:.45rem .9rem;font-size:.8rem;cursor:pointer;font-weight:600}
 .refresh-btn:hover{background:rgba(255,255,255,.12)}
 .empty{text-align:center;color:rgba(255,255,255,.35);padding:4rem;font-size:.95rem}
-.photo-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem}
-.card-top{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
-.card-name{font-size:1.1rem;font-weight:700;flex:1}
-.card-date{font-size:.8rem;color:rgba(255,255,255,.4)}
-.progress-wrap{margin:.9rem 0 1rem}
-.progress-label{display:flex;justify-content:space-between;font-size:.8rem;color:rgba(255,255,255,.5);margin-bottom:.4rem}
-.progress-bar{background:rgba(255,255,255,.08);border-radius:4px;height:8px;overflow:hidden}
+.batch-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1.1rem 1.25rem;margin-bottom:.85rem;display:flex;align-items:center;gap:1.25rem;flex-wrap:wrap}
+.batch-card.ready{border-color:rgba(74,222,128,.2)}
+.batch-info{flex:1;min-width:180px}
+.batch-top{display:flex;align-items:baseline;gap:.6rem;margin-bottom:.2rem;flex-wrap:wrap}
+.batch-name{font-size:1rem;font-weight:700}
+.batch-folder{font-size:.85rem;color:rgba(255,255,255,.5)}
+.batch-date{font-size:.75rem;color:rgba(255,255,255,.35);margin-left:auto}
+.progress-wrap{margin:.6rem 0 .4rem}
+.progress-bar{background:rgba(255,255,255,.08);border-radius:4px;height:7px;overflow:hidden}
 .progress-fill{height:100%;border-radius:4px;transition:width .4s}
 .progress-fill.ready{background:#4ade80}
 .progress-fill.partial{background:#F5C518}
-.status-text{font-size:.8rem;margin-top:.35rem}
-.status-ready{color:#4ade80}
-.status-partial{color:#F5C518}
-.btn{border:none;border-radius:8px;padding:.65rem 1.4rem;font-size:.9rem;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:.4rem;white-space:nowrap;transition:.15s}
+.progress-label{display:flex;justify-content:space-between;font-size:.75rem;margin-top:.3rem}
+.label-count{color:rgba(255,255,255,.5)}
+.label-status.ready{color:#4ade80}
+.label-status.partial{color:#F5C518}
+.btn{border:none;border-radius:7px;padding:.55rem 1.2rem;font-size:.85rem;cursor:pointer;font-weight:700;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap}
 .btn-download{background:#F5C518;color:#0c2336}
 .btn-download:hover{background:#e6b800}
 .btn-download:disabled{opacity:.4;cursor:not-allowed}
@@ -49,8 +52,8 @@ h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 
 <div class="main">
   <div class="header-row">
-    <h2>Pending Uploads</h2>
-    <button class="refresh-btn" onclick="loadUploads()">↻ Refresh</button>
+    <h2>Upload Queue</h2>
+    <button class="refresh-btn" onclick="loadBatches()">↻ Refresh</button>
   </div>
   <div id="content"><div class="empty">Loading…</div></div>
 </div>
@@ -58,50 +61,49 @@ h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 <div class="toast" id="toast"></div>
 
 <script>
-let autoRefresh;
-
 window.addEventListener('load', () => {
-  loadUploads();
-  autoRefresh = setInterval(loadUploads, 15000);
+  loadBatches();
+  setInterval(loadBatches, 15000);
 });
 
-async function loadUploads() {
+async function loadBatches() {
   try {
     const res = await fetch('/api/uploads');
     const d = await res.json();
-    const photographers = d.photographers || [];
+    const batches = d.batches || [];
     const content = document.getElementById('content');
 
-    if (!photographers.length) {
+    if (!batches.length) {
       content.innerHTML = '<div class="empty">No pending uploads</div>';
       return;
     }
 
-    content.innerHTML = photographers.map(p => {
-      const received = p.received;
-      const expected = p.expected || received;
+    content.innerHTML = batches.map(b => {
+      const received = b.received;
+      const expected = b.expected || received;
       const pct = Math.round((received / expected) * 100);
       const ready = received >= expected;
+      const folderLabel = b.folder && b.folder !== 'Unfiled' ? `· ${b.folder}` : '';
       return `
-        <div class="photo-card">
-          <div class="card-top">
-            <div class="card-name">${p.photographer_name}</div>
-            <div class="card-date">${p.latest_date}</div>
+        <div class="batch-card ${ready ? 'ready' : ''}">
+          <div class="batch-info">
+            <div class="batch-top">
+              <div class="batch-name">${b.photographer_name}</div>
+              <div class="batch-folder">${folderLabel}</div>
+              <div class="batch-date">${b.date}</div>
+            </div>
+            <div class="progress-wrap">
+              <div class="progress-bar">
+                <div class="progress-fill ${ready ? 'ready' : 'partial'}" style="width:${pct}%"></div>
+              </div>
+              <div class="progress-label">
+                <span class="label-count">${received} / ${expected} photos</span>
+                <span class="label-status ${ready ? 'ready' : 'partial'}">${ready ? '✓ Ready' : `⏳ ${pct}%`}</span>
+              </div>
+            </div>
           </div>
-          <div class="progress-wrap">
-            <div class="progress-label">
-              <span>Photos ready</span>
-              <span>${received} / ${expected}</span>
-            </div>
-            <div class="progress-bar">
-              <div class="progress-fill ${ready ? 'ready' : 'partial'}" style="width:${pct}%"></div>
-            </div>
-            <div class="status-text ${ready ? 'status-ready' : 'status-partial'}">
-              ${ready ? '✓ All photos uploaded — ready to download' : `⏳ Upload in progress (${pct}%)`}
-            </div>
-          </div>
-          <button class="btn btn-download" onclick="downloadAll('${p.photographer_id}', this)" ${!ready ? 'style="opacity:.6"' : ''}>
-            ⬇ Download All & Done
+          <button class="btn btn-download" onclick="downloadBatch('${b.batch_id.replace(/'/g,"\\'")}', this)">
+            ⬇ Download & Done
           </button>
         </div>`;
     }).join('');
@@ -110,16 +112,11 @@ async function loadUploads() {
   }
 }
 
-async function downloadAll(photographerId, btn) {
+function downloadBatch(batchId, btn) {
   btn.disabled = true;
-  btn.textContent = 'Preparing ZIP…';
-  // Trigger download — server marks as done during zip
-  window.location.href = `/api/uploads/zip-all?photographer_id=${encodeURIComponent(photographerId)}`;
-  // Reload after a moment
-  setTimeout(() => {
-    btn.disabled = false;
-    loadUploads();
-  }, 3000);
+  btn.textContent = 'Preparing…';
+  window.location.href = `/api/uploads/zip-all?batch_id=${encodeURIComponent(batchId)}`;
+  setTimeout(() => { loadBatches(); }, 3000);
 }
 
 function showToast(msg) {

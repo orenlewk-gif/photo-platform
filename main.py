@@ -2142,58 +2142,44 @@ def list_uploads(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta = _load_pending_meta()
-    # Group by photographer — show received vs expected
-    groups = {}
+    # Group by batch_id (one card per upload session)
+    batches = {}
     for m in meta:
         if m.get("status") != "pending":
             continue
-        pid  = m.get("photographer_id", "unknown")
-        name = m.get("photographer_name", "Unknown")
-        if pid not in groups:
-            groups[pid] = {"photographer_id": pid, "photographer_name": name,
-                           "received": 0, "expected": 0, "latest_date": ""}
-        groups[pid]["received"] += 1
-        groups[pid]["expected"] += 1  # each presigned entry = 1 expected
-        groups[pid]["expected_total"] = groups[pid].get("expected_total", 0) + m.get("batch_total", 1)
-        d = m.get("date", "")
-        if d > groups[pid]["latest_date"]:
-            groups[pid]["latest_date"] = d
-    # Fix expected: use batch_total if set
-    groups2 = {}
-    for m in meta:
-        if m.get("status") != "pending":
-            continue
-        pid = m.get("photographer_id", "unknown")
-        if pid not in groups2:
-            groups2[pid] = {"photographer_id": pid,
-                            "photographer_name": m.get("photographer_name", "Unknown"),
-                            "received": 0, "expected": 0, "latest_date": ""}
-        groups2[pid]["received"] += 1
-        bt = m.get("batch_total")
-        if bt:
-            groups2[pid]["expected"] = max(groups2[pid]["expected"], bt)
-        else:
-            groups2[pid]["expected"] = groups2[pid]["received"]
-        d = m.get("date", "")
-        if d > groups2[pid]["latest_date"]:
-            groups2[pid]["latest_date"] = d
-    result = sorted(groups2.values(), key=lambda x: x["latest_date"], reverse=True)
-    return {"photographers": result}
+        bid = m.get("batch_id", f"{m.get('photographer_id')}_{m.get('date')}_{m.get('folder')}")
+        if bid not in batches:
+            batches[bid] = {
+                "batch_id": bid,
+                "photographer_id": m.get("photographer_id", ""),
+                "photographer_name": m.get("photographer_name", "Unknown"),
+                "date": m.get("date", ""),
+                "folder": m.get("folder") or "Unfiled",
+                "received": 0,
+                "expected": m.get("batch_total", 0),
+                "uploaded_at": m.get("uploaded_at", ""),
+            }
+        batches[bid]["received"] += 1
+        if not batches[bid]["expected"]:
+            batches[bid]["expected"] = batches[bid]["received"]
+    result = sorted(batches.values(), key=lambda x: x["uploaded_at"])
+    return {"batches": result}
 
 @app.get("/api/uploads/zip-all")
-def download_all_zip(request: Request, photographer_id: str = Query(...)):
+def download_all_zip(request: Request, batch_id: str = Query(...)):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta = _load_pending_meta()
     items = [m for m in meta
-             if m.get("status") == "pending" and m.get("photographer_id") == photographer_id]
+             if m.get("status") == "pending" and
+             m.get("batch_id", f"{m.get('photographer_id')}_{m.get('date')}_{m.get('folder')}") == batch_id]
     if not items:
         return JSONResponse(status_code=404, content={"error": "No files found"})
 
-    # Mark all as downloaded and move to trash first
     trash_meta = _load_trash_meta()
     now = datetime.now(timezone.utc)
     purge_at = (now + timedelta(days=7)).isoformat()
+    photographer_id = items[0].get("photographer_id", "")
     keys_to_zip = []
     for m in items:
         uid = str(uuid.uuid4())[:8]
@@ -2217,6 +2203,7 @@ def download_all_zip(request: Request, photographer_id: str = Query(...)):
 
     photographer_name = items[0].get("photographer_name", "photos").replace(" ", "_")
     date = items[0].get("date", "")
+    folder = items[0].get("folder", "").replace(" ", "_") or "upload"
 
     def iter_zip():
         buf = BytesIO()
@@ -2252,7 +2239,7 @@ def download_all_zip(request: Request, photographer_id: str = Query(...)):
         if remainder:
             yield remainder
 
-    filename = f"{date}_{photographer_name}.zip"
+    filename = f"{date}_{photographer_name}_{folder}.zip"
     return StreamingResponse(iter_zip(), media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
