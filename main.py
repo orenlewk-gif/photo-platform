@@ -2196,17 +2196,25 @@ def download_all_zip(request: Request, batch_id: str = Query(...)):
     date = items[0].get("date", "")
     folder_label = items[0].get("folder", "").replace(" ", "_") or "upload"
 
-    # Build zip fully in memory — streaming was corrupting the file
+    # Fetch all photos from R2 in parallel, then build zip in memory
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    def fetch_one(m):
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=m["key"])
+        return (m.get("folder") or "Unfiled", m["filename"], obj["Body"].read())
+
+    file_data = []
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        futures = {ex.submit(fetch_one, m): m for m in items}
+        for f in as_completed(futures):
+            try:
+                file_data.append(f.result())
+            except Exception as e:
+                print(f"zip fetch failed: {e}")
+
     buf = BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-        for m in items:
-            try:
-                obj = s3.get_object(Bucket=R2_BUCKET, Key=m["key"])
-                data_bytes = obj["Body"].read()
-                folder_name = m.get("folder") or "Unfiled"
-                zf.writestr(f"{folder_name}/{m['filename']}", data_bytes)
-            except Exception as e:
-                print(f"zip fetch failed {m['key']}: {e}")
+        for folder_name, filename, data_bytes in file_data:
+            zf.writestr(f"{folder_name}/{filename}", data_bytes)
     zip_bytes = buf.getvalue()
 
     zip_filename = f"{date}_{photographer_name}_{folder_label}.zip"
