@@ -219,7 +219,7 @@ async function startUpload() {
   show('screenProgress');
 
   // Get presigned URLs
-  let urls;
+  let urls, batchId;
   try {
     const res = await fetch('/api/upload/presign', {
       method: 'POST',
@@ -233,6 +233,7 @@ async function startUpload() {
     });
     const d = await res.json();
     urls = d.urls;
+    batchId = d.batch_id;
   } catch(e) {
     show('screenUpload');
     document.getElementById('uploadErr').textContent = 'Failed to start upload. Try again.';
@@ -258,7 +259,6 @@ async function startUpload() {
 
   let done = 0;
   const total = urls.length;
-  const batchId = d.batch_id;
   const CONCURRENCY = 6;
 
   async function uploadOne(u, index) {
