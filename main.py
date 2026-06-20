@@ -1772,8 +1772,9 @@ async def upload_presign(request: Request):
     new_meta     = []
     urls         = []
 
-    folder   = body.get("folder", "").strip()
-    batch_id = body.get("batch_id") or str(uuid.uuid4())[:8]
+    folder      = body.get("folder", "").strip()
+    batch_id    = body.get("batch_id") or str(uuid.uuid4())[:8]
+    batch_total = len(files)
 
     for f in files:
         filename = os.path.basename(f["name"])
@@ -1796,6 +1797,8 @@ async def upload_presign(request: Request):
                 "photographer_name": p["name"],
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
                 "status": "pending",
+                "batch_id": batch_id,
+                "batch_total": batch_total,
             })
 
     if new_meta:
@@ -2139,102 +2142,119 @@ def list_uploads(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta = _load_pending_meta()
-    pending = [m for m in meta if m.get("status") == "pending"]
-    # Group by photographer → date → folder
+    # Group by photographer — show received vs expected
     groups = {}
-    for m in pending:
+    for m in meta:
+        if m.get("status") != "pending":
+            continue
         pid  = m.get("photographer_id", "unknown")
         name = m.get("photographer_name", "Unknown")
-        date = m.get("date", "")
-        folder = m.get("folder") or "Unfiled"
-        gkey = f"{pid}||{date}||{folder}"
-        if gkey not in groups:
-            groups[gkey] = {"photographer_id": pid, "photographer_name": name,
-                            "date": date, "folder": folder, "count": 0, "keys": []}
-        groups[gkey]["count"] += 1
-        groups[gkey]["keys"].append(m["key"])
-    return {"batches": sorted(groups.values(), key=lambda x: (x["date"], x["photographer_name"]), reverse=True)}
+        if pid not in groups:
+            groups[pid] = {"photographer_id": pid, "photographer_name": name,
+                           "received": 0, "expected": 0, "latest_date": ""}
+        groups[pid]["received"] += 1
+        groups[pid]["expected"] += 1  # each presigned entry = 1 expected
+        groups[pid]["expected_total"] = groups[pid].get("expected_total", 0) + m.get("batch_total", 1)
+        d = m.get("date", "")
+        if d > groups[pid]["latest_date"]:
+            groups[pid]["latest_date"] = d
+    # Fix expected: use batch_total if set
+    groups2 = {}
+    for m in meta:
+        if m.get("status") != "pending":
+            continue
+        pid = m.get("photographer_id", "unknown")
+        if pid not in groups2:
+            groups2[pid] = {"photographer_id": pid,
+                            "photographer_name": m.get("photographer_name", "Unknown"),
+                            "received": 0, "expected": 0, "latest_date": ""}
+        groups2[pid]["received"] += 1
+        bt = m.get("batch_total")
+        if bt:
+            groups2[pid]["expected"] = max(groups2[pid]["expected"], bt)
+        else:
+            groups2[pid]["expected"] = groups2[pid]["received"]
+        d = m.get("date", "")
+        if d > groups2[pid]["latest_date"]:
+            groups2[pid]["latest_date"] = d
+    result = sorted(groups2.values(), key=lambda x: x["latest_date"], reverse=True)
+    return {"photographers": result}
 
-@app.get("/api/uploads/zip")
-def download_upload_zip(request: Request, photographer_id: str = Query(...),
-                        date: str = Query(...), folder: str = Query(...)):
+@app.get("/api/uploads/zip-all")
+def download_all_zip(request: Request, photographer_id: str = Query(...)):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta = _load_pending_meta()
-    keys = [m["key"] for m in meta
-            if m.get("status") == "pending"
-            and m.get("photographer_id") == photographer_id
-            and m.get("date") == date
-            and (m.get("folder") or "Unfiled") == folder]
-    if not keys:
+    items = [m for m in meta
+             if m.get("status") == "pending" and m.get("photographer_id") == photographer_id]
+    if not items:
         return JSONResponse(status_code=404, content={"error": "No files found"})
+
+    # Mark all as downloaded and move to trash first
+    trash_meta = _load_trash_meta()
+    now = datetime.now(timezone.utc)
+    purge_at = (now + timedelta(days=7)).isoformat()
+    keys_to_zip = []
+    for m in items:
+        uid = str(uuid.uuid4())[:8]
+        trash_key = f"upload_trash/{uid}_{m['filename']}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
+                           Key=trash_key)
+            keys_to_zip.append((m["key"], m.get("folder") or "Unfiled", m["filename"]))
+            trash_meta.append({"key": trash_key, "original_key": m["key"],
+                                "filename": m["filename"], "date": m.get("date", ""),
+                                "folder": m.get("folder"), "photographer_id": photographer_id,
+                                "photographer_name": m.get("photographer_name", ""),
+                                "trashed_at": now.isoformat(), "purge_at": purge_at})
+            m["status"] = "downloaded"
+        except Exception as e:
+            print(f"Trash move failed {m['key']}: {e}")
+            keys_to_zip.append((m["key"], m.get("folder") or "Unfiled", m["filename"]))
+    _save_pending_meta(meta)
+    _save_trash_meta(trash_meta)
+
+    photographer_name = items[0].get("photographer_name", "photos").replace(" ", "_")
+    date = items[0].get("date", "")
 
     def iter_zip():
         buf = BytesIO()
         last_pos = 0
         zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
-        for key in keys:
+        for orig_key, folder, filename in keys_to_zip:
+            # Try original key first, then trash
+            src_key = orig_key
             try:
-                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-                data_bytes = obj["Body"].read()
-                zf.writestr(os.path.basename(key), data_bytes)
-                cur_pos = buf.tell()
-                buf.seek(last_pos)
-                chunk = buf.read(cur_pos - last_pos)
-                last_pos = cur_pos
-                if chunk:
-                    yield chunk
-            except Exception as e:
-                print(f"zip skip {key}: {e}")
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=src_key)
+            except Exception:
+                # Already moved to trash, find it
+                matched = next((t["key"] for t in trash_meta if t["original_key"] == orig_key), None)
+                if not matched:
+                    continue
+                try:
+                    obj = s3.get_object(Bucket=R2_BUCKET, Key=matched)
+                except Exception as e:
+                    print(f"zip skip {orig_key}: {e}")
+                    continue
+            data_bytes = obj["Body"].read()
+            zip_path = f"{folder}/{filename}"
+            zf.writestr(zip_path, data_bytes)
+            cur_pos = buf.tell()
+            buf.seek(last_pos)
+            chunk = buf.read(cur_pos - last_pos)
+            last_pos = cur_pos
+            if chunk:
+                yield chunk
         zf.close()
         buf.seek(last_pos)
         remainder = buf.read()
         if remainder:
             yield remainder
 
-    safe_folder = folder.replace(" ", "_")
-    filename = f"{date}_{safe_folder}.zip"
+    filename = f"{date}_{photographer_name}.zip"
     return StreamingResponse(iter_zip(), media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'})
-
-@app.post("/api/uploads/downloaded")
-async def mark_downloaded(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body = await request.json()
-    photographer_id = body.get("photographer_id")
-    date   = body.get("date")
-    folder = body.get("folder")
-    meta = _load_pending_meta()
-    trash_meta = _load_trash_meta()
-    now = datetime.now(timezone.utc)
-    purge_at = (now + timedelta(days=7)).isoformat()
-    count = 0
-    for m in meta:
-        if (m.get("status") == "pending"
-                and m.get("photographer_id") == photographer_id
-                and m.get("date") == date
-                and (m.get("folder") or "Unfiled") == folder):
-            uid = str(uuid.uuid4())[:8]
-            trash_key = f"upload_trash/{uid}_{m['filename']}"
-            try:
-                s3.copy_object(Bucket=R2_BUCKET,
-                               CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
-                               Key=trash_key)
-                s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
-            except Exception as e:
-                print(f"Trash move failed {m['key']}: {e}")
-                continue
-            trash_meta.append({"key": trash_key, "original_key": m["key"],
-                                "filename": m["filename"], "date": m["date"],
-                                "folder": m.get("folder"), "photographer_id": photographer_id,
-                                "photographer_name": m.get("photographer_name", ""),
-                                "trashed_at": now.isoformat(), "purge_at": purge_at})
-            m["status"] = "downloaded"
-            count += 1
-    _save_pending_meta(meta)
-    _save_trash_meta(trash_meta)
-    return {"moved": count}
 
 @app.get("/admin/downloads", response_class=HTMLResponse)
 def downloads_page(request: Request):
