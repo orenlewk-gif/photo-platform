@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crystal Images — Downloads</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem;height:56px}
+.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
+.topbar a:hover{color:#F5C518}
+.main{padding:1.5rem;max-width:1000px;margin:0 auto}
+h2{font-size:1.1rem;font-weight:600;margin-bottom:1.25rem;color:rgba(255,255,255,.9)}
+.empty{text-align:center;color:rgba(255,255,255,.35);padding:4rem;font-size:.95rem}
+.photographer-section{margin-bottom:2rem}
+.photographer-name{font-size:1rem;font-weight:700;color:#F5C518;margin-bottom:.75rem;padding-bottom:.5rem;border-bottom:1px solid rgba(255,255,255,.08)}
+.batch-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1rem 1.25rem;margin-bottom:.75rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.batch-info{flex:1;min-width:180px}
+.batch-date{font-size:.8rem;color:rgba(255,255,255,.4);margin-bottom:.2rem}
+.batch-folder{font-size:1rem;font-weight:600}
+.batch-count{font-size:.8rem;color:rgba(255,255,255,.45);margin-top:.2rem}
+.btn{border:none;border-radius:7px;padding:.55rem 1.1rem;font-size:.82rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap}
+.btn-download{background:#F5C518;color:#0c2336}
+.btn-download:hover{background:#e6b800}
+.btn-done{background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.3);color:#4ade80}
+.btn-done:hover{background:rgba(74,222,128,.2)}
+.btn-done:disabled{opacity:.4;cursor:not-allowed}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
+.toast.show{opacity:1}
+.refresh-btn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);border-radius:7px;padding:.45rem .9rem;font-size:.8rem;cursor:pointer;font-weight:600}
+.refresh-btn:hover{background:rgba(255,255,255,.12)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — DOWNLOADS</div>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/dashboard">Dashboard</a>
+  <a href="/admin/photographers" style="margin-left:.75rem">Photographers</a>
+</div>
+
+<div class="main">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+    <h2>Uploaded Batches</h2>
+    <button class="refresh-btn" onclick="loadBatches()">↻ Refresh</button>
+  </div>
+  <div id="content"><div class="empty">Loading…</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+window.addEventListener('load', loadBatches);
+
+async function loadBatches() {
+  try {
+    const res = await fetch('/api/uploads');
+    const d = await res.json();
+    const batches = d.batches || [];
+    const content = document.getElementById('content');
+
+    if (!batches.length) {
+      content.innerHTML = '<div class="empty">No pending uploads</div>';
+      return;
+    }
+
+    // Group by photographer
+    const byPhotog = {};
+    for (const b of batches) {
+      const name = b.photographer_name || 'Unknown';
+      if (!byPhotog[name]) byPhotog[name] = [];
+      byPhotog[name].push(b);
+    }
+
+    content.innerHTML = Object.entries(byPhotog).map(([name, items]) => `
+      <div class="photographer-section">
+        <div class="photographer-name">${name}</div>
+        ${items.map(b => `
+          <div class="batch-card" id="batch_${btoa(b.photographer_id + b.date + b.folder)}">
+            <div class="batch-info">
+              <div class="batch-date">${b.date}</div>
+              <div class="batch-folder">📁 ${b.folder}</div>
+              <div class="batch-count">${b.count} photo${b.count !== 1 ? 's' : ''}</div>
+            </div>
+            <button class="btn btn-download" onclick="downloadBatch('${b.photographer_id}','${b.date}','${b.folder.replace(/'/g,"\\'")}')">
+              ⬇ Download ZIP
+            </button>
+            <button class="btn btn-done" onclick="markDone('${b.photographer_id}','${b.date}','${b.folder.replace(/'/g,"\\'")}', this)">
+              ✓ Mark Downloaded
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch(e) {
+    showToast('Failed to load uploads');
+  }
+}
+
+function downloadBatch(photographerId, date, folder) {
+  const params = new URLSearchParams({photographer_id: photographerId, date, folder});
+  window.location.href = '/api/uploads/zip?' + params;
+}
+
+async function markDone(photographerId, date, folder, btn) {
+  if (!confirm(`Mark "${folder}" as downloaded? Photos will move to trash (7 days to recover).`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Moving…';
+  try {
+    const res = await fetch('/api/uploads/downloaded', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({photographer_id: photographerId, date, folder})
+    });
+    const d = await res.json();
+    showToast(`${d.moved} photo${d.moved !== 1 ? 's' : ''} moved to trash`);
+    setTimeout(loadBatches, 800);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '✓ Mark Downloaded';
+    showToast('Failed');
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>

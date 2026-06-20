@@ -1772,9 +1772,13 @@ async def upload_presign(request: Request):
     new_meta     = []
     urls         = []
 
+    folder   = body.get("folder", "").strip()
+    batch_id = body.get("batch_id") or str(uuid.uuid4())[:8]
+
     for f in files:
         filename = os.path.basename(f["name"])
-        key      = f"pending/{date}/{loc_slug}/{filename}"
+        folder_slug = folder.lower().replace(" ", "-") if folder else "unfiled"
+        key      = f"pending/{date}/{p['id']}/{folder_slug}/{filename}"
         presigned = s3.generate_presigned_url(
             "put_object",
             Params={"Bucket": R2_BUCKET, "Key": key,
@@ -1786,10 +1790,12 @@ async def upload_presign(request: Request):
             new_meta.append({
                 "key": key, "filename": filename,
                 "date": date, "location": location,
+                "folder": folder,
+                "batch_id": batch_id,
                 "photographer_id": p["id"],
                 "photographer_name": p["name"],
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                "status": "pending", "folder": None,
+                "status": "pending",
             })
 
     if new_meta:
@@ -2126,6 +2132,115 @@ def upload_page():
 @app.get("/clockin", response_class=HTMLResponse)
 def clockin_page():
     return HTMLResponse(open("templates/clockin.html").read())
+
+# ── Upload downloads ──
+@app.get("/api/uploads")
+def list_uploads(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    meta = _load_pending_meta()
+    pending = [m for m in meta if m.get("status") == "pending"]
+    # Group by photographer → date → folder
+    groups = {}
+    for m in pending:
+        pid  = m.get("photographer_id", "unknown")
+        name = m.get("photographer_name", "Unknown")
+        date = m.get("date", "")
+        folder = m.get("folder") or "Unfiled"
+        gkey = f"{pid}||{date}||{folder}"
+        if gkey not in groups:
+            groups[gkey] = {"photographer_id": pid, "photographer_name": name,
+                            "date": date, "folder": folder, "count": 0, "keys": []}
+        groups[gkey]["count"] += 1
+        groups[gkey]["keys"].append(m["key"])
+    return {"batches": sorted(groups.values(), key=lambda x: (x["date"], x["photographer_name"]), reverse=True)}
+
+@app.get("/api/uploads/zip")
+def download_upload_zip(request: Request, photographer_id: str = Query(...),
+                        date: str = Query(...), folder: str = Query(...)):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    meta = _load_pending_meta()
+    keys = [m["key"] for m in meta
+            if m.get("status") == "pending"
+            and m.get("photographer_id") == photographer_id
+            and m.get("date") == date
+            and (m.get("folder") or "Unfiled") == folder]
+    if not keys:
+        return JSONResponse(status_code=404, content={"error": "No files found"})
+
+    def iter_zip():
+        buf = BytesIO()
+        last_pos = 0
+        zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
+        for key in keys:
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+                data_bytes = obj["Body"].read()
+                zf.writestr(os.path.basename(key), data_bytes)
+                cur_pos = buf.tell()
+                buf.seek(last_pos)
+                chunk = buf.read(cur_pos - last_pos)
+                last_pos = cur_pos
+                if chunk:
+                    yield chunk
+            except Exception as e:
+                print(f"zip skip {key}: {e}")
+        zf.close()
+        buf.seek(last_pos)
+        remainder = buf.read()
+        if remainder:
+            yield remainder
+
+    safe_folder = folder.replace(" ", "_")
+    filename = f"{date}_{safe_folder}.zip"
+    return StreamingResponse(iter_zip(), media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+@app.post("/api/uploads/downloaded")
+async def mark_downloaded(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    photographer_id = body.get("photographer_id")
+    date   = body.get("date")
+    folder = body.get("folder")
+    meta = _load_pending_meta()
+    trash_meta = _load_trash_meta()
+    now = datetime.now(timezone.utc)
+    purge_at = (now + timedelta(days=7)).isoformat()
+    count = 0
+    for m in meta:
+        if (m.get("status") == "pending"
+                and m.get("photographer_id") == photographer_id
+                and m.get("date") == date
+                and (m.get("folder") or "Unfiled") == folder):
+            uid = str(uuid.uuid4())[:8]
+            trash_key = f"upload_trash/{uid}_{m['filename']}"
+            try:
+                s3.copy_object(Bucket=R2_BUCKET,
+                               CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
+                               Key=trash_key)
+                s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
+            except Exception as e:
+                print(f"Trash move failed {m['key']}: {e}")
+                continue
+            trash_meta.append({"key": trash_key, "original_key": m["key"],
+                                "filename": m["filename"], "date": m["date"],
+                                "folder": m.get("folder"), "photographer_id": photographer_id,
+                                "photographer_name": m.get("photographer_name", ""),
+                                "trashed_at": now.isoformat(), "purge_at": purge_at})
+            m["status"] = "downloaded"
+            count += 1
+    _save_pending_meta(meta)
+    _save_trash_meta(trash_meta)
+    return {"moved": count}
+
+@app.get("/admin/downloads", response_class=HTMLResponse)
+def downloads_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin")
+    return HTMLResponse(open("templates/downloads.html").read())
 
 @app.get("/admin/cull", response_class=HTMLResponse)
 def cull_page(request: Request):
