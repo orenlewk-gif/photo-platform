@@ -1251,9 +1251,9 @@ ADMIN_LOGIN_HTML = """<!DOCTYPE html>
 body{{background:#0c2336;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}}
 .card{{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px}}
 h2{{color:#F5C518;font-size:1.3rem;margin-bottom:1.5rem;text-align:center}}
-input{{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;
+input[type=password]{{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;
   padding:.75rem 1rem;color:#fff;font-size:1rem;margin-bottom:1rem;outline:none}}
-input:focus{{border-color:#F5C518}}
+input[type=password]:focus{{border-color:#F5C518}}
 button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8px;
   padding:.75rem;font-size:1rem;font-weight:700;cursor:pointer}}
 .err{{color:#e53e3e;font-size:.85rem;text-align:center;margin-top:.5rem}}
@@ -1261,6 +1261,7 @@ button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8p
 <div class="card">
   <h2>Crystal Images Admin</h2>
   <form method="post" action="/admin/login">
+    <input type="hidden" name="next" value="{next}" />
     <input type="password" name="password" placeholder="Password" autofocus />
     <button type="submit">Sign In</button>
     {error}
@@ -1270,18 +1271,20 @@ button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8p
 @app.get("/admin", response_class=HTMLResponse)
 def admin_get(request: Request):
     if not _admin_authed(request):
-        return HTMLResponse(ADMIN_LOGIN_HTML.format(error=""))
+        next_url = request.query_params.get("next", "/admin/dashboard")
+        return HTMLResponse(ADMIN_LOGIN_HTML.format(error="", next=next_url))
     return RedirectResponse("/admin/dashboard")
 
 @app.post("/admin/login")
 async def admin_login(request: Request):
     form = await request.form()
     pw   = form.get("password", "")
+    next_url = form.get("next", "/admin/dashboard") or "/admin/dashboard"
     if not ADMIN_PASSWORD or not hmac.compare_digest(pw, ADMIN_PASSWORD):
         return HTMLResponse(ADMIN_LOGIN_HTML.format(
-            error='<p class="err">Incorrect password.</p>'), status_code=401)
+            error='<p class="err">Incorrect password.</p>', next=next_url), status_code=401)
     token = _make_session_token()
-    resp  = RedirectResponse("/admin/dashboard", status_code=303)
+    resp  = RedirectResponse(next_url, status_code=303)
     resp.set_cookie(ADMIN_COOKIE, token, httponly=True, samesite="strict", max_age=86400)
     return resp
 
@@ -2237,6 +2240,10 @@ def trash_batch(batch_id: str, request: Request):
     purge_at = (now + timedelta(days=7)).isoformat()
     photographer_id = items[0].get("photographer_id", "")
 
+    photographer_name = items[0].get("photographer_name", "")
+    date = items[0].get("date", "")
+    location = items[0].get("location", "")
+
     trash_meta = _load_trash_meta()
     for m in items:
         uid = str(uuid.uuid4())[:8]
@@ -2248,7 +2255,9 @@ def trash_batch(batch_id: str, request: Request):
             s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
             trash_meta.append({"key": trash_key, "original_key": m["key"],
                                 "filename": m["filename"], "folder": m.get("folder", ""),
-                                "photographer_id": photographer_id,
+                                "batch_id": batch_id, "photographer_id": photographer_id,
+                                "photographer_name": photographer_name,
+                                "date": date, "location": location,
                                 "trashed_at": now.isoformat(), "purge_at": purge_at})
         except Exception as e:
             print(f"Trash move failed {m['key']}: {e}")
@@ -2260,26 +2269,65 @@ def trash_batch(batch_id: str, request: Request):
     _save_trash_meta(trash_meta)
     return {"ok": True}
 
+
+@app.post("/api/trash/restore-batch")
+async def trash_restore_batch(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    batch_id = body.get("batch_id", "")
+    trash    = _load_trash_meta()
+    batch    = [t for t in trash if t.get("batch_id") == batch_id]
+    if not batch:
+        return JSONResponse(status_code=404, content={"error": "Batch not found"})
+    pending = _load_pending_meta()
+    for t in batch:
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": t["key"]},
+                           Key=t["original_key"])
+            s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
+        except Exception as e:
+            print(f"Batch restore failed {t['key']}: {e}")
+            continue
+        for m in pending:
+            if m["key"] == t["original_key"]:
+                m["status"] = "pending"
+                break
+        else:
+            pending.append({
+                "key": t["original_key"], "filename": t["filename"],
+                "date": t.get("date", ""), "location": t.get("location", ""),
+                "folder": t.get("folder", ""), "batch_id": batch_id,
+                "photographer_id": t.get("photographer_id", ""),
+                "photographer_name": t.get("photographer_name", ""),
+                "uploaded_at": t.get("trashed_at", ""),
+                "status": "pending", "batch_total": len(batch),
+            })
+    _save_pending_meta(pending)
+    _save_trash_meta([t for t in trash if t.get("batch_id") != batch_id])
+    return {"restored": len(batch)}
+
 @app.get("/admin/downloads", response_class=HTMLResponse)
 def downloads_page(request: Request):
     if not _admin_authed(request):
-        return RedirectResponse("/admin")
+        return RedirectResponse("/admin?next=/admin/downloads")
     return HTMLResponse(open("templates/downloads.html").read())
 
 @app.get("/admin/cull", response_class=HTMLResponse)
 def cull_page(request: Request):
     if not _admin_authed(request):
-        return RedirectResponse("/admin")
+        return RedirectResponse("/admin?next=/admin/cull")
     return HTMLResponse(open("templates/cull.html").read())
 
 @app.get("/admin/trash", response_class=HTMLResponse)
 def trash_page(request: Request):
     if not _admin_authed(request):
-        return RedirectResponse("/admin")
+        return RedirectResponse("/admin?next=/admin/trash")
     return HTMLResponse(open("templates/trash.html").read())
 
 @app.get("/admin/photographers", response_class=HTMLResponse)
 def photographers_page(request: Request):
     if not _admin_authed(request):
-        return RedirectResponse("/admin")
+        return RedirectResponse("/admin?next=/admin/photographers")
     return HTMLResponse(open("templates/photographers.html").read())

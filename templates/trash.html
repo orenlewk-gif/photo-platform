@@ -13,22 +13,35 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:
 .topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
 .topbar a:hover{color:#F5C518}
 .main{padding:1.5rem;max-width:1400px;margin:0 auto}
-.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:gap}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
 .page-title{font-size:1.3rem;font-weight:600}
 .page-sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-top:.2rem}
 .btn{border:none;border-radius:7px;padding:.5rem 1rem;font-size:.82rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.35rem}
 .btn-empty{background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.3);color:#f87171}
 .btn-empty:hover{background:rgba(248,113,113,.2)}
+/* Upload batch groups */
+.section-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.3);margin:1.5rem 0 .75rem}
+.section-label:first-child{margin-top:0}
+.batch-group{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1rem 1.25rem;margin-bottom:.85rem}
+.batch-group-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:.75rem}
+.batch-group-info .batch-name{font-size:1rem;font-weight:700}
+.batch-group-info .batch-meta{font-size:.8rem;color:rgba(255,255,255,.4);margin-top:.2rem}
+.days-badge{display:inline-block;border-radius:4px;padding:.15rem .4rem;font-size:.7rem;font-weight:600;margin-left:.5rem}
+.days-ok{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
+.days-warn{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
+.days-danger{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.2)}
+.batch-file-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.85rem}
+.batch-file-chip{background:rgba(255,255,255,.06);border-radius:4px;padding:.2rem .5rem;font-size:.72rem;color:rgba(255,255,255,.5)}
+.btn-restore-batch{background:#F5C518;color:#0c2336;border:none;border-radius:7px;padding:.55rem 1.1rem;font-size:.85rem;cursor:pointer;font-weight:700}
+.btn-restore-batch:hover{background:#e6b800}
+.btn-restore-batch:disabled{opacity:.4;cursor:not-allowed}
+/* Individual cull photos */
 .photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1rem}
 .photo-card{background:#091928;border:1px solid rgba(255,255,255,.08);border-radius:10px;overflow:hidden}
 .photo-thumb{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
 .photo-info{padding:.75rem}
 .photo-name{font-size:.82rem;color:rgba(255,255,255,.8);margin-bottom:.3rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .photo-meta{font-size:.75rem;color:rgba(255,255,255,.4);margin-bottom:.5rem;line-height:1.4}
-.days-badge{display:inline-block;border-radius:4px;padding:.15rem .4rem;font-size:.7rem;font-weight:600;margin-bottom:.6rem}
-.days-ok{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
-.days-warn{background:rgba(251,191,36,.12);color:#fbbf24;border:1px solid rgba(251,191,36,.2)}
-.days-danger{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.2)}
 .btn-restore{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7);width:100%}
 .btn-restore:hover{background:rgba(255,255,255,.1);color:#fff}
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:300px;color:rgba(255,255,255,.3);gap:.75rem;text-align:center}
@@ -41,7 +54,7 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:
 <div class="topbar">
   <div class="topbar-logo">CRYSTAL IMAGES — TRASH</div>
   <div class="topbar-spacer"></div>
-  <a href="/admin/cull">← Back to Cull</a>
+  <a href="/admin/downloads">← Back to Downloads</a>
   <a href="/admin/dashboard" style="margin-left:.75rem">Dashboard</a>
 </div>
 
@@ -49,18 +62,18 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:
   <div class="page-header">
     <div>
       <div class="page-title">Trash</div>
-      <div class="page-sub">Photos auto-purge after 7 days. Restore to put them back in Cull.</div>
+      <div class="page-sub">Items auto-purge after 7 days.</div>
     </div>
     <button class="btn btn-empty" onclick="emptyTrash()">🗑 Empty Trash</button>
   </div>
 
-  <div id="grid"></div>
+  <div id="content"><div class="empty"><div class="empty-icon">🗑</div><div>Loading…</div></div></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
-let items = [];
+let allItems = [];
 
 window.addEventListener('load', loadTrash);
 
@@ -68,7 +81,7 @@ async function loadTrash() {
   try {
     const res = await fetch('/api/trash');
     const d   = await res.json();
-    items = d.items || [];
+    allItems  = d.items || [];
     render();
   } catch(e) {
     showToast('Failed to load trash');
@@ -76,39 +89,101 @@ async function loadTrash() {
 }
 
 function render() {
-  const grid = document.getElementById('grid');
-  if (!items.length) {
-    grid.innerHTML = `<div class="empty"><div class="empty-icon">🗑</div><div>Trash is empty</div></div>`;
+  const el = document.getElementById('content');
+  if (!allItems.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">🗑</div><div>Trash is empty</div></div>`;
     return;
   }
 
-  grid.innerHTML = '';
-  const g = document.createElement('div');
-  g.className = 'photo-grid';
-  items.forEach(item => {
-    const card = document.createElement('div');
-    card.className = 'photo-card';
-
-    const daysClass = item.days_left <= 1 ? 'days-danger' : item.days_left <= 3 ? 'days-warn' : 'days-ok';
-    const daysText  = item.days_left === 0 ? 'Purging today' : `${item.days_left}d remaining`;
-
-    card.innerHTML = `
-      <img class="photo-thumb" src="${item.thumb_url}" loading="lazy">
-      <div class="photo-info">
-        <div class="photo-name">${item.filename}</div>
-        <div class="photo-meta">
-          ${item.location}${item.folder ? ' › ' + item.folder : ''}<br>
-          ${item.date}${item.photographer_name ? ' · ' + item.photographer_name : ''}
-        </div>
-        <div class="days-badge ${daysClass}">${daysText}</div>
-        <button class="btn btn-restore" onclick="restore('${item.key}')">↩ Restore to Cull</button>
-      </div>`;
-    g.appendChild(card);
+  // Split into upload batches (have batch_id) and individual cull photos
+  const batches = {};
+  const cullItems = [];
+  allItems.forEach(item => {
+    if (item.batch_id) {
+      if (!batches[item.batch_id]) batches[item.batch_id] = [];
+      batches[item.batch_id].push(item);
+    } else {
+      cullItems.push(item);
+    }
   });
-  grid.appendChild(g);
+
+  let html = '';
+
+  // Upload batches section
+  const batchList = Object.entries(batches);
+  if (batchList.length) {
+    html += '<div class="section-label">Upload Batches</div>';
+    batchList.forEach(([batchId, items]) => {
+      const first = items[0];
+      const minDays = Math.min(...items.map(i => i.days_left));
+      const daysClass = minDays <= 1 ? 'days-danger' : minDays <= 3 ? 'days-warn' : 'days-ok';
+      const daysText  = minDays === 0 ? 'Purging today' : `${minDays}d remaining`;
+      const folderLabel = first.folder && first.folder !== 'Unfiled' ? ` · ${first.folder}` : '';
+      const chips = items.map(i => `<span class="batch-file-chip">${i.filename}</span>`).join('');
+      html += `
+        <div class="batch-group" id="batch_${batchId}">
+          <div class="batch-group-header">
+            <div class="batch-group-info">
+              <div class="batch-name">${first.photographer_name || 'Unknown'}${folderLabel}
+                <span class="days-badge ${daysClass}">${daysText}</span>
+              </div>
+              <div class="batch-meta">${first.date} · ${items.length} photo${items.length !== 1 ? 's' : ''}</div>
+            </div>
+            <button class="btn-restore-batch" onclick="restoreBatch('${batchId}', this)">↩ Restore to Downloads</button>
+          </div>
+          <div class="batch-file-list">${chips}</div>
+        </div>`;
+    });
+  }
+
+  // Individual cull photos section
+  if (cullItems.length) {
+    html += '<div class="section-label">Cull Photos</div>';
+    html += '<div class="photo-grid">';
+    cullItems.forEach(item => {
+      const daysClass = item.days_left <= 1 ? 'days-danger' : item.days_left <= 3 ? 'days-warn' : 'days-ok';
+      const daysText  = item.days_left === 0 ? 'Purging today' : `${item.days_left}d remaining`;
+      html += `
+        <div class="photo-card" id="photo_${item.key.replace(/[^a-z0-9]/gi,'_')}">
+          <img class="photo-thumb" src="${item.thumb_url}" loading="lazy">
+          <div class="photo-info">
+            <div class="photo-name">${item.filename}</div>
+            <div class="photo-meta">
+              ${item.location || ''}${item.folder ? ' › ' + item.folder : ''}<br>
+              ${item.date || ''}${item.photographer_name ? ' · ' + item.photographer_name : ''}
+            </div>
+            <div class="days-badge ${daysClass}" style="margin-bottom:.6rem">${daysText}</div>
+            <button class="btn btn-restore" onclick="restoreOne('${item.key.replace(/'/g,"\\'")}')">↩ Restore to Cull</button>
+          </div>
+        </div>`;
+    });
+    html += '</div>';
+  }
+
+  el.innerHTML = html;
 }
 
-async function restore(key) {
+async function restoreBatch(batchId, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Restoring…';
+  try {
+    const res = await fetch('/api/trash/restore-batch', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({batch_id: batchId})
+    });
+    if (!res.ok) throw new Error();
+    allItems = allItems.filter(i => i.batch_id !== batchId);
+    render();
+    showToast('Batch restored to Downloads');
+  } catch(e) {
+    showToast('Failed to restore batch');
+    btn.disabled = false;
+    btn.textContent = '↩ Restore to Downloads';
+  }
+}
+
+async function restoreOne(key) {
   try {
     const res = await fetch('/api/trash/restore', {
       method: 'POST',
@@ -116,7 +191,7 @@ async function restore(key) {
       body: JSON.stringify({key})
     });
     if (!res.ok) throw new Error();
-    items = items.filter(i => i.key !== key);
+    allItems = allItems.filter(i => i.key !== key);
     render();
     showToast('Photo restored to Cull');
   } catch(e) {
@@ -125,11 +200,11 @@ async function restore(key) {
 }
 
 async function emptyTrash() {
-  if (!items.length) { showToast('Trash is already empty'); return; }
-  if (!confirm(`Permanently delete all ${items.length} photos in trash? This cannot be undone.`)) return;
+  if (!allItems.length) { showToast('Trash is already empty'); return; }
+  if (!confirm(`Permanently delete all ${allItems.length} items in trash? This cannot be undone.`)) return;
   try {
     await fetch('/api/trash/empty', {method:'POST'});
-    items = [];
+    allItems = [];
     render();
     showToast('Trash emptied');
   } catch(e) {
