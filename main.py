@@ -1793,19 +1793,33 @@ async def upload_presign(request: Request):
                 "date": date, "location": location,
                 "folder": folder,
                 "batch_id": batch_id,
+                "batch_total": batch_total,
                 "photographer_id": p["id"],
                 "photographer_name": p["name"],
                 "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                "status": "pending",
-                "batch_id": batch_id,
-                "batch_total": batch_total,
+                "status": "presigned",
             })
 
     if new_meta:
         pending_meta.extend(new_meta)
         _save_pending_meta(pending_meta)
 
-    return {"urls": urls}
+    return {"urls": urls, "batch_id": batch_id, "batch_total": batch_total}
+
+@app.post("/api/upload/confirm")
+async def upload_confirm(request: Request):
+    body = await request.json()
+    key  = body.get("key")
+    if not key:
+        return JSONResponse(status_code=400, content={"error": "Missing key"})
+    meta = _load_pending_meta()
+    for m in meta:
+        if m["key"] == key and m.get("status") == "presigned":
+            m["status"] = "pending"
+            m["uploaded_at"] = datetime.now(timezone.utc).isoformat()
+            break
+    _save_pending_meta(meta)
+    return {"confirmed": key}
 
 # ── Pending (cull feed) ──
 @app.get("/api/pending/dates")
@@ -2142,10 +2156,10 @@ def list_uploads(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta = _load_pending_meta()
-    # Group by batch_id (one card per upload session)
     batches = {}
     for m in meta:
-        if m.get("status") != "pending":
+        status = m.get("status")
+        if status not in ("pending", "presigned"):
             continue
         bid = m.get("batch_id", f"{m.get('photographer_id')}_{m.get('date')}_{m.get('folder')}")
         if bid not in batches:
@@ -2157,12 +2171,13 @@ def list_uploads(request: Request):
                 "folder": m.get("folder") or "Unfiled",
                 "received": 0,
                 "expected": m.get("batch_total", 0),
-                "uploaded_at": m.get("uploaded_at", ""),
+                "first_seen": m.get("uploaded_at", ""),
             }
-        batches[bid]["received"] += 1
+        if status == "pending":
+            batches[bid]["received"] += 1
         if not batches[bid]["expected"]:
-            batches[bid]["expected"] = batches[bid]["received"]
-    result = sorted(batches.values(), key=lambda x: x["uploaded_at"])
+            batches[bid]["expected"] = m.get("batch_total", 0)
+    result = sorted(batches.values(), key=lambda x: x["first_seen"])
     return {"batches": result}
 
 @app.get("/api/uploads/zip-all")
@@ -2171,77 +2186,73 @@ def download_all_zip(request: Request, batch_id: str = Query(...)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta = _load_pending_meta()
     items = [m for m in meta
-             if m.get("status") == "pending" and
+             if m.get("status") in ("pending", "presigned") and
              m.get("batch_id", f"{m.get('photographer_id')}_{m.get('date')}_{m.get('folder')}") == batch_id]
     if not items:
         return JSONResponse(status_code=404, content={"error": "No files found"})
 
-    trash_meta = _load_trash_meta()
+    # Mark as downloaded immediately — trash move happens in background
     now = datetime.now(timezone.utc)
     purge_at = (now + timedelta(days=7)).isoformat()
     photographer_id = items[0].get("photographer_id", "")
-    keys_to_zip = []
-    for m in items:
-        uid = str(uuid.uuid4())[:8]
-        trash_key = f"upload_trash/{uid}_{m['filename']}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
-                           Key=trash_key)
-            keys_to_zip.append((m["key"], m.get("folder") or "Unfiled", m["filename"]))
-            trash_meta.append({"key": trash_key, "original_key": m["key"],
-                                "filename": m["filename"], "date": m.get("date", ""),
-                                "folder": m.get("folder"), "photographer_id": photographer_id,
-                                "photographer_name": m.get("photographer_name", ""),
-                                "trashed_at": now.isoformat(), "purge_at": purge_at})
+    keys_to_zip = [(m["key"], m.get("folder") or "Unfiled", m["filename"]) for m in items]
+    for m in meta:
+        if m.get("batch_id") == batch_id and m.get("status") in ("pending", "presigned"):
             m["status"] = "downloaded"
-        except Exception as e:
-            print(f"Trash move failed {m['key']}: {e}")
-            keys_to_zip.append((m["key"], m.get("folder") or "Unfiled", m["filename"]))
     _save_pending_meta(meta)
-    _save_trash_meta(trash_meta)
+
+    # Move to trash in background thread
+    def move_to_trash():
+        trash_meta = _load_trash_meta()
+        for orig_key, folder_name, filename in keys_to_zip:
+            uid = str(uuid.uuid4())[:8]
+            trash_key = f"upload_trash/{uid}_{filename}"
+            try:
+                s3.copy_object(Bucket=R2_BUCKET,
+                               CopySource={"Bucket": R2_BUCKET, "Key": orig_key},
+                               Key=trash_key)
+                s3.delete_object(Bucket=R2_BUCKET, Key=orig_key)
+                trash_meta.append({"key": trash_key, "original_key": orig_key,
+                                    "filename": filename, "folder": folder_name,
+                                    "photographer_id": photographer_id,
+                                    "trashed_at": now.isoformat(), "purge_at": purge_at})
+            except Exception as e:
+                print(f"Trash move failed {orig_key}: {e}")
+        _save_trash_meta(trash_meta)
+
+    threading.Thread(target=move_to_trash, daemon=True).start()
 
     photographer_name = items[0].get("photographer_name", "photos").replace(" ", "_")
     date = items[0].get("date", "")
-    folder = items[0].get("folder", "").replace(" ", "_") or "upload"
+    folder_label = items[0].get("folder", "").replace(" ", "_") or "upload"
 
     def iter_zip():
         buf = BytesIO()
         last_pos = 0
         zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
-        for orig_key, folder, filename in keys_to_zip:
-            # Try original key first, then trash
-            src_key = orig_key
+        for key, folder_name, filename in keys_to_zip:
             try:
-                obj = s3.get_object(Bucket=R2_BUCKET, Key=src_key)
-            except Exception:
-                # Already moved to trash, find it
-                matched = next((t["key"] for t in trash_meta if t["original_key"] == orig_key), None)
-                if not matched:
-                    continue
-                try:
-                    obj = s3.get_object(Bucket=R2_BUCKET, Key=matched)
-                except Exception as e:
-                    print(f"zip skip {orig_key}: {e}")
-                    continue
-            data_bytes = obj["Body"].read()
-            zip_path = f"{folder}/{filename}"
-            zf.writestr(zip_path, data_bytes)
-            cur_pos = buf.tell()
-            buf.seek(last_pos)
-            chunk = buf.read(cur_pos - last_pos)
-            last_pos = cur_pos
-            if chunk:
-                yield chunk
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+                data_bytes = obj["Body"].read()
+                zf.writestr(f"{folder_name}/{filename}", data_bytes)
+                cur_pos = buf.tell()
+                buf.seek(last_pos)
+                chunk = buf.read(cur_pos - last_pos)
+                last_pos = cur_pos
+                if chunk:
+                    yield chunk
+            except Exception as e:
+                print(f"zip skip {key}: {e}")
         zf.close()
         buf.seek(last_pos)
         remainder = buf.read()
         if remainder:
             yield remainder
 
-    filename = f"{date}_{photographer_name}_{folder}.zip"
+    from fastapi.responses import StreamingResponse
+    zip_filename = f"{date}_{photographer_name}_{folder_label}.zip"
     return StreamingResponse(iter_zip(), media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'})
 
 @app.get("/admin/downloads", response_class=HTMLResponse)
 def downloads_page(request: Request):
