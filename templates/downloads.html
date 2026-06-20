@@ -38,6 +38,9 @@ h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 .btn-download{background:#F5C518;color:#0c2336}
 .btn-download:hover{background:#e6b800}
 .btn-download:disabled{opacity:.4;cursor:not-allowed}
+.btn-trash{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);border-radius:7px;padding:.5rem .75rem;font-size:1rem;cursor:pointer;line-height:1}
+.btn-trash:hover{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.4);color:#f87171}
+.card-actions{display:flex;gap:.5rem;align-items:center;flex-shrink:0}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
 .toast.show{opacity:1}
 </style>
@@ -85,8 +88,9 @@ async function loadBatches() {
       const pct = Math.round((received / expected) * 100);
       const ready = received >= expected;
       const folderLabel = b.folder && b.folder !== 'Unfiled' ? `· ${b.folder}` : '';
+      const safeId = b.batch_id.replace(/'/g,"\\'");
       return `
-        <div class="batch-card ${ready ? 'ready' : ''}">
+        <div class="batch-card ${ready ? 'ready' : ''}" id="card_${b.batch_id}">
           <div class="batch-info">
             <div class="batch-top">
               <div class="batch-name">${b.photographer_name}</div>
@@ -103,9 +107,12 @@ async function loadBatches() {
               </div>
             </div>
           </div>
-          <button class="btn btn-download" onclick="downloadBatch('${b.batch_id.replace(/'/g,"\\'")}', this)">
-            ⬇ Download & Done
-          </button>
+          <div class="card-actions">
+            <button class="btn btn-download" onclick="downloadBatch('${safeId}', this)" ${ready ? '' : 'disabled'}>
+              ⬇ Download ZIP
+            </button>
+            <button class="btn-trash" title="Move to trash" onclick="trashBatch('${safeId}', this)">✕</button>
+          </div>
         </div>`;
     }).join('');
   } catch(e) {
@@ -115,9 +122,29 @@ async function loadBatches() {
 
 function downloadBatch(batchId, btn) {
   btn.disabled = true;
-  btn.textContent = 'Preparing…';
+  btn.textContent = '⏳ Building…';
   window.location.href = `/api/uploads/zip-all?batch_id=${encodeURIComponent(batchId)}`;
-  setTimeout(() => { loadBatches(); }, 3000);
+  setTimeout(() => { btn.disabled = false; btn.textContent = '⬇ Download ZIP'; }, 5000);
+}
+
+async function trashBatch(batchId, btn) {
+  if (!confirm('Move this batch to trash? You can recover it from the Trash page.')) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/uploads/batch/${encodeURIComponent(batchId)}`, {method: 'DELETE'});
+    if (res.ok) {
+      const card = document.getElementById(`card_${batchId}`);
+      if (card) card.remove();
+      const remaining = document.querySelectorAll('.batch-card');
+      if (!remaining.length) document.getElementById('content').innerHTML = '<div class="empty">No pending uploads</div>';
+    } else {
+      showToast('Failed to trash batch');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    showToast('Failed to trash batch');
+    btn.disabled = false;
+  }
 }
 
 function showToast(msg) {
