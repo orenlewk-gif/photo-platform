@@ -41,6 +41,7 @@ h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 .btn-trash{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.5);border-radius:7px;padding:.5rem .75rem;font-size:1rem;cursor:pointer;line-height:1}
 .btn-trash:hover{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.4);color:#f87171}
 .card-actions{display:flex;gap:.5rem;align-items:center;flex-shrink:0}
+.dl-count{font-size:.72rem;color:rgba(74,222,128,.7);background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
 .toast.show{opacity:1}
 </style>
@@ -57,7 +58,6 @@ h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 <div class="main">
   <div class="header-row">
     <h2>Upload Queue</h2>
-    <button class="refresh-btn" onclick="loadBatches()">↻ Refresh</button>
   </div>
   <div id="content"><div class="empty">Loading…</div></div>
 </div>
@@ -90,6 +90,8 @@ async function loadBatches() {
       const ready = received >= expected;
       const folderLabel = b.folder && b.folder !== 'Unfiled' ? `· ${b.folder}` : '';
       const safeId = b.batch_id.replace(/'/g,"\\'");
+      const dlCount = b.download_count || 0;
+      const dlBadge = dlCount > 0 ? `<span class="dl-count">Downloaded ${dlCount}×</span>` : '';
       return `
         <div class="batch-card ${ready ? 'ready' : ''}" id="card_${b.batch_id}">
           <div class="batch-info">
@@ -109,6 +111,7 @@ async function loadBatches() {
             </div>
           </div>
           <div class="card-actions">
+            ${dlBadge}
             <button class="btn btn-download" onclick="downloadBatch('${safeId}', this)" ${ready ? '' : 'disabled'}>
               ⬇ Download ZIP
             </button>

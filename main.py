@@ -2181,6 +2181,9 @@ def list_uploads(request: Request):
             batches[bid]["received"] += 1
         if not batches[bid]["expected"]:
             batches[bid]["expected"] = m.get("batch_total", 0)
+        dc = m.get("download_count", 0)
+        if dc > batches[bid].get("download_count", 0):
+            batches[bid]["download_count"] = dc
     result = sorted(batches.values(), key=lambda x: x["first_seen"])
     return {"batches": result}
 
@@ -2220,6 +2223,13 @@ def download_all_zip(request: Request, batch_id: str = Query(...)):
             zf.writestr(f"{folder_name}/{filename}", data_bytes)
     zip_bytes = buf.getvalue()
 
+    # Increment download count
+    meta = _load_pending_meta()
+    for m in meta:
+        if m.get("batch_id") == batch_id:
+            m["download_count"] = m.get("download_count", 0) + 1
+    _save_pending_meta(meta)
+
     zip_filename = f"{date}_{photographer_name}_{folder_label}.zip"
     from fastapi.responses import Response
     return Response(content=zip_bytes, media_type="application/zip",
@@ -2244,8 +2254,12 @@ def trash_batch(batch_id: str, request: Request):
     date = items[0].get("date", "")
     location = items[0].get("location", "")
 
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    trash_lock = threading.Lock()
     trash_meta = _load_trash_meta()
-    for m in items:
+
+    def move_one(m):
         uid = str(uuid.uuid4())[:8]
         trash_key = f"upload_trash/{uid}_{m['filename']}"
         try:
@@ -2253,14 +2267,19 @@ def trash_batch(batch_id: str, request: Request):
                            CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
                            Key=trash_key)
             s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
-            trash_meta.append({"key": trash_key, "original_key": m["key"],
-                                "filename": m["filename"], "folder": m.get("folder", ""),
-                                "batch_id": batch_id, "photographer_id": photographer_id,
-                                "photographer_name": photographer_name,
-                                "date": date, "location": location,
-                                "trashed_at": now.isoformat(), "purge_at": purge_at})
+            entry = {"key": trash_key, "original_key": m["key"],
+                     "filename": m["filename"], "folder": m.get("folder", ""),
+                     "batch_id": batch_id, "photographer_id": photographer_id,
+                     "photographer_name": photographer_name,
+                     "date": date, "location": location,
+                     "trashed_at": now.isoformat(), "purge_at": purge_at}
+            with trash_lock:
+                trash_meta.append(entry)
         except Exception as e:
             print(f"Trash move failed {m['key']}: {e}")
+
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        list(ex.map(move_one, items))
 
     for m in meta:
         if m.get("batch_id") == batch_id:
