@@ -65,16 +65,17 @@ h2{font-size:1.1rem;font-weight:600;color:rgba(255,255,255,.9)}
 <div class="toast" id="toast"></div>
 
 <script>
-window.addEventListener('load', () => {
-  loadBatches();
-  setInterval(loadBatches, 15000);
-});
+let _pollTimer = null;
+
+window.addEventListener('load', () => { loadBatches(); });
 
 async function loadBatches() {
   try {
     const res = await fetch('/api/uploads');
     const d = await res.json();
     const batches = d.batches || [];
+    clearTimeout(_pollTimer);
+    if (batches.length) _pollTimer = setTimeout(loadBatches, 2000);
     const content = document.getElementById('content');
 
     if (!batches.length) {
