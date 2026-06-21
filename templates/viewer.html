@@ -599,10 +599,18 @@ function renderThumbs(photos) {
 
     card.querySelector('.select-check').addEventListener('click', e => {
       e.stopPropagation();
+      e.preventDefault();
       toggleSelect(i, e.shiftKey);
     });
 
-    card.addEventListener('click', () => openLB(i));
+    card.addEventListener('click', e => {
+      if (e.shiftKey) {
+        e.preventDefault();
+        toggleSelect(i, true);
+      } else {
+        openLB(i);
+      }
+    });
     gallery.appendChild(card);
   });
   lazyLoad(gallery);
