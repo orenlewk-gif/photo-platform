@@ -1757,6 +1757,38 @@ async def delete_clock_record(record_id: str):
     _save_clock_records(new_records)
     return {"status": "deleted"}
 
+@app.post("/api/clock/record")
+async def create_clock_record(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    photographer_id = body.get("photographer_id", "")
+    photographers = _load_photographers()
+    p = next((x for x in photographers if x["id"] == photographer_id), None)
+    if not p:
+        return JSONResponse(status_code=404, content={"error": "Photographer not found"})
+    record = {
+        "id": str(uuid.uuid4()),
+        "photographer_id": photographer_id,
+        "photographer_name": p["name"],
+        "location": body.get("location", ""),
+        "clock_in": body.get("clock_in", ""),
+        "clock_out": body.get("clock_out") or None,
+        "date": body.get("clock_in", "")[:10] if body.get("clock_in") else "",
+    }
+    records = _load_clock_records()
+    records.append(record)
+    _save_clock_records(records)
+    return {"record": record}
+
+@app.get("/api/clock/records")
+def get_all_clock_records(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    records = _load_clock_records()
+    photographers = _load_photographers()
+    return {"records": records, "photographers": photographers}
+
 # ── Upload ──
 @app.post("/api/upload/presign")
 async def upload_presign(request: Request):
@@ -2350,3 +2382,9 @@ def photographers_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/photographers")
     return HTMLResponse(open("templates/photographers.html").read())
+
+@app.get("/admin/timecards", response_class=HTMLResponse)
+def timecards_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/timecards")
+    return HTMLResponse(open("templates/timecards.html").read())
