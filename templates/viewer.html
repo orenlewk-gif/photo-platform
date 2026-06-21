@@ -599,7 +599,7 @@ function renderThumbs(photos) {
 
     card.querySelector('.select-check').addEventListener('click', e => {
       e.stopPropagation();
-      toggleSelect(i);
+      toggleSelect(i, e.shiftKey);
     });
 
     card.addEventListener('click', () => openLB(i));
@@ -609,16 +609,37 @@ function renderThumbs(photos) {
 }
 
 // ── Photo selection / favorites ──
-function toggleSelect(i) {
-  if (selectedPhotos.has(i)) {
-    selectedPhotos.delete(i);
-    removeFavorite(allPhotos[i].path);
+let lastSelectedIdx = null;
+
+function toggleSelect(i, shift = false) {
+  if (shift && lastSelectedIdx !== null && lastSelectedIdx !== i) {
+    // Select the whole range
+    const lo = Math.min(lastSelectedIdx, i);
+    const hi = Math.max(lastSelectedIdx, i);
+    const selecting = !selectedPhotos.has(i);
+    for (let j = lo; j <= hi; j++) {
+      if (selecting) {
+        selectedPhotos.add(j);
+        addFavorite(allPhotos[j]);
+      } else {
+        selectedPhotos.delete(j);
+        removeFavorite(allPhotos[j].path);
+      }
+      const card = document.querySelector(`.thumb-card[data-idx="${j}"]`);
+      if (card) card.classList.toggle('selected', selectedPhotos.has(j));
+    }
   } else {
-    selectedPhotos.add(i);
-    addFavorite(allPhotos[i]);
+    if (selectedPhotos.has(i)) {
+      selectedPhotos.delete(i);
+      removeFavorite(allPhotos[i].path);
+    } else {
+      selectedPhotos.add(i);
+      addFavorite(allPhotos[i]);
+    }
+    const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
+    if (card) card.classList.toggle('selected', selectedPhotos.has(i));
+    lastSelectedIdx = i;
   }
-  const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
-  if (card) card.classList.toggle('selected', selectedPhotos.has(i));
   updateFavBar();
   updateLBSelectBtn();
 }
