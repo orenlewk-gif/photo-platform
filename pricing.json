@@ -45,30 +45,23 @@
       "tiers": [
         {"label": "1 Photo",    "count": 1,     "price": 45},
         {"label": "2 Photos",   "count": 2,     "price": 75},
-        {"label": "All Photos", "count": "all", "price": 85}
+        {"label": "All Photos", "count": "all", "price": 110}
       ]
     },
     "Explorer Gondola": {
       "tiers": [
         {"label": "1 Photo",    "count": 1,     "price": 45},
         {"label": "2 Photos",   "count": 2,     "price": 75},
-        {"label": "All Photos", "count": "all", "price": 85}
+        {"label": "All Photos", "count": "all", "price": 110}
       ]
     },
     "Ramcharger Portraits": {
       "tiers": [
         {"label": "1 Photo",    "count": 1,     "price": 45},
         {"label": "2 Photos",   "count": 2,     "price": 75},
-        {"label": "All Photos", "count": "all", "price": 85}
+        {"label": "All Photos", "count": "all", "price": 110}
       ]
     }
   },
-  "combos": [
-    {
-      "locations": ["Lone Peak Portraits", "Explorer Gondola"],
-      "label": "Package for Both",
-      "price": 95,
-      "min_each": 3
-    }
-  ]
+  "combos": []
 }

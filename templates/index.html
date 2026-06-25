@@ -1478,13 +1478,7 @@ async function showGallery(date, location, family, ln, group) {
   // Only show last name search for portrait/family galleries
   document.getElementById('ln-bar').style.display = (family || ln) ? '' : 'none';
 
-  // Combo banner — shown on portrait locations that participate in a combo deal
-  const comboForLoc = globalCombos.find(c => (c.locations || []).includes(location));
-  const comboBannerHtml = comboForLoc ? `
-    <div class="combo-banner">
-      <strong>Take portraits in multiple spots?</strong> Get all photos from both locations for $${comboForLoc.price}!<br>
-      Select ${comboForLoc.min_each}+ photos from each location and the deal applies automatically at checkout.
-    </div>` : '';
+  const comboBannerHtml = '';
 
   const el = document.getElementById('view-gallery');
   el.innerHTML = `
