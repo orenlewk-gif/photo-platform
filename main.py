@@ -47,7 +47,7 @@ R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 # ─────────────────────────────────────────
 
 # Locations that use last-name sub-folders (portrait style)
-PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits"}
+PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip"}
 # Locations whose group/sub-folder names are searchable
 SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
 
