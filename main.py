@@ -315,7 +315,7 @@ def get_subfolders(date: str, location: str):
             continue
         if clean_location(item["location"]) != location:
             continue
-        key = (item.get("last_name", "") if is_portrait else item.get("group", "")).strip()
+        key = (item.get("last_name", "") or item.get("group", "") if is_portrait else item.get("group", "")).strip()
         # Fallback: if group/last_name field is missing, parse the sub-folder from the path
         if not key:
             parts = item.get("path", "").replace("\\", "/").split("/")
@@ -450,7 +450,8 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
     pool = [item for item in data
             if item["date"] == date
             and clean_location(item["location"]) == location
-            and (not family or item.get("last_name","").strip().lower() == family.lower())
+            and (not family or item.get("last_name","").strip().lower() == family.lower()
+                 or (family and not item.get("last_name","").strip() and item.get("group","").strip().lower() == family.lower()))
             and group_matches(item)]
     pool.sort(key=lambda x: natural_sort_key(x["path"]))
     results = []
