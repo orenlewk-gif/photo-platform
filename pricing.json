@@ -35,10 +35,10 @@
     },
     "Mountain Biking": {
       "tiers": [
-        {"label": "1 Photo",         "count": 1,  "price": 25},
-        {"label": "2 Photos",        "count": 2,  "price": 40},
-        {"label": "3 Photos",        "count": 3,  "price": 50},
-        {"label": "Up to 20 Photos", "count": 20, "price": 60,  "max": true}
+        {"label": "1 Photo",         "count": 1,  "price": 30},
+        {"label": "2 Photos",        "count": 2,  "price": 50},
+        {"label": "3 Photos",        "count": 3,  "price": 60},
+        {"label": "Up to 30 Photos", "count": 30, "price": 80,  "max": true}
       ]
     },
     "Lone Peak Portraits": {
