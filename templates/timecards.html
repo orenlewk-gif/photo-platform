@@ -92,7 +92,7 @@ select:focus,input[type=date]:focus{border-color:#F5C518}
 
 <!-- Add Record Modal -->
 <div class="modal-bg" id="modalBg">
-  <div class="modal">
+  <div class="modal" style="max-width:520px">
     <h3>Add Time Record</h3>
     <label>Photographer</label>
     <select id="addPhotographer"></select>
@@ -105,13 +105,22 @@ select:focus,input[type=date]:focus{border-color:#F5C518}
       <option>Mountain Biking</option>
       <option>Adventure Zip Line</option>
     </select>
-    <label>Clock In</label>
-    <input type="datetime-local" id="addClockIn">
-    <label>Clock Out</label>
-    <input type="datetime-local" id="addClockOut">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.9rem">
+      <div>
+        <label style="margin-top:0">Clock In Time</label>
+        <input type="time" id="addClockInTime">
+      </div>
+      <div>
+        <label style="margin-top:0">Clock Out Time</label>
+        <input type="time" id="addClockOutTime">
+      </div>
+    </div>
+    <label>Dates <span style="color:rgba(255,255,255,.3);font-weight:400">(add one or more)</span></label>
+    <div id="dateList" style="display:flex;flex-direction:column;gap:.5rem"></div>
+    <button class="btn btn-ghost btn-sm" onclick="addDateRow()" style="margin-top:.5rem;width:100%">+ Add Date</button>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAdd()">Add Record</button>
+      <button class="btn btn-primary" onclick="submitAdd()">Add Record(s)</button>
     </div>
   </div>
 </div>
@@ -336,11 +345,22 @@ async function deleteRecord(id) {
   }
 }
 
+function addDateRow(value = '') {
+  const div = document.createElement('div');
+  div.style.cssText = 'display:flex;gap:.5rem;align-items:center';
+  div.innerHTML = `<input type="date" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:7px;color:#fff;padding:.65rem .9rem;font-size:.9rem;outline:none" value="${value}">
+    <button class="btn btn-danger btn-sm" onclick="this.parentElement.remove()" style="flex-shrink:0">✕</button>`;
+  document.getElementById('dateList').appendChild(div);
+}
+
 function openAddModal() {
-  document.getElementById('addClockIn').value  = '';
-  document.getElementById('addClockOut').value = '';
+  document.getElementById('addClockInTime').value  = '';
+  document.getElementById('addClockOutTime').value = '';
+  document.getElementById('dateList').innerHTML = '';
+  addDateRow();
   document.getElementById('modalBg').classList.add('open');
 }
+
 function closeModal() {
   document.getElementById('modalBg').classList.remove('open');
 }
@@ -348,28 +368,29 @@ function closeModal() {
 async function submitAdd() {
   const photographerId = document.getElementById('addPhotographer').value;
   const location       = document.getElementById('addLocation').value;
-  const clockIn        = document.getElementById('addClockIn').value;
-  const clockOut       = document.getElementById('addClockOut').value;
-  if (!photographerId || !clockIn) { showToast('Photographer and clock-in time are required'); return; }
+  const clockInTime    = document.getElementById('addClockInTime').value;
+  const clockOutTime   = document.getElementById('addClockOutTime').value;
+  const dates = Array.from(document.querySelectorAll('#dateList input[type=date]'))
+    .map(i => i.value).filter(Boolean);
+  if (!photographerId || !clockInTime || !dates.length) {
+    showToast('Photographer, clock-in time, and at least one date are required'); return;
+  }
   try {
-    const res = await fetch('/api/clock/record', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        photographer_id: photographerId,
-        location,
-        clock_in:  toUTCIso(clockIn),
-        clock_out: clockOut ? toUTCIso(clockOut) : null,
-      })
-    });
-    if (!res.ok) throw new Error();
-    const d = await res.json();
-    allRecords.push(d.record);
+    const results = await Promise.all(dates.map(date => {
+      const clockIn  = toUTCIso(`${date}T${clockInTime}`);
+      const clockOut = clockOutTime ? toUTCIso(`${date}T${clockOutTime}`) : null;
+      return fetch('/api/clock/record', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ photographer_id: photographerId, location, clock_in: clockIn, clock_out: clockOut })
+      }).then(r => r.json());
+    }));
+    results.forEach(d => { if (d.record) allRecords.push(d.record); });
     closeModal();
     renderContent();
-    showToast('Record added');
+    showToast(`${dates.length} record${dates.length > 1 ? 's' : ''} added`);
   } catch(e) {
-    showToast('Failed to add record');
+    showToast('Failed to add records');
   }
 }
 
