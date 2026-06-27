@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zip Folders — Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem;height:56px}
+.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
+.topbar a:hover{color:#F5C518}
+.main{padding:1.5rem;max-width:860px;margin:0 auto}
+h2{font-size:1.1rem;font-weight:600;margin-bottom:.4rem}
+.sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-bottom:1.75rem}
+.notice{background:rgba(245,197,24,.07);border:1px solid rgba(245,197,24,.2);border-radius:8px;padding:.75rem 1rem;font-size:.82rem;color:rgba(255,255,255,.6);margin-bottom:1.5rem}
+.notice strong{color:#F5C518}
+.day-group{margin-bottom:1.5rem}
+.day-header{font-size:.8rem;font-weight:700;color:rgba(255,255,255,.4);letter-spacing:.08em;text-transform:uppercase;padding:.4rem 0;border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:.65rem}
+.folder-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.85rem 1rem;margin-bottom:.5rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.folder-card.assigned{border-color:rgba(74,222,128,.2)}
+.folder-name{font-size:1rem;font-weight:700;flex:1;min-width:140px}
+.folder-meta{font-size:.78rem;color:rgba(255,255,255,.4);margin-top:.15rem}
+.group-select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;padding:.45rem .75rem;font-size:.85rem;outline:none;min-width:160px}
+.group-select:focus{border-color:#F5C518}
+.group-select option{background:#0a1e2e}
+.btn{border:none;border-radius:7px;padding:.45rem .9rem;font-size:.8rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap}
+.btn-primary{background:#F5C518;color:#0c2336}
+.btn-primary:hover{background:#e6b800}
+.btn-ghost{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.7)}
+.btn-ghost:hover{background:rgba(255,255,255,.12)}
+.assigned-badge{font-size:.72rem;color:#4ade80;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
+.unassigned-badge{font-size:.72rem;color:rgba(255,255,255,.35);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
+.empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — ZIP FOLDERS (TEST)</div>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/zip-pricing">Pricing Tiers</a>
+  <a href="/admin/dashboard" style="margin-left:.75rem">Dashboard</a>
+</div>
+
+<div class="main">
+  <h2>Zip Line Folders</h2>
+  <p class="sub">Assign a group size to each family folder. The customer will see pricing based on the group size you set.</p>
+
+  <div class="notice">
+    <strong>Test environment</strong> — changes here are separate from live pricing.
+  </div>
+
+  <div id="content"><div class="empty">Loading…</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let folders = [];
+let pricingTiers = [];
+
+window.addEventListener('load', async () => {
+  const [fRes, pRes] = await Promise.all([
+    fetch('/api/zip-folders'),
+    fetch('/api/zip-pricing')
+  ]);
+  const fd = await fRes.json();
+  const pd = await pRes.json();
+  folders = fd.folders || [];
+  pricingTiers = pd.tiers || [];
+  render();
+});
+
+function render() {
+  const content = document.getElementById('content');
+  if (!folders.length) {
+    content.innerHTML = '<div class="empty">No zip line folders found</div>';
+    return;
+  }
+
+  const byDate = {};
+  folders.forEach(f => {
+    if (!byDate[f.date]) byDate[f.date] = [];
+    byDate[f.date].push(f);
+  });
+
+  content.innerHTML = Object.keys(byDate).sort((a,b) => b.localeCompare(a)).map(date => {
+    const dayFolders = byDate[date];
+    const label = new Date(date + 'T12:00:00').toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+    return `<div class="day-group">
+      <div class="day-header">${label}</div>
+      ${dayFolders.map(f => renderCard(f)).join('')}
+    </div>`;
+  }).join('');
+}
+
+function renderCard(f) {
+  const assigned = f.group_size !== null && f.group_size !== undefined;
+  const badge = assigned
+    ? `<span class="assigned-badge">${f.group_size} ${f.group_size == 1 ? 'Person' : 'People'}</span>`
+    : `<span class="unassigned-badge">Not set</span>`;
+
+  const options = ['<option value="">— Select group size —</option>',
+    ...pricingTiers.map(t =>
+      `<option value="${t.people}" ${String(f.group_size) === String(t.people) ? 'selected' : ''}>${t.people} ${t.people == 1 ? 'Person' : 'People'} — $${t.price}</option>`
+    )
+  ].join('');
+
+  return `<div class="folder-card ${assigned ? 'assigned' : ''}" id="card_${btoa(f.folder_key)}">
+    <div style="flex:1;min-width:180px">
+      <div class="folder-name">${f.last_name}</div>
+      <div class="folder-meta">${f.location} · ${f.photo_count} photos</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap">
+      ${badge}
+      <select class="group-select" onchange="setGroupSize('${f.folder_key}', this.value, this)">${options}</select>
+      <a href="/admin/zip-preview/${f.date}/${encodeURIComponent(f.last_name)}" target="_blank">
+        <button class="btn btn-ghost">Preview →</button>
+      </a>
+    </div>
+  </div>`;
+}
+
+async function setGroupSize(folderKey, groupSize, el) {
+  const res = await fetch('/api/zip-folder/set-group-size', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({folder_key: folderKey, group_size: groupSize || null})
+  });
+  if (res.ok) {
+    const f = folders.find(x => x.folder_key === folderKey);
+    if (f) f.group_size = groupSize || null;
+    render();
+    showToast(groupSize ? `Set to ${groupSize} people` : 'Group size cleared');
+  } else {
+    showToast('Failed to save');
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>

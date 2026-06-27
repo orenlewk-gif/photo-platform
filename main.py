@@ -2389,3 +2389,152 @@ def timecards_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/timecards")
     return HTMLResponse(open("templates/timecards.html").read())
+
+# ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
+
+ZIP_LOCS_SET = {"adventure zip", "adventure zip line"}
+ZIP_PRICING_KEY = "meta/zip_pricing.json"
+FOLDER_META_KEY = "meta/folder_meta.json"
+
+def _load_zip_pricing():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=ZIP_PRICING_KEY)
+        return json.loads(obj["Body"].read())
+    except:
+        return {"tiers": []}
+
+def _save_zip_pricing(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=ZIP_PRICING_KEY,
+                  Body=json.dumps(d).encode(), ContentType="application/json")
+
+def _load_folder_meta():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=FOLDER_META_KEY)
+        return json.loads(obj["Body"].read())
+    except:
+        return {}
+
+def _save_folder_meta(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=FOLDER_META_KEY,
+                  Body=json.dumps(d).encode(), ContentType="application/json")
+
+def _folder_key(date, location, last_name):
+    return f"{date}|{location}|{last_name}"
+
+@app.get("/admin/zip-pricing", response_class=HTMLResponse)
+def zip_pricing_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/zip-pricing")
+    return HTMLResponse(open("templates/zip_pricing.html").read())
+
+@app.get("/admin/zip-folders", response_class=HTMLResponse)
+def zip_folders_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/zip-folders")
+    return HTMLResponse(open("templates/zip_folders.html").read())
+
+@app.get("/admin/zip-preview/{date}/{last_name}", response_class=HTMLResponse)
+def zip_preview_page(request: Request, date: str, last_name: str):
+    if not _admin_authed(request):
+        return RedirectResponse(f"/admin?next=/admin/zip-preview/{date}/{last_name}")
+    return HTMLResponse(open("templates/zip_preview.html").read())
+
+@app.get("/api/zip-pricing")
+def api_get_zip_pricing(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return _load_zip_pricing()
+
+@app.post("/api/zip-pricing")
+async def api_save_zip_pricing(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_zip_pricing(body)
+    return {"status": "ok"}
+
+@app.get("/api/zip-folders")
+def api_get_zip_folders(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    folder_meta = _load_folder_meta()
+    folders = {}
+    for item in data:
+        loc = item.get("location", "").strip().lower()
+        if loc not in ZIP_LOCS_SET:
+            continue
+        date = item.get("date", "")
+        location = item.get("location", "").strip()
+        last_name = (item.get("last_name") or item.get("group") or "").strip()
+        if not last_name:
+            continue
+        fk = _folder_key(date, location, last_name)
+        if fk not in folders:
+            folders[fk] = {
+                "folder_key": fk,
+                "date": date,
+                "location": location,
+                "last_name": last_name,
+                "photo_count": 0,
+                "group_size": folder_meta.get(fk, {}).get("group_size", None),
+            }
+        folders[fk]["photo_count"] += 1
+    result = sorted(folders.values(), key=lambda x: (x["date"], x["last_name"]), reverse=True)
+    return {"folders": result}
+
+@app.post("/api/zip-folder/set-group-size")
+async def api_set_group_size(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    fk = body.get("folder_key")
+    group_size = body.get("group_size")
+    if not fk:
+        return JSONResponse(status_code=400, content={"error": "Missing folder_key"})
+    folder_meta = _load_folder_meta()
+    if fk not in folder_meta:
+        folder_meta[fk] = {}
+    folder_meta[fk]["group_size"] = group_size
+    _save_folder_meta(folder_meta)
+    return {"status": "ok"}
+
+@app.get("/api/zip-preview/{date}/{last_name}")
+def api_zip_preview(request: Request, date: str, last_name: str):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    folder_meta = _load_folder_meta()
+    zip_pricing = _load_zip_pricing()
+    photos = []
+    location = ""
+    for item in data:
+        loc = item.get("location", "").strip().lower()
+        if loc not in ZIP_LOCS_SET:
+            continue
+        if item.get("date") != date:
+            continue
+        ln = (item.get("last_name") or item.get("group") or "").strip()
+        if ln.lower() != last_name.lower():
+            continue
+        location = item.get("location", "").strip()
+        photos.append({"path": item["path"], "filename": os.path.basename(item["path"])})
+    fk = _folder_key(date, location, last_name)
+    group_size = folder_meta.get(fk, {}).get("group_size")
+    tiers = zip_pricing.get("tiers", [])
+    price = None
+    for t in tiers:
+        if str(t.get("people")) == str(group_size):
+            price = t.get("price")
+            break
+    thumb_urls = []
+    for p in photos[:50]:
+        try:
+            url = _presigned_get(p["path"].lstrip("/").replace(
+                "/Users/labserver/photo-platform/", ""), expires=3600)
+            thumb_urls.append({"filename": p["filename"], "url": url})
+        except:
+            pass
+    return {
+        "date": date, "last_name": last_name, "location": location,
+        "group_size": group_size, "price": price,
+        "photo_count": len(photos), "photos": thumb_urls,
+    }
