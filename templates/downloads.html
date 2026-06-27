@@ -88,7 +88,7 @@ async function loadBatches() {
       const expected = b.expected || received;
       const pct = Math.round((received / expected) * 100);
       const ready = received >= expected;
-      const folderLabel = b.folder && b.folder !== 'Unfiled' ? `· ${b.folder}` : '';
+      const groupName = b.folder && b.folder !== 'Unfiled' ? b.folder : '';
       const safeId = b.batch_id.replace(/'/g,"\\'");
       const dlCount = b.download_count || 0;
       const dlBadge = dlCount > 0 ? `<span class="dl-count">Downloaded ${dlCount}×</span>` : '';
@@ -96,8 +96,8 @@ async function loadBatches() {
         <div class="batch-card ${ready ? 'ready' : ''}" id="card_${b.batch_id}">
           <div class="batch-info">
             <div class="batch-top">
-              <div class="batch-name">${b.photographer_name}</div>
-              <div class="batch-folder">${folderLabel}</div>
+              <div class="batch-name">${groupName || b.photographer_name}</div>
+              <div class="batch-folder" style="color:rgba(255,255,255,.4)">${groupName ? `· ${b.photographer_name}` : ''}</div>
               <div class="batch-date">${b.date}</div>
             </div>
             <div class="progress-wrap">
