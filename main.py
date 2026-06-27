@@ -224,6 +224,8 @@ print(f"Loaded {len(data)} photos.")
 def get_days():
     days = {}
     for item in data:
+        if item.get("draft"):
+            continue
         d = item["date"]
         if d not in days:
             days[d] = {"locations": set(), "galleries": set(), "loc_previews": {}}
@@ -270,9 +272,9 @@ def get_dates():
 @app.get("/api/locations")
 def get_locations(date: str = Query(None)):
     if date:
-        items = [item for item in data if item["date"] == date]
+        items = [item for item in data if item["date"] == date and not item.get("draft")]
     else:
-        items = data
+        items = [item for item in data if not item.get("draft")]
     loc_map = {}
     all_previews = {}
     for item in items:
@@ -311,6 +313,8 @@ def get_subfolders(date: str, location: str):
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
     subfolders = {}
     for item in data:
+        if item.get("draft"):
+            continue
         if item["date"] != date:
             continue
         if clean_location(item["location"]) != location:
@@ -448,7 +452,8 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
         return g.lower() == group.lower()
 
     pool = [item for item in data
-            if item["date"] == date
+            if not item.get("draft")
+            and item["date"] == date
             and clean_location(item["location"]) == location
             and (not family or item.get("last_name","").strip().lower() == family.lower()
                  or (family and not item.get("last_name","").strip() and item.get("group","").strip().lower() == family.lower()))
@@ -2497,9 +2502,12 @@ def api_get_zip_folders(request: Request):
                 "location": location,
                 "last_name": last_name,
                 "photo_count": 0,
+                "draft_count": 0,
                 "group_size": folder_meta.get(fk, {}).get("group_size", None),
             }
         folders[fk]["photo_count"] += 1
+        if item.get("draft"):
+            folders[fk]["draft_count"] += 1
     result = sorted(folders.values(), key=lambda x: (x["date"], x["last_name"]), reverse=True)
     return {"folders": result}
 
@@ -2605,3 +2613,93 @@ def api_zip_preview(request: Request, date: str, last_name: str):
         "group_size": group_size, "tier": tier_data,
         "photo_count": len(photos), "photos": thumb_urls,
     }
+
+# ── Admin Upload ──────────────────────────────────────────────────────────────
+
+@app.get("/admin/upload", response_class=HTMLResponse)
+def admin_upload_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/upload")
+    return HTMLResponse(open("templates/admin_upload.html").read())
+
+@app.post("/api/admin/upload/presign")
+async def admin_upload_presign(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    files    = body.get("files", [])
+    if not date or not location or not files:
+        return JSONResponse(status_code=400, content={"error": "Missing date, location, or files"})
+    loc_slug    = location.lower().replace(" ", "-")
+    folder_slug = folder.lower().replace(" ", "-") if folder else ""
+    urls = []
+    for f in files:
+        filename = os.path.basename(f["name"])
+        if folder_slug:
+            key = f"images/{date}/{loc_slug}/{folder_slug}/{filename}"
+        else:
+            key = f"images/{date}/{loc_slug}/{filename}"
+        presigned = s3.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": R2_BUCKET, "Key": key, "ContentType": f.get("type", "image/jpeg")},
+            ExpiresIn=7200,
+        )
+        urls.append({"key": key, "url": presigned, "filename": filename})
+    return {"urls": urls}
+
+@app.post("/api/admin/upload/index")
+async def admin_upload_index(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    keys     = body.get("keys", [])
+    if not date or not location or not keys:
+        return JSONResponse(status_code=400, content={"error": "Missing fields"})
+    is_portrait = location.lower() in PORTRAIT_LOCATIONS
+    existing    = {item["path"] for item in data}
+    added       = 0
+    for key in keys:
+        if key not in existing:
+            data.append({
+                "path":      key,
+                "date":      date,
+                "location":  location,
+                "last_name": folder if is_portrait else "",
+                "group":     "" if is_portrait else folder,
+                "embedding": None,
+                "draft":     True,
+            })
+            existing.add(key)
+            added += 1
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(), ContentType="application/json")
+    return {"indexed": added, "date": date, "location": location, "folder": folder}
+
+@app.post("/api/admin/push-live")
+async def admin_push_live(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    pushed   = 0
+    for item in data:
+        if (item.get("draft")
+                and item["date"] == date
+                and item["location"].strip().lower() == location.lower()
+                and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()):
+            del item["draft"]
+            pushed += 1
+    if pushed:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    return {"pushed": pushed}

@@ -98,9 +98,6 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .gallery-controls {
   display:flex; align-items:center; gap:1.5rem; margin-bottom:1.2rem; flex-wrap:wrap;
 }
-.filter-bar { display:flex; gap:0.75rem; flex:1; min-width:220px; }
-.filter-bar input { flex:1; }
-.filter-bar .btn { width:auto; padding:0.65rem 1.4rem; }
 
 .size-slider-wrap {
   display:flex; align-items:center; gap:0.6rem;
@@ -1492,10 +1489,6 @@ async function showGallery(date, location, family, ln, group) {
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
     <div class="gallery-controls">
-      ${!(family || ln) ? `<div class="filter-bar">
-        <input type="text" id="filter-input" placeholder="Search by color… e.g. red, blue, pink, yellow" />
-        <button class="btn" onclick="runFilter('${escQ(date||'')}','${escQ(location||'')}')">Filter</button>
-      </div>` : ''}
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="5" value="3" />
         <span>⊞</span>
@@ -1511,10 +1504,6 @@ async function showGallery(date, location, family, ln, group) {
   });
   // Always call updateCart so the cart bar hides if the new folder has no selections
   updateCart();
-  const filterInput = el.querySelector('#filter-input');
-  if (filterInput) filterInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') runFilter(date||'', location||'');
-  });
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
     let cols;
@@ -2071,36 +2060,6 @@ function updateCart() {
   const banner = document.getElementById('print-upsell-banner');
   if (count > 0) banner.classList.add('show');
   else           banner.classList.remove('show');
-}
-
-async function runFilter(date, location) {
-  const q = document.getElementById('filter-input').value.trim();
-  if (!q) { renderThumbs(allPhotos); return; }
-  showSpinner();
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60000);
-    let url = `/api/search?query=${enc(q)}`;
-    if (date)         url += `&date=${enc(date)}`;
-    if (location)     url += `&location=${enc(location)}`;
-    if (currentGroup) url += `&group=${enc(currentGroup)}`;
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || e.detail || `HTTP ${res.status}`); }
-    const data = await res.json();
-    hideSpinner();
-    allPhotos = data.photos;
-    renderThumbs(data.photos);
-    if (!data.photos.length) {
-      document.getElementById('gallery').innerHTML = '<div class="msg">No photos found. Try different keywords.</div>';
-    }
-  } catch(e) {
-    hideSpinner();
-    const msg = e.name === 'AbortError'
-      ? 'Search is taking too long — the search engine may still be warming up. Please try again in a moment.'
-      : `Search unavailable: ${e.message}`;
-    document.getElementById('gallery').innerHTML = `<div class="msg">${msg}</div>`;
-  }
 }
 
 // ── Cart View ──

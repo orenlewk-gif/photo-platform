@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Admin Upload — Crystal Images</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:100vh}
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.5rem;height:56px}
+.topbar-logo{font-size:.9rem;letter-spacing:.1em;color:#F5C518;font-weight:700}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.45);font-size:.8rem;text-decoration:none}
+.topbar a:hover{color:#F5C518}
+.main{max-width:760px;margin:0 auto;padding:2rem 1.5rem 4rem}
+h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
+.sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-bottom:2rem}
+
+/* Form */
+.fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.85rem;margin-bottom:1.25rem}
+@media(max-width:600px){.fields{grid-template-columns:1fr}}
+.field label{display:block;font-size:.72rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem}
+.field input,.field select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;font-family:inherit;outline:none}
+.field input:focus,.field select:focus{border-color:#F5C518}
+.field select option{background:#0c2336}
+
+/* Drop zone */
+.dropzone{border:2px dashed rgba(255,255,255,.15);border-radius:14px;padding:3rem 2rem;text-align:center;cursor:pointer;transition:all .2s;position:relative;margin-bottom:1.25rem}
+.dropzone:hover,.dropzone.drag{border-color:#F5C518;background:rgba(245,197,24,.04)}
+.dropzone-icon{font-size:2.5rem;margin-bottom:.75rem;opacity:.4}
+.dropzone-text{font-size:1rem;font-weight:500;color:rgba(255,255,255,.6)}
+.dropzone-sub{font-size:.8rem;color:rgba(255,255,255,.3);margin-top:.4rem}
+.dropzone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+
+/* Upload button */
+.upload-btn{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:10px;padding:.85rem;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;transition:background .2s;margin-bottom:1.5rem}
+.upload-btn:hover{background:#ffd700}
+.upload-btn:disabled{opacity:.4;cursor:not-allowed}
+
+/* File list */
+.file-list{margin-bottom:1.5rem}
+.file-count{font-size:.82rem;color:rgba(255,255,255,.4);margin-bottom:.75rem}
+.file-row{display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.file-row:last-child{border-bottom:none}
+.file-name{flex:1;font-size:.82rem;color:rgba(255,255,255,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-bar-wrap{width:120px;height:5px;background:rgba(255,255,255,.1);border-radius:3px;overflow:hidden;flex-shrink:0}
+.file-bar{height:100%;background:#F5C518;width:0%;transition:width .1s}
+.file-status{font-size:.72rem;width:52px;text-align:right;flex-shrink:0;color:rgba(255,255,255,.35)}
+.file-status.done{color:#4ade80}
+.file-status.err{color:#f87171}
+
+/* Overall progress */
+.overall-wrap{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.5rem;display:none}
+.overall-label{font-size:.8rem;color:rgba(255,255,255,.5);margin-bottom:.6rem;display:flex;justify-content:space-between}
+.overall-bar-track{height:8px;background:rgba(255,255,255,.1);border-radius:4px;overflow:hidden}
+.overall-bar{height:100%;background:#F5C518;width:0%;transition:width .15s;border-radius:4px}
+
+/* Push live card */
+.live-card{background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.2);border-radius:12px;padding:1.25rem 1.5rem;display:none}
+.live-card h3{font-size:.95rem;font-weight:700;color:#4ade80;margin-bottom:.35rem}
+.live-card p{font-size:.82rem;color:rgba(255,255,255,.5);margin-bottom:1rem}
+.live-btn{background:#4ade80;color:#0c2336;border:none;border-radius:8px;padding:.7rem 1.5rem;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit;transition:background .2s}
+.live-btn:hover{background:#22c55e}
+.live-btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Path preview */
+.path-preview{display:flex;align-items:center;gap:.65rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:.55rem .9rem;margin-bottom:1.25rem}
+.path-label{font-size:.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);white-space:nowrap}
+.path-preview code{font-size:.8rem;color:#F5C518;word-break:break-all;font-family:'SF Mono',Menlo,monospace}
+
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;opacity:0;transition:opacity .25s}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — ADMIN UPLOAD</div>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/dashboard">Dashboard</a>
+</div>
+
+<div class="main">
+  <h2>Upload Photos</h2>
+  <p class="sub">Photos upload directly to R2 and sit in draft until you push live.</p>
+
+  <div class="fields">
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="date" />
+    </div>
+    <div class="field">
+      <label>Location</label>
+      <select id="location">
+        <option value="">— Select —</option>
+        <option>Adventure Zip</option>
+        <option>Adventure Zip Line</option>
+        <option>Nature Zip Line</option>
+        <option>Mountain Biking</option>
+        <option>Lone Peak Portraits</option>
+        <option>Explorer Gondola</option>
+        <option>Ramcharger Portraits</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Last Name / Group</label>
+      <input type="text" id="folder" placeholder="e.g. Smith or Trail Riders" />
+    </div>
+  </div>
+
+  <div class="path-preview" id="path-preview" style="display:none">
+    <span class="path-label">R2 path</span>
+    <code id="path-text"></code>
+  </div>
+
+  <div class="dropzone" id="dropzone">
+    <div class="dropzone-icon">📷</div>
+    <div class="dropzone-text">Drop photos here or click to browse</div>
+    <div class="dropzone-sub" id="drop-sub">No files selected</div>
+    <input type="file" id="file-input" accept="image/*" multiple />
+  </div>
+
+  <div class="file-list" id="file-list" style="display:none">
+    <div class="file-count" id="file-count"></div>
+    <div id="file-rows"></div>
+  </div>
+
+  <div class="overall-wrap" id="overall-wrap">
+    <div class="overall-label">
+      <span id="overall-label-text">Uploading…</span>
+      <span id="overall-pct">0%</span>
+    </div>
+    <div class="overall-bar-track"><div class="overall-bar" id="overall-bar"></div></div>
+  </div>
+
+  <button class="upload-btn" id="upload-btn" disabled onclick="startUpload()">Upload Photos</button>
+
+  <div class="live-card" id="live-card">
+    <h3>Upload complete</h3>
+    <p id="live-desc">Photos are in draft — not visible to customers yet. Set group size and pricing in the admin pages, then push live when ready.</p>
+    <button class="live-btn" id="live-btn" onclick="pushLive()">Push Live</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const CONCURRENCY = 6;
+let selectedFiles = [];
+let uploadResult  = null;
+
+// Default date to today
+document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+
+// File input
+const fileInput = document.getElementById('file-input');
+const dropzone  = document.getElementById('dropzone');
+
+fileInput.addEventListener('change', () => setFiles([...fileInput.files]));
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  setFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
+});
+
+function setFiles(files) {
+  selectedFiles = files;
+  const sub = document.getElementById('drop-sub');
+  sub.textContent = files.length ? `${files.length} photo${files.length !== 1 ? 's' : ''} selected` : 'No files selected';
+  document.getElementById('upload-btn').disabled = !files.length || !validate();
+  renderFileList();
+}
+
+function validate() {
+  return document.getElementById('date').value
+      && document.getElementById('location').value
+      && selectedFiles.length;
+}
+
+['date','location','folder'].forEach(id => {
+  document.getElementById(id).addEventListener('change', () => {
+    document.getElementById('upload-btn').disabled = !validate() || !selectedFiles.length;
+    updatePathPreview();
+  });
+  document.getElementById(id).addEventListener('input', () => {
+    document.getElementById('upload-btn').disabled = !validate() || !selectedFiles.length;
+    updatePathPreview();
+  });
+});
+
+function updatePathPreview() {
+  const date   = document.getElementById('date').value;
+  const loc    = document.getElementById('location').value;
+  const folder = document.getElementById('folder').value.trim();
+  const prev   = document.getElementById('path-preview');
+  if (!date || !loc) { prev.style.display = 'none'; return; }
+  const locSlug    = loc.toLowerCase().replace(/ /g, '-');
+  const folderSlug = folder ? folder.toLowerCase().replace(/ /g, '-') + '/' : '';
+  document.getElementById('path-text').textContent = `images/${date}/${locSlug}/${folderSlug}{filename}`;
+  prev.style.display = 'flex';
+}
+
+function renderFileList() {
+  const wrap = document.getElementById('file-list');
+  const rows = document.getElementById('file-rows');
+  const count = document.getElementById('file-count');
+  if (!selectedFiles.length) { wrap.style.display = 'none'; return; }
+  wrap.style.display = '';
+  count.textContent = `${selectedFiles.length} photo${selectedFiles.length !== 1 ? 's' : ''} ready to upload`;
+  rows.innerHTML = selectedFiles.map((f, i) => `
+    <div class="file-row" id="row-${i}">
+      <span class="file-name">${f.name}</span>
+      <div class="file-bar-wrap"><div class="file-bar" id="bar-${i}"></div></div>
+      <span class="file-status" id="status-${i}">—</span>
+    </div>`).join('');
+}
+
+async function startUpload() {
+  if (!validate() || !selectedFiles.length) return;
+  const date     = document.getElementById('date').value;
+  const location = document.getElementById('location').value;
+  const folder   = document.getElementById('folder').value.trim();
+
+  const btn = document.getElementById('upload-btn');
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+
+  document.getElementById('overall-wrap').style.display = '';
+  document.getElementById('live-card').style.display = 'none';
+
+  // Get presigned URLs
+  let urlData;
+  try {
+    const res = await fetch('/api/admin/upload/presign', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        date, location, folder,
+        files: selectedFiles.map(f => ({name: f.name, type: f.type || 'image/jpeg'}))
+      })
+    });
+    urlData = await res.json();
+    if (!res.ok) throw new Error(urlData.error || 'Presign failed');
+  } catch(e) {
+    showToast('Failed to start upload: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Upload Photos';
+    return;
+  }
+
+  const urls = urlData.urls;
+  let done = 0;
+  const total = urls.length;
+  const uploadedKeys = [];
+
+  function updateOverall() {
+    const pct = Math.round((done / total) * 100);
+    document.getElementById('overall-bar').style.width = pct + '%';
+    document.getElementById('overall-pct').textContent = pct + '%';
+    document.getElementById('overall-label-text').textContent = `Uploading ${done} of ${total}…`;
+  }
+  updateOverall();
+
+  // Upload with concurrency
+  const queue = urls.map((u, i) => ({u, i, file: selectedFiles[i]}));
+
+  async function worker() {
+    while (queue.length) {
+      const {u, i, file} = queue.shift();
+      const bar    = document.getElementById('bar-' + i);
+      const status = document.getElementById('status-' + i);
+      try {
+        await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', u.url);
+          xhr.setRequestHeader('Content-Type', file.type || 'image/jpeg');
+          xhr.upload.onprogress = e => {
+            if (e.lengthComputable && bar)
+              bar.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+          };
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              if (bar) bar.style.width = '100%';
+              if (status) { status.textContent = 'Done'; status.className = 'file-status done'; }
+              uploadedKeys.push(u.key);
+              done++;
+              updateOverall();
+              resolve();
+            } else {
+              reject(new Error('HTTP ' + xhr.status));
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error'));
+          xhr.send(file);
+        });
+      } catch(e) {
+        if (status) { status.textContent = 'Error'; status.className = 'file-status err'; }
+        done++;
+        updateOverall();
+      }
+    }
+  }
+
+  await Promise.all(Array.from({length: CONCURRENCY}, worker));
+
+  document.getElementById('overall-label-text').textContent = `Uploaded ${uploadedKeys.length} of ${total} photos`;
+
+  // Index as draft
+  if (uploadedKeys.length) {
+    try {
+      const res = await fetch('/api/admin/upload/index', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({date, location, folder, keys: uploadedKeys})
+      });
+      const d = await res.json();
+      uploadResult = {date, location, folder, count: d.indexed};
+      document.getElementById('live-card').style.display = '';
+      document.getElementById('live-desc').textContent =
+        `${d.indexed} photo${d.indexed !== 1 ? 's' : ''} in draft for ${folder || location} — ${date}. Set group size/pricing then push live.`;
+    } catch(e) {
+      showToast('Indexed with errors — refresh to check');
+    }
+  }
+
+  btn.textContent = 'Upload More';
+  btn.disabled = false;
+}
+
+async function pushLive() {
+  if (!uploadResult) return;
+  const btn = document.getElementById('live-btn');
+  btn.disabled = true;
+  btn.textContent = 'Pushing live…';
+  try {
+    const res = await fetch('/api/admin/push-live', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(uploadResult)
+    });
+    const d = await res.json();
+    showToast(`${d.pushed} photo${d.pushed !== 1 ? 's' : ''} are now live`);
+    btn.textContent = 'Live ✓';
+  } catch(e) {
+    showToast('Push live failed');
+    btn.disabled = false;
+    btn.textContent = 'Push Live';
+  }
+}
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>

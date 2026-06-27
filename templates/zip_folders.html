@@ -33,6 +33,10 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.4rem}
 .btn-ghost:hover{background:rgba(255,255,255,.12)}
 .assigned-badge{font-size:.72rem;color:#4ade80;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
 .unassigned-badge{font-size:.72rem;color:rgba(255,255,255,.35);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
+.draft-badge{font-size:.72rem;color:#fb923c;background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
+.live-badge{font-size:.72rem;color:#4ade80;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:4px;padding:.15rem .45rem;white-space:nowrap}
+.btn-live{background:#4ade80;color:#0c2336;font-weight:700}
+.btn-live:hover{background:#22c55e}
 .empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
 .toast.show{opacity:1}
@@ -111,17 +115,24 @@ function renderCard(f) {
     )
   ].join('');
 
+  const isDraft = f.draft_count > 0;
+  const statusBadge = isDraft
+    ? `<span class="draft-badge">Draft · ${f.draft_count} unpublished</span>`
+    : `<span class="live-badge">Live</span>`;
+
   return `<div class="folder-card ${assigned ? 'assigned' : ''}" id="card_${btoa(f.folder_key)}">
     <div style="flex:1;min-width:180px">
       <div class="folder-name">${f.last_name}</div>
       <div class="folder-meta">${f.location} · ${f.photo_count} photos</div>
     </div>
     <div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap">
+      ${statusBadge}
       ${badge}
       <select class="group-select" onchange="setGroupSize('${f.folder_key}', this.value, this)">${options}</select>
       <a href="/admin/zip-preview/${f.date}/${encodeURIComponent(f.last_name)}" target="_blank">
         <button class="btn btn-ghost">Preview →</button>
       </a>
+      ${isDraft ? `<button class="btn btn-live" onclick="pushLive(${JSON.stringify(f)}, this)">Push Live</button>` : ''}
     </div>
   </div>`;
 }
@@ -139,6 +150,27 @@ async function setGroupSize(folderKey, groupSize, el) {
     showToast(groupSize ? `Set to ${groupSize} people` : 'Group size cleared');
   } else {
     showToast('Failed to save');
+  }
+}
+
+async function pushLive(f, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Pushing…';
+  const res = await fetch('/api/admin/push-live', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({date: f.date, location: f.location, folder: f.last_name})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.pushed} photo${d.pushed !== 1 ? 's' : ''} are now live`);
+    const idx = folders.findIndex(x => x.folder_key === f.folder_key);
+    if (idx !== -1) folders[idx].draft_count = 0;
+    render();
+  } else {
+    showToast('Push live failed');
+    btn.disabled = false;
+    btn.textContent = 'Push Live';
   }
 }
 
