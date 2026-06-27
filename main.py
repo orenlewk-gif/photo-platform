@@ -565,12 +565,33 @@ def _search(query, last_name, date, location, group=None):
 
 
 @app.get("/api/pricing")
-def get_pricing(request: Request, location: str = Query(None)):
+def get_pricing(request: Request, location: str = Query(None), date: str = Query(None), family: str = Query(None)):
     default = {"tiers": [
         {"label": "1 Photo",    "count": 1,     "price": 25},
         {"label": "3 Photos",   "count": 3,     "price": 60},
         {"label": "All Photos", "count": "all", "price": 90}
     ]}
+    # Zip group size pricing — looks up folder's assigned group size
+    if location and date and family:
+        loc_lower = location.strip().lower()
+        if loc_lower in ZIP_LOCS_SET:
+            try:
+                fm = _load_folder_meta()
+                fk = _folder_key(date, location.strip(), family.strip())
+                group_size = fm.get(fk, {}).get("group_size")
+                if group_size:
+                    zp = _load_zip_pricing()
+                    for t in zp.get("tiers", []):
+                        if str(t.get("people")) == str(group_size):
+                            tiers = []
+                            if t.get("one_photo"):    tiers.append({"label": "1 Photo",    "count": 1,     "price": t["one_photo"]})
+                            if t.get("two_photos"):   tiers.append({"label": "2 Photos",   "count": 2,     "price": t["two_photos"]})
+                            if t.get("three_photos"): tiers.append({"label": "3 Photos",   "count": 3,     "price": t["three_photos"]})
+                            if t.get("all_photos"):   tiers.append({"label": "All Photos", "count": "all", "price": t["all_photos"]})
+                            if tiers:
+                                return {"tiers": tiers, "combos": [], "zip_group_size": group_size}
+            except Exception as e:
+                print(f"zip pricing lookup error: {e}")
     if not os.path.exists("pricing.json"):
         return default
     with open("pricing.json", "r") as f:
