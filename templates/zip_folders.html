@@ -118,7 +118,7 @@ function renderCard(f) {
     <div style="display:flex;align-items:center;gap:.65rem;flex-wrap:wrap">
       ${badge}
       <select class="group-select" onchange="setGroupSize('${f.folder_key}', this.value, this)">${options}</select>
-      <a href="/?date=${f.date}&location=${encodeURIComponent(f.location)}&family=${encodeURIComponent(f.last_name)}" target="_blank">
+      <a href="/admin/zip-preview/${f.date}/${encodeURIComponent(f.last_name)}" target="_blank">
         <button class="btn btn-ghost">Preview →</button>
       </a>
     </div>

@@ -1,164 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Zip Preview — Customer View</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Crystal Images — Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}
-.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem;height:56px}
-.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518}
-.topbar-spacer{flex:1}
-.admin-bar{background:rgba(245,197,24,.08);border-bottom:1px solid rgba(245,197,24,.2);padding:.5rem 1.25rem;font-size:.8rem;color:#F5C518;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
-.admin-bar a{color:#F5C518;text-decoration:none;font-weight:600}
-.main{padding:1.5rem;max-width:940px;margin:0 auto}
-.folder-header{margin-bottom:1.25rem}
-.folder-title{font-size:1.5rem;font-weight:700}
-.folder-sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-top:.25rem}
-/* Pricing banner */
-.pricing-banner{background:#0a1e2e;border:1px solid rgba(245,197,24,.2);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.75rem}
-.pricing-banner-label{font-size:.7rem;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.1em;margin-bottom:.4rem}
-.pricing-banner-group{font-size:1.15rem;font-weight:700;color:#F5C518;margin-bottom:1rem}
-.pricing-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem}
-.pricing-option{background:rgba(255,255,255,.05);border:2px solid rgba(255,255,255,.1);border-radius:9px;padding:.75rem 1rem;text-align:center;cursor:pointer;transition:all .15s}
-.pricing-option:hover{border-color:rgba(245,197,24,.4);background:rgba(245,197,24,.06)}
-.pricing-option.selected{border-color:#F5C518;background:rgba(245,197,24,.1)}
-.opt-label{font-size:.75rem;color:rgba(255,255,255,.5);margin-bottom:.3rem}
-.opt-price{font-size:1.1rem;font-weight:700;color:#fff}
-.pricing-option.selected .opt-price{color:#F5C518}
-.shop-btn{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:9px;padding:.85rem;font-size:.95rem;font-weight:700;cursor:pointer;margin-top:1rem;display:none}
-.shop-btn.visible{display:block}
-.shop-btn:hover{background:#e6b800}
-.unassigned-notice{background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.85rem;color:#f87171}
-/* Photo grid */
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem}
-.photo-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.07);border-radius:10px;overflow:hidden;cursor:pointer;transition:border-color .15s}
-.photo-card:hover{border-color:rgba(245,197,24,.3)}
-.photo-card img{width:100%;aspect-ratio:3/2;object-fit:cover;display:block}
-.empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center}
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+body { background:#0c2336; font-family:'DM Sans',sans-serif; color:#fff; min-height:100vh; }
+
+/* Admin bar */
+.admin-bar { background:rgba(245,197,24,.1); border-bottom:1px solid rgba(245,197,24,.25); padding:.45rem 1.25rem; font-size:.78rem; color:#F5C518; display:flex; align-items:center; gap:1rem; }
+.admin-bar a { color:#F5C518; text-decoration:none; font-weight:600; opacity:.75; }
+.admin-bar a:hover { opacity:1; }
+.admin-bar .sep { opacity:.3; }
+
+/* Top nav — same as customer page */
+.custom-header { position:relative; width:100%; height:120px; background:rgba(4,50,73,0.95); display:flex; align-items:center; justify-content:space-between; padding:0 40px; box-sizing:border-box; font-family:'Inter',Arial,sans-serif; }
+.header-inner { width:100%; display:flex; align-items:center; justify-content:space-between; }
+.logo-text { font-family:'Space Mono',monospace; font-size:1.1rem; letter-spacing:.12em; color:#F5C518; font-weight:700; }
+
+/* Container */
+.container { max-width:1400px; margin:0 auto; padding:2rem 3rem 4rem; }
+
+/* Gallery header */
+.gallery-header { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
+.gallery-title { font-size:1.1rem; font-weight:600; }
+.results-count { background:rgba(242,201,76,.15); border:1px solid rgba(242,201,76,.3); color:#F5C518; font-size:.8rem; font-weight:600; padding:3px 12px; border-radius:20px; }
+
+/* Pricing bar — same tier-pill style */
+.pricing-box { display:flex; align-items:center; gap:.5rem; margin-bottom:1rem; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:.65rem 1rem; flex-wrap:wrap; }
+.pricing-label { font-size:.72rem; font-weight:600; letter-spacing:1.2px; text-transform:uppercase; color:rgba(255,255,255,.4); margin-right:.25rem; }
+.tier-pill { background:rgba(242,201,76,.1); border:1px solid rgba(242,201,76,.25); color:#F5C518; font-size:.8rem; font-weight:600; padding:3px 12px; border-radius:16px; white-space:nowrap; }
+
+/* Shop button */
+.thumb-shop-btn { background:#F5C518; color:#0c2336; border:none; font-family:'DM Sans',sans-serif; font-weight:700; font-size:.82rem; border-radius:6px; padding:.3rem .75rem; cursor:pointer; transition:background .2s; white-space:nowrap; }
+.thumb-shop-btn:hover { background:#ffd700; }
+
+/* Gallery grid */
+.gallery { display:grid; gap:10px; grid-template-columns:repeat(3,1fr); }
+@media(max-width:900px){ .gallery { grid-template-columns:repeat(2,1fr); } }
+@media(max-width:560px){ .gallery { grid-template-columns:repeat(2,1fr); } }
+
+/* Thumbnail cards — exact copy */
+.thumb-card { background:rgba(255,255,255,.04); border:2px solid rgba(255,255,255,.08); border-radius:12px; overflow:hidden; cursor:pointer; transition:transform .2s,border-color .2s,box-shadow .2s; position:relative; }
+.thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
+.thumb-card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#0a1e2e; pointer-events:none; }
+.thumb-card::after { content:''; position:absolute; inset:0; z-index:2; background:transparent; }
+.card-btn-row { position:absolute; bottom:42px; left:8px; z-index:5; display:flex; gap:5px; align-items:center; opacity:0; transition:opacity .15s; pointer-events:all; }
+.thumb-card:hover .card-btn-row { opacity:1; }
+.thumb-meta { padding:9px 12px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+.thumb-loc { color:rgba(255,255,255,.75); font-size:.75rem; font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+/* Quick Shop modal — exact copy */
+.qs-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:100002; align-items:center; justify-content:center; padding:1rem; }
+.qs-overlay.open { display:flex; }
+.qs-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,.12); border-radius:14px; max-width:340px; width:100%; max-height:70vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+.qs-body { padding:1.1rem 1.25rem 1.25rem; }
+.qs-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:.9rem; padding-bottom:.75rem; border-bottom:1px solid rgba(255,255,255,.08); }
+.qs-filename { font-size:.75rem; color:rgba(255,255,255,.45); font-weight:500; }
+.qs-close { background:transparent; border:1px solid rgba(255,255,255,.18); color:#fff; border-radius:50%; width:26px; height:26px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.qs-section { margin-bottom:.9rem; }
+.qs-section:last-child { margin-bottom:0; }
+.qs-section-label { font-size:.64rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,.3); margin-bottom:.5rem; }
+.qs-row { display:flex; align-items:center; justify-content:space-between; padding:.42rem 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.qs-row:last-child { border-bottom:none; }
+.qs-row-label { font-size:.85rem; }
+.qs-row-prices { display:flex; align-items:center; gap:.4rem; }
+.qs-price { font-weight:700; color:#F5C518; font-size:.9rem; }
+.qs-add-btn { background:#F5C518; color:#0c2336; font-family:'DM Sans',sans-serif; font-weight:700; font-size:.75rem; border:none; border-radius:5px; padding:.28rem .75rem; cursor:pointer; transition:background .2s; margin-left:.5rem; white-space:nowrap; }
+.qs-add-btn:hover { background:#ffd700; }
+.qs-group-note { font-size:.72rem; color:rgba(255,255,255,.35); margin-top:.6rem; padding-top:.6rem; border-top:1px solid rgba(255,255,255,.06); }
+
 /* Lightbox */
-.lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.95);z-index:9999;align-items:center;justify-content:center;flex-direction:column}
-.lb.open{display:flex}
-.lb img{max-width:90vw;max-height:85vh;object-fit:contain;border-radius:6px}
-.lb-close{position:absolute;top:1rem;right:1.25rem;font-size:1.75rem;cursor:pointer;color:rgba(255,255,255,.6)}
-.lb-close:hover{color:#fff}
-.lb-nav{position:absolute;top:50%;transform:translateY(-50%);font-size:2.5rem;cursor:pointer;color:rgba(255,255,255,.4);padding:1rem;user-select:none}
-.lb-nav:hover{color:#fff}
-.lb-prev{left:.25rem}
-.lb-next{right:.25rem}
-.lb-counter{position:absolute;bottom:1.25rem;font-size:.8rem;color:rgba(255,255,255,.4)}
+.lb { display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:999999; align-items:center; justify-content:center; }
+.lb.open { display:flex; }
+.lb img { max-width:90vw; max-height:88vh; object-fit:contain; border-radius:6px; }
+.lb-close { position:absolute; top:1rem; right:1.25rem; font-size:1.75rem; cursor:pointer; color:rgba(255,255,255,.6); z-index:10; }
+.lb-close:hover { color:#fff; }
+.lb-nav { position:absolute; top:50%; transform:translateY(-50%); font-size:2.5rem; cursor:pointer; color:rgba(255,255,255,.4); padding:1rem; user-select:none; }
+.lb-nav:hover { color:#fff; }
+.lb-prev { left:.25rem; }
+.lb-next { right:.25rem; }
+.lb-counter { position:absolute; bottom:1.25rem; font-size:.8rem; color:rgba(255,255,255,.4); }
+
+/* States */
+.empty { color:rgba(255,255,255,.35); padding:4rem; text-align:center; font-size:.95rem; }
+.notice-box { background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.2); border-radius:10px; padding:1rem 1.25rem; margin-bottom:1.5rem; font-size:.85rem; color:#f87171; }
+.notice-box a { color:#f87171; font-weight:600; }
 </style>
 </head>
 <body>
-<div class="topbar">
-  <div class="topbar-logo">CRYSTAL IMAGES</div>
-  <div class="topbar-spacer"></div>
-</div>
+
 <div class="admin-bar">
-  ADMIN PREVIEW — Customer view &nbsp;|&nbsp;
-  <a href="/admin/zip-folders">← Back to Folders</a>
+  ADMIN PREVIEW
+  <span class="sep">|</span>
+  <a href="/admin/zip-folders">← Folders</a>
   <a href="/admin/zip-pricing">Edit Pricing</a>
 </div>
 
-<div class="main" id="main"><div class="empty">Loading…</div></div>
+<!-- Same header as customer page -->
+<div class="custom-header">
+  <div class="header-inner">
+    <div class="logo-text">CRYSTAL IMAGES</div>
+  </div>
+</div>
 
-<div class="lb" id="lb">
+<div class="container">
+  <div id="content"><div class="empty">Loading…</div></div>
+</div>
+
+<!-- Quick Shop — same structure as customer page -->
+<div class="qs-overlay" id="qs-overlay" onclick="if(event.target===this)closeQS()">
+  <div class="qs-modal">
+    <div class="qs-body">
+      <div class="qs-header">
+        <span class="qs-filename" id="qs-title">Select a Package</span>
+        <button class="qs-close" onclick="closeQS()">✕</button>
+      </div>
+      <div class="qs-section">
+        <div class="qs-section-label">Digital Files</div>
+        <div id="qs-rows"></div>
+      </div>
+      <div class="qs-group-note" id="qs-group-note"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lb" id="lb" onclick="if(event.target===this)closeLb()">
   <span class="lb-close" onclick="closeLb()">✕</span>
   <span class="lb-nav lb-prev" onclick="navLb(-1)">‹</span>
-  <img id="lb-img" src="">
+  <img id="lb-img" src="" alt="">
   <span class="lb-nav lb-next" onclick="navLb(1)">›</span>
   <div class="lb-counter" id="lb-counter"></div>
 </div>
 
 <script>
-const pathParts = window.location.pathname.split('/');
+const pathParts = window.location.pathname.split('/').filter(Boolean);
 const date = pathParts[pathParts.length - 2];
 const lastName = decodeURIComponent(pathParts[pathParts.length - 1]);
 
 let photos = [];
+let tiers = [];
+let groupSize = null;
 let lbIdx = 0;
-let selectedOption = null;
 
 window.addEventListener('load', async () => {
   const res = await fetch(`/api/zip-preview/${date}/${encodeURIComponent(lastName)}`);
+  if (!res.ok) { document.getElementById('content').innerHTML = '<div class="empty">Not found or not authorized.</div>'; return; }
   const d = await res.json();
   photos = d.photos || [];
+  groupSize = d.group_size;
+  tiers = d.tier ? buildTiers(d.tier) : [];
   render(d);
 });
 
+function buildTiers(tier) {
+  return [
+    {label:'1 Photo',    price: tier.one_photo},
+    {label:'2 Photos',   price: tier.two_photos},
+    {label:'3 Photos',   price: tier.three_photos},
+    {label:'All Photos', price: tier.all_photos},
+  ].filter(t => t.price);
+}
+
 function render(d) {
-  const main = document.getElementById('main');
-  const tier = d.tier;
+  const content = document.getElementById('content');
+  const dateLabel = new Date(date + 'T12:00:00').toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
 
-  let pricingHtml = '';
+  let noticeHtml = '';
   if (!d.group_size) {
-    pricingHtml = `<div class="unassigned-notice">⚠ No group size assigned to this folder. Go to <a href="/admin/zip-folders" style="color:#f87171;font-weight:600">Folder Assignment</a> to set it.</div>`;
-  } else if (!tier) {
-    pricingHtml = `<div class="unassigned-notice">⚠ Group size set to "${d.group_size}" but no matching pricing tier found. Check <a href="/admin/zip-pricing" style="color:#f87171;font-weight:600">Pricing Tiers</a>.</div>`;
-  } else {
-    const opts = [
-      {label: '1 Photo', key: 'one_photo', price: tier.one_photo},
-      {label: '2 Photos', key: 'two_photos', price: tier.two_photos},
-      {label: '3 Photos', key: 'three_photos', price: tier.three_photos},
-      {label: 'All Photos', key: 'all_photos', price: tier.all_photos},
-    ].filter(o => o.price);
-
-    const optHtml = opts.map(o => `
-      <div class="pricing-option" onclick="selectOption('${o.key}', ${o.price}, this)">
-        <div class="opt-label">${o.label}</div>
-        <div class="opt-price">$${o.price}</div>
-      </div>`).join('');
-
-    pricingHtml = `<div class="pricing-banner">
-      <div class="pricing-banner-label">Your Pricing</div>
-      <div class="pricing-banner-group">${d.group_size} Person Group</div>
-      <div class="pricing-options">${optHtml}</div>
-      <button class="shop-btn" id="shopBtn">Add to Cart</button>
-    </div>`;
+    noticeHtml = `<div class="notice-box">No group size assigned to this folder. <a href="/admin/zip-folders">Set it in Folder Assignment.</a></div>`;
+  } else if (!d.tier) {
+    noticeHtml = `<div class="notice-box">Group size "${d.group_size}" has no matching pricing tier. <a href="/admin/zip-pricing">Add it in Pricing Tiers.</a></div>`;
   }
 
-  main.innerHTML = `
-    <div class="folder-header">
-      <div class="folder-title">${lastName}</div>
-      <div class="folder-sub">${d.location} · ${new Date(date + 'T12:00:00').toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'})} · ${d.photo_count} photos</div>
+  const pricingHtml = tiers.length ? `
+    <div class="pricing-box">
+      <span class="pricing-label">${d.group_size} People</span>
+      ${tiers.map(t => `<span class="tier-pill">${t.label} — $${t.price}</span>`).join('')}
+    </div>` : '';
+
+  const gridHtml = photos.length ? `
+    <div class="gallery">
+      ${photos.map((p, i) => `
+        <div class="thumb-card" onclick="openLb(${i})">
+          <img src="${p.url}" loading="lazy" alt="">
+          <div class="thumb-card::after"></div>
+          <div class="card-btn-row">
+            <button class="thumb-shop-btn" onclick="event.stopPropagation();openQS(${i})">Shop</button>
+          </div>
+          <div class="thumb-meta">
+            <span class="thumb-loc">${p.filename}</span>
+          </div>
+        </div>`).join('')}
+    </div>` : '<div class="empty">No photos found for this folder.</div>';
+
+  content.innerHTML = `
+    ${noticeHtml}
+    <div class="gallery-header">
+      <span class="gallery-title">${lastName}</span>
+      <span class="results-count">${photos.length} photo${photos.length !== 1 ? 's' : ''}</span>
+      ${tiers.length ? `<button class="thumb-shop-btn" style="padding:.45rem 1.1rem;font-size:.85rem;margin-left:auto" onclick="openQS(-1)">Shop</button>` : ''}
     </div>
     ${pricingHtml}
-    <div class="photo-grid">
-      ${photos.map((p, i) => `
-        <div class="photo-card" onclick="openLb(${i})">
-          <img src="${p.url}" loading="lazy" alt="${p.filename}">
-        </div>`).join('')}
-    </div>
-    ${!photos.length ? '<div class="empty">No photos found</div>' : ''}
+    ${gridHtml}
   `;
 }
 
-function selectOption(key, price, el) {
-  selectedOption = {key, price};
-  document.querySelectorAll('.pricing-option').forEach(e => e.classList.remove('selected'));
-  el.classList.add('selected');
-  const btn = document.getElementById('shopBtn');
-  if (btn) { btn.textContent = `Continue with $${price}`; btn.classList.add('visible'); }
+// Quick Shop
+function openQS(idx) {
+  if (!tiers.length) return;
+  const title = idx >= 0 && photos[idx] ? photos[idx].filename : 'Select a Package';
+  document.getElementById('qs-title').textContent = title;
+  document.getElementById('qs-rows').innerHTML = tiers.map(t => `
+    <div class="qs-row">
+      <span class="qs-row-label">${t.label}</span>
+      <div class="qs-row-prices">
+        <span class="qs-price">$${t.price}</span>
+        <button class="qs-add-btn">Select</button>
+      </div>
+    </div>`).join('');
+  document.getElementById('qs-group-note').textContent = groupSize ? `Pricing for group of ${groupSize}` : '';
+  document.getElementById('qs-overlay').classList.add('open');
 }
+function closeQS() { document.getElementById('qs-overlay').classList.remove('open'); }
 
-function openLb(i) {
-  lbIdx = i;
-  updateLb();
-  document.getElementById('lb').classList.add('open');
-}
+// Lightbox
+function openLb(i) { lbIdx = i; updateLb(); document.getElementById('lb').classList.add('open'); }
 function closeLb() { document.getElementById('lb').classList.remove('open'); }
 function navLb(dir) { lbIdx = (lbIdx + dir + photos.length) % photos.length; updateLb(); }
 function updateLb() {
   document.getElementById('lb-img').src = photos[lbIdx].url;
   document.getElementById('lb-counter').textContent = `${lbIdx + 1} / ${photos.length}`;
 }
-document.getElementById('lb').addEventListener('click', e => { if (e.target === e.currentTarget) closeLb(); });
 document.addEventListener('keydown', e => {
-  if (!document.getElementById('lb').classList.contains('open')) return;
-  if (e.key === 'ArrowRight') navLb(1);
-  if (e.key === 'ArrowLeft') navLb(-1);
-  if (e.key === 'Escape') closeLb();
+  if (document.getElementById('lb').classList.contains('open')) {
+    if (e.key === 'ArrowRight') navLb(1);
+    else if (e.key === 'ArrowLeft') navLb(-1);
+    else if (e.key === 'Escape') closeLb();
+  } else if (e.key === 'Escape') closeQS();
 });
 </script>
 </body>
