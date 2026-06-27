@@ -119,10 +119,10 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
   <button class="upload-btn" id="upload-btn" disabled onclick="startUpload()">Upload Photos</button>
 
   <div class="done-card" id="done-card">
-    <h3>Upload complete</h3>
+    <h3 id="done-heading">Upload complete</h3>
     <p id="done-count"></p>
     <code id="done-path"></code>
-    <a class="folders-btn" href="/admin/folders">Go to Folders →</a>
+    <div id="done-actions"></div>
   </div>
 </div>
 
@@ -261,12 +261,66 @@ async function startUpload() {
     ? `${succeeded} uploaded, ${errors} failed`
     : `${succeeded} photos uploaded`;
 
-  document.getElementById('done-count').textContent  = `${succeeded} photo${succeeded !== 1 ? 's' : ''} are in R2${errors ? ` (${errors} failed)` : ''}.`;
-  document.getElementById('done-path').textContent   = path;
-  document.getElementById('done-card').style.display = 'block';
+  if (succeeded === 0) {
+    showToast('No photos uploaded — check your connection and try again');
+    document.getElementById('progress-wrap').style.display = 'none';
+    btn.textContent = 'Upload Photos';
+    btn.disabled = false;
+    return;
+  }
 
+  // Auto-index as draft
+  document.getElementById('progress-label').textContent = 'Indexing…';
+  const successKeys = urls.slice(0, succeeded).map(u => u.key);
+  let indexed = 0;
+  try {
+    const idxRes = await fetch('/api/admin/upload/index', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date, location, folder, keys: successKeys })
+    });
+    const idxData = await idxRes.json();
+    indexed = idxData.indexed || 0;
+  } catch(e) {}
+
+  document.getElementById('progress-label').textContent = `${succeeded} uploaded, ${indexed} indexed`;
+  document.getElementById('done-heading').textContent   = indexed ? 'Ready to publish' : 'Uploaded';
+  document.getElementById('done-count').textContent     = `${succeeded} photo${succeeded !== 1 ? 's' : ''} uploaded${indexed ? `, ${indexed} indexed as draft` : ''}.`;
+  document.getElementById('done-path').textContent      = path;
+
+  const actionsEl = document.getElementById('done-actions');
+  if (indexed) {
+    actionsEl.innerHTML = `
+      <button class="folders-btn" id="push-live-btn" onclick="pushLive('${date}','${location.replace(/'/g,"\\'")}','${folder.replace(/'/g,"\\'")}')">Push Live</button>
+      <a class="folders-btn" href="/admin/folders" style="background:rgba(255,255,255,.12);color:#fff;margin-left:.75rem;">Folders →</a>`;
+  } else {
+    actionsEl.innerHTML = `<a class="folders-btn" href="/admin/folders">Go to Folders →</a>`;
+  }
+
+  document.getElementById('done-card').style.display = 'block';
   btn.textContent = 'Upload More';
   btn.disabled    = false;
+}
+
+async function pushLive(date, location, folder) {
+  const btn = document.getElementById('push-live-btn');
+  btn.textContent = 'Publishing…';
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/admin/push-live', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date, location, folder })
+    });
+    const d = await res.json();
+    btn.textContent = `✓ Live (${d.pushed} photos)`;
+    btn.style.background = '#4ade80';
+    btn.style.color = '#0c2336';
+  } catch(e) {
+    btn.textContent = 'Push Live';
+    btn.disabled = false;
+    showToast('Push live failed — try from Folders page');
+  }
 }
 
 function showToast(msg) {

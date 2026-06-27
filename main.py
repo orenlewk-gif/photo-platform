@@ -42,6 +42,20 @@ s3 = boto3.client(
 )
 R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 
+# Allow browser direct PUT uploads from any origin
+try:
+    s3.put_bucket_cors(
+        Bucket=R2_BUCKET,
+        CORSConfiguration={"CORSRules": [{
+            "AllowedOrigins": ["*"],
+            "AllowedMethods": ["GET", "PUT", "HEAD"],
+            "AllowedHeaders": ["*"],
+            "MaxAgeSeconds": 3600,
+        }]}
+    )
+except Exception as _cors_err:
+    print(f"R2 CORS setup warning: {_cors_err}")
+
 # ─────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────
