@@ -2498,6 +2498,52 @@ async def api_set_group_size(request: Request):
     _save_folder_meta(folder_meta)
     return {"status": "ok"}
 
+@app.get("/admin/zip-compare", response_class=HTMLResponse)
+def zip_compare_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/zip-compare")
+    return HTMLResponse(open("templates/zip_compare.html").read())
+
+@app.get("/api/zip-compare")
+def api_zip_compare(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    folder_meta = _load_folder_meta()
+    zip_pricing = _load_zip_pricing()
+    tiers_list = zip_pricing.get("tiers", [])
+    folders = {}
+    for item in data:
+        loc = item.get("location", "").strip().lower()
+        if loc not in ZIP_LOCS_SET:
+            continue
+        date = item.get("date", "")
+        location = item.get("location", "").strip()
+        last_name = (item.get("last_name") or item.get("group") or "").strip()
+        if not last_name:
+            continue
+        fk = _folder_key(date, location, last_name)
+        if fk not in folders:
+            group_size = folder_meta.get(fk, {}).get("group_size")
+            tier = next((t for t in tiers_list if str(t.get("people")) == str(group_size)), None) if group_size else None
+            folders[fk] = {
+                "folder_key": fk, "date": date, "location": location,
+                "last_name": last_name, "photo_count": 0,
+                "group_size": group_size, "tier": tier, "preview_paths": [],
+            }
+        folders[fk]["photo_count"] += 1
+        if len(folders[fk]["preview_paths"]) < 4:
+            folders[fk]["preview_paths"].append(item["path"])
+    result = []
+    for f in sorted(folders.values(), key=lambda x: (x["date"], x["last_name"]), reverse=True):
+        previews = []
+        for path in f.pop("preview_paths"):
+            try:
+                previews.append(_presigned_get(to_r2_key(path), expires=3600))
+            except:
+                pass
+        result.append({**f, "previews": previews})
+    return {"folders": result}
+
 @app.get("/api/zip-preview/{date}/{last_name}")
 def api_zip_preview(request: Request, date: str, last_name: str):
     if not _admin_authed(request):
