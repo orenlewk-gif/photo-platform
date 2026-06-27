@@ -14,6 +14,8 @@ Photos are served directly from the local `images/` folder.
 import os
 import re
 import json
+import urllib.request
+import urllib.parse
 from io import BytesIO
 
 from fastapi import FastAPI, Query
@@ -21,6 +23,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from PIL import Image, ImageOps
 from rapidfuzz import fuzz
 import uvicorn
+
+LIVE_API = "https://photos.bigskyphotos.com"
 
 app = FastAPI()
 
@@ -363,6 +367,25 @@ def last_name_search(q: str = Query("")):
         x["date"],
     ))
     return {"results": results[:20]}
+
+
+@app.get("/api/pricing")
+def proxy_pricing(location: str = Query(None), date: str = Query(None), family: str = Query(None)):
+    """Proxy to live pricing API so the local viewer shows current pricing without CORS issues."""
+    try:
+        params = {}
+        if location: params["location"] = location
+        if date:     params["date"]     = date
+        if family:   params["family"]   = family
+        url = LIVE_API + "/api/pricing"
+        if params:
+            url += "?" + urllib.parse.urlencode(params)
+        req = urllib.request.Request(url, headers={"User-Agent": "CrystalImagesLocalViewer/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read())
+        return JSONResponse(content=data)
+    except Exception:
+        return JSONResponse(content={"tiers": [], "combos": []})
 
 
 @app.get("/api/search")

@@ -185,6 +185,13 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .lb-info { margin-top:16px; text-align:center; color:#fff; font-size:1.15rem; font-weight:600; line-height:1.7; }
 .lb-filename { color:rgba(255,255,255,.5); font-size:0.95rem; margin-top:6px; text-align:center; }
 .lb-counter  { margin-top:8px; color:rgba(255,255,255,.35); font-size:0.85rem; letter-spacing:1px; text-align:center; }
+
+/* Pricing strip */
+.pricing-strip { display:flex; align-items:center; gap:1rem; background:rgba(245,197,24,.05); border:1px solid rgba(245,197,24,.18); border-radius:10px; padding:.65rem 1.1rem; margin-bottom:1rem; flex-wrap:wrap; }
+.pricing-strip-label { font-size:.68rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,.4); white-space:nowrap; flex-shrink:0; }
+.pricing-tiers { display:flex; gap:.4rem 1.1rem; flex-wrap:wrap; align-items:center; }
+.pricing-tier { font-size:.9rem; color:#F5C518; font-weight:600; white-space:nowrap; }
+.pricing-tier-sep { color:rgba(255,255,255,.18); font-size:.75rem; }
 </style>
 </head>
 <body>
@@ -536,6 +543,10 @@ async function showGallery(date, location, family, ln, group) {
       <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
       <button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>
     </div>
+    <div class="pricing-strip" id="pricing-strip" style="display:none">
+      <span class="pricing-strip-label" id="pricing-strip-label">Pricing</span>
+      <div class="pricing-tiers" id="pricing-tiers"></div>
+    </div>
     <div class="gallery-controls">
       <div class="filter-bar">
         <input type="text" id="filter-input" placeholder="Filter by filename or location…" />
@@ -558,6 +569,11 @@ async function showGallery(date, location, family, ln, group) {
 
   updateFavBar();
 
+  // Fetch pricing display (non-blocking, fails silently if offline)
+  if (!ln && date && location) {
+    fetchAndShowPricing(date, location, family || group || null);
+  }
+
   const filterInput = el.querySelector('#filter-input');
   if (filterInput) filterInput.addEventListener('keydown', e => {
     if (e.key === 'Enter') runFilter();
@@ -568,6 +584,36 @@ async function showGallery(date, location, family, ln, group) {
     if (isMobile) cols = Math.min(cols, 3);
     document.getElementById('gallery').style.setProperty('--cols', cols);
   });
+}
+
+async function fetchAndShowPricing(date, location, fam) {
+  try {
+    let url = `/api/pricing?location=${enc(location)}&date=${enc(date)}`;
+    if (fam) url += `&family=${enc(fam)}`;
+    const res  = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const strip = document.getElementById('pricing-strip');
+    const label = document.getElementById('pricing-strip-label');
+    const tiersEl = document.getElementById('pricing-tiers');
+    if (!strip) return;
+
+    const tiers = data.tiers || [];
+    if (!tiers.length) return;
+
+    const groupSize = data.zip_group_size || null;
+    label.textContent = groupSize ? `${groupSize} Person Zip Pricing` : 'Pricing';
+
+    tiersEl.innerHTML = tiers.map((t, i) =>
+      (i > 0 ? '<span class="pricing-tier-sep">·</span>' : '') +
+      `<span class="pricing-tier">${t.label} — $${t.price}</span>`
+    ).join('');
+
+    strip.style.display = '';
+  } catch(e) {
+    // offline or unreachable — silently hide
+  }
 }
 
 function renderThumbs(photos) {
