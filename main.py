@@ -2766,6 +2766,53 @@ async def admin_discard_draft(request: Request):
                       Body=json.dumps(data).encode(), ContentType="application/json")
     return {"removed": removed}
 
+
+@app.post("/api/admin/delete-folder")
+async def admin_delete_folder(request: Request):
+    """Permanently delete all photos in a folder from R2 and the index."""
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+
+    def _matches(item):
+        return (
+            item["date"] == date
+            and item["location"].strip().lower() == location.lower()
+            and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()
+        )
+
+    to_delete = [item for item in data if _matches(item)]
+
+    # Batch-delete from R2 (up to 1000 per call)
+    deleted_r2 = 0
+    if to_delete:
+        keys = [{"Key": item["path"]} for item in to_delete]
+        for i in range(0, len(keys), 1000):
+            resp = s3.delete_objects(Bucket=R2_BUCKET, Delete={"Objects": keys[i:i+1000]})
+            deleted_r2 += len(resp.get("Deleted", []))
+
+    # Remove from index
+    data = [item for item in data if not _matches(item)]
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(), ContentType="application/json")
+
+    # Clean up folder_meta
+    try:
+        fm = _load_folder_meta()
+        fk = _folder_key(date, location, folder)
+        if fk in fm:
+            del fm[fk]
+            _save_folder_meta(fm)
+    except Exception as e:
+        print(f"folder_meta cleanup error: {e}")
+
+    return {"deleted": deleted_r2, "removed_index": len(to_delete)}
+
+
 # ── Admin Folders (phase 2) ──────────────────────────────────────────────────
 
 _KNOWN_LOCATIONS = [

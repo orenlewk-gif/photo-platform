@@ -68,6 +68,9 @@ body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:1
 .btn-ghost:hover{background:rgba(255,255,255,.12)}
 .btn-discard{background:transparent;border:1px solid rgba(248,113,113,.3);color:#f87171}
 .btn-discard:hover{background:rgba(248,113,113,.08)}
+.btn-delete{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#ef4444}
+.btn-delete:hover{background:rgba(239,68,68,.25)}
+.btn-delete:disabled{opacity:.4;cursor:not-allowed}
 
 .empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center;font-size:.9rem}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -174,6 +177,7 @@ function folderRow(f) {
     ? `<button class="btn btn-live" onclick="pushLive('${esc(f.folder_key)}', this)">Push Live</button>
        <button class="btn btn-discard" onclick="discardDraft('${esc(f.folder_key)}', this)">Discard</button>`
     : '';
+  const deleteHtml = `<button class="btn btn-delete" onclick="deleteFolder('${esc(f.folder_key)}', this)">Delete</button>`;
 
   return `<div class="folder-row ${statusCls}" id="frow_${btoa(f.folder_key).replace(/=/g,'')}">
     <span class="status-badge ${badgeCls}">${badgeText}</span>
@@ -181,6 +185,7 @@ function folderRow(f) {
     <span class="folder-count">${f.photo_count} photos</span>
     ${groupSizeHtml}
     ${pushLiveHtml}
+    ${deleteHtml}
     ${previewHtml}
   </div>`;
 }
@@ -237,6 +242,29 @@ async function discardDraft(folderKey, btn) {
     showToast('Discard failed');
     btn.disabled = false;
     btn.textContent = 'Discard';
+  }
+}
+
+async function deleteFolder(folderKey, btn) {
+  const f = allFolders.find(x => x.folder_key === folderKey);
+  if (!f) return;
+  if (!confirm(`Permanently delete all ${f.photo_count} photos for "${f.name}"?\n\nThis removes them from R2 and the index and cannot be undone.`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Deleting…';
+  const res = await fetch('/api/admin/delete-folder', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({date: f.date, location: f.location, folder: f.name})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.deleted} photos deleted from R2`);
+    allFolders = allFolders.filter(x => x.folder_key !== folderKey);
+    render(allFolders);
+  } else {
+    showToast('Delete failed');
+    btn.disabled = false;
+    btn.textContent = 'Delete';
   }
 }
 
