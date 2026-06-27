@@ -195,7 +195,7 @@ async function startUpload() {
   const btn = document.getElementById('upload-btn');
   btn.disabled = true;
   btn.textContent = 'Uploading…';
-  document.getElementById('progress-wrap').style.display = '';
+  document.getElementById('progress-wrap').style.display = 'block';
   document.getElementById('done-card').style.display     = 'none';
 
   // Get presigned URLs
@@ -263,7 +263,7 @@ async function startUpload() {
 
   document.getElementById('done-count').textContent  = `${succeeded} photo${succeeded !== 1 ? 's' : ''} are in R2${errors ? ` (${errors} failed)` : ''}.`;
   document.getElementById('done-path').textContent   = path;
-  document.getElementById('done-card').style.display = '';
+  document.getElementById('done-card').style.display = 'block';
 
   btn.textContent = 'Upload More';
   btn.disabled    = false;
