@@ -171,8 +171,8 @@ function folderRow(f) {
     : `<a href="/?date=${f.date}&location=${encodeURIComponent(f.location)}&${f.is_portrait?'family':'group'}=${encodeURIComponent(f.name)}" target="_blank"><button class="btn btn-ghost">View →</button></a>`;
 
   const pushLiveHtml = isDraft
-    ? `<button class="btn btn-live" onclick="pushLive(${JSON.stringify(f)}, this)">Push Live</button>
-       <button class="btn btn-discard" onclick="discardDraft(${JSON.stringify(f)}, this)">Discard</button>`
+    ? `<button class="btn btn-live" onclick="pushLive('${esc(f.folder_key)}', this)">Push Live</button>
+       <button class="btn btn-discard" onclick="discardDraft('${esc(f.folder_key)}', this)">Discard</button>`
     : '';
 
   return `<div class="folder-row ${statusCls}" id="frow_${btoa(f.folder_key).replace(/=/g,'')}">
@@ -193,7 +193,9 @@ function toggleDate(header) {
   toggle.textContent   = hidden ? '▼' : '▶';
 }
 
-async function pushLive(f, btn) {
+async function pushLive(folderKey, btn) {
+  const f = allFolders.find(x => x.folder_key === folderKey);
+  if (!f) return;
   btn.disabled = true;
   btn.textContent = 'Pushing…';
   const res = await fetch('/api/admin/push-live', {
@@ -204,7 +206,7 @@ async function pushLive(f, btn) {
   if (res.ok) {
     const d = await res.json();
     showToast(`${d.pushed} photo${d.pushed !== 1 ? 's' : ''} are now live`);
-    const idx = allFolders.findIndex(x => x.folder_key === f.folder_key);
+    const idx = allFolders.findIndex(x => x.folder_key === folderKey);
     if (idx !== -1) allFolders[idx].draft_count = 0;
     render(allFolders);
   } else {
@@ -214,7 +216,9 @@ async function pushLive(f, btn) {
   }
 }
 
-async function discardDraft(f, btn) {
+async function discardDraft(folderKey, btn) {
+  const f = allFolders.find(x => x.folder_key === folderKey);
+  if (!f) return;
   if (!confirm(`Discard ${f.draft_count} draft photos for ${f.name}? This removes them from the index (R2 files stay).`)) return;
   btn.disabled = true;
   btn.textContent = 'Discarding…';
@@ -226,7 +230,7 @@ async function discardDraft(f, btn) {
   if (res.ok) {
     const d = await res.json();
     showToast(`${d.removed} draft entries removed`);
-    const idx = allFolders.findIndex(x => x.folder_key === f.folder_key);
+    const idx = allFolders.findIndex(x => x.folder_key === folderKey);
     if (idx !== -1) allFolders[idx].draft_count = 0;
     render(allFolders);
   } else {
