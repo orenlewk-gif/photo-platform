@@ -2520,21 +2520,21 @@ def api_zip_preview(request: Request, date: str, last_name: str):
     fk = _folder_key(date, location, last_name)
     group_size = folder_meta.get(fk, {}).get("group_size")
     tiers = zip_pricing.get("tiers", [])
-    price = None
+    tier_data = None
     for t in tiers:
         if str(t.get("people")) == str(group_size):
-            price = t.get("price")
+            tier_data = t
             break
     thumb_urls = []
     for p in photos[:50]:
         try:
-            url = _presigned_get(p["path"].lstrip("/").replace(
-                "/Users/labserver/photo-platform/", ""), expires=3600)
+            r2_key = to_r2_key(p["path"])
+            url = _presigned_get(r2_key, expires=3600)
             thumb_urls.append({"filename": p["filename"], "url": url})
         except:
             pass
     return {
         "date": date, "last_name": last_name, "location": location,
-        "group_size": group_size, "price": price,
+        "group_size": group_size, "tier": tier_data,
         "photo_count": len(photos), "photos": thumb_urls,
     }
