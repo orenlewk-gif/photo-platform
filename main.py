@@ -2682,6 +2682,46 @@ async def admin_upload_index(request: Request):
                   Body=json.dumps(data).encode(), ContentType="application/json")
     return {"indexed": added, "date": date, "location": location, "folder": folder}
 
+@app.post("/api/admin/reindex-folder")
+async def admin_reindex_folder(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    if not date or not location:
+        return JSONResponse(status_code=400, content={"error": "Missing date or location"})
+    loc_slug    = location.lower().replace(" ", "-")
+    folder_slug = folder.lower().replace(" ", "-") if folder else ""
+    prefix = f"images/{date}/{loc_slug}/{folder_slug}/" if folder_slug else f"images/{date}/{loc_slug}/"
+    is_portrait = location.lower() in PORTRAIT_LOCATIONS
+    existing = {item["path"] for item in data}
+    added = 0
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if not key.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                continue
+            if key not in existing:
+                data.append({
+                    "path":      key,
+                    "date":      date,
+                    "location":  location,
+                    "last_name": folder if is_portrait else "",
+                    "group":     "" if is_portrait else folder,
+                    "embedding": None,
+                    "draft":     True,
+                })
+                existing.add(key)
+                added += 1
+    if added:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    return {"indexed": added, "prefix": prefix}
+
 @app.post("/api/admin/push-live")
 async def admin_push_live(request: Request):
     global data

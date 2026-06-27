@@ -64,6 +64,14 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 .live-btn:hover{background:#22c55e}
 .live-btn:disabled{opacity:.5;cursor:not-allowed}
 
+/* Error card */
+.err-card{background:rgba(248,113,113,.07);border:1px solid rgba(248,113,113,.25);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1.5rem}
+.err-card h3{font-size:.95rem;font-weight:700;color:#f87171;margin-bottom:.35rem}
+.err-card p{font-size:.82rem;color:rgba(255,255,255,.5);margin-bottom:1rem}
+.retry-btn{background:#f87171;color:#0c2336;border:none;border-radius:8px;padding:.7rem 1.5rem;font-size:.9rem;font-weight:700;cursor:pointer;font-family:inherit}
+.retry-btn:hover{background:#ef4444}
+.retry-btn:disabled{opacity:.5;cursor:not-allowed}
+
 /* Path preview */
 .path-preview{display:flex;align-items:center;gap:.65rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:.55rem .9rem;margin-bottom:1.25rem}
 .path-label{font-size:.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);white-space:nowrap}
@@ -139,6 +147,12 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
     <h3>Upload complete</h3>
     <p id="live-desc">Photos are in draft — not visible to customers yet. Set group size and pricing in the admin pages, then push live when ready.</p>
     <button class="live-btn" id="live-btn" onclick="pushLive()">Push Live</button>
+  </div>
+
+  <div class="err-card" id="err-card" style="display:none">
+    <h3>Photos uploaded — indexing failed</h3>
+    <p>Your photos are safely in R2 but weren't added to the index. Click below to retry.</p>
+    <button class="retry-btn" id="retry-btn" onclick="retryIndex()">Retry Index</button>
   </div>
 </div>
 
@@ -322,12 +336,42 @@ async function startUpload() {
       document.getElementById('live-desc').textContent =
         `${d.indexed} photo${d.indexed !== 1 ? 's' : ''} in draft for ${folder || location} — ${date}. Set group size/pricing then push live.`;
     } catch(e) {
-      showToast('Indexed with errors — refresh to check');
+      document.getElementById('err-card').style.display = '';
     }
   }
 
   btn.textContent = 'Upload More';
   btn.disabled = false;
+}
+
+async function retryIndex() {
+  const btn = document.getElementById('retry-btn');
+  btn.disabled = true;
+  btn.textContent = 'Retrying…';
+  const date     = document.getElementById('date').value;
+  const location = document.getElementById('location').value;
+  const folder   = document.getElementById('folder').value.trim();
+  try {
+    const res = await fetch('/api/admin/reindex-folder', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({date, location, folder})
+    });
+    const d = await res.json();
+    if (d.indexed >= 0) {
+      uploadResult = {date, location, folder, count: d.indexed};
+      document.getElementById('err-card').style.display = 'none';
+      document.getElementById('live-card').style.display = '';
+      document.getElementById('live-desc').textContent =
+        `${d.indexed} photo${d.indexed !== 1 ? 's' : ''} indexed from R2 for ${folder || location} — ${date}. Ready to push live.`;
+    } else {
+      throw new Error('No indexed count returned');
+    }
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = 'Retry Index';
+    showToast('Retry failed — check Railway logs');
+  }
 }
 
 async function pushLive() {
