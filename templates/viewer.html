@@ -189,9 +189,28 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 /* Pricing strip */
 .pricing-strip { display:flex; align-items:center; gap:1rem; background:rgba(245,197,24,.05); border:1px solid rgba(245,197,24,.18); border-radius:10px; padding:.65rem 1.1rem; margin-bottom:1rem; flex-wrap:wrap; }
 .pricing-strip-label { font-size:.68rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,.4); white-space:nowrap; flex-shrink:0; }
-.pricing-tiers { display:flex; gap:.4rem 1.1rem; flex-wrap:wrap; align-items:center; }
+.pricing-tiers { display:flex; gap:.4rem 1.1rem; flex-wrap:wrap; align-items:center; flex:1; }
 .pricing-tier { font-size:.9rem; color:#F5C518; font-weight:600; white-space:nowrap; }
 .pricing-tier-sep { color:rgba(255,255,255,.18); font-size:.75rem; }
+.pricing-strip-btn { background:rgba(245,197,24,.12); border:1px solid rgba(245,197,24,.35); color:#F5C518; font-family:'DM Sans',sans-serif; font-size:.75rem; font-weight:700; border-radius:6px; padding:.3rem .85rem; cursor:pointer; white-space:nowrap; transition:background .2s; }
+.pricing-strip-btn:hover { background:rgba(245,197,24,.25); }
+
+/* Pricing modal */
+.pm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:100002; align-items:center; justify-content:center; padding:1rem; }
+.pm-overlay.open { display:flex; }
+.pm-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,.12); border-radius:14px; max-width:340px; width:100%; max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+.pm-body { padding:1.1rem 1.25rem 1.25rem; }
+.pm-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:.9rem; padding-bottom:.75rem; border-bottom:1px solid rgba(255,255,255,.08); }
+.pm-title { font-size:1rem; font-weight:700; }
+.pm-close { background:transparent; border:1px solid rgba(255,255,255,.18); color:#fff; border-radius:50%; width:26px; height:26px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.pm-close:hover { background:rgba(255,255,255,.1); }
+.pm-section { margin-bottom:.9rem; }
+.pm-section:last-child { margin-bottom:0; }
+.pm-section-label { font-size:.64rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:rgba(255,255,255,.3); margin-bottom:.5rem; }
+.pm-row { display:flex; align-items:center; justify-content:space-between; padding:.5rem 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.pm-row:last-child { border-bottom:none; }
+.pm-row-label { font-size:.85rem; }
+.pm-price { font-weight:700; color:#F5C518; font-size:.9rem; }
 </style>
 </head>
 <body>
@@ -292,6 +311,26 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   </div>
 </div>
 
+<!-- Pricing modal -->
+<div class="pm-overlay" id="pm-overlay" onclick="if(event.target===this)closePricingModal()">
+  <div class="pm-modal">
+    <div class="pm-body">
+      <div class="pm-header">
+        <span class="pm-title">Pricing</span>
+        <button class="pm-close" onclick="closePricingModal()">✕</button>
+      </div>
+      <div class="pm-section">
+        <div class="pm-section-label" id="pm-digital-label">Digital Files</div>
+        <div id="pm-digitals"></div>
+      </div>
+      <div class="pm-section">
+        <div class="pm-section-label">Prints</div>
+        <div id="pm-prints"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Lightbox -->
 <div class="lb-overlay" id="lb">
   <button class="lb-close" onclick="closeLB()">✕</button>
@@ -310,10 +349,18 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 
 <script>
 // ── State ──
-let allPhotos      = [];
-let imgCache       = {};
-let cur            = 0;
-let selectedPhotos = new Set();   // indices in current gallery
+let allPhotos        = [];
+let imgCache         = {};
+let cur              = 0;
+let selectedPhotos   = new Set();   // indices in current gallery
+let currentPricingData = null;
+
+const PRINT_SIZES = [
+  { label: '5×7"',   price: 25 },
+  { label: '8×10"',  price: 30 },
+  { label: '10×13"', price: 45 },
+  { label: '16×20"', price: 90 },
+];
 
 // ── Favorites persistence (localStorage) ──────────────────────────────────────
 // Stored as array of photo objects: {path, date, location, filename}
@@ -546,6 +593,7 @@ async function showGallery(date, location, family, ln, group) {
     <div class="pricing-strip" id="pricing-strip" style="display:none">
       <span class="pricing-strip-label" id="pricing-strip-label">Pricing</span>
       <div class="pricing-tiers" id="pricing-tiers"></div>
+      <button class="pricing-strip-btn" onclick="openPricingModal()">See all pricing</button>
     </div>
     <div class="gallery-controls">
       <div class="filter-bar">
@@ -587,6 +635,7 @@ async function showGallery(date, location, family, ln, group) {
 }
 
 async function fetchAndShowPricing(date, location, fam) {
+  currentPricingData = null;
   try {
     let url = `/api/pricing?location=${enc(location)}&date=${enc(date)}`;
     if (fam) url += `&family=${enc(fam)}`;
@@ -602,6 +651,8 @@ async function fetchAndShowPricing(date, location, fam) {
     const tiers = data.tiers || [];
     if (!tiers.length) return;
 
+    currentPricingData = data;
+
     const groupSize = data.zip_group_size || null;
     label.textContent = groupSize ? `${groupSize} Person Zip Pricing` : 'Pricing';
 
@@ -614,6 +665,34 @@ async function fetchAndShowPricing(date, location, fam) {
   } catch(e) {
     // offline or unreachable — silently hide
   }
+}
+
+function openPricingModal() {
+  const tiers     = currentPricingData?.tiers || [];
+  const groupSize = currentPricingData?.zip_group_size || null;
+
+  document.getElementById('pm-digital-label').textContent =
+    groupSize ? `${groupSize} Person Zip Pricing` : 'Digital Files';
+
+  document.getElementById('pm-digitals').innerHTML = tiers.length
+    ? tiers.map(t => `<div class="pm-row">
+        <span class="pm-row-label">${t.label}</span>
+        <span class="pm-price">$${t.price}</span>
+      </div>`).join('')
+    : '<div class="pm-row"><span class="pm-row-label" style="color:rgba(255,255,255,.4)">Loading…</span></div>';
+
+  document.getElementById('pm-prints').innerHTML = PRINT_SIZES.map(s =>
+    `<div class="pm-row">
+      <span class="pm-row-label">${s.label} Print</span>
+      <span class="pm-price">$${s.price}</span>
+    </div>`
+  ).join('');
+
+  document.getElementById('pm-overlay').classList.add('open');
+}
+
+function closePricingModal() {
+  document.getElementById('pm-overlay').classList.remove('open');
 }
 
 function renderThumbs(photos) {
