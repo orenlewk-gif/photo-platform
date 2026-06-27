@@ -2743,3 +2743,88 @@ async def admin_push_live(request: Request):
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
     return {"pushed": pushed}
+
+# ── Admin Folders (phase 2) ──────────────────────────────────────────────────
+
+_KNOWN_LOCATIONS = [
+    "Adventure Zip", "Adventure Zip Line", "Nature Zip Line",
+    "Mountain Biking", "Lone Peak Portraits", "Explorer Gondola", "Ramcharger Portraits",
+]
+_SLUG_TO_LOC = {loc.lower().replace(" ", "-"): loc for loc in _KNOWN_LOCATIONS}
+
+@app.get("/admin/folders", response_class=HTMLResponse)
+def admin_folders_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/folders")
+    return HTMLResponse(open("templates/admin_folders.html").read())
+
+@app.get("/api/admin/folders")
+def api_admin_folders(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    folder_meta = _load_folder_meta()
+    folders = {}
+    for item in data:
+        date     = item.get("date", "")
+        location = item.get("location", "").strip()
+        name     = (item.get("last_name") or item.get("group") or "").strip()
+        if not date or not location:
+            continue
+        fk = _folder_key(date, location, name)
+        if fk not in folders:
+            loc_lower = location.lower()
+            is_zip = loc_lower in ZIP_LOCS_SET
+            folders[fk] = {
+                "folder_key": fk,
+                "date":        date,
+                "location":    location,
+                "name":        name,
+                "photo_count": 0,
+                "draft_count": 0,
+                "is_zip":      is_zip,
+                "group_size":  folder_meta.get(fk, {}).get("group_size") if is_zip else None,
+            }
+        folders[fk]["photo_count"] += 1
+        if item.get("draft"):
+            folders[fk]["draft_count"] += 1
+    result = sorted(folders.values(), key=lambda x: (x["date"], x["location"], x["name"]), reverse=True)
+    return {"folders": result}
+
+@app.get("/api/admin/r2-scan")
+def api_admin_r2_scan(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    indexed_paths = {item["path"] for item in data}
+    unindexed = {}
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="images/"):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                    continue
+                if key in indexed_paths:
+                    continue
+                parts = key.split("/")
+                if len(parts) < 4:
+                    continue
+                date     = parts[1]
+                loc_slug = parts[2]
+                folder_slug = parts[3] if len(parts) >= 5 else ""
+                fk = f"{date}|{loc_slug}|{folder_slug}"
+                if fk not in unindexed:
+                    location    = _SLUG_TO_LOC.get(loc_slug, loc_slug.replace("-", " ").title())
+                    folder_name = folder_slug.replace("-", " ").title() if folder_slug else ""
+                    unindexed[fk] = {
+                        "folder_key":  fk,
+                        "date":        date,
+                        "location":    location,
+                        "name":        folder_name,
+                        "loc_slug":    loc_slug,
+                        "folder_slug": folder_slug,
+                        "photo_count": 0,
+                    }
+                unindexed[fk]["photo_count"] += 1
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    return {"folders": list(unindexed.values())}

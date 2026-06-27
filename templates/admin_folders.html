@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Admin Folders — Crystal Images</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:100vh}
+.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.5rem;height:56px;flex-wrap:wrap}
+.topbar-logo{font-size:.85rem;letter-spacing:.1em;color:#F5C518;font-weight:700}
+.topbar-spacer{flex:1}
+.topbar a{color:rgba(255,255,255,.45);font-size:.8rem;text-decoration:none}
+.topbar a:hover{color:#F5C518}
+.topbar-scan{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.7);border-radius:6px;padding:.35rem .9rem;font-size:.8rem;cursor:pointer;font-family:inherit}
+.topbar-scan:hover{background:rgba(255,255,255,.12)}
+.topbar-scan:disabled{opacity:.4;cursor:not-allowed}
+
+.main{max-width:960px;margin:0 auto;padding:1.5rem 1.5rem 4rem}
+
+/* R2 unindexed section */
+.r2-section{background:rgba(251,146,60,.05);border:1px solid rgba(251,146,60,.2);border-radius:10px;margin-bottom:1.75rem;overflow:hidden;display:none}
+.r2-header{padding:.65rem 1rem;font-size:.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#fb923c;border-bottom:1px solid rgba(251,146,60,.15)}
+
+/* Date sections */
+.date-section{margin-bottom:1.25rem}
+.date-header{display:flex;align-items:center;gap:.75rem;padding:.55rem 0;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:.5rem;user-select:none}
+.date-header:hover .date-label{color:#fff}
+.date-label{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.5);flex:1}
+.date-toggle{font-size:.7rem;color:rgba(255,255,255,.25)}
+.date-pills{display:flex;gap:.4rem}
+.pill{font-size:.68rem;padding:2px 8px;border-radius:10px;font-weight:600}
+.pill-draft{background:rgba(251,146,60,.12);border:1px solid rgba(251,146,60,.3);color:#fb923c}
+.pill-live{background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);color:#4ade80}
+.date-body{padding-bottom:.25rem}
+
+/* Location group */
+.loc-group{margin-bottom:.75rem}
+.loc-label{font-size:.68rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.22);padding:.3rem 0 .5rem .25rem}
+
+/* Folder row */
+.folder-row{display:flex;align-items:center;gap:.65rem;padding:.6rem .85rem;border-radius:8px;background:#0a1e2e;border:1px solid rgba(255,255,255,.06);margin-bottom:.4rem;flex-wrap:wrap}
+.folder-row.is-draft{border-color:rgba(251,146,60,.15)}
+.folder-row.is-live{border-color:rgba(74,222,128,.1)}
+.folder-row.is-r2{border-color:rgba(251,146,60,.15);background:rgba(251,146,60,.04)}
+
+.status-badge{font-size:.65rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:2px 8px;border-radius:4px;white-space:nowrap;flex-shrink:0}
+.badge-draft{background:rgba(251,146,60,.12);color:#fb923c;border:1px solid rgba(251,146,60,.25)}
+.badge-live{background:rgba(74,222,128,.08);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
+.badge-r2{background:rgba(251,146,60,.1);color:#fb923c;border:1px solid rgba(251,146,60,.2)}
+
+.folder-name{font-size:.9rem;font-weight:600;color:#fff;flex:1;min-width:120px}
+.folder-count{font-size:.75rem;color:rgba(255,255,255,.3);white-space:nowrap}
+
+.group-select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;padding:.35rem .65rem;font-size:.8rem;outline:none;max-width:180px}
+.group-select:focus{border-color:#F5C518}
+.group-select option{background:#0a1e2e}
+
+.btn{border:none;border-radius:6px;padding:.35rem .8rem;font-size:.78rem;cursor:pointer;font-weight:600;font-family:inherit;white-space:nowrap;transition:background .15s}
+.btn-live{background:#4ade80;color:#0c2336}
+.btn-live:hover{background:#22c55e}
+.btn-live:disabled{opacity:.4;cursor:not-allowed}
+.btn-index{background:#fb923c;color:#0c2336}
+.btn-index:hover{background:#f97316}
+.btn-index:disabled{opacity:.4;cursor:not-allowed}
+.btn-ghost{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6)}
+.btn-ghost:hover{background:rgba(255,255,255,.12)}
+
+.empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center;font-size:.9rem}
+.toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;opacity:0;transition:opacity .25s}
+.toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-logo">CRYSTAL IMAGES — FOLDERS</div>
+  <div class="topbar-spacer"></div>
+  <a href="/admin/upload">Upload</a>
+  <a href="/admin/zip-pricing">Pricing</a>
+  <a href="/admin/dashboard">Dashboard</a>
+  <button class="topbar-scan" id="scan-btn" onclick="scanR2()">Scan R2 for Unindexed</button>
+</div>
+
+<div class="main">
+  <div class="r2-section" id="r2-section">
+    <div class="r2-header">Found in R2 — Not yet indexed</div>
+    <div id="r2-rows"></div>
+  </div>
+  <div id="content"><div class="empty">Loading…</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let allFolders  = [];
+let pricingTiers = [];
+
+window.addEventListener('load', async () => {
+  const [fRes, pRes] = await Promise.all([
+    fetch('/api/admin/folders'),
+    fetch('/api/zip-pricing')
+  ]);
+  const fd = await fRes.json();
+  const pd = await pRes.json();
+  allFolders   = fd.folders || [];
+  pricingTiers = pd.tiers  || [];
+  render(allFolders);
+});
+
+function formatDate(d) {
+  return new Date(d + 'T12:00:00').toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
+}
+
+function render(folders) {
+  const el = document.getElementById('content');
+  if (!folders.length) { el.innerHTML = '<div class="empty">No folders found.</div>'; return; }
+
+  const byDate = {};
+  folders.forEach(f => {
+    if (!byDate[f.date]) byDate[f.date] = {};
+    if (!byDate[f.date][f.location]) byDate[f.date][f.location] = [];
+    byDate[f.date][f.location].push(f);
+  });
+
+  el.innerHTML = Object.keys(byDate).sort((a,b) => b.localeCompare(a)).map(date => {
+    const locs = byDate[date];
+    const allF = Object.values(locs).flat();
+    const draftCount = allF.filter(f => f.draft_count > 0).length;
+    const liveCount  = allF.filter(f => f.draft_count === 0).length;
+    const pills = [
+      draftCount ? `<span class="pill pill-draft">${draftCount} draft</span>` : '',
+      liveCount  ? `<span class="pill pill-live">${liveCount} live</span>`   : '',
+    ].join('');
+
+    const locHtml = Object.keys(locs).sort().map(loc => {
+      const rows = locs[loc].map(f => folderRow(f)).join('');
+      return `<div class="loc-group">
+        <div class="loc-label">${loc}</div>
+        ${rows}
+      </div>`;
+    }).join('');
+
+    return `<div class="date-section">
+      <div class="date-header" onclick="toggleDate(this)">
+        <span class="date-label">${formatDate(date)}</span>
+        <span class="date-pills">${pills}</span>
+        <span class="date-toggle">▼</span>
+      </div>
+      <div class="date-body">${locHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function folderRow(f) {
+  const isDraft = f.draft_count > 0;
+  const statusCls  = isDraft ? 'is-draft' : 'is-live';
+  const badgeCls   = isDraft ? 'badge-draft' : 'badge-live';
+  const badgeText  = isDraft ? `Draft · ${f.draft_count} unpublished` : 'Live';
+
+  const groupSizeHtml = f.is_zip ? `
+    <select class="group-select" onchange="setGroupSize('${f.folder_key}','${f.date}','${esc(f.location)}','${esc(f.name)}', this.value, this)">
+      <option value="">— Group size —</option>
+      ${pricingTiers.map(t => `<option value="${t.people}" ${String(f.group_size) === String(t.people) ? 'selected' : ''}>${t.people} ${t.people==1?'Person':'People'}</option>`).join('')}
+    </select>` : '';
+
+  const previewHtml = f.is_zip
+    ? `<a href="/admin/zip-preview/${f.date}/${encodeURIComponent(f.name)}" target="_blank"><button class="btn btn-ghost">Preview →</button></a>`
+    : `<a href="/?date=${f.date}&location=${encodeURIComponent(f.location)}&${f.is_portrait?'family':'group'}=${encodeURIComponent(f.name)}" target="_blank"><button class="btn btn-ghost">View →</button></a>`;
+
+  const pushLiveHtml = isDraft
+    ? `<button class="btn btn-live" onclick="pushLive(${JSON.stringify(f)}, this)">Push Live</button>`
+    : '';
+
+  return `<div class="folder-row ${statusCls}" id="frow_${btoa(f.folder_key).replace(/=/g,'')}">
+    <span class="status-badge ${badgeCls}">${badgeText}</span>
+    <span class="folder-name">${f.name || '—'}</span>
+    <span class="folder-count">${f.photo_count} photos</span>
+    ${groupSizeHtml}
+    ${pushLiveHtml}
+    ${previewHtml}
+  </div>`;
+}
+
+function toggleDate(header) {
+  const body   = header.nextElementSibling;
+  const toggle = header.querySelector('.date-toggle');
+  const hidden = body.style.display === 'none';
+  body.style.display   = hidden ? '' : 'none';
+  toggle.textContent   = hidden ? '▼' : '▶';
+}
+
+async function pushLive(f, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Pushing…';
+  const res = await fetch('/api/admin/push-live', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({date: f.date, location: f.location, folder: f.name})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.pushed} photo${d.pushed !== 1 ? 's' : ''} are now live`);
+    const idx = allFolders.findIndex(x => x.folder_key === f.folder_key);
+    if (idx !== -1) allFolders[idx].draft_count = 0;
+    render(allFolders);
+  } else {
+    showToast('Push live failed');
+    btn.disabled = false;
+    btn.textContent = 'Push Live';
+  }
+}
+
+async function setGroupSize(folderKey, date, location, name, groupSize, el) {
+  const res = await fetch('/api/zip-folder/set-group-size', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({folder_key: folderKey, group_size: groupSize || null})
+  });
+  if (res.ok) {
+    const idx = allFolders.findIndex(x => x.folder_key === folderKey);
+    if (idx !== -1) allFolders[idx].group_size = groupSize || null;
+    showToast(groupSize ? `Set to ${groupSize} people` : 'Group size cleared');
+  } else {
+    showToast('Failed to save');
+  }
+}
+
+// ── R2 Scan ──────────────────────────────────────────────────────────────────
+
+async function scanR2() {
+  const btn = document.getElementById('scan-btn');
+  btn.disabled = true;
+  btn.textContent = 'Scanning R2…';
+  try {
+    const res = await fetch('/api/admin/r2-scan');
+    const d   = await res.json();
+    btn.textContent = 'Scan R2 for Unindexed';
+    btn.disabled = false;
+    renderR2(d.folders || []);
+  } catch(e) {
+    showToast('Scan failed');
+    btn.disabled = false;
+    btn.textContent = 'Scan R2 for Unindexed';
+  }
+}
+
+function renderR2(folders) {
+  const section = document.getElementById('r2-section');
+  const rows    = document.getElementById('r2-rows');
+  if (!folders.length) {
+    section.style.display = '';
+    rows.innerHTML = '<div class="empty" style="padding:1rem;font-size:.82rem;color:rgba(255,255,255,.4)">No unindexed folders found in R2.</div>';
+    return;
+  }
+  section.style.display = '';
+  rows.innerHTML = folders.map(f => `
+    <div class="folder-row is-r2" id="r2row_${f.folder_key.replace(/[^a-z0-9]/gi,'_')}">
+      <span class="status-badge badge-r2">R2 Only</span>
+      <span class="folder-name">${f.name || f.folder_slug || '—'}</span>
+      <span class="folder-count">${f.photo_count} photos · ${f.date} · ${f.location}</span>
+      <button class="btn btn-index" onclick="indexR2Folder(${JSON.stringify(f)}, this)">Index as Draft</button>
+    </div>`).join('');
+}
+
+async function indexR2Folder(f, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Indexing…';
+  const res = await fetch('/api/admin/reindex-folder', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({date: f.date, location: f.location, folder: f.name})
+  });
+  const d = await res.json();
+  if (d.indexed >= 0) {
+    showToast(`${d.indexed} photos indexed as draft`);
+    // Add to allFolders so it shows in the main list
+    allFolders.push({
+      folder_key:  f.folder_key,
+      date:        f.date,
+      location:    f.location,
+      name:        f.name,
+      photo_count: d.indexed,
+      draft_count: d.indexed,
+      is_zip:      false,
+      group_size:  null,
+    });
+    render(allFolders);
+    // Remove from R2 section
+    const row = document.getElementById('r2row_' + f.folder_key.replace(/[^a-z0-9]/gi,'_'));
+    if (row) row.remove();
+  } else {
+    showToast('Indexing failed');
+    btn.disabled = false;
+    btn.textContent = 'Index as Draft';
+  }
+}
+
+function esc(s) { return (s||'').replace(/'/g, "\\'"); }
+
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+</script>
+</body>
+</html>
