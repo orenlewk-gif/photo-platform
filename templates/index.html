@@ -1022,7 +1022,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
         <button class="qs-close" onclick="closeQuickShop()">✕</button>
       </div>
       <div class="qs-section">
-        <div class="qs-section-label">Digital Files</div>
+        <div class="qs-section-label" id="qs-digital-label">Digital Files</div>
         <div id="qs-digitals"></div>
       </div>
       <div class="qs-section">
@@ -3064,6 +3064,8 @@ function openQuickShop(i) {
   document.getElementById('qs-filename').textContent = photo.filename;
 
   // Digital section — show tier options for this photo
+  const groupSize = currentPricing && currentPricing.zip_group_size;
+  document.getElementById('qs-digital-label').textContent = groupSize ? `${groupSize} Person Zip Pricing` : 'Digital Files';
   const digEl = document.getElementById('qs-digitals');
   if (currentPricing && currentPricing.tiers) {
     digEl.innerHTML = currentPricing.tiers.map((t, tidx) => {
