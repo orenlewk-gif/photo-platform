@@ -2744,6 +2744,28 @@ async def admin_push_live(request: Request):
                       Body=json.dumps(data).encode(), ContentType="application/json")
     return {"pushed": pushed}
 
+@app.post("/api/admin/discard-draft")
+async def admin_discard_draft(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    before   = len(data)
+    data = [item for item in data if not (
+        item.get("draft")
+        and item["date"] == date
+        and item["location"].strip().lower() == location.lower()
+        and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()
+    )]
+    removed = before - len(data)
+    if removed:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    return {"removed": removed}
+
 # ── Admin Folders (phase 2) ──────────────────────────────────────────────────
 
 _KNOWN_LOCATIONS = [

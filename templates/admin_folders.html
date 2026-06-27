@@ -66,6 +66,8 @@ body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:1
 .btn-index:disabled{opacity:.4;cursor:not-allowed}
 .btn-ghost{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6)}
 .btn-ghost:hover{background:rgba(255,255,255,.12)}
+.btn-discard{background:transparent;border:1px solid rgba(248,113,113,.3);color:#f87171}
+.btn-discard:hover{background:rgba(248,113,113,.08)}
 
 .empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center;font-size:.9rem}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -169,7 +171,8 @@ function folderRow(f) {
     : `<a href="/?date=${f.date}&location=${encodeURIComponent(f.location)}&${f.is_portrait?'family':'group'}=${encodeURIComponent(f.name)}" target="_blank"><button class="btn btn-ghost">View →</button></a>`;
 
   const pushLiveHtml = isDraft
-    ? `<button class="btn btn-live" onclick="pushLive(${JSON.stringify(f)}, this)">Push Live</button>`
+    ? `<button class="btn btn-live" onclick="pushLive(${JSON.stringify(f)}, this)">Push Live</button>
+       <button class="btn btn-discard" onclick="discardDraft(${JSON.stringify(f)}, this)">Discard</button>`
     : '';
 
   return `<div class="folder-row ${statusCls}" id="frow_${btoa(f.folder_key).replace(/=/g,'')}">
@@ -208,6 +211,28 @@ async function pushLive(f, btn) {
     showToast('Push live failed');
     btn.disabled = false;
     btn.textContent = 'Push Live';
+  }
+}
+
+async function discardDraft(f, btn) {
+  if (!confirm(`Discard ${f.draft_count} draft photos for ${f.name}? This removes them from the index (R2 files stay).`)) return;
+  btn.disabled = true;
+  btn.textContent = 'Discarding…';
+  const res = await fetch('/api/admin/discard-draft', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({date: f.date, location: f.location, folder: f.name})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.removed} draft entries removed`);
+    const idx = allFolders.findIndex(x => x.folder_key === f.folder_key);
+    if (idx !== -1) allFolders[idx].draft_count = 0;
+    render(allFolders);
+  } else {
+    showToast('Discard failed');
+    btn.disabled = false;
+    btn.textContent = 'Discard';
   }
 }
 
