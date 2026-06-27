@@ -106,7 +106,7 @@ function renderCard(f) {
 
   const options = ['<option value="">— Select group size —</option>',
     ...pricingTiers.map(t =>
-      `<option value="${t.people}" ${String(f.group_size) === String(t.people) ? 'selected' : ''}>${t.people} ${t.people == 1 ? 'Person' : 'People'} — $${t.price}</option>`
+      `<option value="${t.people}" ${String(f.group_size) === String(t.people) ? 'selected' : ''}>${t.people} ${t.people == 1 ? 'Person' : 'People'} — All: $${t.all_photos || t.price || '?'}</option>`
     )
   ].join('');
 
