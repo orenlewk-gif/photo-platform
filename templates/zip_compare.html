@@ -123,7 +123,6 @@ function render(folders) {
               </div>
               <div class="card-title">${f.last_name}</div>
               <div class="card-sub">${f.location} · ${f.photo_count} photos${f.group_size ? ' · ' + f.group_size + ' people' : ''}</div>
-              <div class="card-pricing">${pricingPills(f.tier)}</div>
             </a>`).join('')}
         </div>
       </div>`).join('');
