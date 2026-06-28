@@ -2866,7 +2866,7 @@ def api_admin_folders(request: Request):
             loc_lower = location.lower()
             is_zip = loc_lower in ZIP_LOCS_SET
             folders[fk] = {
-                "folder_key": fk,
+                "folder_key":  fk,
                 "date":        date,
                 "location":    location,
                 "name":        name,
@@ -2874,11 +2874,18 @@ def api_admin_folders(request: Request):
                 "draft_count": 0,
                 "is_zip":      is_zip,
                 "group_size":  folder_meta.get(fk, {}).get("group_size") if is_zip else None,
+                "_preview":    None,
             }
         folders[fk]["photo_count"] += 1
         if item.get("draft"):
             folders[fk]["draft_count"] += 1
-    result = sorted(folders.values(), key=lambda x: (x["date"], x["location"], x["name"]), reverse=True)
+        if folders[fk]["_preview"] is None:
+            folders[fk]["_preview"] = item.get("path")
+    result = []
+    for f in sorted(folders.values(), key=lambda x: (x["date"], x["location"], x["name"]), reverse=True):
+        preview_path = f.pop("_preview", None)
+        f["preview_url"] = _presigned_get(to_r2_key(preview_path), expires=3600) if preview_path else ""
+        result.append(f)
     return {"folders": result}
 
 @app.get("/api/admin/r2-scan")

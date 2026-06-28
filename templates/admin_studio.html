@@ -9,159 +9,170 @@
 html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;background:#0c2336;color:#fff}
 
 /* ── Layout ── */
-#topbar{height:48px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
-  display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem;flex-shrink:0;z-index:100}
+#topbar{height:46px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem;flex-shrink:0}
 #topbar h1{color:#F5C518;font-size:1rem;font-weight:700;margin-right:auto}
 #topbar a{color:rgba(255,255,255,.45);font-size:.82rem;text-decoration:none;white-space:nowrap}
 #topbar a:hover{color:#fff}
-#layout{display:flex;height:calc(100vh - 48px)}
+#layout{display:flex;height:calc(100vh - 46px)}
 
 /* ── Sidebar ── */
-#sidebar{width:270px;flex-shrink:0;background:#0a1e2e;border-right:1px solid rgba(255,255,255,.07);
+#sidebar{width:264px;flex-shrink:0;background:#0a1e2e;border-right:1px solid rgba(255,255,255,.07);
   display:flex;flex-direction:column;overflow:hidden}
-#sidebar-top{padding:.75rem .85rem;border-bottom:1px solid rgba(255,255,255,.07)}
+#sidebar-top{padding:.7rem .85rem;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
 #upload-btn{width:100%;background:#F5C518;color:#07151f;border:none;border-radius:8px;
-  padding:.55rem;font-weight:700;font-size:.88rem;cursor:pointer}
+  padding:.52rem;font-weight:700;font-size:.88rem;cursor:pointer}
 #upload-btn:hover{background:#f0bc00}
-#date-tree{flex:1;overflow-y:auto;padding:.5rem 0}
+#sidebar-nav{padding:.4rem .5rem;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
+.nav-link{display:flex;align-items:center;gap:.5rem;padding:.35rem .55rem;border-radius:6px;
+  color:rgba(255,255,255,.45);font-size:.8rem;text-decoration:none}
+.nav-link:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8)}
+#date-tree{flex:1;overflow-y:auto;padding:.4rem 0}
 
 /* ── Tree nodes ── */
-.tree-date{padding:.45rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.45rem;
-  font-size:.83rem;font-weight:600;color:rgba(255,255,255,.7);user-select:none;letter-spacing:.3px}
+.tree-date{padding:.42rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.42rem;
+  font-size:.82rem;font-weight:600;color:rgba(255,255,255,.65);user-select:none}
 .tree-date:hover{background:rgba(255,255,255,.04);color:#fff}
-.tree-date .arrow{font-size:.65rem;transition:transform .15s;color:rgba(255,255,255,.35);flex-shrink:0}
+.tree-date .arrow{font-size:.62rem;transition:transform .15s;color:rgba(255,255,255,.3);flex-shrink:0}
 .tree-date.open .arrow{transform:rotate(90deg)}
-.tree-loc-group{display:none;padding-left:.5rem}
+.tree-loc-group{display:none}
 .tree-date.open + .tree-loc-group{display:block}
-.tree-loc{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;
-  font-size:.8rem;color:rgba(255,255,255,.55);user-select:none}
+
+.tree-loc{padding:.35rem .85rem .35rem 1.5rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;
+  font-size:.79rem;color:rgba(255,255,255,.5);user-select:none}
 .tree-loc:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.85)}
-.tree-loc .arrow{font-size:.6rem;transition:transform .15s;color:rgba(255,255,255,.25);flex-shrink:0}
+.tree-loc.loc-active{color:rgba(245,197,24,.85)}
+.tree-loc .arrow{font-size:.58rem;transition:transform .15s;color:rgba(255,255,255,.22);flex-shrink:0}
 .tree-loc.open .arrow{transform:rotate(90deg)}
-.tree-sub-group{display:none;padding-left:.6rem}
+.tree-sub-group{display:none}
 .tree-loc.open + .tree-sub-group{display:block}
-.tree-sub{padding:.33rem .85rem;cursor:pointer;font-size:.78rem;color:rgba(255,255,255,.45);
+
+.tree-sub{padding:.3rem .85rem .3rem 2.5rem;cursor:pointer;font-size:.77rem;color:rgba(255,255,255,.42);
   display:flex;align-items:center;justify-content:space-between;border-radius:5px;margin:0 .3rem}
 .tree-sub:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8)}
 .tree-sub.active{background:rgba(245,197,24,.12);color:#F5C518}
-.tree-sub .sub-count{font-size:.7rem;color:rgba(255,255,255,.3)}
-.tree-sub.active .sub-count{color:rgba(245,197,24,.5)}
-.tree-draft-dot{width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0}
+.tree-sub .sub-count{font-size:.68rem;color:rgba(255,255,255,.28)}
+.tree-sub.active .sub-count{color:rgba(245,197,24,.45)}
+.tree-draft-dot{width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0;margin-left:auto}
 
 /* ── Main area ── */
-#main{flex:1;overflow-y:auto;min-width:0}
+#main{flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column}
 
 /* ── Upload view ── */
-#upload-view{display:flex;align-items:flex-start;justify-content:center;padding:2rem 1.5rem;min-height:100%}
+#upload-view{flex:1;overflow-y:auto;display:flex;align-items:flex-start;justify-content:center;padding:2rem 1.5rem}
 .upload-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:14px;
-  padding:1.75rem;width:100%;max-width:640px}
-.upload-card h2{color:#F5C518;font-size:1.1rem;margin-bottom:1.25rem}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem}
-.field label{display:block;font-size:.75rem;color:rgba(255,255,255,.45);margin-bottom:.35rem;letter-spacing:.5px}
+  padding:1.75rem;width:100%;max-width:600px}
+.upload-card h2{color:#F5C518;font-size:1.05rem;margin-bottom:1.2rem}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.85rem}
+.field label{display:block;font-size:.72rem;color:rgba(255,255,255,.4);margin-bottom:.32rem;letter-spacing:.5px;text-transform:uppercase}
 .field input,.field select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
-  border-radius:8px;padding:.6rem .85rem;color:#fff;font-size:.9rem;outline:none}
+  border-radius:8px;padding:.58rem .82rem;color:#fff;font-size:.88rem;outline:none}
 .field input:focus,.field select:focus{border-color:#F5C518}
 .field select option{background:#0c2336}
-
-/* ── Drop zone ── */
-#drop-zone{border:2px dashed rgba(255,255,255,.15);border-radius:10px;padding:2.5rem 1rem;
-  text-align:center;cursor:pointer;transition:.2s;margin-bottom:.85rem;color:rgba(255,255,255,.4)}
+#drop-zone{border:2px dashed rgba(255,255,255,.14);border-radius:10px;padding:2.25rem 1rem;
+  text-align:center;cursor:pointer;transition:.2s;margin-bottom:.85rem;color:rgba(255,255,255,.38)}
 #drop-zone:hover,#drop-zone.drag-over{border-color:#F5C518;color:rgba(255,255,255,.7);background:rgba(245,197,24,.04)}
-#drop-zone .dz-icon{font-size:2rem;margin-bottom:.5rem}
-#drop-zone .dz-hint{font-size:.82rem}
-
-#detected-folders{margin-bottom:1rem}
+#drop-zone .dz-icon{font-size:1.8rem;margin-bottom:.45rem}
+#drop-zone .dz-hint{font-size:.8rem;margin-top:.3rem}
+#detected-folders{margin-bottom:.85rem}
 .det-folder{display:flex;align-items:center;justify-content:space-between;
-  background:rgba(255,255,255,.04);border-radius:8px;padding:.5rem .85rem;margin-bottom:.4rem;font-size:.83rem}
+  background:rgba(255,255,255,.04);border-radius:8px;padding:.45rem .82rem;margin-bottom:.38rem;font-size:.82rem}
 .det-folder .fname{color:rgba(255,255,255,.8);font-weight:500}
-.det-folder .fcount{color:rgba(255,255,255,.35);font-size:.75rem}
-.det-remove{background:none;border:none;color:rgba(255,255,255,.25);cursor:pointer;font-size:.9rem}
+.det-folder .fcount{color:rgba(255,255,255,.32);font-size:.73rem}
+.det-remove{background:none;border:none;color:rgba(255,255,255,.22);cursor:pointer;font-size:.88rem}
 .det-remove:hover{color:#e53e3e}
-
 #folder-name-field{margin-bottom:.85rem}
-
-/* ── Progress ── */
 #upload-progress{display:none;margin-bottom:.85rem}
-.prog-bar-wrap{background:rgba(255,255,255,.08);border-radius:100px;height:6px;overflow:hidden;margin-bottom:.35rem}
+.prog-bar-wrap{background:rgba(255,255,255,.08);border-radius:100px;height:5px;overflow:hidden;margin-bottom:.32rem}
 .prog-bar-fill{height:100%;background:#F5C518;border-radius:100px;transition:width .25s;width:0}
-.prog-label{font-size:.77rem;color:rgba(255,255,255,.45)}
-
+.prog-label{font-size:.75rem;color:rgba(255,255,255,.4)}
 #upload-action-btn{width:100%;background:#F5C518;color:#07151f;border:none;border-radius:8px;
-  padding:.7rem;font-weight:700;font-size:.95rem;cursor:pointer}
+  padding:.68rem;font-weight:700;font-size:.92rem;cursor:pointer}
 #upload-action-btn:disabled{opacity:.45;cursor:not-allowed}
 #upload-action-btn:hover:not(:disabled){background:#f0bc00}
 
-/* ── Folder view ── */
-#folder-view{display:none;flex-direction:column;height:100%}
+/* ── Location overview view ── */
+#location-view{flex:1;overflow-y:auto;display:none;flex-direction:column}
+#location-view-header{padding:1.25rem 1.5rem .75rem;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+#location-view-title{font-size:1.15rem;font-weight:700;color:#fff}
+#location-view-sub{font-size:.8rem;color:rgba(255,255,255,.35);margin-top:.25rem}
+#location-cards{padding:1.25rem 1.5rem;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem}
+.loc-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:10px;
+  overflow:hidden;cursor:pointer;transition:.15s}
+.loc-card:hover{border-color:rgba(255,255,255,.2);transform:translateY(-2px)}
+.loc-card-img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:#111}
+.loc-card-body{padding:.6rem .75rem}
+.loc-card-name{font-weight:600;font-size:.88rem;color:#fff;margin-bottom:.22rem}
+.loc-card-meta{font-size:.73rem;color:rgba(255,255,255,.35);display:flex;gap:.45rem;align-items:center;flex-wrap:wrap}
 
-/* Folder header */
+/* ── Folder view ── */
+#folder-view{display:none;flex:1;flex-direction:column;overflow:hidden}
 #folder-header{background:#0a1e2e;border-bottom:1px solid rgba(255,255,255,.07);
-  padding:1rem 1.25rem;flex-shrink:0}
-#folder-title-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;flex-wrap:wrap}
-#folder-name-display{font-size:1.2rem;font-weight:700;color:#fff;cursor:text;
+  padding:.85rem 1.25rem;flex-shrink:0}
+#folder-title-row{display:flex;align-items:center;gap:.65rem;margin-bottom:.65rem;flex-wrap:wrap}
+#folder-name-display{font-size:1.15rem;font-weight:700;color:#fff;cursor:text;
   border-bottom:1px dashed transparent;padding-bottom:1px}
 #folder-name-display:hover{border-bottom-color:rgba(255,255,255,.3)}
 #folder-name-input{background:rgba(255,255,255,.08);border:1px solid #F5C518;border-radius:6px;
-  padding:.3rem .65rem;color:#fff;font-size:1.1rem;font-weight:700;outline:none;display:none;min-width:200px}
+  padding:.28rem .6rem;color:#fff;font-size:1.05rem;font-weight:700;outline:none;display:none;min-width:180px}
 .badge-draft{background:rgba(245,158,11,.2);color:#f59e0b;border:1px solid rgba(245,158,11,.35);
-  padding:.2rem .6rem;border-radius:100px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
+  padding:.18rem .55rem;border-radius:100px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
 .badge-live{background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.3);
-  padding:.2rem .6rem;border-radius:100px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
+  padding:.18rem .55rem;border-radius:100px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
 .badge-mixed{background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);
-  padding:.2rem .6rem;border-radius:100px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
-
-#folder-actions-row{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
-#folder-photo-count{font-size:.8rem;color:rgba(255,255,255,.4);margin-right:auto}
-.act-btn{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:rgba(255,255,255,.8);
-  border-radius:7px;padding:.38rem .85rem;font-size:.8rem;cursor:pointer;white-space:nowrap}
-.act-btn:hover{background:rgba(255,255,255,.12);color:#fff}
-.act-btn.primary{background:rgba(74,222,128,.15);border-color:rgba(74,222,128,.4);color:#4ade80}
-.act-btn.primary:hover{background:rgba(74,222,128,.25)}
-.act-btn.warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.35);color:#f59e0b}
-.act-btn.warn:hover{background:rgba(245,158,11,.22)}
-.act-btn.danger{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.3);color:#ef4444}
-.act-btn.danger:hover{background:rgba(239,68,68,.2)}
-#group-size-input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
-  border-radius:7px;padding:.38rem .7rem;color:#fff;font-size:.8rem;outline:none;width:80px}
-#group-size-input:focus{border-color:#F5C518}
-.gs-label{font-size:.78rem;color:rgba(255,255,255,.4)}
+  padding:.18rem .55rem;border-radius:100px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
+#folder-actions-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+#folder-photo-count{font-size:.78rem;color:rgba(255,255,255,.38);margin-right:auto}
+.act-btn{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:rgba(255,255,255,.75);
+  border-radius:7px;padding:.34rem .8rem;font-size:.78rem;cursor:pointer;white-space:nowrap}
+.act-btn:hover{background:rgba(255,255,255,.1);color:#fff}
+.act-btn.primary{background:rgba(74,222,128,.14);border-color:rgba(74,222,128,.4);color:#4ade80}
+.act-btn.primary:hover{background:rgba(74,222,128,.24)}
+.act-btn.warn{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.32);color:#f59e0b}
+.act-btn.warn:hover{background:rgba(245,158,11,.2)}
+.act-btn.danger{background:rgba(239,68,68,.09);border-color:rgba(239,68,68,.28);color:#ef4444}
+.act-btn.danger:hover{background:rgba(239,68,68,.18)}
+.gs-label{font-size:.76rem;color:rgba(255,255,255,.38)}
+#group-size-select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
+  border-radius:7px;padding:.34rem .7rem;color:#fff;font-size:.78rem;outline:none;cursor:pointer;display:none}
+#group-size-select:focus{border-color:#F5C518}
+#group-size-select option{background:#0c2336}
 
 /* Grid controls */
-#grid-controls{padding:.6rem 1.25rem;border-bottom:1px solid rgba(255,255,255,.05);
-  display:flex;align-items:center;gap:1rem;flex-shrink:0;background:#0c2336}
-#selection-bar{display:none;align-items:center;gap:.6rem;flex:1}
-#selection-count{font-size:.82rem;color:rgba(255,255,255,.6)}
-.sel-btn{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#ef4444;
-  border-radius:6px;padding:.3rem .75rem;font-size:.78rem;cursor:pointer}
+#grid-controls{padding:.5rem 1.25rem;border-bottom:1px solid rgba(255,255,255,.05);
+  display:flex;align-items:center;gap:.85rem;flex-shrink:0}
+#selection-bar{display:none;align-items:center;gap:.55rem;flex:1}
+#selection-count{font-size:.8rem;color:rgba(255,255,255,.55)}
+.sel-btn{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.28);color:#ef4444;
+  border-radius:6px;padding:.28rem .7rem;font-size:.76rem;cursor:pointer}
 .sel-btn:hover{background:rgba(239,68,68,.2)}
-.sel-clear{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.5);
-  border-radius:6px;padding:.3rem .65rem;font-size:.78rem;cursor:pointer}
+.sel-clear{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.45);
+  border-radius:6px;padding:.28rem .62rem;font-size:.76rem;cursor:pointer}
 .sel-clear:hover{background:rgba(255,255,255,.1)}
-.col-slider-wrap{display:flex;align-items:center;gap:.5rem;margin-left:auto}
-.col-slider-wrap label{font-size:.75rem;color:rgba(255,255,255,.35)}
-#col-slider{width:90px;accent-color:#F5C518;cursor:pointer}
+.col-slider-wrap{display:flex;align-items:center;gap:.45rem;margin-left:auto}
+.col-slider-wrap label{font-size:.73rem;color:rgba(255,255,255,.32)}
+#col-slider{width:85px;accent-color:#F5C518;cursor:pointer}
+#col-label{font-size:.73rem;color:rgba(255,255,255,.32);width:14px;text-align:right}
 
 /* Photo grid */
-#photo-grid-scroll{flex:1;overflow-y:auto;padding:12px}
-#photo-grid{display:grid;gap:4px}
-.photo-cell{position:relative;aspect-ratio:1;overflow:hidden;border-radius:3px;cursor:pointer;
-  background:#111}
-.photo-cell img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .2s}
-.photo-cell:hover img{opacity:.88}
+#photo-grid-scroll{flex:1;overflow-y:auto;padding:10px}
+#photo-grid{display:grid;gap:3px}
+.photo-cell{position:relative;aspect-ratio:1;overflow:hidden;border-radius:3px;cursor:pointer;background:#111}
+.photo-cell img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s}
+.photo-cell:hover img{opacity:.85}
 .photo-cell .overlay{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:flex-end;
-  padding:5px;opacity:0;transition:opacity .15s;pointer-events:none}
-.photo-cell:hover .overlay{opacity:1;pointer-events:auto}
-.trash-icon{background:rgba(0,0,0,.7);border:none;color:#ef4444;border-radius:5px;
-  width:26px;height:26px;font-size:.85rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  padding:5px;opacity:0;transition:opacity .12s;pointer-events:none}
+.photo-cell:hover .overlay,.photo-cell.selected .overlay{opacity:1;pointer-events:auto}
+.trash-icon{background:rgba(0,0,0,.68);border:none;color:#ef4444;border-radius:5px;
+  width:24px;height:24px;font-size:.82rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .trash-icon:hover{background:rgba(239,68,68,.3)}
 .photo-cell.selected{outline:3px solid #3b82f6;outline-offset:-3px}
-.photo-cell.selected .overlay{opacity:1;pointer-events:auto}
-.check-badge{position:absolute;top:5px;left:5px;width:18px;height:18px;background:#3b82f6;
-  border-radius:4px;display:none;align-items:center;justify-content:center;font-size:.7rem}
+.check-badge{position:absolute;top:5px;left:5px;width:17px;height:17px;background:#3b82f6;
+  border-radius:3px;display:none;align-items:center;justify-content:center;font-size:.65rem}
 .photo-cell.selected .check-badge{display:flex}
-.draft-ribbon{position:absolute;bottom:0;left:0;right:0;background:rgba(245,158,11,.8);
-  color:#07151f;font-size:.62rem;font-weight:700;text-align:center;padding:2px;
-  letter-spacing:.5px;display:none}
+.draft-ribbon{position:absolute;bottom:0;left:0;right:0;background:rgba(245,158,11,.82);
+  color:#07151f;font-size:.6rem;font-weight:700;text-align:center;padding:2px;letter-spacing:.5px;display:none}
 .photo-cell.is-draft .draft-ribbon{display:block}
 
 /* ── Move modal ── */
@@ -169,31 +180,29 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
   display:none;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
 .modal-box{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px;
-  padding:1.5rem;width:360px;max-width:90vw}
-.modal-box h3{color:#F5C518;font-size:1rem;margin-bottom:1.25rem}
-.modal-field{margin-bottom:.85rem}
-.modal-field label{display:block;font-size:.75rem;color:rgba(255,255,255,.45);margin-bottom:.35rem}
-.modal-field select,.modal-field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);
-  border-radius:8px;padding:.6rem .85rem;color:#fff;font-size:.88rem;outline:none}
+  padding:1.5rem;width:350px;max-width:90vw}
+.modal-box h3{color:#F5C518;font-size:.98rem;margin-bottom:1.2rem}
+.modal-field{margin-bottom:.82rem}
+.modal-field label{display:block;font-size:.72rem;color:rgba(255,255,255,.4);margin-bottom:.32rem;text-transform:uppercase}
+.modal-field select,.modal-field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);
+  border-radius:8px;padding:.58rem .82rem;color:#fff;font-size:.88rem;outline:none}
 .modal-field select:focus,.modal-field input:focus{border-color:#F5C518}
 .modal-field select option{background:#0c2336}
-.modal-actions{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.25rem}
-.modal-cancel{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.6);
-  border-radius:8px;padding:.5rem 1rem;cursor:pointer;font-size:.88rem}
+.modal-actions{display:flex;gap:.55rem;justify-content:flex-end;margin-top:1.2rem}
+.modal-cancel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);color:rgba(255,255,255,.55);
+  border-radius:8px;padding:.48rem .95rem;cursor:pointer;font-size:.86rem}
 .modal-ok{background:#F5C518;color:#07151f;border:none;border-radius:8px;
-  padding:.5rem 1.25rem;font-weight:700;cursor:pointer;font-size:.88rem}
+  padding:.48rem 1.2rem;font-weight:700;cursor:pointer;font-size:.86rem}
 .modal-ok:hover{background:#f0bc00}
 .modal-ok:disabled{opacity:.45;cursor:not-allowed}
 
 /* ── Toast ── */
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
-  background:#1a3248;border:1px solid rgba(255,255,255,.15);border-radius:10px;
-  padding:.65rem 1.25rem;font-size:.85rem;color:#fff;z-index:9999;
-  opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap}
+  background:#1a3248;border:1px solid rgba(255,255,255,.14);border-radius:10px;
+  padding:.62rem 1.2rem;font-size:.84rem;color:#fff;z-index:9999;
+  opacity:0;pointer-events:none;transition:opacity .22s;white-space:nowrap}
 #toast.show{opacity:1}
-
-/* ── Misc ── */
-.loading-text{color:rgba(255,255,255,.3);font-size:.85rem;padding:2rem;text-align:center}
+.loading-text{color:rgba(255,255,255,.28);font-size:.83rem;padding:2rem;text-align:center}
 input[type=file]{display:none}
 </style>
 </head>
@@ -202,17 +211,21 @@ input[type=file]{display:none}
 <div id="topbar">
   <h1>Crystal Images — Studio</h1>
   <a href="/admin/dashboard">Dashboard</a>
-  <a href="/admin/trash">Trash</a>
-  <a href="/admin/zip-pricing">Zip Pricing</a>
-  <a href="/admin/photographers">Photographers</a>
   <a href="/admin/logout">Sign out</a>
 </div>
 
 <div id="layout">
+
   <!-- ── Sidebar ── -->
   <div id="sidebar">
     <div id="sidebar-top">
       <button id="upload-btn" onclick="showUploadView()">+ New Upload</button>
+    </div>
+    <div id="sidebar-nav">
+      <a href="/admin/trash" class="nav-link">🗑&nbsp; Trash</a>
+      <a href="/admin/zip-pricing" class="nav-link">💰&nbsp; Zip Pricing</a>
+      <a href="/admin/photographers" class="nav-link">👥&nbsp; Photographers</a>
+      <a href="/admin/dashboard" class="nav-link">📊&nbsp; Dashboard</a>
     </div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
   </div>
@@ -220,17 +233,17 @@ input[type=file]{display:none}
   <!-- ── Main ── -->
   <div id="main">
 
-    <!-- Upload view -->
+    <!-- Upload view (default) -->
     <div id="upload-view">
       <div class="upload-card">
         <h2>Upload Photos</h2>
         <div class="form-grid">
           <div class="field">
-            <label>DATE</label>
+            <label>Date</label>
             <input type="date" id="upload-date">
           </div>
           <div class="field">
-            <label>LOCATION</label>
+            <label>Location</label>
             <input id="upload-location" list="loc-list" placeholder="e.g. Adventure Zip" autocomplete="off">
             <datalist id="loc-list">
               <option value="Adventure Zip">
@@ -243,15 +256,15 @@ input[type=file]{display:none}
           </div>
         </div>
 
-        <div id="folder-name-field" style="display:none" class="field" style="margin-bottom:.85rem">
-          <label>FOLDER NAME (last name / group)</label>
+        <div id="folder-name-field" style="display:none" class="field">
+          <label>Folder Name (last name / group)</label>
           <input id="upload-folder-name" placeholder="e.g. Smith" autocomplete="off">
         </div>
 
         <div id="drop-zone">
           <div class="dz-icon">📁</div>
           <div>Drop folders or photos here</div>
-          <div class="dz-hint" style="margin-top:.4rem">Drag multiple last-name folders at once</div>
+          <div class="dz-hint">Drag multiple last-name folders at once · or click to browse</div>
         </div>
 
         <div id="detected-folders"></div>
@@ -265,6 +278,15 @@ input[type=file]{display:none}
       </div>
     </div>
 
+    <!-- Location overview view -->
+    <div id="location-view">
+      <div id="location-view-header">
+        <div id="location-view-title"></div>
+        <div id="location-view-sub"></div>
+      </div>
+      <div id="location-cards"></div>
+    </div>
+
     <!-- Folder view -->
     <div id="folder-view">
       <div id="folder-header">
@@ -276,7 +298,9 @@ input[type=file]{display:none}
         <div id="folder-actions-row">
           <span id="folder-photo-count"></span>
           <span class="gs-label" id="gs-label" style="display:none">Group size:</span>
-          <input id="group-size-input" type="number" min="1" placeholder="–" style="display:none" onchange="saveGroupSize()">
+          <select id="group-size-select" onchange="saveGroupSize()">
+            <option value="">— select —</option>
+          </select>
           <button class="act-btn primary" onclick="pushLive()">Push Live</button>
           <button class="act-btn warn" onclick="pullDraft()">Pull to Draft</button>
           <button class="act-btn" onclick="openAddPhotos()">+ Add Photos</button>
@@ -294,7 +318,7 @@ input[type=file]{display:none}
         <div class="col-slider-wrap">
           <label>Columns</label>
           <input type="range" id="col-slider" min="2" max="8" value="4" oninput="setColCount(this.value)">
-          <span id="col-label" style="font-size:.75rem;color:rgba(255,255,255,.35);width:14px;text-align:right">4</span>
+          <span id="col-label">4</span>
         </div>
       </div>
 
@@ -311,11 +335,11 @@ input[type=file]{display:none}
   <div class="modal-box" onclick="event.stopPropagation()">
     <h3>Move Folder</h3>
     <div class="modal-field">
-      <label>NEW DATE</label>
+      <label>New Date</label>
       <input type="date" id="move-date">
     </div>
     <div class="modal-field">
-      <label>NEW LOCATION</label>
+      <label>New Location</label>
       <select id="move-location">
         <option value="Adventure Zip">Adventure Zip</option>
         <option value="Adventure Zip Line">Adventure Zip Line</option>
@@ -333,35 +357,44 @@ input[type=file]{display:none}
 </div>
 
 <input type="file" id="add-photos-input" multiple accept="image/jpeg,image/png,image/jpg" onchange="handleAddPhotosInput(this.files)">
-
 <div id="toast"></div>
 
 <script>
-const LOCATIONS = [
-  "Adventure Zip","Adventure Zip Line","Mountain Biking",
-  "Lone Peak Portraits","Explorer Gondola","Ramcharger Portraits"
-];
-const ZIP_LOCS = new Set(["adventure zip","adventure zip line"]);
 const CONCURRENCY = 10;
+const ZIP_LOCS = new Set(["adventure zip","adventure zip line"]);
 
 // ── State ──
 let allFolders = [];
-let treeExpanded = {};         // "date:2026-06-27" or "loc:2026-06-27|Mountain Biking"
-let currentFolder = null;      // {date, location, folder, name}
+let treeExpanded = {};
+let currentFolder = null;
+let currentLocation = null;
 let folderPhotos = [];
 let selectedPaths = new Set();
 let lastClickPath = null;
 let colCount = 4;
-let uploadFolders = [];        // [{name, files:[]}]
+let uploadFolders = [];
 let looseFiles = [];
+let zipTiers = null;
 
 // ── Init ──
 (async function() {
   document.getElementById('upload-date').value = new Date().toISOString().slice(0,10);
   setupDropZone();
+  setupInlineEdit();
   await loadSidebar();
   showUploadView();
 })();
+
+// ── Zip tiers ──
+async function loadZipTiers() {
+  if (zipTiers !== null) return zipTiers;
+  try {
+    const res = await fetch('/api/zip-pricing');
+    const d = await res.json();
+    zipTiers = d.tiers || [];
+  } catch(e) { zipTiers = []; }
+  return zipTiers;
+}
 
 // ── Sidebar ──
 async function loadSidebar() {
@@ -381,8 +414,6 @@ function renderTree() {
   const dates = Object.keys(tree).sort().reverse();
   const el = document.getElementById('date-tree');
   if (!dates.length) { el.innerHTML = '<div class="loading-text">No folders yet</div>'; return; }
-
-  // Auto-expand most recent date if nothing is expanded
   if (!Object.keys(treeExpanded).length && dates.length) {
     treeExpanded['date:' + dates[0]] = true;
   }
@@ -392,41 +423,36 @@ function renderTree() {
     const dk = 'date:' + date;
     const isOpen = treeExpanded[dk];
     const locs = tree[date];
-    const allDraft = Object.values(locs).flat().every(f => f.draft_count === f.photo_count);
     const anyDraft = Object.values(locs).flat().some(f => f.draft_count > 0);
-    html += `<div class="tree-date ${isOpen?'open':''}" onclick="toggleTree('${dk}')">
-      <span class="arrow">▶</span>
-      ${date}
-      ${anyDraft ? '<span class="tree-draft-dot"></span>' : ''}
+    html += `<div class="tree-date ${isOpen?'open':''}" onclick="toggleDate('${date}')">
+      <span class="arrow">▶</span>${date}${anyDraft ? '<span class="tree-draft-dot"></span>' : ''}
     </div>
     <div class="tree-loc-group">`;
-    for (const [loc, subfolders] of Object.entries(locs)) {
+    for (const [loc, subs] of Object.entries(locs)) {
       const lk = 'loc:' + date + '|' + loc;
       const isLocOpen = treeExpanded[lk];
-      const hasSubs = subfolders.some(f => f.name);
+      const isLocActive = currentLocation && currentLocation.date===date && currentLocation.location===loc && !currentFolder;
+      const hasSubs = subs.some(f => f.name);
       if (hasSubs) {
-        html += `<div class="tree-loc ${isLocOpen?'open':''}" onclick="toggleTree('${lk}')">
-          <span class="arrow">▶</span> ${esc(loc)}
+        html += `<div class="tree-loc ${isLocOpen?'open':''} ${isLocActive?'loc-active':''}"
+          onclick="openLocationClick('${escAttr(date)}','${escAttr(loc)}')">
+          <span class="arrow">▶</span>${esc(loc)}
         </div>
         <div class="tree-sub-group">`;
-        for (const f of subfolders) {
+        for (const f of subs) {
           if (!f.name) continue;
           const isActive = currentFolder && currentFolder.date===f.date && currentFolder.location===f.location && currentFolder.folder===f.name;
-          const ek = escAttr(f.folder_key);
-          html += `<div class="tree-sub ${isActive?'active':''}" onclick="openFolderByKey('${ek}')">
-            <span>${esc(f.name)}</span>
-            <span class="sub-count">${f.photo_count}</span>
+          html += `<div class="tree-sub ${isActive?'active':''}" onclick="openFolderByKey('${escAttr(f.folder_key)}')">
+            <span>${esc(f.name)}</span><span class="sub-count">${f.photo_count}</span>
           </div>`;
         }
         html += `</div>`;
       } else {
-        // Location with no named subs — leaf node
-        const f = subfolders[0] || {};
-        const isActive = currentFolder && currentFolder.date===f.date && currentFolder.location===f.location && !currentFolder.folder;
-        const ek = escAttr(f.folder_key || '');
-        html += `<div class="tree-sub ${isActive?'active':''}" style="padding-left:.5rem" onclick="openFolderByKey('${ek}')">
-          <span>${esc(loc)}</span>
-          <span class="sub-count">${subfolders.reduce((a,x)=>a+x.photo_count,0)}</span>
+        const f = subs[0] || {};
+        const isActive = currentFolder && currentFolder.date===f.date && currentFolder.location===loc && !currentFolder.folder;
+        html += `<div class="tree-sub ${isActive?'active':''}" style="padding-left:1.5rem"
+          onclick="openFolderByKey('${escAttr(f.folder_key||'')}')">
+          <span>${esc(loc)}</span><span class="sub-count">${subs.reduce((a,x)=>a+x.photo_count,0)}</span>
         </div>`;
       }
     }
@@ -435,9 +461,21 @@ function renderTree() {
   el.innerHTML = html;
 }
 
-function toggleTree(key) {
-  treeExpanded[key] = !treeExpanded[key];
+function toggleDate(date) {
+  const dk = 'date:' + date;
+  treeExpanded[dk] = !treeExpanded[dk];
   renderTree();
+}
+
+function openLocationClick(date, loc) {
+  // Expand tree entry and open location overview
+  treeExpanded['date:' + date] = true;
+  treeExpanded['loc:' + date + '|' + loc] = !treeExpanded['loc:' + date + '|' + loc];
+  const subs = allFolders.filter(f => f.date===date && f.location===loc);
+  currentFolder = null;
+  currentLocation = {date, location: loc};
+  renderTree();
+  showLocationOverview(date, loc, subs);
 }
 
 function openFolderByKey(fk) {
@@ -446,20 +484,49 @@ function openFolderByKey(fk) {
   openFolder(f.date, f.location, f.name || '');
 }
 
-async function openFolder(date, location, folder) {
-  currentFolder = {date, location, folder, name: folder};
-  renderTree();
-  document.getElementById('upload-view').style.display = 'none';
-  const fv = document.getElementById('folder-view');
-  fv.style.display = 'flex';
-  fv.style.flexDirection = 'column';
-  fv.style.height = '100%';
+// ── Location overview ──
+function showLocationOverview(date, loc, subs) {
+  setView('location');
+  document.getElementById('location-view-title').textContent = loc;
+  document.getElementById('location-view-sub').textContent = `${date} · ${subs.length} folder${subs.length!==1?'s':''}`;
+  const cards = document.getElementById('location-cards');
+  if (!subs.length) {
+    cards.innerHTML = '<div class="loading-text">No folders</div>';
+    return;
+  }
+  cards.innerHTML = subs.map(f => {
+    const name = f.name || loc;
+    const allDraft = f.draft_count === f.photo_count;
+    const allLive = f.draft_count === 0;
+    const badge = allDraft
+      ? `<span class="badge-draft">DRAFT</span>`
+      : allLive ? `<span class="badge-live">LIVE</span>`
+      : `<span class="badge-mixed">MIXED</span>`;
+    const img = f.preview_url
+      ? `<img class="loc-card-img" src="${f.preview_url}" loading="lazy" alt="${esc(name)}" onerror="this.style.display='none'">`
+      : `<div class="loc-card-img"></div>`;
+    return `<div class="loc-card" onclick="openFolderByKey('${escAttr(f.folder_key)}')">
+      ${img}
+      <div class="loc-card-body">
+        <div class="loc-card-name">${esc(name)}</div>
+        <div class="loc-card-meta">${f.photo_count} photos ${badge}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
 
+// ── Folder view ──
+async function openFolder(date, location, folder) {
+  currentFolder = {date, location, folder};
+  currentLocation = null;
+  treeExpanded['date:' + date] = true;
+  treeExpanded['loc:' + date + '|' + location] = true;
+  renderTree();
+  setView('folder');
   document.getElementById('folder-name-display').textContent = folder || location;
   document.getElementById('folder-name-input').style.display = 'none';
   document.getElementById('photo-grid').innerHTML = '<div class="loading-text">Loading photos…</div>';
   clearSelection();
-
   await loadFolderPhotos();
 }
 
@@ -471,33 +538,30 @@ async function loadFolderPhotos() {
   const d = await res.json();
   folderPhotos = d.photos || [];
 
-  // Status badge
   const badge = document.getElementById('folder-status-badge');
-  if (d.draft_count === d.total) {
+  if (d.draft_count === d.total && d.total > 0) {
     badge.className = 'badge-draft'; badge.textContent = 'ALL DRAFT';
   } else if (d.draft_count === 0) {
     badge.className = 'badge-live'; badge.textContent = 'LIVE';
   } else {
     badge.className = 'badge-mixed'; badge.textContent = `${d.live_count} live · ${d.draft_count} draft`;
   }
-
-  // Photo count
   document.getElementById('folder-photo-count').textContent = `${d.total} photo${d.total!==1?'s':''}`;
 
-  // Group size (zip only)
   const isZip = ZIP_LOCS.has(location.trim().toLowerCase());
   const gsLabel = document.getElementById('gs-label');
-  const gsInput = document.getElementById('group-size-input');
+  const gsSel = document.getElementById('group-size-select');
   if (isZip) {
+    const tiers = await loadZipTiers();
+    gsSel.innerHTML = '<option value="">— select —</option>' +
+      tiers.map(t => `<option value="${t.people}" ${String(d.group_size)===String(t.people)?'selected':''}>${t.people} ${t.people===1?'person':'people'}</option>`).join('');
+    gsSel.dataset.folderKey = d.folder_key;
     gsLabel.style.display = '';
-    gsInput.style.display = '';
-    gsInput.value = d.group_size || '';
-    gsInput.dataset.folderKey = d.folder_key;
+    gsSel.style.display = '';
   } else {
     gsLabel.style.display = 'none';
-    gsInput.style.display = 'none';
+    gsSel.style.display = 'none';
   }
-
   renderPhotoGrid();
 }
 
@@ -509,14 +573,12 @@ function renderPhotoGrid() {
     return;
   }
   grid.innerHTML = folderPhotos.map(p => {
-    const isDraft = p.is_draft;
-    const isSelected = selectedPaths.has(p.path);
-    const pathAttr = escAttr(p.path);
-    return `<div class="photo-cell ${isDraft?'is-draft':''} ${isSelected?'selected':''}"
-                 data-path="${pathAttr}" onclick="selectPhoto(event, '${pathAttr}')">
+    const pa = escAttr(p.path);
+    return `<div class="photo-cell ${p.is_draft?'is-draft':''} ${selectedPaths.has(p.path)?'selected':''}"
+      data-path="${pa}" onclick="selectPhoto(event,'${pa}')">
       <img src="${p.url}" loading="lazy" alt="${escAttr(p.filename)}">
       <div class="overlay">
-        <button class="trash-icon" onclick="event.stopPropagation();trashPhoto('${pathAttr}')" title="Delete to trash">🗑</button>
+        <button class="trash-icon" onclick="event.stopPropagation();trashPhoto('${pa}')" title="Trash">🗑</button>
       </div>
       <div class="check-badge">✓</div>
       <div class="draft-ribbon">DRAFT</div>
@@ -530,13 +592,20 @@ function setColCount(v) {
   document.getElementById('photo-grid').style.gridTemplateColumns = `repeat(${colCount}, 1fr)`;
 }
 
+// ── View switcher ──
+function setView(view) {
+  document.getElementById('upload-view').style.display    = view==='upload'   ? 'flex'  : 'none';
+  document.getElementById('location-view').style.display = view==='location' ? 'flex'  : 'none';
+  document.getElementById('folder-view').style.display   = view==='folder'   ? 'flex'  : 'none';
+  if (view==='location') document.getElementById('location-view').style.flexDirection = 'column';
+  if (view==='folder')   document.getElementById('folder-view').style.flexDirection   = 'column';
+}
+
 // ── Selection ──
 function selectPhoto(event, path) {
   if (event.shiftKey && lastClickPath) {
-    // Range select
     const paths = folderPhotos.map(p => p.path);
-    const a = paths.indexOf(lastClickPath);
-    const b = paths.indexOf(path);
+    const a = paths.indexOf(lastClickPath), b = paths.indexOf(path);
     const [lo, hi] = [Math.min(a,b), Math.max(a,b)];
     for (let i = lo; i <= hi; i++) selectedPaths.add(paths[i]);
   } else {
@@ -548,44 +617,35 @@ function selectPhoto(event, path) {
 }
 
 function updateSelectionUI() {
-  const cells = document.querySelectorAll('.photo-cell');
-  cells.forEach(c => {
-    if (selectedPaths.has(c.dataset.path)) c.classList.add('selected');
-    else c.classList.remove('selected');
+  document.querySelectorAll('.photo-cell').forEach(c => {
+    c.classList.toggle('selected', selectedPaths.has(c.dataset.path));
   });
-  const bar = document.getElementById('selection-bar');
   const n = selectedPaths.size;
-  if (n > 0) {
-    bar.style.display = 'flex';
-    document.getElementById('selection-count').textContent = `${n} selected`;
-  } else {
-    bar.style.display = 'none';
-  }
+  const bar = document.getElementById('selection-bar');
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  if (n > 0) document.getElementById('selection-count').textContent = `${n} selected`;
 }
 
 function clearSelection() {
-  selectedPaths.clear();
-  lastClickPath = null;
-  updateSelectionUI();
+  selectedPaths.clear(); lastClickPath = null; updateSelectionUI();
 }
 
-// ── Trash actions ──
+// ── Trash ──
 async function trashPhoto(path) {
-  if (!confirm('Move this photo to trash? It will be permanently deleted after 7 days.')) return;
+  if (!confirm('Move this photo to trash? It will be deleted after 7 days.')) return;
   await trashPaths([path]);
 }
 
 async function trashSelected() {
   if (!selectedPaths.size) return;
   const n = selectedPaths.size;
-  if (!confirm(`Move ${n} photo${n!==1?'s':''} to trash? They will be permanently deleted after 7 days.`)) return;
+  if (!confirm(`Move ${n} photo${n!==1?'s':''} to trash? They will be deleted after 7 days.`)) return;
   await trashPaths([...selectedPaths]);
 }
 
 async function trashPaths(paths) {
   const res = await fetch('/api/admin/photo/trash', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
+    method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({paths})
   });
   if (res.ok) {
@@ -593,88 +653,59 @@ async function trashPaths(paths) {
     showToast(`${d.trashed} photo${d.trashed!==1?'s':''} moved to trash`);
     folderPhotos = folderPhotos.filter(p => !paths.includes(p.path));
     paths.forEach(p => selectedPaths.delete(p));
-    // Update allFolders count
-    if (currentFolder) {
-      const f = allFolders.find(x => x.folder_key === allFolders.find(y =>
-        y.date===currentFolder.date && y.location===currentFolder.location && y.name===currentFolder.folder
-      )?.folder_key);
-      if (f) f.photo_count = Math.max(0, f.photo_count - paths.length);
-    }
-    renderPhotoGrid();
-    updateSelectionUI();
-    if (!folderPhotos.length) {
-      // Folder is now empty - refresh sidebar
-      await loadSidebar();
-    }
-  } else {
-    showToast('Trash failed', 'error');
-  }
+    renderPhotoGrid(); updateSelectionUI();
+    await loadSidebar();
+  } else showToast('Trash failed','error');
 }
 
-// ── Push/Pull Live ──
+// ── Push / Pull Live ──
 async function pushLive() {
   if (!currentFolder) return;
   const {date, location, folder} = currentFolder;
-  const res = await fetch('/api/admin/push-live', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder})
-  });
-  if (res.ok) {
-    const d = await res.json();
-    showToast(`${d.pushed} photo${d.pushed!==1?'s':''} pushed live`);
-    folderPhotos.forEach(p => p.is_draft = false);
-    await loadFolderPhotos();
-    await loadSidebar();
-  } else {
-    showToast('Push live failed', 'error');
-  }
+  const res = await fetch('/api/admin/push-live', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder})});
+  if (res.ok) { const d=await res.json(); showToast(`${d.pushed} photo${d.pushed!==1?'s':''} pushed live`); await loadFolderPhotos(); await loadSidebar(); }
+  else showToast('Push live failed','error');
 }
 
 async function pullDraft() {
   if (!currentFolder) return;
   if (!confirm('Pull all live photos back to draft? They will be hidden from customers.')) return;
   const {date, location, folder} = currentFolder;
-  const res = await fetch('/api/admin/pull-draft', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder})
-  });
-  if (res.ok) {
-    const d = await res.json();
-    showToast(`${d.pulled} photo${d.pulled!==1?'s':''} set to draft`);
-    await loadFolderPhotos();
-    await loadSidebar();
-  } else {
-    showToast('Pull draft failed', 'error');
-  }
+  const res = await fetch('/api/admin/pull-draft', {method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder})});
+  if (res.ok) { const d=await res.json(); showToast(`${d.pulled} photo${d.pulled!==1?'s':''} set to draft`); await loadFolderPhotos(); await loadSidebar(); }
+  else showToast('Pull draft failed','error');
+}
+
+// ── Group size ──
+async function saveGroupSize() {
+  const sel = document.getElementById('group-size-select');
+  const fk = sel.dataset.folderKey;
+  const gs = sel.value ? parseInt(sel.value) : null;
+  if (!fk) return;
+  await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({folder_key:fk,group_size:gs})});
+  showToast('Group size saved');
 }
 
 // ── Inline rename ──
-document.addEventListener('DOMContentLoaded', () => {
+function setupInlineEdit() {
   document.getElementById('folder-name-display').addEventListener('click', startNameEdit);
-  document.getElementById('folder-name-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') commitNameEdit();
-    if (e.key === 'Escape') cancelNameEdit();
-  });
-  document.getElementById('folder-name-input').addEventListener('blur', commitNameEdit);
-});
+  const inp = document.getElementById('folder-name-input');
+  inp.addEventListener('keydown', e => { if(e.key==='Enter') commitNameEdit(); if(e.key==='Escape') cancelNameEdit(); });
+  inp.addEventListener('blur', commitNameEdit);
+}
 
 function startNameEdit() {
   const disp = document.getElementById('folder-name-display');
   const inp = document.getElementById('folder-name-input');
-  inp.value = disp.textContent;
-  disp.style.display = 'none';
-  inp.style.display = '';
-  inp.focus();
-  inp.select();
+  inp.value = disp.textContent; disp.style.display='none'; inp.style.display=''; inp.focus(); inp.select();
 }
-
 function cancelNameEdit() {
-  document.getElementById('folder-name-input').style.display = 'none';
-  document.getElementById('folder-name-display').style.display = '';
+  document.getElementById('folder-name-input').style.display='none';
+  document.getElementById('folder-name-display').style.display='';
 }
-
 async function commitNameEdit() {
   const inp = document.getElementById('folder-name-input');
   const newName = inp.value.trim();
@@ -682,164 +713,92 @@ async function commitNameEdit() {
   if (newName === currentFolder.folder) { cancelNameEdit(); return; }
   inp.disabled = true;
   const {date, location, folder} = currentFolder;
-  const res = await fetch('/api/admin/folder/rename', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder, new_folder: newName})
-  });
+  const res = await fetch('/api/admin/folder/rename',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder,new_folder:newName})});
   inp.disabled = false;
   if (res.ok) {
     currentFolder.folder = newName;
-    currentFolder.name = newName;
     document.getElementById('folder-name-display').textContent = newName;
     showToast(`Renamed to ${newName}`);
-    await loadSidebar();
-    await loadFolderPhotos();
-  } else {
-    showToast('Rename failed', 'error');
-  }
+    await loadSidebar(); await loadFolderPhotos();
+  } else showToast('Rename failed','error');
   cancelNameEdit();
-}
-
-// ── Group size ──
-async function saveGroupSize() {
-  const input = document.getElementById('group-size-input');
-  const fk = input.dataset.folderKey;
-  const gs = input.value ? parseInt(input.value) : null;
-  if (!fk) return;
-  await fetch('/api/zip-folder/set-group-size', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({folder_key: fk, group_size: gs})
-  });
-  showToast(`Group size saved`);
 }
 
 // ── Move modal ──
 function openMoveModal() {
   if (!currentFolder) return;
-  // Populate date options from existing dates + today
-  const dates = [...new Set(allFolders.map(f => f.date))].sort().reverse();
-  const today = new Date().toISOString().slice(0,10);
-  if (!dates.includes(today)) dates.unshift(today);
-  const moveDateInput = document.getElementById('move-date');
-  moveDateInput.value = currentFolder.date;
+  document.getElementById('move-date').value = currentFolder.date;
   document.getElementById('move-location').value = currentFolder.location;
   document.getElementById('move-modal-overlay').classList.add('open');
 }
-
 function closeMoveModal(e) {
-  if (!e || e.target === document.getElementById('move-modal-overlay')) {
+  if (!e || e.target===document.getElementById('move-modal-overlay'))
     document.getElementById('move-modal-overlay').classList.remove('open');
-  }
 }
-
 async function doMove() {
   if (!currentFolder) return;
   const newDate = document.getElementById('move-date').value;
   const newLoc  = document.getElementById('move-location').value;
-  if (!newDate || !newLoc) { showToast('Select date and location', 'error'); return; }
+  if (!newDate||!newLoc) { showToast('Select date and location','error'); return; }
   const btn = document.getElementById('move-ok-btn');
-  btn.disabled = true; btn.textContent = 'Moving…';
-  const {date, location, folder} = currentFolder;
-  const res = await fetch('/api/admin/folder/move', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder, new_date: newDate, new_location: newLoc})
-  });
-  btn.disabled = false; btn.textContent = 'Move Folder';
+  btn.disabled=true; btn.textContent='Moving…';
+  const {date,location,folder} = currentFolder;
+  const res = await fetch('/api/admin/folder/move',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder,new_date:newDate,new_location:newLoc})});
+  btn.disabled=false; btn.textContent='Move Folder';
   document.getElementById('move-modal-overlay').classList.remove('open');
   if (res.ok) {
     showToast('Folder moved');
-    currentFolder = {...currentFolder, date: newDate, location: newLoc};
-    await loadSidebar();
-    await loadFolderPhotos();
-  } else {
-    showToast('Move failed', 'error');
-  }
+    currentFolder={...currentFolder,date:newDate,location:newLoc};
+    await loadSidebar(); await loadFolderPhotos();
+  } else showToast('Move failed','error');
 }
 
 // ── Delete folder ──
 async function deleteCurrentFolder() {
   if (!currentFolder) return;
-  const {date, location, folder} = currentFolder;
+  const {date,location,folder} = currentFolder;
   const f = allFolders.find(x => x.date===date && x.location===location && x.name===folder);
   const count = f ? f.photo_count : '?';
-  if (!confirm(`Permanently delete all ${count} photos for "${folder || location}"?\n\nThis removes them from R2 and the index and cannot be undone.`)) return;
-  const res = await fetch('/api/admin/delete-folder', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder})
-  });
+  if (!confirm(`Permanently delete all ${count} photos for "${folder||location}"?\n\nThis removes them from R2 and the index and cannot be undone.`)) return;
+  const res = await fetch('/api/admin/delete-folder',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder})});
   if (res.ok) {
-    const d = await res.json();
-    showToast(`${d.deleted} photos permanently deleted`);
-    currentFolder = null;
-    await loadSidebar();
-    showUploadView();
-  } else {
-    showToast('Delete failed', 'error');
-  }
+    const d=await res.json(); showToast(`${d.deleted} photos permanently deleted`);
+    currentFolder=null; await loadSidebar(); showUploadView();
+  } else showToast('Delete failed','error');
 }
 
-// ── Add photos to existing folder ──
-function openAddPhotos() {
-  document.getElementById('add-photos-input').click();
-}
-
+// ── Add Photos ──
+function openAddPhotos() { document.getElementById('add-photos-input').click(); }
 async function handleAddPhotosInput(fileList) {
-  if (!currentFolder || !fileList.length) return;
-  const {date, location, folder} = currentFolder;
+  if (!currentFolder||!fileList.length) return;
+  const {date,location,folder} = currentFolder;
   const files = [...fileList].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name));
-  if (!files.length) { showToast('No valid image files', 'error'); return; }
+  if (!files.length) { showToast('No valid image files','error'); return; }
   showToast(`Uploading ${files.length} photo${files.length!==1?'s':''}…`);
-
-  // Presign
-  const res = await fetch('/api/admin/upload/presign', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder, files: files.map(f => ({name:f.name, type:f.type||'image/jpeg'}))})
-  });
-  if (!res.ok) { showToast('Presign failed', 'error'); return; }
+  const res = await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
+  if (!res.ok) { showToast('Presign failed','error'); return; }
   const {urls} = await res.json();
-
-  // Upload concurrently
-  let done = 0;
-  const uploadOne = async ({key, url}, file) => {
-    await fetch(url, {method:'PUT', body:file, headers:{'Content-Type':file.type||'image/jpeg'}});
-    done++;
-  };
-  const queue = urls.map((u,i) => ({u, f: files[i]}));
-  for (let i = 0; i < queue.length; i += CONCURRENCY) {
-    await Promise.all(queue.slice(i, i+CONCURRENCY).map(({u,f}) => uploadOne(u,f)));
-  }
-
-  // Index
-  const indexRes = await fetch('/api/admin/upload/index', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({date, location, folder, keys: urls.map(u => u.key)})
-  });
-  if (indexRes.ok) {
-    showToast(`${files.length} photo${files.length!==1?'s':''} added`);
-    await loadFolderPhotos();
-    await loadSidebar();
-  } else {
-    showToast('Index failed', 'error');
-  }
-  document.getElementById('add-photos-input').value = '';
+  let done=0;
+  for (let i=0;i<urls.length;i+=CONCURRENCY)
+    await Promise.all(urls.slice(i,i+CONCURRENCY).map((u,j)=>fetch(u.url,{method:'PUT',body:files[i+j],headers:{'Content-Type':files[i+j].type||'image/jpeg'}})));
+  const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder,keys:urls.map(u=>u.key)})});
+  if (ir.ok) { showToast(`${files.length} photo${files.length!==1?'s':''} added`); await loadFolderPhotos(); await loadSidebar(); }
+  else showToast('Index failed','error');
+  document.getElementById('add-photos-input').value='';
 }
 
 // ── Upload view ──
 function showUploadView() {
-  currentFolder = null;
+  currentFolder=null; currentLocation=null;
   renderTree();
-  document.getElementById('folder-view').style.display = 'none';
-  document.getElementById('upload-view').style.display = 'flex';
-  uploadFolders = [];
-  looseFiles = [];
-  renderDetectedFolders();
-  updateUploadBtn();
+  setView('upload');
+  uploadFolders=[]; looseFiles=[];
+  renderDetectedFolders(); updateUploadBtn();
 }
 
 function setupDropZone() {
@@ -849,8 +808,8 @@ function setupDropZone() {
   dz.addEventListener('drop', handleDrop);
   dz.addEventListener('click', () => {
     const inp = document.createElement('input');
-    inp.type = 'file'; inp.multiple = true; inp.accept = 'image/*';
-    inp.onchange = e => { looseFiles = [...e.target.files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name)); renderDetectedFolders(); updateUploadBtn(); };
+    inp.type='file'; inp.multiple=true; inp.accept='image/*';
+    inp.onchange = e => { looseFiles=[...e.target.files].filter(f=>/\.(jpg|jpeg|png)$/i.test(f.name)); renderDetectedFolders(); updateUploadBtn(); };
     inp.click();
   });
 }
@@ -859,52 +818,29 @@ async function handleDrop(e) {
   e.preventDefault();
   document.getElementById('drop-zone').classList.remove('drag-over');
   const items = [...e.dataTransfer.items];
-  uploadFolders = [];
-  looseFiles = [];
-  const entries = items.map(i => i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
-  const dirs = entries.filter(en => en.isDirectory);
-  const files = entries.filter(en => en.isFile);
+  uploadFolders=[]; looseFiles=[];
+  const entries = items.map(i=>i.webkitGetAsEntry?i.webkitGetAsEntry():null).filter(Boolean);
+  const dirs = entries.filter(en=>en.isDirectory), files = entries.filter(en=>en.isFile);
   if (dirs.length) {
-    for (const dir of dirs) {
-      const dirFiles = await readDirFiles(dir);
-      if (dirFiles.length) uploadFolders.push({name: dir.name, files: dirFiles});
-    }
-    // Any loose image files alongside folders
-    for (const fe of files) {
-      const f = await new Promise(r => fe.file(r));
-      if (/\.(jpg|jpeg|png)$/i.test(f.name)) looseFiles.push(f);
-    }
+    for (const dir of dirs) { const df=await readDirFiles(dir); if(df.length) uploadFolders.push({name:dir.name,files:df}); }
+    for (const fe of files) { const f=await new Promise(r=>fe.file(r)); if(/\.(jpg|jpeg|png)$/i.test(f.name)) looseFiles.push(f); }
   } else {
-    looseFiles = [];
-    for (const fe of files) {
-      const f = await new Promise(r => fe.file(r));
-      if (/\.(jpg|jpeg|png)$/i.test(f.name)) looseFiles.push(f);
-    }
+    for (const fe of files) { const f=await new Promise(r=>fe.file(r)); if(/\.(jpg|jpeg|png)$/i.test(f.name)) looseFiles.push(f); }
   }
-  renderDetectedFolders();
-  updateUploadBtn();
+  renderDetectedFolders(); updateUploadBtn();
 }
 
 async function readAllEntries(reader) {
-  const all = [];
-  while (true) {
-    const batch = await new Promise(r => reader.readEntries(r, () => r([])));
-    if (!batch.length) break;
-    all.push(...batch);
-  }
+  const all=[];
+  while(true) { const b=await new Promise(r=>reader.readEntries(r,()=>r([]))); if(!b.length) break; all.push(...b); }
   return all;
 }
-
 async function readDirFiles(dirEntry) {
-  const files = [];
-  const entries = await readAllEntries(dirEntry.createReader());
+  const files=[];
+  const entries=await readAllEntries(dirEntry.createReader());
   for (const entry of entries) {
-    if (entry.isFile) {
-      const f = await new Promise(r => entry.file(r));
-      if (/\.(jpg|jpeg|png)$/i.test(f.name)) files.push(f);
-    } else if (entry.isDirectory) {
-      files.push(...await readDirFiles(entry));
-    }
+    if (entry.isFile) { const f=await new Promise(r=>entry.file(r)); if(/\.(jpg|jpeg|png)$/i.test(f.name)) files.push(f); }
+    else if (entry.isDirectory) files.push(...await readDirFiles(entry));
   }
   return files;
 }
@@ -912,137 +848,71 @@ async function readDirFiles(dirEntry) {
 function renderDetectedFolders() {
   const el = document.getElementById('detected-folders');
   const fnField = document.getElementById('folder-name-field');
-  let html = '';
+  let html='';
   if (uploadFolders.length) {
-    for (let i = 0; i < uploadFolders.length; i++) {
-      const f = uploadFolders[i];
-      html += `<div class="det-folder">
-        <span class="fname">${esc(f.name)}</span>
-        <span class="fcount">${f.files.length} photos</span>
-        <button class="det-remove" onclick="removeDetected(${i})">✕</button>
-      </div>`;
+    for (let i=0;i<uploadFolders.length;i++) {
+      const f=uploadFolders[i];
+      html+=`<div class="det-folder"><span class="fname">${esc(f.name)}</span><span class="fcount">${f.files.length} photos</span><button class="det-remove" onclick="removeDetected(${i})">✕</button></div>`;
     }
-    if (looseFiles.length) {
-      html += `<div class="det-folder"><span class="fname">+ ${looseFiles.length} loose files</span></div>`;
-    }
-    fnField.style.display = 'none';
+    if (looseFiles.length) html+=`<div class="det-folder"><span class="fname">+ ${looseFiles.length} loose files</span></div>`;
+    fnField.style.display='none';
   } else if (looseFiles.length) {
-    html = `<div class="det-folder"><span class="fname">${looseFiles.length} photo${looseFiles.length!==1?'s':''} selected</span></div>`;
-    fnField.style.display = 'block';
+    html=`<div class="det-folder"><span class="fname">${looseFiles.length} photo${looseFiles.length!==1?'s':''} selected</span></div>`;
+    fnField.style.display='block';
   }
-  el.innerHTML = html;
+  el.innerHTML=html;
 }
-
-function removeDetected(i) {
-  uploadFolders.splice(i, 1);
-  renderDetectedFolders();
-  updateUploadBtn();
-}
-
-function updateUploadBtn() {
-  const hasContent = uploadFolders.length > 0 || looseFiles.length > 0;
-  document.getElementById('upload-action-btn').disabled = !hasContent;
-}
+function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); }
+function updateUploadBtn() { document.getElementById('upload-action-btn').disabled=!(uploadFolders.length||looseFiles.length); }
 
 async function startUpload() {
-  const date = document.getElementById('upload-date').value;
-  const location = document.getElementById('upload-location').value.trim();
-  if (!date || !location) { showToast('Enter date and location', 'error'); return; }
-
-  // Build list of {folder, files} to upload
-  let batches = [];
-  if (uploadFolders.length) {
-    batches = uploadFolders.map(f => ({folder: f.name, files: f.files}));
-    if (looseFiles.length) batches.push({folder: '', files: looseFiles});
-  } else {
-    const folderName = document.getElementById('upload-folder-name').value.trim();
-    batches = [{folder: folderName, files: looseFiles}];
-  }
-
-  const totalFiles = batches.reduce((a,b) => a + b.files.length, 0);
-  if (!totalFiles) { showToast('No photos to upload', 'error'); return; }
-
-  const btn = document.getElementById('upload-action-btn');
-  btn.disabled = true;
-  const progWrap = document.getElementById('upload-progress');
-  progWrap.style.display = 'block';
-  const fill = document.getElementById('prog-fill');
-  const label = document.getElementById('prog-label');
-
-  let done = 0;
-  const setProgress = () => {
-    const pct = Math.round(done / totalFiles * 100);
-    fill.style.width = pct + '%';
-    label.textContent = `${done} / ${totalFiles} uploaded…`;
-  };
+  const date=document.getElementById('upload-date').value;
+  const location=document.getElementById('upload-location').value.trim();
+  if (!date||!location) { showToast('Enter date and location','error'); return; }
+  let batches = uploadFolders.length
+    ? [...uploadFolders.map(f=>({folder:f.name,files:f.files})), ...(looseFiles.length?[{folder:'',files:looseFiles}]:[]) ]
+    : [{folder:document.getElementById('upload-folder-name').value.trim(), files:looseFiles}];
+  const totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
+  if (!totalFiles) { showToast('No photos to upload','error'); return; }
+  const btn=document.getElementById('upload-action-btn'); btn.disabled=true;
+  const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
+  const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
+  let done=0;
+  const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`; };
   setProgress();
-
-  // Upload each batch
-  for (const batch of batches) {
-    const {folder, files} = batch;
+  for (const {folder,files} of batches) {
     if (!files.length) continue;
-
-    const presignRes = await fetch('/api/admin/upload/presign', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({date, location, folder, files: files.map(f => ({name:f.name, type:f.type||'image/jpeg'}))})
-    });
-    if (!presignRes.ok) { showToast(`Presign failed for ${folder||'files'}`, 'error'); continue; }
-    const {urls} = await presignRes.json();
-
-    // Upload concurrently
-    const queue = urls.map((u,i) => ({u, f: files[i]}));
-    for (let i = 0; i < queue.length; i += CONCURRENCY) {
-      await Promise.all(queue.slice(i, i+CONCURRENCY).map(async ({u, f}) => {
-        await fetch(u.url, {method:'PUT', body:f, headers:{'Content-Type':f.type||'image/jpeg'}});
-        done++;
-        setProgress();
-      }));
-    }
-
-    // Index
-    await fetch('/api/admin/upload/index', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({date, location, folder, keys: urls.map(u => u.key)})
-    });
+    const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
+    if (!pr.ok) { showToast(`Presign failed for ${folder||'files'}`,'error'); continue; }
+    const {urls}=await pr.json();
+    for (let i=0;i<urls.length;i+=CONCURRENCY)
+      await Promise.all(urls.slice(i,i+CONCURRENCY).map(async(u,j)=>{ await fetch(u.url,{method:'PUT',body:files[i+j],headers:{'Content-Type':files[i+j].type||'image/jpeg'}}); done++; setProgress(); }));
+    await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,keys:urls.map(u=>u.key)})});
   }
-
-  label.textContent = `Done — ${done} photos uploaded`;
+  label.textContent=`Done — ${done} photos uploaded`;
   showToast(`${done} photos uploaded as draft`);
   await loadSidebar();
-
-  // Open first batch in folder view
-  if (batches.length) {
-    const firstBatch = batches[0];
-    setTimeout(() => openFolder(date, location, firstBatch.folder || ''), 500);
-  }
-  btn.disabled = false;
-  uploadFolders = [];
-  looseFiles = [];
-  renderDetectedFolders();
-  updateUploadBtn();
-  setTimeout(() => { progWrap.style.display = 'none'; fill.style.width = '0'; }, 2000);
+  const firstBatch=batches[0];
+  if (firstBatch) setTimeout(()=>openFolder(date,location,firstBatch.folder||''),400);
+  btn.disabled=false; uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
+  setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
 }
 
 // ── Toast ──
-let toastTimer = null;
-function showToast(msg, type) {
-  const el = document.getElementById('toast');
-  el.textContent = msg;
-  el.style.borderColor = type === 'error' ? 'rgba(239,68,68,.4)' : 'rgba(255,255,255,.15)';
+let toastTimer=null;
+function showToast(msg,type) {
+  const el=document.getElementById('toast');
+  el.textContent=msg;
+  el.style.borderColor=type==='error'?'rgba(239,68,68,.4)':'rgba(255,255,255,.14)';
   el.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
 }
 
-// ── Escape helpers ──
-function esc(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-function escAttr(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-}
+// ── Helpers ──
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 </script>
 </body>
 </html>
