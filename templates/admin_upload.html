@@ -18,17 +18,16 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 .sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-bottom:2rem}
 
 /* Form */
-.fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.85rem;margin-bottom:1.25rem}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:.85rem;margin-bottom:1.25rem}
 @media(max-width:600px){.fields{grid-template-columns:1fr}}
 .field label{display:block;font-size:.72rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem}
 .field input,.field select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;font-family:inherit;outline:none}
 .field input:focus,.field select:focus{border-color:#F5C518}
 .field select option{background:#0c2336}
-
-/* Path preview */
-.path-preview{display:flex;align-items:center;gap:.65rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:.55rem .9rem;margin-bottom:1.25rem}
-.path-label{font-size:.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);white-space:nowrap}
-.path-preview code{font-size:.8rem;color:#F5C518;word-break:break-all;font-family:'SF Mono',Menlo,monospace}
+.folder-field{margin-bottom:1.25rem}
+.folder-field label{display:block;font-size:.72rem;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem}
+.folder-field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;padding:.65rem .85rem;font-size:.9rem;font-family:inherit;outline:none}
+.folder-field input:focus{border-color:#F5C518}
 
 /* Drop zone */
 .dropzone{border:2px dashed rgba(255,255,255,.15);border-radius:14px;padding:3rem 2rem;text-align:center;cursor:pointer;transition:all .2s;position:relative;margin-bottom:1.25rem}
@@ -37,6 +36,14 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 .dropzone-text{font-size:1rem;font-weight:500;color:rgba(255,255,255,.6)}
 .dropzone-sub{font-size:.8rem;color:rgba(255,255,255,.3);margin-top:.4rem}
 .dropzone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+
+/* Detected folder list */
+.folder-list{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;margin-bottom:1.25rem;overflow:hidden;display:none}
+.folder-item{display:flex;align-items:center;justify-content:space-between;padding:.55rem 1rem;border-bottom:1px solid rgba(255,255,255,.05)}
+.folder-item:last-child{border-bottom:none}
+.fi-name{font-size:.88rem;font-weight:600;color:#fff}
+.fi-count{font-size:.78rem;color:rgba(255,255,255,.4)}
+.folder-total{padding:.5rem 1rem;font-size:.78rem;font-weight:700;color:#F5C518;border-top:1px solid rgba(255,255,255,.07);text-align:right}
 
 /* Upload button */
 .upload-btn{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:10px;padding:.85rem;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;transition:background .2s;margin-bottom:1.5rem}
@@ -72,7 +79,7 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 
 <div class="main">
   <h2>Upload Photos</h2>
-  <p class="sub">Photos go directly to R2. Head to Folders after to index and push live.</p>
+  <p class="sub">Drop multiple folders at once — each folder name becomes the last name or group.</p>
 
   <div class="fields">
     <div class="field">
@@ -92,23 +99,23 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
         <option>Ramcharger Portraits</option>
       </select>
     </div>
-    <div class="field">
-      <label>Last Name / Group</label>
-      <input type="text" id="folder" placeholder="e.g. Smith or Trail Riders" />
-    </div>
   </div>
 
-  <div class="path-preview" id="path-preview" style="display:none">
-    <span class="path-label">R2 path</span>
-    <code id="path-text"></code>
+  <!-- Shown only when loose files dropped (no folder structure) -->
+  <div class="folder-field" id="folder-field" style="display:none">
+    <label>Last Name / Group</label>
+    <input type="text" id="folder" placeholder="e.g. Smith or Trail Riders" />
   </div>
 
   <div class="dropzone" id="dropzone">
-    <div class="dropzone-icon">📷</div>
-    <div class="dropzone-text">Drop photos here or click to browse</div>
-    <div class="dropzone-sub" id="drop-sub">No files selected</div>
+    <div class="dropzone-icon">📁</div>
+    <div class="dropzone-text">Drop folders or photos here</div>
+    <div class="dropzone-sub" id="drop-sub">Nothing selected yet</div>
     <input type="file" id="file-input" accept="image/*" multiple />
   </div>
+
+  <!-- Detected folders list -->
+  <div class="folder-list" id="folder-list"></div>
 
   <div class="progress-wrap" id="progress-wrap">
     <div class="progress-pct" id="progress-pct">0%</div>
@@ -130,67 +137,138 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 
 <script>
 const CONCURRENCY = 10;
-let selectedFiles = [];
+
+// State
+let detectedFolders = []; // [{name, files[]}]
+let flatFiles       = []; // File[] — loose drop with no folder structure
+let folderMode      = false;
 
 document.getElementById('date').value = new Date().toISOString().slice(0, 10);
 
-const fileInput = document.getElementById('file-input');
-const dropzone  = document.getElementById('dropzone');
-
-fileInput.addEventListener('change', () => setFiles([...fileInput.files]));
-dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
-dropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropzone.classList.remove('drag');
-  setFiles([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
+// ── File input (flat files only) ─────────────────────────────────────────────
+document.getElementById('file-input').addEventListener('change', function() {
+  setFlatMode([...this.files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name)));
 });
 
-function setFiles(files) {
-  selectedFiles = files;
-  document.getElementById('drop-sub').textContent = files.length
-    ? `${files.length} photo${files.length !== 1 ? 's' : ''} selected`
-    : 'No files selected';
-  document.getElementById('upload-btn').disabled = !files.length || !validate();
+// ── Drag & drop ───────────────────────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', async e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+
+  const items = [...e.dataTransfer.items];
+  const folders = [];
+  const loose   = [];
+
+  for (const item of items) {
+    const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
+    if (!entry) continue;
+    if (entry.isDirectory) {
+      const files = await readDirFiles(entry);
+      if (files.length) folders.push({ name: entry.name, files });
+    } else if (entry.isFile) {
+      const file = await new Promise(res => entry.file(res));
+      if (/\.(jpg|jpeg|png)$/i.test(file.name)) loose.push(file);
+    }
+  }
+
+  if (folders.length) setFolderMode(folders);
+  else if (loose.length) setFlatMode(loose);
+});
+
+// Read all entries from a DirectoryReader (handles >100 limit via repeated calls)
+async function readAllEntries(reader) {
+  const all = [];
+  while (true) {
+    const batch = await new Promise(res => reader.readEntries(res, () => res([])));
+    if (!batch.length) break;
+    all.push(...batch);
+  }
+  return all;
+}
+
+async function readDirFiles(dirEntry) {
+  const files = [];
+  const entries = await readAllEntries(dirEntry.createReader());
+  for (const entry of entries) {
+    if (entry.isFile) {
+      const file = await new Promise(res => entry.file(res));
+      if (/\.(jpg|jpeg|png)$/i.test(file.name)) files.push(file);
+    }
+    // Recurse one level deep (sub-folders within a dropped folder)
+    if (entry.isDirectory) {
+      const sub = await readDirFiles(entry);
+      files.push(...sub);
+    }
+  }
+  return files;
+}
+
+// ── Mode switching ────────────────────────────────────────────────────────────
+function setFolderMode(folders) {
+  detectedFolders = folders;
+  flatFiles = [];
+  folderMode = true;
+  document.getElementById('folder-field').style.display = 'none';
+  const total = folders.reduce((s, f) => s + f.files.length, 0);
+  document.getElementById('drop-sub').textContent =
+    `${folders.length} folder${folders.length !== 1 ? 's' : ''} — ${total} photos`;
+  renderFolderList();
+  updateBtn();
+}
+
+function setFlatMode(files) {
+  detectedFolders = [];
+  flatFiles = files;
+  folderMode = false;
+  document.getElementById('folder-field').style.display = '';
+  document.getElementById('folder-list').style.display  = 'none';
+  document.getElementById('drop-sub').textContent =
+    `${files.length} photo${files.length !== 1 ? 's' : ''} selected`;
+  updateBtn();
+}
+
+function renderFolderList() {
+  const el    = document.getElementById('folder-list');
+  const total = detectedFolders.reduce((s, f) => s + f.files.length, 0);
+  el.innerHTML = detectedFolders.map(f =>
+    `<div class="folder-item">
+      <span class="fi-name">${f.name}</span>
+      <span class="fi-count">${f.files.length} photos</span>
+    </div>`
+  ).join('') + `<div class="folder-total">${total} photos total</div>`;
+  el.style.display = '';
+}
+
+function updateBtn() {
+  const hasContent = folderMode ? detectedFolders.length > 0 : flatFiles.length > 0;
+  document.getElementById('upload-btn').disabled = !hasContent || !validate();
 }
 
 function validate() {
   return document.getElementById('date').value && document.getElementById('location').value;
 }
 
-['date','location','folder'].forEach(id => {
-  ['change','input'].forEach(ev => {
-    document.getElementById(id).addEventListener(ev, () => {
-      document.getElementById('upload-btn').disabled = !validate() || !selectedFiles.length;
-      updatePathPreview();
-    });
-  });
+['date', 'location', 'folder'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) ['change', 'input'].forEach(ev => el.addEventListener(ev, updateBtn));
 });
 
-function updatePathPreview() {
-  const date   = document.getElementById('date').value;
-  const loc    = document.getElementById('location').value;
-  const folder = document.getElementById('folder').value.trim();
-  const prev   = document.getElementById('path-preview');
-  if (!date || !loc) { prev.style.display = 'none'; return; }
-  const locSlug    = loc.toLowerCase().replace(/ /g, '-');
-  const folderSlug = folder ? folder.toLowerCase().replace(/ /g, '-') + '/' : '';
-  document.getElementById('path-text').textContent = `images/${date}/${locSlug}/${folderSlug}{filename}`;
-  prev.style.display = 'flex';
-}
-
-function setProgress(done, total) {
+// ── Progress ──────────────────────────────────────────────────────────────────
+function setProgress(done, total, label) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   document.getElementById('progress-pct').textContent   = pct + '%';
   document.getElementById('progress-bar').style.width   = pct + '%';
-  document.getElementById('progress-label').textContent = `${done} of ${total} uploaded`;
+  document.getElementById('progress-label').textContent = label || `${done} of ${total} uploaded`;
 }
 
+// ── Upload ────────────────────────────────────────────────────────────────────
 async function startUpload() {
-  if (!validate() || !selectedFiles.length) return;
+  if (!validate()) return;
   const date     = document.getElementById('date').value;
   const location = document.getElementById('location').value;
-  const folder   = document.getElementById('folder').value.trim();
 
   const btn = document.getElementById('upload-btn');
   btn.disabled = true;
@@ -198,19 +276,31 @@ async function startUpload() {
   document.getElementById('progress-wrap').style.display = 'block';
   document.getElementById('done-card').style.display     = 'none';
 
-  // Get presigned URLs
-  let urlData;
+  // Build folder list: multi-folder mode OR single folder from field
+  const folders = folderMode
+    ? detectedFolders
+    : [{ name: document.getElementById('folder').value.trim(), files: flatFiles }];
+
+  const total = folders.reduce((s, f) => s + f.files.length, 0);
+  let done = 0, errors = 0;
+  setProgress(0, total);
+
+  // Presign all folders
+  const allItems = []; // [{url, key, file, folderName}]
   try {
-    const res = await fetch('/api/admin/upload/presign', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        date, location, folder,
-        files: selectedFiles.map(f => ({name: f.name, type: f.type || 'image/jpeg'}))
-      })
-    });
-    urlData = await res.json();
-    if (!res.ok) throw new Error(urlData.error || 'Presign failed');
+    for (const f of folders) {
+      const res = await fetch('/api/admin/upload/presign', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          date, location, folder: f.name,
+          files: f.files.map(file => ({ name: file.name, type: file.type || 'image/jpeg' }))
+        })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Presign failed');
+      d.urls.forEach((u, i) => allItems.push({ ...u, file: f.files[i], folderName: f.name }));
+    }
   } catch(e) {
     showToast('Failed to start: ' + e.message);
     btn.disabled = false;
@@ -219,48 +309,29 @@ async function startUpload() {
     return;
   }
 
-  const urls  = urlData.urls;
-  const total = urls.length;
-  let done    = 0;
-  let errors  = 0;
-  setProgress(0, total);
-
-  const queue = urls.map((u, i) => ({u, i, file: selectedFiles[i]}));
-
+  // Upload concurrently across all folders
+  const queue = [...allItems];
   async function worker() {
     while (queue.length) {
-      const {u, file} = queue.shift();
+      const item = queue.shift();
       try {
         await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          xhr.open('PUT', u.url);
-          xhr.setRequestHeader('Content-Type', file.type || 'image/jpeg');
+          xhr.open('PUT', item.url);
+          xhr.setRequestHeader('Content-Type', item.file.type || 'image/jpeg');
           xhr.onload = () => {
             if (xhr.status >= 200 && xhr.status < 300) { done++; setProgress(done, total); resolve(); }
             else reject(new Error('HTTP ' + xhr.status));
           };
           xhr.onerror = () => reject(new Error('Network error'));
-          xhr.send(file);
+          xhr.send(item.file);
         });
-      } catch(e) {
-        errors++;
-        done++;
-        setProgress(done, total);
-      }
+      } catch(e) { errors++; done++; setProgress(done, total); }
     }
   }
-
-  await Promise.all(Array.from({length: CONCURRENCY}, worker));
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
 
   const succeeded = total - errors;
-  const locSlug   = location.toLowerCase().replace(/ /g, '-');
-  const fSlug     = folder ? folder.toLowerCase().replace(/ /g, '-') + '/' : '';
-  const path      = `images/${date}/${locSlug}/${fSlug}`;
-
-  document.getElementById('progress-label').textContent = errors
-    ? `${succeeded} uploaded, ${errors} failed`
-    : `${succeeded} photos uploaded`;
-
   if (succeeded === 0) {
     showToast('No photos uploaded — check your connection and try again');
     document.getElementById('progress-wrap').style.display = 'none';
@@ -269,52 +340,38 @@ async function startUpload() {
     return;
   }
 
-  // Auto-index as draft
-  document.getElementById('progress-label').textContent = 'Indexing…';
-  const successKeys = urls.slice(0, succeeded).map(u => u.key);
-  let indexed = 0;
-  try {
-    const idxRes = await fetch('/api/admin/upload/index', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ date, location, folder, keys: successKeys })
-    });
-    const idxData = await idxRes.json();
-    indexed = idxData.indexed || 0;
-  } catch(e) {}
+  // Auto-index each folder as draft
+  setProgress(succeeded, total, 'Indexing…');
+  let totalIndexed = 0;
+  for (const f of folders) {
+    const keys = allItems.filter(i => i.folderName === f.name).map(i => i.key);
+    if (!keys.length) continue;
+    try {
+      const res = await fetch('/api/admin/upload/index', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ date, location, folder: f.name, keys })
+      });
+      const d = await res.json();
+      totalIndexed += d.indexed || 0;
+    } catch(e) {}
+  }
 
-  document.getElementById('progress-label').textContent = `${succeeded} uploaded, ${indexed} indexed`;
-  document.getElementById('done-heading').textContent   = indexed ? 'Ready to publish' : 'Uploaded';
-  document.getElementById('done-count').textContent     = `${succeeded} photo${succeeded !== 1 ? 's' : ''} uploaded${indexed ? `, ${indexed} indexed as draft` : ''}.`;
-  document.getElementById('done-path').textContent      = path;
-
-  const actionsEl = document.getElementById('done-actions');
-  actionsEl.innerHTML = `<a class="folders-btn" href="/admin/folders">Go to Folders →</a>`;
-
+  // Done
+  const locSlug = location.toLowerCase().replace(/ /g, '-');
+  setProgress(succeeded, total, `${succeeded} uploaded · ${totalIndexed} indexed as draft`);
+  document.getElementById('done-heading').textContent = 'Ready to publish';
+  document.getElementById('done-count').textContent =
+    folders.length > 1
+      ? `${folders.length} folders — ${succeeded} photos indexed as draft.`
+      : `${succeeded} photo${succeeded !== 1 ? 's' : ''} indexed as draft.`;
+  document.getElementById('done-path').textContent = `images/${date}/${locSlug}/`;
+  document.getElementById('done-actions').innerHTML =
+    `<a class="folders-btn" href="/admin/folders">Go to Folders →</a>`;
   document.getElementById('done-card').style.display = 'block';
+
   btn.textContent = 'Upload More';
   btn.disabled    = false;
-}
-
-async function pushLive(date, location, folder) {
-  const btn = document.getElementById('push-live-btn');
-  btn.textContent = 'Publishing…';
-  btn.disabled = true;
-  try {
-    const res = await fetch('/api/admin/push-live', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ date, location, folder })
-    });
-    const d = await res.json();
-    btn.textContent = `✓ Live (${d.pushed} photos)`;
-    btn.style.background = '#4ade80';
-    btn.style.color = '#0c2336';
-  } catch(e) {
-    btn.textContent = 'Push Live';
-    btn.disabled = false;
-    showToast('Push live failed — try from Folders page');
-  }
 }
 
 function showToast(msg) {
