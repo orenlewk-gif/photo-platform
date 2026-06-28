@@ -289,13 +289,7 @@ async function startUpload() {
   document.getElementById('done-path').textContent      = path;
 
   const actionsEl = document.getElementById('done-actions');
-  if (indexed) {
-    actionsEl.innerHTML = `
-      <button class="folders-btn" id="push-live-btn" onclick="pushLive('${date}','${location.replace(/'/g,"\\'")}','${folder.replace(/'/g,"\\'")}')">Push Live</button>
-      <a class="folders-btn" href="/admin/folders" style="background:rgba(255,255,255,.12);color:#fff;margin-left:.75rem;">Folders →</a>`;
-  } else {
-    actionsEl.innerHTML = `<a class="folders-btn" href="/admin/folders">Go to Folders →</a>`;
-  }
+  actionsEl.innerHTML = `<a class="folders-btn" href="/admin/folders">Go to Folders →</a>`;
 
   document.getElementById('done-card').style.display = 'block';
   btn.textContent = 'Upload More';
