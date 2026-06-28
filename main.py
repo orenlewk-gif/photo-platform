@@ -2059,6 +2059,7 @@ def get_trash_ep(request: Request):
 
 @app.post("/api/trash/restore")
 async def trash_restore(request: Request):
+    global data
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body      = await request.json()
@@ -2074,21 +2075,28 @@ async def trash_restore(request: Request):
         s3.delete_object(Bucket=R2_BUCKET, Key=trash_key)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-    pending = _load_pending_meta()
-    for m in pending:
-        if m["key"] == item["original_key"]:
-            m["status"] = "pending"
-            break
+    if item.get("type") == "studio":
+        entry = item.get("image_entry")
+        if entry and entry["path"] not in {d["path"] for d in data}:
+            data.append(entry)
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(), ContentType="application/json")
     else:
-        pending.append({
-            "key": item["original_key"], "filename": item["filename"],
-            "date": item["date"], "location": item["location"],
-            "photographer_id": item.get("photographer_id"),
-            "photographer_name": item.get("photographer_name", ""),
-            "uploaded_at": item.get("trashed_at", ""),
-            "status": "pending", "folder": item.get("folder"),
-        })
-    _save_pending_meta(pending)
+        pending = _load_pending_meta()
+        for m in pending:
+            if m["key"] == item["original_key"]:
+                m["status"] = "pending"
+                break
+        else:
+            pending.append({
+                "key": item["original_key"], "filename": item["filename"],
+                "date": item["date"], "location": item["location"],
+                "photographer_id": item.get("photographer_id"),
+                "photographer_name": item.get("photographer_name", ""),
+                "uploaded_at": item.get("trashed_at", ""),
+                "status": "pending", "folder": item.get("folder"),
+            })
+        _save_pending_meta(pending)
     _save_trash_meta([t for t in trash if t["key"] != trash_key])
     return {"restored": True}
 
@@ -2911,3 +2919,272 @@ def api_admin_r2_scan(request: Request):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
     return {"folders": list(unindexed.values())}
+
+
+# ── Admin Studio (unified page) ──────────────────────────────────────────────
+
+@app.get("/admin/studio", response_class=HTMLResponse)
+def admin_studio_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/studio")
+    return HTMLResponse(open("templates/admin_studio.html").read())
+
+@app.get("/api/admin/folder/photos")
+def api_admin_folder_photos(
+    request: Request,
+    date: str = Query(...),
+    location: str = Query(...),
+    folder: str = Query(""),
+):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    loc_lower    = location.strip().lower()
+    folder_lower = folder.strip().lower()
+    photos = []
+    for item in data:
+        if item["date"] != date:
+            continue
+        if item["location"].strip().lower() != loc_lower:
+            continue
+        item_name = (item.get("last_name") or item.get("group") or "").strip().lower()
+        if item_name != folder_lower:
+            continue
+        key = to_r2_key(item["path"])
+        photos.append({
+            "path":     item["path"],
+            "filename": os.path.basename(item["path"]),
+            "is_draft": bool(item.get("draft")),
+            "url":      _presigned_get(key, expires=3600),
+        })
+    photos.sort(key=lambda x: natural_sort_key(x["path"]))
+    live_count  = sum(1 for p in photos if not p["is_draft"])
+    draft_count = sum(1 for p in photos if p["is_draft"])
+    fk = _folder_key(date, location.strip(), folder.strip())
+    fm = _load_folder_meta()
+    return {
+        "photos":      photos,
+        "total":       len(photos),
+        "live_count":  live_count,
+        "draft_count": draft_count,
+        "folder_key":  fk,
+        "group_size":  fm.get(fk, {}).get("group_size"),
+    }
+
+@app.post("/api/admin/photo/trash")
+async def admin_photo_trash(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body       = await request.json()
+    paths      = body.get("paths", [])
+    if not paths:
+        return JSONResponse(status_code=400, content={"error": "No paths"})
+    paths_set  = set(paths)
+    to_trash   = [item for item in data if item["path"] in paths_set]
+    now        = datetime.now(timezone.utc)
+    purge_at   = (now + timedelta(days=7)).isoformat()
+    trash_meta = _load_trash_meta()
+    trashed    = 0
+    for item in to_trash:
+        key       = to_r2_key(item["path"])
+        uid       = str(uuid.uuid4())[:8]
+        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": key},
+                           Key=trash_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=key)
+        except Exception as e:
+            print(f"Photo trash failed {key}: {e}")
+            continue
+        try:
+            s3.delete_object(Bucket=R2_BUCKET, Key=_thumb_r2_key(key))
+        except Exception:
+            pass
+        trash_meta.append({
+            "key":          trash_key,
+            "original_key": key,
+            "filename":     os.path.basename(item["path"]),
+            "date":         item["date"],
+            "location":     item["location"],
+            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
+            "trashed_at":   now.isoformat(),
+            "purge_at":     purge_at,
+            "type":         "studio",
+            "image_entry":  item,
+        })
+        trashed += 1
+    data = [item for item in data if item["path"] not in paths_set]
+    if trashed:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_trash_meta(trash_meta)
+    return {"trashed": trashed}
+
+@app.post("/api/admin/pull-draft")
+async def admin_pull_draft(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    pulled   = 0
+    for item in data:
+        if (not item.get("draft")
+                and item["date"] == date
+                and item["location"].strip().lower() == location.lower()
+                and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()):
+            item["draft"] = True
+            pulled += 1
+    if pulled:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    return {"pulled": pulled}
+
+@app.post("/api/admin/folder/move")
+async def admin_folder_move(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body         = await request.json()
+    date         = body.get("date", "")
+    location     = body.get("location", "").strip()
+    folder       = body.get("folder", "").strip()
+    new_date     = body.get("new_date", "").strip()
+    new_location = body.get("new_location", "").strip()
+    if not new_date or not new_location:
+        return JSONResponse(status_code=400, content={"error": "Missing new_date or new_location"})
+    loc_lower    = location.lower()
+    folder_lower = folder.lower()
+    to_move = [item for item in data
+               if item["date"] == date
+               and item["location"].strip().lower() == loc_lower
+               and (item.get("last_name","") or item.get("group","")).strip().lower() == folder_lower]
+    if not to_move:
+        return JSONResponse(status_code=404, content={"error": "No photos found"})
+    new_loc_slug = new_location.lower().replace(" ", "-")
+    folder_slug  = folder.lower().replace(" ", "-") if folder else ""
+    is_portrait  = new_location.lower() in PORTRAIT_LOCATIONS
+    path_remap   = {}
+    from concurrent.futures import ThreadPoolExecutor
+    def move_one(item):
+        old_key  = to_r2_key(item["path"])
+        filename = os.path.basename(item["path"])
+        new_key  = (f"images/{new_date}/{new_loc_slug}/{folder_slug}/{filename}"
+                    if folder_slug else f"images/{new_date}/{new_loc_slug}/{filename}")
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": old_key}, Key=new_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=old_key)
+            try:
+                s3.copy_object(Bucket=R2_BUCKET,
+                               CopySource={"Bucket": R2_BUCKET, "Key": _thumb_r2_key(old_key)},
+                               Key=_thumb_r2_key(new_key))
+                s3.delete_object(Bucket=R2_BUCKET, Key=_thumb_r2_key(old_key))
+            except Exception:
+                pass
+            return (item["path"], new_key)
+        except Exception as e:
+            print(f"Move failed {old_key}: {e}")
+            return None
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        results = list(ex.map(move_one, to_move))
+    for r in results:
+        if r:
+            path_remap[r[0]] = r[1]
+    for item in data:
+        if item["path"] in path_remap:
+            item["path"]     = path_remap[item["path"]]
+            item["date"]     = new_date
+            item["location"] = new_location
+            if is_portrait:
+                item["last_name"] = item.get("last_name") or folder
+                item["group"]     = ""
+            else:
+                item["group"]     = item.get("group") or folder
+                item["last_name"] = ""
+    if path_remap:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    try:
+        fm     = _load_folder_meta()
+        old_fk = _folder_key(date, location, folder)
+        new_fk = _folder_key(new_date, new_location, folder)
+        if old_fk in fm:
+            fm[new_fk] = fm.pop(old_fk)
+            _save_folder_meta(fm)
+    except Exception as e:
+        print(f"folder_meta move error: {e}")
+    return {"moved": len(path_remap), "new_date": new_date, "new_location": new_location}
+
+@app.post("/api/admin/folder/rename")
+async def admin_folder_rename(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body       = await request.json()
+    date       = body.get("date", "")
+    location   = body.get("location", "").strip()
+    folder     = body.get("folder", "").strip()
+    new_folder = body.get("new_folder", "").strip()
+    if not new_folder:
+        return JSONResponse(status_code=400, content={"error": "Missing new_folder"})
+    loc_lower    = location.lower()
+    folder_lower = folder.lower()
+    loc_slug     = location.lower().replace(" ", "-")
+    new_slug     = new_folder.lower().replace(" ", "-")
+    is_portrait  = location.lower() in PORTRAIT_LOCATIONS
+    to_rename = [item for item in data
+                 if item["date"] == date
+                 and item["location"].strip().lower() == loc_lower
+                 and (item.get("last_name","") or item.get("group","")).strip().lower() == folder_lower]
+    if not to_rename:
+        return JSONResponse(status_code=404, content={"error": "No photos found"})
+    path_remap = {}
+    from concurrent.futures import ThreadPoolExecutor
+    def rename_one(item):
+        old_key  = to_r2_key(item["path"])
+        filename = os.path.basename(item["path"])
+        new_key  = f"images/{date}/{loc_slug}/{new_slug}/{filename}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": old_key}, Key=new_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=old_key)
+            try:
+                s3.copy_object(Bucket=R2_BUCKET,
+                               CopySource={"Bucket": R2_BUCKET, "Key": _thumb_r2_key(old_key)},
+                               Key=_thumb_r2_key(new_key))
+                s3.delete_object(Bucket=R2_BUCKET, Key=_thumb_r2_key(old_key))
+            except Exception:
+                pass
+            return (item["path"], new_key)
+        except Exception as e:
+            print(f"Rename failed {old_key}: {e}")
+            return None
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        results = list(ex.map(rename_one, to_rename))
+    for r in results:
+        if r:
+            path_remap[r[0]] = r[1]
+    for item in data:
+        if item["path"] in path_remap:
+            item["path"] = path_remap[item["path"]]
+            if is_portrait:
+                item["last_name"] = new_folder
+            else:
+                item["group"] = new_folder
+    if path_remap:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    try:
+        fm     = _load_folder_meta()
+        old_fk = _folder_key(date, location, folder)
+        new_fk = _folder_key(date, location, new_folder)
+        if old_fk in fm:
+            fm[new_fk] = fm.pop(old_fk)
+            _save_folder_meta(fm)
+    except Exception as e:
+        print(f"folder_meta rename error: {e}")
+    return {"renamed": len(path_remap), "new_folder": new_folder}
