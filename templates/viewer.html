@@ -355,12 +355,15 @@ let cur              = 0;
 let selectedPhotos   = new Set();   // indices in current gallery
 let currentPricingData = null;
 
-const PRINT_SIZES = [
+let PRINT_SIZES = [
   { label: '5×7"',   price: 25 },
   { label: '8×10"',  price: 30 },
   { label: '10×13"', price: 45 },
   { label: '16×20"', price: 90 },
 ];
+fetch('/api/print-pricing').then(r=>r.json()).then(pp => {
+  if (pp.sizes?.length) PRINT_SIZES = pp.sizes.map(s => ({label:s.label, price:s.price}));
+}).catch(()=>{});
 
 // ── Favorites persistence (localStorage) ──────────────────────────────────────
 // Stored as array of photo objects: {path, date, location, filename}

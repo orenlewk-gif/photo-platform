@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Pricing — Crystal Images Admin</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:#e8eaf0;font-family:'Inter',system-ui,sans-serif;font-size:14px;min-height:100vh;display:flex;flex-direction:column}
+a{color:inherit;text-decoration:none}
+
+/* ── Topbar ── */
+#topbar{height:52px;background:#1a1d27;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 1.2rem;gap:1rem;flex-shrink:0;z-index:100}
+#topbar .logo{font-weight:700;font-size:13px;letter-spacing:.5px;color:#a0aec0}
+#topbar .sep{color:rgba(255,255,255,.2)}
+#topbar .page-title{font-weight:600;font-size:13px;color:#e8eaf0}
+#topbar .spacer{flex:1}
+#topbar a.signout{font-size:12px;color:rgba(255,255,255,.4);padding:.3rem .6rem;border-radius:5px}
+#topbar a.signout:hover{color:rgba(255,255,255,.7);background:rgba(255,255,255,.05)}
+
+/* ── Layout ── */
+#layout{display:flex;flex:1;overflow:hidden;height:calc(100vh - 52px)}
+
+/* ── Sidebar ── */
+#sidebar{width:220px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow-y:auto}
+.nav-section{padding:.9rem .7rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.25)}
+.nav-link{display:flex;align-items:center;gap:.5rem;padding:.38rem .65rem;border-radius:6px;margin:.05rem .3rem;font-size:13px;color:rgba(255,255,255,.55);cursor:pointer;transition:background .12s,color .12s}
+.nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
+.nav-link.active{background:rgba(99,179,237,.12);color:#63b3ed}
+.nav-divider{margin:.5rem .7rem;border:none;border-top:1px solid rgba(255,255,255,.07)}
+
+/* ── Main content ── */
+#main{flex:1;overflow-y:auto;padding:2rem 2.5rem;max-width:900px}
+.section{display:none}
+.section.active{display:block}
+
+h1{font-size:22px;font-weight:700;margin-bottom:.35rem}
+.subtitle{color:rgba(255,255,255,.4);font-size:13px;margin-bottom:2rem}
+
+/* ── Cards ── */
+.card{background:#1a1d27;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1.4rem 1.6rem;margin-bottom:1.4rem}
+.card h3{font-size:14px;font-weight:600;margin-bottom:.3rem;color:#e8eaf0}
+.card .hint{font-size:12px;color:rgba(255,255,255,.35);margin-bottom:1rem}
+
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;margin-bottom:1rem}
+th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:.5rem .6rem;border-bottom:1px solid rgba(255,255,255,.08)}
+td{padding:.45rem .6rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+input[type="number"],input[type="text"]{background:#252836;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#e8eaf0;padding:.3rem .55rem;font-size:13px;width:90px;outline:none;transition:border-color .15s}
+input[type="number"]:focus,input[type="text"]:focus{border-color:#63b3ed}
+input[type="text"].wide{width:180px}
+.dollar{color:rgba(255,255,255,.3);margin-right:2px;font-size:12px}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.42rem .85rem;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:#3b82f6;color:#fff}
+.btn-ghost{background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.1)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.btn-danger{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.2)}
+.btn-danger:hover{background:rgba(239,68,68,.25)}
+.btn-sm{padding:.28rem .6rem;font-size:12px}
+.btn-row{display:flex;gap:.6rem;margin-top:.8rem;flex-wrap:wrap;align-items:center}
+
+/* ── Toggle ── */
+.toggle-wrap{display:flex;align-items:center;gap:.55rem;cursor:pointer;user-select:none}
+.toggle{width:34px;height:18px;background:rgba(255,255,255,.15);border-radius:9px;position:relative;transition:background .2s;flex-shrink:0}
+.toggle.on{background:#3b82f6}
+.toggle::after{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:7px;top:2px;left:2px;transition:left .2s}
+.toggle.on::after{left:18px}
+.toggle-label{font-size:12px;color:rgba(255,255,255,.5)}
+
+/* ── Activity rows (Digital section) ── */
+.act-block{background:#12161f;border:1px solid rgba(255,255,255,.06);border-radius:8px;margin-bottom:.8rem;overflow:hidden}
+.act-header{display:flex;align-items:center;gap:.8rem;padding:.75rem 1rem;cursor:pointer}
+.act-name{font-weight:600;font-size:13px;flex:1}
+.act-badge{font-size:10px;font-weight:600;letter-spacing:.6px;padding:.18rem .5rem;border-radius:4px;text-transform:uppercase}
+.act-badge.default{background:rgba(99,179,237,.12);color:#63b3ed}
+.act-badge.custom{background:rgba(52,211,153,.12);color:#34d399}
+.act-body{padding:.8rem 1rem 1rem;border-top:1px solid rgba(255,255,255,.06);display:none}
+.act-body.open{display:block}
+.act-chevron{font-size:12px;color:rgba(255,255,255,.3);transition:transform .2s}
+.act-chevron.open{transform:rotate(90deg)}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}
+#toast.show{opacity:1}
+#toast.success{background:#16a34a;color:#fff}
+#toast.error{background:#dc2626;color:#fff}
+
+/* ── Inline field group ── */
+.field-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap}
+.field-row label{font-size:12px;color:rgba(255,255,255,.45);min-width:90px}
+
+/* ── Combo cards ── */
+.combo-card{background:#12161f;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:1rem;margin-bottom:.75rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.combo-card .combo-locs{flex:1;font-size:13px;font-weight:600}
+.combo-card .combo-price{color:#34d399;font-size:13px}
+.combo-add-form{background:#12161f;border:1px dashed rgba(255,255,255,.1);border-radius:8px;padding:1rem;margin-top:.5rem}
+
+/* ── Responsive ── */
+@media(max-width:700px){
+  #sidebar{width:180px}
+  #main{padding:1.2rem 1rem}
+}
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div id="topbar">
+  <span class="logo">Crystal Images</span>
+  <span class="sep">›</span>
+  <span class="page-title">Pricing</span>
+  <div class="spacer"></div>
+  <a href="/admin?signout=1" class="signout">Sign out</a>
+</div>
+
+<div id="layout">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="nav-section">Admin</div>
+    <a href="/admin/studio" class="nav-link">📁&nbsp; Studio</a>
+    <a href="/admin/pricing" class="nav-link active">💰&nbsp; Pricing</a>
+    <a href="/admin/trash" class="nav-link">🗑&nbsp; Trash</a>
+    <a href="/admin/photographers" class="nav-link">👥&nbsp; Photographers</a>
+    <a href="/admin/dashboard" class="nav-link">📊&nbsp; Dashboard</a>
+    <hr class="nav-divider">
+    <div class="nav-section">Sections</div>
+    <div class="nav-link active-sec" data-sec="digital" onclick="showSection('digital')">📸&nbsp; Digital Tiers</div>
+    <div class="nav-link" data-sec="zip" onclick="showSection('zip')">🧗&nbsp; Zip Line</div>
+    <div class="nav-link" data-sec="combos" onclick="showSection('combos')">🎁&nbsp; Bundle Deals</div>
+    <div class="nav-link" data-sec="prints" onclick="showSection('prints')">🖼&nbsp; Print &amp; Shipping</div>
+    <div class="nav-link" data-sec="new-activity" onclick="showSection('new-activity')">➕&nbsp; New Activity</div>
+  </div>
+
+  <!-- Main content -->
+  <div id="main">
+
+    <!-- ── Digital Tiers ── -->
+    <div id="sec-digital" class="section active">
+      <h1>Digital Tiers</h1>
+      <p class="subtitle">Pricing customers see when buying digital downloads. Activities without custom pricing fall back to the default.</p>
+
+      <div class="card">
+        <h3>Default Pricing</h3>
+        <p class="hint">Used for any activity that doesn't have custom pricing below.</p>
+        <table>
+          <thead><tr><th>Tier Name</th><th>Photos</th><th>Price</th><th>Max?</th><th></th></tr></thead>
+          <tbody id="default-tiers-body"></tbody>
+        </table>
+        <div class="btn-row">
+          <button class="btn btn-ghost btn-sm" onclick="addDefaultTier()">+ Add Tier</button>
+          <button class="btn btn-primary btn-sm" onclick="saveDigital()">Save Default</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Activity Pricing</h3>
+        <p class="hint">Override pricing per activity. Toggle "Use Default" off to set custom tiers.</p>
+        <div id="activity-list"></div>
+        <div class="btn-row" style="margin-top:.4rem">
+          <button class="btn btn-primary btn-sm" onclick="saveDigital()">Save All Activities</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Zip Line ── -->
+    <div id="sec-zip" class="section">
+      <h1>Zip Line Pricing</h1>
+      <p class="subtitle">Priced by group size. Set pricing for each group, then assign group size to folders in Studio.</p>
+
+      <div class="card">
+        <table>
+          <thead><tr><th>Group Size</th><th>1 Photo</th><th>2 Photos</th><th>3 Photos</th><th>All Photos</th><th></th></tr></thead>
+          <tbody id="zip-tiers-body"></tbody>
+        </table>
+        <div class="btn-row">
+          <button class="btn btn-ghost btn-sm" onclick="addZipTier()">+ Add Group Size</button>
+          <button class="btn btn-primary btn-sm" onclick="saveZip()">Save All</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Bundle Deals ── -->
+    <div id="sec-combos" class="section">
+      <h1>Bundle Deals</h1>
+      <p class="subtitle">Offer a discount when customers buy from multiple activities in one order.</p>
+
+      <div class="card">
+        <div id="combos-list"></div>
+        <div class="btn-row">
+          <button class="btn btn-ghost btn-sm" onclick="toggleAddCombo()">+ Add Bundle</button>
+        </div>
+        <div id="combo-add-form" class="combo-add-form" style="display:none;margin-top:1rem">
+          <div class="field-row"><label>Activity 1</label><input type="text" id="ca-loc1" class="wide" placeholder="e.g. Mountain Biking"></div>
+          <div class="field-row"><label>Activity 2</label><input type="text" id="ca-loc2" class="wide" placeholder="e.g. Lone Peak Portraits"></div>
+          <div class="field-row"><label>Min photos each</label><input type="number" id="ca-min" value="1" min="1" style="width:70px"></div>
+          <div class="field-row"><label>Bundle price</label><span class="dollar">$</span><input type="number" id="ca-price" value="150" min="1" style="width:90px"></div>
+          <div class="field-row"><label>Label</label><input type="text" id="ca-label" class="wide" placeholder="e.g. Adventure Bundle"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" onclick="addCombo()">Add Bundle</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleAddCombo()">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Print & Shipping ── -->
+    <div id="sec-prints" class="section">
+      <h1>Print &amp; Shipping</h1>
+      <p class="subtitle">Set prices and shipping rates for unframed and framed prints.</p>
+
+      <div class="card">
+        <h3>Print Sizes</h3>
+        <table>
+          <thead><tr><th>Size</th><th>Price</th><th>Unframed Ship</th><th>Framed Ship</th></tr></thead>
+          <tbody id="print-sizes-body"></tbody>
+        </table>
+
+        <div class="field-row" style="margin-top:1rem">
+          <label style="min-width:auto;white-space:nowrap">Free shipping when</label>
+          <input type="number" id="free-ship-input" value="3" min="1" style="width:60px">
+          <label style="min-width:auto">or more unframed prints</label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="savePrints()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── New Activity ── -->
+    <div id="sec-new-activity" class="section">
+      <h1>New Activity</h1>
+      <p class="subtitle">Add a new photo activity and set how its pricing works.</p>
+
+      <div class="card">
+        <div class="field-row">
+          <label>Activity Name</label>
+          <input type="text" id="new-act-name" class="wide" placeholder="e.g. Ski Photos">
+        </div>
+        <div style="margin:.8rem 0 .4rem">
+          <div style="font-size:12px;color:rgba(255,255,255,.45);margin-bottom:.5rem">Pricing Type</div>
+          <label class="toggle-wrap" style="margin-bottom:.5rem">
+            <input type="radio" name="new-act-type" value="standard" checked style="display:none" id="nat-standard">
+            <div class="toggle on" id="nat-standard-toggle" onclick="selectActType('standard')"></div>
+            <span class="toggle-label" style="color:#e8eaf0">Standard Digital (1/2/3/All photos)</span>
+          </label><br>
+          <label class="toggle-wrap" style="margin-top:.4rem">
+            <input type="radio" name="new-act-type" value="zip" style="display:none" id="nat-zip">
+            <div class="toggle" id="nat-zip-toggle" onclick="selectActType('zip')"></div>
+            <span class="toggle-label">Zip / Group Size (assign per folder)</span>
+          </label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="createActivity()">Create Activity</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<div id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let pricingData  = null;   // pricing.json
+let zipData      = null;   // zip_pricing.json tiers
+let printData    = null;   // print_pricing.json
+
+const ZIP_ACT = new Set(['adventure zip','adventure zip line','nature zip line']);
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+Promise.all([
+  fetch('/api/admin/pricing').then(r=>r.json()),
+  fetch('/api/zip-pricing').then(r=>r.json()),
+  fetch('/api/print-pricing').then(r=>r.json()),
+]).then(([pd, zd, ppd]) => {
+  pricingData = pd;
+  zipData     = zd;
+  printData   = ppd;
+  renderAll();
+}).catch(e => showToast('Load error: '+e,'error'));
+
+function renderAll() {
+  renderDigital();
+  renderZip();
+  renderCombos();
+  renderPrints();
+}
+
+// ── Section nav ───────────────────────────────────────────────────────────────
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('[data-sec]').forEach(l => l.classList.remove('active'));
+  document.getElementById('sec-'+name).classList.add('active');
+  document.querySelector(`[data-sec="${name}"]`).classList.add('active');
+  // handle hash for direct links
+  location.hash = name === 'digital' ? '' : name;
+}
+
+// Handle #zip etc. on load
+const _initHash = location.hash.replace('#','');
+if (_initHash && document.getElementById('sec-'+_initHash)) showSection(_initHash);
+
+// ── Digital Tiers ────────────────────────────────────────────────────────────
+function renderDigital() {
+  if (!pricingData) return;
+  renderDefaultTiers();
+  renderActivities();
+}
+
+function renderDefaultTiers() {
+  const tiers = pricingData.default?.tiers || [];
+  const body  = document.getElementById('default-tiers-body');
+  body.innerHTML = tiers.map((t,i) => tierRow(t,i,'def')).join('');
+}
+
+function tierRow(t, i, prefix) {
+  const isMax = !!t.max;
+  const countVal = t.count === 'all' ? '' : t.count;
+  const countType = t.count === 'all' ? 'all' : 'number';
+  return `<tr id="${prefix}-row-${i}">
+    <td><input type="text" value="${esc(t.label)}" style="width:130px" oninput="tierField('${prefix}',${i},'label',this.value)"></td>
+    <td>${t.count==='all'
+      ? '<span style="color:rgba(255,255,255,.4);font-size:12px">All</span>'
+      : `<input type="number" value="${t.count}" min="1" style="width:60px" oninput="tierField('${prefix}',${i},'count',+this.value)">`}
+    </td>
+    <td><span class="dollar">$</span><input type="number" value="${t.price}" min="0" oninput="tierField('${prefix}',${i},'price',+this.value)"></td>
+    <td>
+      <div class="toggle-wrap">
+        <div class="toggle ${isMax?'on':''}" onclick="toggleMax('${prefix}',${i})"></div>
+        <span class="toggle-label">${isMax?'Yes':''}</span>
+      </div>
+    </td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeTier('${prefix}',${i})">✕</button></td>
+  </tr>`;
+}
+
+function tierField(prefix, i, field, val) {
+  const tiers = getTierList(prefix);
+  if (tiers[i]) tiers[i][field] = val;
+}
+
+function toggleMax(prefix, i) {
+  const tiers = getTierList(prefix);
+  if (!tiers[i]) return;
+  tiers[i].max = !tiers[i].max;
+  renderDigital();
+}
+
+function removeTier(prefix, i) {
+  const tiers = getTierList(prefix);
+  tiers.splice(i, 1);
+  renderDigital();
+}
+
+function getTierList(prefix) {
+  if (prefix === 'def') return pricingData.default.tiers;
+  // activity prefix like "act-Mountain Biking"
+  const name = prefix.replace(/^act-/, '');
+  return pricingData.activities?.[name]?.tiers || [];
+}
+
+function addDefaultTier() {
+  if (!pricingData.default) pricingData.default = {tiers:[]};
+  pricingData.default.tiers.push({label:'New Tier', count:1, price:25});
+  renderDigital();
+}
+
+function renderActivities() {
+  if (!pricingData) return;
+  const acts = pricingData.activities || {};
+  const container = document.getElementById('activity-list');
+
+  // Filter out zip activities — those belong in the Zip section
+  const nonZip = Object.entries(acts).filter(([name]) => !ZIP_ACT.has(name.toLowerCase()));
+
+  if (!nonZip.length) {
+    container.innerHTML = '<p style="color:rgba(255,255,255,.35);font-size:13px">No activities yet. Add one below.</p>';
+    return;
+  }
+
+  container.innerHTML = nonZip.map(([name, cfg]) => {
+    const useDefault = cfg.use_default !== false && (!cfg.tiers || !cfg.tiers.length);
+    const badge = useDefault ? '<span class="act-badge default">Default</span>' : '<span class="act-badge custom">Custom</span>';
+    return `<div class="act-block" id="actblock-${slugId(name)}">
+      <div class="act-header" onclick="toggleAct('${esc(name)}')">
+        <span class="act-name">${esc(name)}</span>
+        ${badge}
+        <span class="act-chevron" id="chevron-${slugId(name)}">›</span>
+      </div>
+      <div class="act-body" id="actbody-${slugId(name)}">
+        <div class="toggle-wrap" style="margin-bottom:.9rem" onclick="toggleUseDefault('${esc(name)}')">
+          <div class="toggle ${useDefault?'on':''}" id="usetoggle-${slugId(name)}"></div>
+          <span class="toggle-label">Use default pricing</span>
+        </div>
+        <div id="custom-tiers-${slugId(name)}" style="display:${useDefault?'none':'block'}">
+          <table>
+            <thead><tr><th>Tier Name</th><th>Photos</th><th>Price</th><th>Max?</th><th></th></tr></thead>
+            <tbody>${(cfg.tiers||[]).map((t,i)=>tierRow(t,i,'act-'+name)).join('')}</tbody>
+          </table>
+          <div class="btn-row">
+            <button class="btn btn-ghost btn-sm" onclick="addActTier('${esc(name)}')">+ Add Tier</button>
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:.6rem">
+          <button class="btn btn-danger btn-sm" onclick="deleteActivity('${esc(name)}')">Remove Activity</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleAct(name) {
+  const body    = document.getElementById('actbody-'+slugId(name));
+  const chevron = document.getElementById('chevron-'+slugId(name));
+  body.classList.toggle('open');
+  chevron.classList.toggle('open');
+}
+
+function toggleUseDefault(name) {
+  if (!pricingData.activities[name]) return;
+  const cfg = pricingData.activities[name];
+  const wasDefault = cfg.use_default !== false && (!cfg.tiers || !cfg.tiers.length);
+  if (wasDefault) {
+    cfg.use_default = false;
+    if (!cfg.tiers) cfg.tiers = [];
+  } else {
+    cfg.use_default = true;
+  }
+  renderDigital();
+  // re-open the block
+  setTimeout(() => {
+    const body = document.getElementById('actbody-'+slugId(name));
+    if (body) { body.classList.add('open'); document.getElementById('chevron-'+slugId(name))?.classList.add('open'); }
+  }, 0);
+}
+
+function addActTier(name) {
+  if (!pricingData.activities[name]) return;
+  if (!pricingData.activities[name].tiers) pricingData.activities[name].tiers = [];
+  pricingData.activities[name].tiers.push({label:'New Tier', count:1, price:25});
+  renderDigital();
+  setTimeout(() => {
+    const body = document.getElementById('actbody-'+slugId(name));
+    if (body) { body.classList.add('open'); document.getElementById('chevron-'+slugId(name))?.classList.add('open'); }
+  }, 0);
+}
+
+function deleteActivity(name) {
+  if (!confirm(`Remove "${name}" from pricing? This only removes the pricing config, not any photos.`)) return;
+  delete pricingData.activities[name];
+  renderDigital();
+}
+
+async function saveDigital() {
+  try {
+    const r = await fetch('/api/admin/pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(pricingData)});
+    if (!r.ok) throw new Error(await r.text());
+    showToast('Digital pricing saved');
+  } catch(e) { showToast('Save failed: '+e,'error'); }
+}
+
+// ── Zip Pricing ───────────────────────────────────────────────────────────────
+function renderZip() {
+  if (!zipData) return;
+  const tiers = zipData.tiers || [];
+  const body  = document.getElementById('zip-tiers-body');
+  body.innerHTML = tiers.map((t,i) => `<tr>
+    <td><input type="number" value="${t.people||''}" min="1" style="width:65px" oninput="zipField(${i},'people',+this.value)"> <span style="font-size:11px;color:rgba(255,255,255,.3)">people</span></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.one_photo||''}" min="0" oninput="zipField(${i},'one_photo',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.two_photos||''}" min="0" oninput="zipField(${i},'two_photos',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.three_photos||''}" min="0" oninput="zipField(${i},'three_photos',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.all_photos||''}" min="0" oninput="zipField(${i},'all_photos',+this.value)"></td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeZipTier(${i})">✕</button></td>
+  </tr>`).join('');
+}
+
+function zipField(i, field, val) {
+  if (zipData.tiers[i]) zipData.tiers[i][field] = val;
+}
+
+function addZipTier() {
+  if (!zipData.tiers) zipData.tiers = [];
+  zipData.tiers.push({people:'', one_photo:'', two_photos:'', three_photos:'', all_photos:''});
+  renderZip();
+}
+
+function removeZipTier(i) {
+  zipData.tiers.splice(i, 1);
+  renderZip();
+}
+
+async function saveZip() {
+  try {
+    const r = await fetch('/api/zip-pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(zipData)});
+    if (!r.ok) throw new Error(await r.text());
+    showToast('Zip pricing saved');
+  } catch(e) { showToast('Save failed: '+e,'error'); }
+}
+
+// ── Combos ────────────────────────────────────────────────────────────────────
+function renderCombos() {
+  if (!pricingData) return;
+  const combos  = pricingData.combos || [];
+  const list    = document.getElementById('combos-list');
+  if (!combos.length) {
+    list.innerHTML = '<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.5rem">No bundle deals active.</p>';
+    return;
+  }
+  list.innerHTML = combos.map((c,i) => `<div class="combo-card">
+    <div class="combo-locs">${esc(c.locations?.join(' + ') || '')}${c.min_photos ? ` <span style="font-size:11px;color:rgba(255,255,255,.35)">(${c.min_photos}+ photos each)</span>` : ''}</div>
+    <div>${c.label ? `<span style="font-size:12px;color:rgba(255,255,255,.45)">${esc(c.label)}</span> ` : ''}<span class="combo-price">$${c.price}</span></div>
+    <button class="btn btn-danger btn-sm" onclick="removeCombo(${i})">✕</button>
+  </div>`).join('');
+}
+
+function toggleAddCombo() {
+  const f = document.getElementById('combo-add-form');
+  f.style.display = f.style.display === 'none' ? 'block' : 'none';
+}
+
+function addCombo() {
+  const loc1  = document.getElementById('ca-loc1').value.trim();
+  const loc2  = document.getElementById('ca-loc2').value.trim();
+  const min   = +document.getElementById('ca-min').value || 1;
+  const price = +document.getElementById('ca-price').value;
+  const label = document.getElementById('ca-label').value.trim();
+  if (!loc1 || !loc2 || !price) { showToast('Fill in both activities and price','error'); return; }
+  if (!pricingData.combos) pricingData.combos = [];
+  pricingData.combos.push({locations:[loc1,loc2], min_photos:min, price, label});
+  renderCombos();
+  toggleAddCombo();
+  saveDigital();
+}
+
+function removeCombo(i) {
+  pricingData.combos.splice(i, 1);
+  renderCombos();
+  saveDigital();
+}
+
+// ── Print & Shipping ──────────────────────────────────────────────────────────
+function renderPrints() {
+  if (!printData) return;
+  const sizes = printData.sizes || [];
+  const body  = document.getElementById('print-sizes-body');
+  body.innerHTML = sizes.map((s,i) => `<tr>
+    <td><input type="text" value="${esc(s.label)}" style="width:90px" oninput="printField(${i},'label',this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${s.price||''}" min="0" oninput="printField(${i},'price',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${s.ship_print||''}" min="0" oninput="printField(${i},'ship_print',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${s.ship_framed||''}" min="0" oninput="printField(${i},'ship_framed',+this.value)"></td>
+  </tr>`).join('');
+  document.getElementById('free-ship-input').value = printData.free_ship_threshold ?? 3;
+}
+
+function printField(i, field, val) {
+  if (printData.sizes[i]) printData.sizes[i][field] = val;
+}
+
+async function savePrints() {
+  printData.free_ship_threshold = +document.getElementById('free-ship-input').value || 3;
+  try {
+    const r = await fetch('/api/admin/print-pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(printData)});
+    if (!r.ok) throw new Error(await r.text());
+    showToast('Print pricing saved');
+  } catch(e) { showToast('Save failed: '+e,'error'); }
+}
+
+// ── New Activity ──────────────────────────────────────────────────────────────
+let _newActType = 'standard';
+
+function selectActType(type) {
+  _newActType = type;
+  document.getElementById('nat-standard-toggle').className = 'toggle ' + (type==='standard'?'on':'');
+  document.getElementById('nat-zip-toggle').className      = 'toggle ' + (type==='zip'?'on':'');
+}
+
+async function createActivity() {
+  const name = document.getElementById('new-act-name').value.trim();
+  if (!name) { showToast('Enter an activity name','error'); return; }
+  if (!pricingData.activities) pricingData.activities = {};
+  if (_newActType === 'zip') {
+    // Zip activities don't get a digital pricing entry — they use zip_pricing.json
+    // Just show a note
+    showToast(`"${name}" created as zip activity — assign group sizes in Studio`, 'success');
+    document.getElementById('new-act-name').value = '';
+    return;
+  }
+  // Standard: add to activities with use_default:true
+  pricingData.activities[name] = {use_default: true, tiers: []};
+  await saveDigital();
+  renderDigital();
+  showToast(`"${name}" added — go to Digital Tiers to set custom pricing`);
+  document.getElementById('new-act-name').value = '';
+  showSection('digital');
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function slugId(name) { return name.replace(/[^a-zA-Z0-9]/g,'-'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let _toastTimer;
+function showToast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className   = `show ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.className = ''; }, 2800);
+}
+</script>
+</body>
+</html>

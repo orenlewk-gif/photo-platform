@@ -481,8 +481,9 @@ let cartData      = null;
 let appliedCoupon = null;
 let globalCombos  = [];     // combo deals loaded from /api/pricing
 
-const PRINT_SHIPPING = [8, 8, 13, 13];
-const FRAME_SHIPPING = [15, 15, 25, 50];
+let PRINT_SHIPPING = [8, 8, 13, 13];
+let FRAME_SHIPPING = [15, 15, 25, 50];
+let FREE_SHIP_THRESHOLD = 3;
 
 function calcPriceFor(count, pricing) {
   if (!pricing || !pricing.tiers || count === 0) return 0;
@@ -516,7 +517,7 @@ function calcShipping(prints, frames) {
     ...frames.flatMap(f => Array(f.quantity || 1).fill(FRAME_SHIPPING[f.sizeIdx || 0])),
   ].sort((a,b) => b-a);
   if (frameRates.length) return frameRates[0] + frameRates.slice(1).reduce((s,r) => s + r*0.5, 0);
-  if (unframed.length >= 3) return 0;
+  if (unframed.length >= FREE_SHIP_THRESHOLD) return 0;
   if (unframed.length) return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx || 0]));
   return 0;
 }
@@ -549,7 +550,15 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('shipping-card').style.display = 'block';
   }
 
-  // Load combo deals from pricing API
+  // Load print shipping rates + combo deals in parallel
+  fetch('/api/print-pricing').then(r=>r.json()).then(pp => {
+    if (pp.sizes?.length) {
+      PRINT_SHIPPING = pp.sizes.map(s => s.ship_print ?? 8);
+      FRAME_SHIPPING = pp.sizes.map(s => s.ship_framed ?? 15);
+    }
+    if (pp.free_ship_threshold) FREE_SHIP_THRESHOLD = pp.free_ship_threshold;
+    renderSummary();
+  }).catch(()=>{});
   fetch('/api/pricing').then(r => r.json()).then(d => {
     if (d.combos) { globalCombos = d.combos; renderSummary(); }
   }).catch(() => {});

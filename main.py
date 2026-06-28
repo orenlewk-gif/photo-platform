@@ -946,8 +946,10 @@ async def create_checkout(request: Request):
             })
 
         # ── Shipping logic (mirrors frontend calcShipping) ───────────────────
-        PRINT_SHIP = [8, 8, 13, 13]
-        FRAME_SHIP = [15, 15, 25, 50]
+        _pp = _load_print_pricing()
+        _ppsizes = _pp.get("sizes", _DEFAULT_PRINT_SIZES)
+        PRINT_SHIP = [s.get("ship_print", 8)   for s in _ppsizes]
+        FRAME_SHIP = [s.get("ship_framed", 15)  for s in _ppsizes]
 
         framed   = [p for p in prints if p.get("frame") and p["frame"] != "No Frame"]
         unframed = [p for p in prints if not p.get("frame") or p["frame"] == "No Frame"]
@@ -959,7 +961,7 @@ async def create_checkout(request: Request):
              for fr in frames for _ in range(int(fr.get("quantity", 1)))]
         )
 
-        FREE_SHIP_PRINT_THRESHOLD = 3
+        FREE_SHIP_PRINT_THRESHOLD = _pp.get("free_ship_threshold", 3)
 
         if frame_rates:
             frame_rates.sort(reverse=True)
@@ -2469,23 +2471,17 @@ def _save_folder_meta(d):
 def _folder_key(date, location, last_name):
     return f"{date}|{location}|{last_name}"
 
-@app.get("/admin/zip-pricing", response_class=HTMLResponse)
-def zip_pricing_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/zip-pricing")
-    return HTMLResponse(open("templates/zip_pricing.html").read())
+@app.get("/admin/zip-pricing")
+def zip_pricing_page():
+    return RedirectResponse("/admin/pricing#zip")
 
-@app.get("/admin/zip-folders", response_class=HTMLResponse)
-def zip_folders_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/zip-folders")
-    return HTMLResponse(open("templates/zip_folders.html").read())
+@app.get("/admin/zip-folders")
+def zip_folders_page():
+    return RedirectResponse("/admin/pricing#zip")
 
-@app.get("/admin/zip-preview/{date}/{last_name}", response_class=HTMLResponse)
-def zip_preview_page(request: Request, date: str, last_name: str):
-    if not _admin_authed(request):
-        return RedirectResponse(f"/admin?next=/admin/zip-preview/{date}/{last_name}")
-    return HTMLResponse(open("templates/zip_preview.html").read())
+@app.get("/admin/zip-preview/{date}/{last_name}")
+def zip_preview_page(date: str, last_name: str):
+    return RedirectResponse("/admin/pricing#zip")
 
 @app.get("/api/zip-pricing")
 def api_get_zip_pricing(request: Request):
@@ -2549,11 +2545,9 @@ async def api_set_group_size(request: Request):
     _save_folder_meta(folder_meta)
     return {"status": "ok"}
 
-@app.get("/admin/zip-compare", response_class=HTMLResponse)
-def zip_compare_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/zip-compare")
-    return HTMLResponse(open("templates/zip_compare.html").read())
+@app.get("/admin/zip-compare")
+def zip_compare_page():
+    return RedirectResponse("/admin/pricing#zip")
 
 @app.get("/api/zip-compare")
 def api_zip_compare(request: Request):
@@ -2753,7 +2747,29 @@ async def admin_push_live(request: Request):
     date     = body.get("date", "")
     location = body.get("location", "").strip()
     folder   = body.get("folder", "").strip()
-    pushed   = 0
+
+    # ── Pricing gate ─────────────────────────────────────────────────────────
+    loc_lower = location.lower()
+    if loc_lower in ZIP_LOCS_SET:
+        fm = _load_folder_meta()
+        fk = _folder_key(date, location, folder)
+        group_size = fm.get(fk, {}).get("group_size")
+        if not group_size:
+            return JSONResponse(status_code=400, content={"error": "Set group size before pushing live"})
+        zp = _load_zip_pricing()
+        if not any(str(t.get("people")) == str(group_size) for t in zp.get("tiers", [])):
+            return JSONResponse(status_code=400, content={"error": f"No zip pricing for {group_size} people — add it in Pricing"})
+    else:
+        has_pricing = False
+        if os.path.exists("pricing.json"):
+            with open("pricing.json") as _pf:
+                _pr = json.load(_pf)
+            has_pricing = bool(_pr.get("default", {}).get("tiers")) or \
+                          bool(_pr.get("activities", {}).get(location, {}).get("tiers"))
+        if not has_pricing:
+            return JSONResponse(status_code=400, content={"error": f"No pricing configured for {location} — set it up in Pricing"})
+
+    pushed = 0
     for item in data:
         if (item.get("draft")
                 and item["date"] == date
@@ -3195,3 +3211,62 @@ async def admin_folder_rename(request: Request):
     except Exception as e:
         print(f"folder_meta rename error: {e}")
     return {"renamed": len(path_remap), "new_folder": new_folder}
+
+
+# ── PRINT PRICING ─────────────────────────────────────────────────────────────
+
+PRINT_PRICING_KEY = "meta/print_pricing.json"
+
+_DEFAULT_PRINT_SIZES = [
+    {"label": '5×7"',  "price": 25, "ship_print": 8,  "ship_framed": 15, "size_idx": 0},
+    {"label": '8×10"', "price": 30, "ship_print": 8,  "ship_framed": 15, "size_idx": 1},
+    {"label": '10×13"',"price": 45, "ship_print": 13, "ship_framed": 25, "size_idx": 2},
+    {"label": '16×20"',"price": 90, "ship_print": 13, "ship_framed": 50, "size_idx": 3},
+]
+
+def _load_print_pricing():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRINT_PRICING_KEY)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return {"sizes": list(_DEFAULT_PRINT_SIZES), "free_ship_threshold": 3}
+
+def _save_print_pricing(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=PRINT_PRICING_KEY,
+                  Body=json.dumps(d).encode(), ContentType="application/json")
+
+@app.get("/api/print-pricing")
+def api_print_pricing():
+    return _load_print_pricing()
+
+@app.post("/api/admin/print-pricing")
+async def api_save_print_pricing(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_print_pricing(body)
+    return {"status": "ok"}
+
+@app.get("/api/admin/pricing")
+def api_admin_pricing_get(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not os.path.exists("pricing.json"):
+        return {"default": {"tiers": []}, "activities": {}, "combos": []}
+    with open("pricing.json") as f:
+        return json.load(f)
+
+@app.post("/api/admin/pricing")
+async def api_admin_pricing_save(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    with open("pricing.json", "w") as f:
+        json.dump(body, f, indent=2)
+    return {"status": "ok"}
+
+@app.get("/admin/pricing", response_class=HTMLResponse)
+def admin_pricing_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/pricing")
+    return HTMLResponse(open("templates/admin_pricing.html").read())

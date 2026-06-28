@@ -27,6 +27,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .nav-link{display:flex;align-items:center;gap:.5rem;padding:.35rem .55rem;border-radius:6px;
   color:rgba(255,255,255,.45);font-size:.8rem;text-decoration:none}
 .nav-link:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8)}
+.nav-link.active-page{color:rgba(255,255,255,.85);background:rgba(255,255,255,.06)}
+.nav-section-label{padding:.55rem .55rem .15rem;font-size:9.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
 #date-tree{flex:1;overflow-y:auto;padding:.4rem 0}
 
 /* ── Tree nodes ── */
@@ -222,8 +224,10 @@ input[type=file]{display:none}
       <button id="upload-btn" onclick="showUploadView()">+ New Upload</button>
     </div>
     <div id="sidebar-nav">
+      <div class="nav-section-label">ADMIN</div>
+      <a href="/admin/studio" class="nav-link active-page">📁&nbsp; Studio</a>
+      <a href="/admin/pricing" class="nav-link">💰&nbsp; Pricing</a>
       <a href="/admin/trash" class="nav-link">🗑&nbsp; Trash</a>
-      <a href="/admin/zip-pricing" class="nav-link">💰&nbsp; Zip Pricing</a>
       <a href="/admin/photographers" class="nav-link">👥&nbsp; Photographers</a>
       <a href="/admin/dashboard" class="nav-link">📊&nbsp; Dashboard</a>
     </div>
@@ -665,7 +669,7 @@ async function pushLive() {
   const res = await fetch('/api/admin/push-live', {method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({date,location,folder})});
   if (res.ok) { const d=await res.json(); showToast(`${d.pushed} photo${d.pushed!==1?'s':''} pushed live`); await loadFolderPhotos(); await loadSidebar(); }
-  else showToast('Push live failed','error');
+  else { const d=await res.json().catch(()=>({})); showToast(d.error||'Push live failed','error'); }
 }
 
 async function pullDraft() {
