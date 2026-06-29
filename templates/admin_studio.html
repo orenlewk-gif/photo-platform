@@ -24,8 +24,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
   padding:.52rem;font-weight:700;font-size:.88rem;cursor:pointer}
 #upload-btn:hover{background:#f0bc00}
 #sidebar-nav{padding:.4rem .5rem;border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
-.nav-link{display:flex;align-items:center;gap:.5rem;padding:.4rem .65rem;border-radius:6px;
-  color:rgba(255,255,255,.5);font-size:13.5px;text-decoration:none}
+.nav-link{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:6px;
+  color:rgba(255,255,255,.5);font-size:15px;text-decoration:none}
 .nav-link:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8)}
 .nav-link.active-page{color:#F5C518;background:rgba(245,197,24,.08)}
 .nav-section-label{padding:.65rem .65rem .2rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
@@ -228,9 +228,11 @@ input[type=file]{display:none}
       <a href="/admin/pricing" class="nav-link">Pricing</a>
       <a href="/admin/photographers" class="nav-link">Photographers</a>
       <a href="/admin/orders" class="nav-link">Orders</a>
-      <a href="/admin/trash" class="nav-link">Trash</a>
     </div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
+      <a href="/admin/trash" class="nav-link">Trash</a>
+    </div>
   </div>
 
   <!-- ── Main ── -->

@@ -1471,23 +1471,35 @@ def admin_orders(request: Request, days: int = 30,
     total_net  = sum(r["net"]        for r in rows)
     now_utc    = datetime.now(timezone.utc)
 
+    # Photographer prefix map
+    _photogs    = _load_photographers()
+    _prefix_map = {p.get("file_prefix","").strip().lower(): p["name"]
+                   for p in _photogs if p.get("file_prefix","").strip()}
+    def _detect_photog(filenames_str):
+        if not filenames_str:
+            return "Oren Lewkowski"
+        first = filenames_str.split(',')[0].strip()
+        return _prefix_map.get(first[:3].lower(), "Oren Lewkowski") if first else "Oren Lewkowski"
+
     import json as _json
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
     trs = ""
     for r in rows:
-        first_file = (r['filenames'] or '').split(',')[0].strip() or '—'
+        first_file  = (r['filenames'] or '').split(',')[0].strip() or '—'
+        photographer = _detect_photog(r['filenames'])
         detail_data = _json.dumps({
-            "name":     f"{r['first']} {r['last']}",
-            "email":    r['email'],
-            "what":     r['what'],
-            "files":    r['filenames'] or '—',
-            "total":    f"${r['total']:.2f}",
-            "discount": f"-${r['discount']:.2f}" if r['discount'] else '—',
-            "fee":      f"${r['stripe_fee']:.2f}",
-            "net":      f"${r['net']:.2f}",
-            "coupon":   r['coupon_code'] or '—',
-            "shipping": f"${r['shipping']:.2f}" if r['shipping'] else '—',
-            "address":  r['ship_addr'] or '—',
+            "name":         f"{r['first']} {r['last']}",
+            "email":        r['email'],
+            "photographer": photographer,
+            "what":         r['what'],
+            "files":        r['filenames'] or '—',
+            "total":        f"${r['total']:.2f}",
+            "discount":     f"-${r['discount']:.2f}" if r['discount'] else '—',
+            "fee":          f"${r['stripe_fee']:.2f}",
+            "net":          f"${r['net']:.2f}",
+            "coupon":       r['coupon_code'] or '—',
+            "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
+            "address":      r['ship_addr'] or '—',
         }).replace("'", "&#39;").replace('"', '&quot;')
         try:
             order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -1503,6 +1515,7 @@ def admin_orders(request: Request, days: int = 30,
           {td(f"{r['first']} {r['last']}")}
           {td(r['email'])}
           {td(r['what'])}
+          {td(photographer)}
           {td(first_file, 'mono')}
           {td(f"${r['total']:.2f}")}
           {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
@@ -1530,9 +1543,9 @@ body{{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-hei
 #topbar a{{font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;padding:.3rem .6rem;border-radius:5px}}
 #topbar a:hover{{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}}
 #layout{{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}}
-#sidebar{{width:210px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);padding:.5rem 0;overflow-y:auto}}
-.nav-sec-label{{padding:.75rem .8rem .25rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}}
-.nav-link{{display:block;padding:.42rem .8rem;border-radius:6px;margin:.05rem .4rem;font-size:13.5px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}}
+#sidebar{{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow-y:auto}}
+.nav-sec-label{{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}}
+.nav-link{{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}}
 .nav-link:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
 .nav-link.active{{background:rgba(245,197,24,.08);color:#F5C518}}
 #main{{flex:1;overflow-y:auto;padding:1.75rem 2rem}}
@@ -1582,7 +1595,10 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
     <a href="/admin/pricing" class="nav-link">Pricing</a>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link active">Orders</a>
-    <a href="/admin/trash" class="nav-link">Trash</a>
+    <div style="flex:1"></div>
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0">
+      <a href="/admin/trash" class="nav-link">Trash</a>
+    </div>
   </div>
   <div id="main">
 <div class="modal-overlay" id="detail-modal" onclick="closeDetail(event)">
@@ -1596,7 +1612,7 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 function showDetail(encoded) {{
   const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
   const fields = [
-    ['Name', d.name], ['Email', d.email], ['Ordered', d.what],
+    ['Name', d.name], ['Email', d.email], ['Photographer', d.photographer], ['Ordered', d.what],
     ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
     ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
     ['Billing Address', d.address], ['Photo Files', d.files],
@@ -1662,11 +1678,11 @@ async function copyLink(orderId, e) {{
   <div class="wrap">
   <table>
     <thead><tr>
-      <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th>
+      <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th><th>Photographer</th>
       <th>Photo Files</th><th>Total</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
       <th>Coupon</th><th>Shipping</th><th>Address</th><th>Action</th>
     </tr></thead>
-    <tbody>{trs if trs else '<tr><td colspan="13" class="empty">No completed orders in this period.</td></tr>'}</tbody>
+    <tbody>{trs if trs else '<tr><td colspan="14" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
   </div>
   </div>
@@ -1687,11 +1703,18 @@ def admin_export(request: Request, days: int = 30,
     rows   = [_order_row(o) for o in orders]
     buf    = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Date","First Name","Last Name","Email","What Ordered",
+    _exp_photogs    = _load_photographers()
+    _exp_prefix_map = {p.get("file_prefix","").strip().lower(): p["name"]
+                       for p in _exp_photogs if p.get("file_prefix","").strip()}
+    def _exp_photog(fn):
+        if not fn: return "Oren Lewkowski"
+        first = fn.split(',')[0].strip()
+        return _exp_prefix_map.get(first[:3].lower(), "Oren Lewkowski") if first else "Oren Lewkowski"
+    writer.writerow(["Date","First Name","Last Name","Email","Photographer","What Ordered",
                      "Photo Files","Location","Photo Date","Total","Discount",
                      "Stripe Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
     for r in rows:
-        writer.writerow([r["date"], r["first"], r["last"], r["email"], r["what"],
+        writer.writerow([r["date"], r["first"], r["last"], r["email"], _exp_photog(r["filenames"]), r["what"],
                          r["filenames"], r["location"], r["photo_date"],
                          f"${r['total']:.2f}",
                          f"-${r['discount']:.2f}" if r["discount"] else "",
@@ -2231,6 +2254,7 @@ async def add_photographer(request: Request):
         return JSONResponse(status_code=400, content={"error": "PIN already in use"})
     p = {"id": str(uuid.uuid4())[:8], "name": name, "pin": pin,
          "default_location": body.get("default_location", ""),
+         "file_prefix": body.get("file_prefix", "").strip().lower(),
          "created_at": datetime.now(timezone.utc).isoformat()}
     photographers.append(p)
     _save_photographers(photographers)
@@ -2244,7 +2268,7 @@ async def update_photographer(pid: str, request: Request):
     photographers = _load_photographers()
     for p in photographers:
         if p["id"] == pid:
-            for field in ("name", "pin", "default_location"):
+            for field in ("name", "pin", "default_location", "file_prefix"):
                 if field in body:
                     p[field] = body[field]
             _save_photographers(photographers)
