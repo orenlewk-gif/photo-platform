@@ -574,7 +574,7 @@ async function loadFolderPhotos() {
       tiers.map(t => `<option value="${t.people}" ${String(d.group_size)===String(t.people)?'selected':''}>${t.people} ${t.people===1?'person':'people'}</option>`).join('');
     gsSel.dataset.folderKey = d.folder_key;
     gsLabel.style.display = '';
-    gsSel.style.display = '';
+    gsSel.style.display = 'inline-block';
   } else {
     gsLabel.style.display = 'none';
     gsSel.style.display = 'none';

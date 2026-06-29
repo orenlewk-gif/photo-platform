@@ -1989,7 +1989,7 @@ function updateCart() {
     if (key === currentFolderKey) return;
     const n = fc.selectedPaths?.length || 0;
     otherPhotos += n;
-    const p = (fc.location !== undefined && pricingCache[fc.location]) ? pricingCache[fc.location] : fc.pricing;
+    const p = fc.pricing || pricingCache[fc.location];
     otherPrice  += calcPriceFor(n, p);
   });
   const totalPhotoCount = count + otherPhotos;
@@ -2131,11 +2131,8 @@ function renderCartView() {
     const isCurrent      = key === currentFolderKey;
     const label          = fc.label || key;
     const digitalCount   = fc.selectedPaths?.length || 0;
-    // Use pricingCache keyed by location — self-heals stale localStorage pricing
     const folderPricing  = isCurrent ? currentPricing
-                         : (fc.location !== undefined && pricingCache[fc.location])
-                           ? pricingCache[fc.location]
-                           : fc.pricing;
+                         : (fc.pricing || pricingCache[fc.location]);
     const digitalPrice   = comboAdjPrices.hasOwnProperty(key)
                            ? comboAdjPrices[key]
                            : calcPriceFor(digitalCount, folderPricing);
