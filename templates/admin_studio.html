@@ -169,6 +169,19 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .trash-icon{background:rgba(0,0,0,.68);border:none;color:#ef4444;border-radius:5px;
   width:24px;height:24px;font-size:.82rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .trash-icon:hover{background:rgba(239,68,68,.3)}
+.enlarge-icon{background:rgba(0,0,0,.68);border:none;color:rgba(255,255,255,.85);border-radius:5px;
+  width:24px;height:24px;font-size:.82rem;cursor:pointer;display:flex;align-items:center;justify-content:center;margin-right:4px}
+.enlarge-icon:hover{background:rgba(255,255,255,.18)}
+/* ── Lightbox ── */
+#admin-lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:1000;display:none;
+  align-items:center;justify-content:center;cursor:zoom-out}
+#admin-lightbox.open{display:flex}
+#admin-lightbox img{max-width:92vw;max-height:92vh;object-fit:contain;border-radius:4px;cursor:default}
+#admin-lightbox .lb-close{position:absolute;top:1rem;right:1.2rem;background:rgba(0,0,0,.5);
+  border:none;color:#fff;font-size:1.5rem;cursor:pointer;border-radius:6px;padding:2px 8px;opacity:.7;z-index:1001}
+#admin-lightbox .lb-close:hover{opacity:1}
+#lb-caption{position:absolute;bottom:1rem;left:50%;transform:translateX(-50%);
+  color:rgba(255,255,255,.45);font-size:.72rem;pointer-events:none}
 .photo-cell.selected{outline:3px solid #3b82f6;outline-offset:-3px}
 .check-badge{position:absolute;top:5px;left:5px;width:17px;height:17px;background:#3b82f6;
   border-radius:3px;display:none;align-items:center;justify-content:center;font-size:.65rem}
@@ -368,6 +381,12 @@ input[type=file]{display:none}
 </div>
 
 <input type="file" id="add-photos-input" multiple accept="image/jpeg,image/png,image/jpg" onchange="handleAddPhotosInput(this.files)">
+<div id="admin-lightbox" onclick="closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <img id="lb-img" src="" alt="">
+  <div id="lb-caption"></div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -590,12 +609,14 @@ function renderPhotoGrid() {
     grid.innerHTML = '<div class="loading-text" style="grid-column:1/-1">No photos found</div>';
     return;
   }
-  grid.innerHTML = folderPhotos.map(p => {
+  grid.innerHTML = folderPhotos.map((p, i) => {
     const pa = escAttr(p.path);
+    const thumbSrc = `/api/photo?path=${encodeURIComponent(p.path)}&size=thumb`;
     return `<div class="photo-cell ${p.is_draft?'is-draft':''} ${selectedPaths.has(p.path)?'selected':''}"
       data-path="${pa}" onclick="selectPhoto(event,'${pa}')">
-      <img src="${p.url}" loading="lazy" alt="${escAttr(p.filename)}">
+      <img src="${thumbSrc}" loading="lazy" alt="${escAttr(p.filename)}">
       <div class="overlay">
+        <button class="enlarge-icon" onclick="event.stopPropagation();openLightbox(${i})" title="View full size">⛶</button>
         <button class="trash-icon" onclick="event.stopPropagation();trashPhoto('${pa}')" title="Trash">🗑</button>
       </div>
       <div class="check-badge">✓</div>
@@ -734,6 +755,26 @@ async function updatePricingPreview() {
   `;
   prev.style.display = 'flex';
 }
+
+// ── Lightbox ──
+function openLightbox(idx) {
+  const p = folderPhotos[idx];
+  if (!p) return;
+  const lb = document.getElementById('admin-lightbox');
+  const img = document.getElementById('lb-img');
+  document.getElementById('lb-caption').textContent = p.filename;
+  img.src = '';
+  img.src = `/api/photo?path=${encodeURIComponent(p.path)}&size=medium`;
+  img.onerror = () => { img.src = p.url; };
+  lb.classList.add('open');
+  document.addEventListener('keydown', _lbKey);
+}
+function closeLightbox() {
+  document.getElementById('admin-lightbox').classList.remove('open');
+  document.getElementById('lb-img').src = '';
+  document.removeEventListener('keydown', _lbKey);
+}
+function _lbKey(e) { if (e.key === 'Escape') closeLightbox(); }
 
 // ── Inline rename ──
 function setupInlineEdit() {
