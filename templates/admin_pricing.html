@@ -437,11 +437,11 @@ function renderZip() {
   if (!zipData) return;
   const tiers = zipData.tiers || [];
   document.getElementById('zip-tiers-body').innerHTML = tiers.map((t,i) => `<tr>
-    <td><input type="number" value="${t.people||''}" min="1" style="width:60px" oninput="zipField(${i},'people',+this.value)"> <span style="font-size:11px;color:rgba(255,255,255,.3)">ppl</span></td>
-    <td><span class="dollar">$</span><input type="number" value="${t.one_photo||''}" min="0" oninput="zipField(${i},'one_photo',+this.value)"></td>
-    <td><span class="dollar">$</span><input type="number" value="${t.two_photos||''}" min="0" oninput="zipField(${i},'two_photos',+this.value)"></td>
-    <td><span class="dollar">$</span><input type="number" value="${t.three_photos||''}" min="0" oninput="zipField(${i},'three_photos',+this.value)"></td>
-    <td><span class="dollar">$</span><input type="number" value="${t.all_photos||''}" min="0" oninput="zipField(${i},'all_photos',+this.value)"></td>
+    <td><input type="text" value="${t.people!=null?t.people:''}" placeholder="e.g. 6+" style="width:60px" oninput="zipField(${i},'people',this.value)"> <span style="font-size:11px;color:rgba(255,255,255,.3)">ppl</span></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.one_photo!=null?t.one_photo:''}" min="0" oninput="zipField(${i},'one_photo',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.two_photos!=null?t.two_photos:''}" min="0" oninput="zipField(${i},'two_photos',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.three_photos!=null?t.three_photos:''}" min="0" oninput="zipField(${i},'three_photos',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${t.all_photos!=null?t.all_photos:''}" min="0" oninput="zipField(${i},'all_photos',+this.value)"></td>
     <td><button class="btn btn-danger btn-sm" onclick="removeZipTier(${i})">✕</button></td>
   </tr>`).join('');
 }

@@ -700,7 +700,7 @@ async function pullDraft() {
 async function saveGroupSize() {
   const sel = document.getElementById('group-size-select');
   const fk = sel.dataset.folderKey;
-  const gs = sel.value ? parseInt(sel.value) : null;
+  const gs = sel.value ? (isNaN(Number(sel.value)) ? sel.value : +sel.value) : null;
   if (!fk) return;
   await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({folder_key:fk,group_size:gs})});
@@ -715,14 +715,14 @@ async function updatePricingPreview() {
   const isZip = ZIP_LOCS.has(currentFolder.location.trim().toLowerCase());
   if (!isZip) { prev.style.display = 'none'; return; }
   const gsSel = document.getElementById('group-size-select');
-  const gs = gsSel?.value ? parseInt(gsSel.value) : null;
-  if (!gs) {
+  const gs = gsSel?.value ? (isNaN(Number(gsSel.value)) ? gsSel.value : +gsSel.value) : null;
+  if (!gs && gs !== 0) {
     prev.innerHTML = '<span style="font-size:.75rem;color:rgba(255,255,255,.3)">Select a group size to see pricing</span>';
     prev.style.display = 'flex';
     return;
   }
   const tiers = await loadZipTiers();
-  const tier = tiers.find(t => parseInt(t.people) === gs);
+  const tier = tiers.find(t => String(t.people) === String(gs));
   if (!tier) { prev.style.display = 'none'; return; }
   const fmt = v => (v != null && v !== '') ? `$${parseFloat(v).toFixed(2)}` : '—';
   prev.innerHTML = `
