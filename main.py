@@ -709,6 +709,46 @@ def get_photo(path: str, size: str = Query("medium")):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+@app.get("/api/admin/photo")
+def admin_get_photo(request: Request, path: str, size: str = Query("thumb")):
+    """Admin-only photo endpoint — no watermark. Caches to admin_thumbs/ in R2."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    from fastapi.responses import StreamingResponse as SR
+    SIZE_MAP = {"thumb": (450, 72), "medium": (1800, 90)}
+    max_px, quality = SIZE_MAP.get(size, SIZE_MAP["thumb"])
+    try:
+        key = to_r2_key(path)
+        if size == "thumb" and os.getenv("R2_ENDPOINT_URL"):
+            cache_key = "admin_thumbs/" + key[len("images/"):] if key.startswith("images/") else "admin_thumbs/" + key
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=cache_key)
+                buf = BytesIO(obj["Body"].read())
+                buf.seek(0)
+                return SR(buf, media_type="image/jpeg",
+                          headers={"Cache-Control": "private, max-age=86400"})
+            except Exception:
+                pass
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+        img = Image.open(obj["Body"]).convert("RGB")
+        img = fix_orientation(img)
+        img.thumbnail((max_px, max_px), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=quality, optimize=True)
+        if size == "thumb" and os.getenv("R2_ENDPOINT_URL"):
+            try:
+                buf.seek(0)
+                s3.put_object(Bucket=R2_BUCKET, Key=cache_key, Body=buf.read(),
+                              ContentType="image/jpeg", CacheControl="private, max-age=86400")
+            except Exception:
+                pass
+        buf.seek(0)
+        return SR(buf, media_type="image/jpeg",
+                  headers={"Cache-Control": "private, max-age=86400"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
 # ─────────────────────────────────────────
 # WOOCOMMERCE CHECKOUT
 # ─────────────────────────────────────────

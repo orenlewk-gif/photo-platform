@@ -611,7 +611,7 @@ function renderPhotoGrid() {
   }
   grid.innerHTML = folderPhotos.map((p, i) => {
     const pa = escAttr(p.path);
-    const thumbSrc = `/api/photo?path=${encodeURIComponent(p.path)}&size=thumb`;
+    const thumbSrc = `/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb`;
     return `<div class="photo-cell ${p.is_draft?'is-draft':''} ${selectedPaths.has(p.path)?'selected':''}"
       data-path="${pa}" onclick="selectPhoto(event,'${pa}')">
       <img src="${thumbSrc}" loading="lazy" alt="${escAttr(p.filename)}">
@@ -764,7 +764,7 @@ function openLightbox(idx) {
   const img = document.getElementById('lb-img');
   document.getElementById('lb-caption').textContent = p.filename;
   img.src = '';
-  img.src = `/api/photo?path=${encodeURIComponent(p.path)}&size=medium`;
+  img.src = `/api/admin/photo?path=${encodeURIComponent(p.path)}&size=medium`;
   img.onerror = () => { img.src = p.url; };
   lb.classList.add('open');
   document.addEventListener('keydown', _lbKey);
