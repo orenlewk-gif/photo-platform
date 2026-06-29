@@ -6,13 +6,18 @@
 <title>Crystal Images — Trash</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}
-.topbar{background:#091928;border-bottom:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:1rem;padding:0 1.25rem;height:56px}
-.topbar-logo{font-size:.95rem;letter-spacing:.1em;color:#F5C518}
-.topbar-spacer{flex:1}
-.topbar a{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none}
-.topbar a:hover{color:#F5C518}
-.main{padding:1.5rem;max-width:1400px;margin:0 auto}
+body{background:#0f1117;color:#e8eaf0;font-family:'Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+#topbar{height:52px;background:#0a1320;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 1.4rem;flex-shrink:0}
+#topbar .logo{font-size:13px;font-weight:700;letter-spacing:.5px;color:#a0aec0;margin-right:auto}
+#topbar a{font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;padding:.3rem .6rem;border-radius:5px}
+#topbar a:hover{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}
+#layout{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}
+#sidebar{width:210px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);padding:.5rem 0;overflow-y:auto}
+.nav-sec-label{padding:.75rem .8rem .25rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
+.nav-link{display:block;padding:.42rem .8rem;border-radius:6px;margin:.05rem .4rem;font-size:13.5px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}
+.nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
+.nav-link.active{background:rgba(245,197,24,.08);color:#F5C518}
+#main{flex:1;overflow-y:auto;padding:1.5rem 2rem}
 .page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:.75rem}
 .page-title{font-size:1.3rem;font-weight:600}
 .page-sub{font-size:.85rem;color:rgba(255,255,255,.4);margin-top:.2rem}
@@ -51,14 +56,20 @@ body{background:#0c2336;color:#fff;font-family:'Segoe UI',sans-serif;min-height:
 </style>
 </head>
 <body>
-<div class="topbar">
-  <div class="topbar-logo">CRYSTAL IMAGES — TRASH</div>
-  <div class="topbar-spacer"></div>
-  <a href="/admin/downloads">← Back to Downloads</a>
-  <a href="/admin/dashboard" style="margin-left:.75rem">Dashboard</a>
+<div id="topbar">
+  <span class="logo">Crystal Images — Admin</span>
+  <a href="/admin/logout">Sign out</a>
 </div>
-
-<div class="main">
+<div id="layout">
+<div id="sidebar">
+  <div class="nav-sec-label">Admin</div>
+  <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+  <a href="/admin/pricing" class="nav-link">Pricing</a>
+  <a href="/admin/photographers" class="nav-link">Photographers</a>
+  <a href="/admin/orders" class="nav-link">Orders</a>
+  <a href="/admin/trash" class="nav-link active">Trash</a>
+</div>
+<div id="main">
   <div class="page-header">
     <div>
       <div class="page-title">Trash</div>
@@ -219,5 +230,6 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 2800);
 }
 </script>
+</div></div>
 </body>
 </html>

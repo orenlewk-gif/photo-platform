@@ -1362,6 +1362,38 @@ def _list_tokens():
         pass
     return tokens
 
+def _get_best_token_for_order(order_id):
+    """Return (token, rec, expires_dt) for the most-recently-expiring token on this order."""
+    best_token, best_rec, best_exp = None, None, None
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
+            for obj in page.get("Contents", []):
+                key   = obj["Key"]
+                token = key.replace("downloads/", "").replace(".json", "")
+                rec   = _load_token(token)
+                if rec and str(rec.get("order_id")) == str(order_id):
+                    try:
+                        exp = datetime.fromisoformat(rec["expires"])
+                        if best_exp is None or exp > best_exp:
+                            best_token, best_rec, best_exp = token, rec, exp
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return best_token, best_rec, best_exp
+
+@app.get("/api/admin/order-link/{order_id}")
+def api_admin_order_link(request: Request, order_id: int):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    token, rec, expires_dt = _get_best_token_for_order(order_id)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "No download record found"})
+    expired = datetime.now(timezone.utc) > expires_dt
+    return {"url": f"{SITE_URL}/download/{token}", "expired": expired,
+            "expires": expires_dt.isoformat()}
+
 def _get_token_by_order_id(order_id):
     """Find download token matching a WooCommerce order ID."""
     try:
@@ -1420,9 +1452,9 @@ def _order_row(order) -> dict:
         "coupon_code": coupon_code,
     }
 
-@app.get("/admin/dashboard", response_class=HTMLResponse)
-def admin_dashboard(request: Request, days: int = 30,
-                    date_from: str = "", date_to: str = ""):
+@app.get("/admin/orders", response_class=HTMLResponse)
+def admin_orders(request: Request, days: int = 30,
+                 date_from: str = "", date_to: str = ""):
     if not _admin_authed(request):
         return RedirectResponse("/admin")
     custom = bool(date_from and date_to)
@@ -1433,10 +1465,11 @@ def admin_dashboard(request: Request, days: int = 30,
     else:
         after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         orders = _fetch_wc_orders(after=after)
-    rows   = [_order_row(o) for o in orders]
+    rows       = [_order_row(o) for o in orders]
     total_rev  = sum(r["total"]      for r in rows)
     total_fees = sum(r["stripe_fee"] for r in rows)
     total_net  = sum(r["net"]        for r in rows)
+    now_utc    = datetime.now(timezone.utc)
 
     import json as _json
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
@@ -1456,6 +1489,15 @@ def admin_dashboard(request: Request, days: int = 30,
             "shipping": f"${r['shipping']:.2f}" if r['shipping'] else '—',
             "address":  r['ship_addr'] or '—',
         }).replace("'", "&#39;").replace('"', '&quot;')
+        try:
+            order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
+            is_recent = (now_utc - order_dt).days < DOWNLOAD_EXPIRE_DAYS
+        except Exception:
+            is_recent = False
+        if is_recent:
+            action_btn = f'<button class="copy-btn" onclick="copyLink({r["order_id"]},event)">Copy Link</button>'
+        else:
+            action_btn = f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
         trs += f"""<tr class="order-row" onclick="showDetail('{detail_data}')" style="cursor:pointer">
           {td(r['date'])}
           {td(f"{r['first']} {r['last']}")}
@@ -1469,7 +1511,7 @@ def admin_dashboard(request: Request, days: int = 30,
           {td(r['coupon_code'] or '—')}
           {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
           {td(r['ship_addr'] or '—')}
-          {td(f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>')}
+          {td(action_btn)}
         </tr>"""
 
     period_opts = "".join(
@@ -1479,46 +1521,45 @@ def admin_dashboard(request: Request, days: int = 30,
     export_qs = f"date_from={date_from}&date_to={date_to}" if custom else f"days={days}"
 
     html = f"""<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Admin — Crystal Images</title>
+<html><head><meta charset="UTF-8"><title>Orders — Crystal Images</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#0c2336;font-family:'Segoe UI',sans-serif;color:#fff;min-height:100vh}}
-.topbar{{background:#0a1e2e;border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 2rem;
-  display:flex;align-items:center;gap:1.25rem}}
-.topbar h1{{color:#F5C518;font-size:1.1rem;font-weight:700;margin-right:auto}}
-.topbar a{{color:rgba(255,255,255,.4);font-size:.85rem;text-decoration:none;white-space:nowrap}}
-.topbar a:hover{{color:#fff}}
-.container{{padding:1.5rem 2rem}}
+body{{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-height:100vh;display:flex;flex-direction:column}}
+#topbar{{height:52px;background:#0a1320;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 1.4rem;flex-shrink:0}}
+#topbar h1{{font-size:13px;font-weight:700;letter-spacing:.5px;color:#a0aec0;margin-right:auto}}
+#topbar a{{font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;padding:.3rem .6rem;border-radius:5px}}
+#topbar a:hover{{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}}
+#layout{{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}}
+#sidebar{{width:210px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);padding:.5rem 0;overflow-y:auto}}
+.nav-sec-label{{padding:.75rem .8rem .25rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}}
+.nav-link{{display:block;padding:.42rem .8rem;border-radius:6px;margin:.05rem .4rem;font-size:13.5px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}}
+.nav-link:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
+.nav-link.active{{background:rgba(245,197,24,.08);color:#F5C518}}
+#main{{flex:1;overflow-y:auto;padding:1.75rem 2rem}}
 .stats{{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}}
-.stat{{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;
-  padding:1rem 1.5rem;flex:1;min-width:150px}}
-.stat .label{{font-size:.72rem;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}}
-.stat .val{{font-size:1.4rem;font-weight:700;color:#F5C518}}
-.controls{{display:flex;gap:1rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap}}
-select{{background:#0a1e2e;border:1px solid rgba(255,255,255,.15);color:#fff;
-  padding:.5rem .9rem;border-radius:8px;font-size:.9rem;cursor:pointer}}
-.export-btn{{background:#F5C518;color:#0c2336;border:none;border-radius:8px;
-  padding:.5rem 1.2rem;font-weight:700;cursor:pointer;font-size:.9rem;text-decoration:none}}
+.stat{{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.9rem 1.25rem;flex:1;min-width:130px}}
+.stat .label{{font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}}
+.stat .val{{font-size:1.35rem;font-weight:700;color:#F5C518}}
+.controls{{display:flex;gap:.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap}}
+select{{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.45rem .8rem;border-radius:8px;font-size:.85rem;cursor:pointer}}
+input[type=date]{{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.42rem .7rem;border-radius:8px;font-size:.85rem}}
+.export-btn{{background:#F5C518;color:#0f1117;border:none;border-radius:8px;padding:.45rem 1.1rem;font-weight:700;cursor:pointer;font-size:.85rem;text-decoration:none}}
 .wrap{{overflow-x:auto}}
 table{{width:100%;border-collapse:collapse;font-size:.82rem;min-width:1100px}}
-th{{background:#0a1e2e;color:rgba(255,255,255,.5);font-weight:600;font-size:.72rem;
-  letter-spacing:.8px;text-transform:uppercase;padding:.6rem .75rem;text-align:left;
-  border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}}
-td{{padding:.65rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}}
-tr:hover td{{background:rgba(255,255,255,.02)}}
-.mono{{font-family:monospace;font-size:.75rem;color:rgba(255,255,255,.55);max-width:220px;
-  word-break:break-all;white-space:normal}}
-.fee{{color:#e53e3e}}
+th{{background:#1a1d27;color:rgba(255,255,255,.45);font-weight:600;font-size:.7rem;letter-spacing:.8px;text-transform:uppercase;padding:.55rem .7rem;text-align:left;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}}
+td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}}
+.mono{{font-family:monospace;font-size:.75rem;color:rgba(255,255,255,.55);max-width:200px;word-break:break-all;white-space:normal}}
+.fee{{color:#f87171}}
 .net{{color:#4ade80;font-weight:600}}
-.regen-btn{{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.3);
-  color:#F5C518;padding:.3rem .8rem;border-radius:6px;font-size:.78rem;
-  text-decoration:none;white-space:nowrap}}
-.regen-btn:hover{{background:rgba(245,197,24,.25)}}
 .empty{{text-align:center;padding:3rem;color:rgba(255,255,255,.3)}}
 .order-row:hover td{{background:rgba(255,255,255,.04);cursor:pointer}}
+.copy-btn{{background:rgba(99,179,237,.12);border:1px solid rgba(99,179,237,.3);color:#63b3ed;padding:.28rem .75rem;border-radius:6px;font-size:.78rem;cursor:pointer;white-space:nowrap}}
+.copy-btn:hover{{background:rgba(99,179,237,.22)}}
+.regen-btn{{background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.25);color:#F5C518;padding:.28rem .75rem;border-radius:6px;font-size:.78rem;text-decoration:none;white-space:nowrap;display:inline-block}}
+.regen-btn:hover{{background:rgba(245,197,24,.2)}}
 .modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}}
 .modal-overlay.open{{display:flex}}
-.modal{{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;overflow-y:auto}}
+.modal{{background:#1a1d27;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;overflow-y:auto}}
 .modal h2{{color:#F5C518;font-size:1rem;margin-bottom:1rem}}
 .modal-row{{display:flex;gap:1rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}}
 .modal-row:last-child{{border-bottom:none}}
@@ -1526,13 +1567,31 @@ tr:hover td{{background:rgba(255,255,255,.02)}}
 .modal-val{{color:#fff;word-break:break-word}}
 .modal-close{{float:right;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer;margin-top:-4px}}
 .modal-close:hover{{color:#fff}}
+#toast{{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}}
+#toast.show{{opacity:1;background:#16a34a;color:#fff}}
+#toast.err{{opacity:1;background:#dc2626;color:#fff}}
 </style></head><body>
+<div id="topbar">
+  <h1>Crystal Images — Admin</h1>
+  <a href="/admin/logout">Sign out</a>
+</div>
+<div id="layout">
+  <div id="sidebar">
+    <div class="nav-sec-label">Admin</div>
+    <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+    <a href="/admin/pricing" class="nav-link">Pricing</a>
+    <a href="/admin/photographers" class="nav-link">Photographers</a>
+    <a href="/admin/orders" class="nav-link active">Orders</a>
+    <a href="/admin/trash" class="nav-link">Trash</a>
+  </div>
+  <div id="main">
 <div class="modal-overlay" id="detail-modal" onclick="closeDetail(event)">
   <div class="modal">
     <h2>Order Details <button class="modal-close" onclick="document.getElementById('detail-modal').classList.remove('open')">✕</button></h2>
     <div id="detail-body"></div>
   </div>
 </div>
+<div id="toast"></div>
 <script>
 function showDetail(encoded) {{
   const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
@@ -1551,34 +1610,52 @@ function closeDetail(e) {{
   if (e.target === document.getElementById('detail-modal'))
     document.getElementById('detail-modal').classList.remove('open');
 }}
+let _tt;
+function showToast(msg, type='show') {{
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type;
+  clearTimeout(_tt); _tt = setTimeout(() => t.className='', 2500);
+}}
+async function copyLink(orderId, e) {{
+  e.stopPropagation();
+  const btn = e.currentTarget;
+  const orig = btn.textContent;
+  btn.textContent = '…';
+  try {{
+    const res = await fetch(`/api/admin/order-link/${{orderId}}`);
+    const d = await res.json();
+    if (!d.url || d.expired) {{
+      btn.textContent = '↺ Regen Link';
+      btn.className = 'regen-btn';
+      btn.onclick = ev => {{ ev.stopPropagation(); location.href = `/admin/regen/${{orderId}}`; }};
+      showToast('Link expired — click Regen Link to renew', 'err');
+      return;
+    }}
+    await navigator.clipboard.writeText(d.url);
+    btn.textContent = 'Copied!';
+    showToast('Download link copied to clipboard');
+    setTimeout(() => btn.textContent = orig, 2500);
+  }} catch(err) {{
+    btn.textContent = orig;
+    showToast('Copy failed — try Regen Link', 'err');
+  }}
+}}
 </script>
-<div class="topbar">
-  <h1>Crystal Images — Admin</h1>
-  <a href="/admin/cull">📷 Cull</a>
-  <a href="/admin/trash">🗑 Trash</a>
-  <a href="/admin/photographers">👥 Photographers</a>
-  <a href="/admin/logout">Sign out</a>
-</div>
-<div class="container">
   <div class="stats">
     <div class="stat"><div class="label">Orders</div><div class="val">{len(rows)}</div></div>
     <div class="stat"><div class="label">Revenue</div><div class="val">${total_rev:.2f}</div></div>
-    <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#e53e3e">${total_fees:.2f}</div></div>
+    <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
   </div>
   <div class="controls">
     <form method="get" style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
-      <select name="days" onchange="this.form.submit();document.getElementById('custom').style.display='none'">
+      <select name="days" onchange="this.form.submit()">
         {period_opts}
       </select>
       <span style="color:rgba(255,255,255,.3);font-size:.85rem;">or</span>
-      <input type="date" name="date_from" value="{date_from}"
-        style="background:#0a1e2e;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.45rem .75rem;border-radius:8px;font-size:.85rem;"
-        placeholder="From" />
-      <input type="date" name="date_to" value="{date_to}"
-        style="background:#0a1e2e;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.45rem .75rem;border-radius:8px;font-size:.85rem;"
-        placeholder="To" />
-      <button type="submit" style="background:rgba(245,197,24,.15);border:1px solid rgba(245,197,24,.4);color:#F5C518;padding:.45rem 1rem;border-radius:8px;cursor:pointer;font-size:.85rem;">Apply</button>
+      <input type="date" name="date_from" value="{date_from}" placeholder="From" />
+      <input type="date" name="date_to" value="{date_to}" placeholder="To" />
+      <button type="submit" style="background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.3);color:#F5C518;padding:.42rem .9rem;border-radius:8px;cursor:pointer;font-size:.85rem;">Apply</button>
     </form>
     <a class="export-btn" href="/admin/export?{export_qs}">↓ Export CSV</a>
   </div>
@@ -1587,10 +1664,11 @@ function closeDetail(e) {{
     <thead><tr>
       <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th>
       <th>Photo Files</th><th>Total</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
-      <th>Coupon Code</th><th>Shipping $</th><th>Billing Address</th><th>Action</th>
+      <th>Coupon</th><th>Shipping</th><th>Address</th><th>Action</th>
     </tr></thead>
-    <tbody>{trs if trs else '<tr><td colspan="11" class="empty">No completed orders in this period.</td></tr>'}</tbody>
+    <tbody>{trs if trs else '<tr><td colspan="13" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
+  </div>
   </div>
 </div></body></html>"""
     return HTMLResponse(html)
@@ -1650,7 +1728,7 @@ a.back{{color:#F5C518;font-size:.9rem}}</style></head><body>
   <p>New link (valid 30 days):</p>
   <div class="url">{new_url}</div>
   <p>Copy and send this to the customer.</p>
-  <a class="back" href="/admin/dashboard">← Back to dashboard</a>
+  <a class="back" href="/admin/orders">← Back to orders</a>
 </div></body></html>"""
     return HTMLResponse(html)
 
@@ -2946,11 +3024,15 @@ def api_admin_r2_scan(request: Request):
 
 # ── Admin Studio (unified page) ──────────────────────────────────────────────
 
-@app.get("/admin/studio", response_class=HTMLResponse)
-def admin_studio_page(request: Request):
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+def admin_dashboard_page(request: Request):
     if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/studio")
+        return RedirectResponse("/admin?next=/admin/dashboard")
     return HTMLResponse(open("templates/admin_studio.html").read())
+
+@app.get("/admin/studio")
+def admin_studio_redirect():
+    return RedirectResponse("/admin/dashboard")
 
 @app.get("/api/admin/folder/photos")
 def api_admin_folder_photos(
