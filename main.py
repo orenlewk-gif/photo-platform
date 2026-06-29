@@ -1478,8 +1478,14 @@ def admin_orders(request: Request, days: int = 30,
     def _detect_photog(filenames_str):
         if not filenames_str:
             return "Oren Lewkowski"
-        first = filenames_str.split(',')[0].strip()
-        return _prefix_map.get(first[:3].lower(), "Oren Lewkowski") if first else "Oren Lewkowski"
+        names, seen = [], set()
+        for f in filenames_str.split(','):
+            f = f.strip()
+            if not f: continue
+            name = _prefix_map.get(f[:3].lower())
+            if name and name not in seen:
+                names.append(name); seen.add(name)
+        return " & ".join(names) if names else "Oren Lewkowski"
 
     import json as _json
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
@@ -1771,8 +1777,14 @@ def admin_export(request: Request, days: int = 30,
                        for p in _exp_photogs if p.get("file_prefix","").strip()}
     def _exp_photog(fn):
         if not fn: return "Oren Lewkowski"
-        first = fn.split(',')[0].strip()
-        return _exp_prefix_map.get(first[:3].lower(), "Oren Lewkowski") if first else "Oren Lewkowski"
+        names, seen = [], set()
+        for f in fn.split(','):
+            f = f.strip()
+            if not f: continue
+            name = _exp_prefix_map.get(f[:3].lower())
+            if name and name not in seen:
+                names.append(name); seen.add(name)
+        return " & ".join(names) if names else "Oren Lewkowski"
     writer.writerow(["Date","First Name","Last Name","Email","Photographer","What Ordered",
                      "Photo Files","Location","Photo Date","Total","Discount",
                      "Stripe Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
