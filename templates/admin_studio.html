@@ -198,6 +198,11 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .modal-ok:hover{background:#f0bc00}
 .modal-ok:disabled{opacity:.45;cursor:not-allowed}
 
+/* ── Pricing preview ── */
+#pricing-preview{padding:.45rem 1.25rem;border-top:1px solid rgba(255,255,255,.05);display:none;align-items:center;flex-wrap:wrap;gap:.5rem}
+.prev-item{font-size:.76rem;color:rgba(255,255,255,.5);background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:5px;padding:.18rem .5rem}
+.prev-item strong{color:#e8eaf0;margin-left:.3rem}
+
 /* ── Toast ── */
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
   background:#1a3248;border:1px solid rgba(255,255,255,.14);border-radius:10px;
@@ -312,6 +317,7 @@ input[type=file]{display:none}
           <button class="act-btn" onclick="openMoveModal()">Move</button>
           <button class="act-btn danger" onclick="deleteCurrentFolder()">Delete Folder</button>
         </div>
+        <div id="pricing-preview"></div>
       </div>
 
       <div id="grid-controls">
@@ -387,7 +393,13 @@ let zipTiers = null;
   setupDropZone();
   setupInlineEdit();
   await loadSidebar();
-  showUploadView();
+  const sp = new URLSearchParams(location.search);
+  const od = sp.get('od'), ol = sp.get('ol'), of_ = sp.get('of');
+  if (od && ol) {
+    await openFolder(od, ol, of_ || '');
+  } else {
+    showUploadView();
+  }
 })();
 
 // ── Zip tiers ──
@@ -568,6 +580,7 @@ async function loadFolderPhotos() {
     gsSel.style.display = 'none';
   }
   renderPhotoGrid();
+  updatePricingPreview();
 }
 
 function renderPhotoGrid() {
@@ -692,6 +705,34 @@ async function saveGroupSize() {
   await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({folder_key:fk,group_size:gs})});
   showToast('Group size saved');
+  updatePricingPreview();
+}
+
+// ── Pricing preview ──
+async function updatePricingPreview() {
+  const prev = document.getElementById('pricing-preview');
+  if (!prev || !currentFolder) return;
+  const isZip = ZIP_LOCS.has(currentFolder.location.trim().toLowerCase());
+  if (!isZip) { prev.style.display = 'none'; return; }
+  const gsSel = document.getElementById('group-size-select');
+  const gs = gsSel?.value ? parseInt(gsSel.value) : null;
+  if (!gs) {
+    prev.innerHTML = '<span style="font-size:.75rem;color:rgba(255,255,255,.3)">Select a group size to see pricing</span>';
+    prev.style.display = 'flex';
+    return;
+  }
+  const tiers = await loadZipTiers();
+  const tier = tiers.find(t => parseInt(t.people) === gs);
+  if (!tier) { prev.style.display = 'none'; return; }
+  const fmt = v => (v != null && v !== '') ? `$${parseFloat(v).toFixed(2)}` : '—';
+  prev.innerHTML = `
+    <span style="font-size:.72rem;color:rgba(255,255,255,.28);margin-right:.3rem">Pricing · ${gs} ${gs===1?'person':'people'}:</span>
+    <span class="prev-item">1 photo <strong>${fmt(tier.one_photo)}</strong></span>
+    <span class="prev-item">2 photos <strong>${fmt(tier.two_photos)}</strong></span>
+    <span class="prev-item">3 photos <strong>${fmt(tier.three_photos)}</strong></span>
+    <span class="prev-item" style="border-color:rgba(74,222,128,.25)">All photos <strong style="color:#4ade80">${fmt(tier.all_photos)}</strong></span>
+  `;
+  prev.style.display = 'flex';
 }
 
 // ── Inline rename ──

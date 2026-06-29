@@ -1543,7 +1543,22 @@ body{{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-hei
 #topbar a{{font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;padding:.3rem .6rem;border-radius:5px}}
 #topbar a:hover{{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}}
 #layout{{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}}
-#sidebar{{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow-y:auto}}
+#sidebar{{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow:hidden}}
+#sidebar-tree{{flex:1;overflow-y:auto;padding:.4rem 0}}
+.st-date{{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;font-size:.79rem;font-weight:600;color:rgba(255,255,255,.5);user-select:none}}
+.st-date:hover{{background:rgba(255,255,255,.04);color:#fff}}
+.st-arr{{font-size:.55rem;transition:transform .15s;color:rgba(255,255,255,.22);flex-shrink:0}}
+.st-date.st-open .st-arr{{transform:rotate(90deg)}}
+.st-locs{{display:none}}
+.st-date.st-open+.st-locs{{display:block}}
+.st-loc{{padding:.3rem .85rem .3rem 1.5rem;font-size:.76rem;color:rgba(255,255,255,.42);cursor:pointer;display:flex;align-items:center;gap:.35rem}}
+.st-loc:hover{{background:rgba(255,255,255,.04);color:rgba(255,255,255,.8)}}
+.st-loc.st-open .st-arr{{transform:rotate(90deg)}}
+.st-subs{{display:none}}
+.st-loc.st-open+.st-subs{{display:block}}
+.st-sub{{padding:.27rem .85rem .27rem 2.5rem;font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-radius:4px;margin:0 .3rem}}
+.st-sub:hover{{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}}
+.st-cnt{{font-size:.66rem;color:rgba(255,255,255,.22)}}
 .nav-sec-label{{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}}
 .nav-link{{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}}
 .nav-link:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
@@ -1595,8 +1610,8 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
     <a href="/admin/pricing" class="nav-link">Pricing</a>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link active">Orders</a>
-    <div style="flex:1"></div>
-    <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0">
+    <div id="sidebar-tree"></div>
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
       <a href="/admin/trash" class="nav-link">Trash</a>
     </div>
   </div>
@@ -1656,6 +1671,54 @@ async function copyLink(orderId, e) {{
     showToast('Copy failed — try Regen Link', 'err');
   }}
 }}
+(async function(){{
+  try{{
+    var r=await fetch('/api/admin/folders');
+    var d=await r.json();
+    var folders=d.folders||[];
+    var tree={{}};
+    for(var i=0;i<folders.length;i++){{
+      var f=folders[i];
+      if(!tree[f.date])tree[f.date]={{}};
+      if(!tree[f.date][f.location])tree[f.date][f.location]=[];
+      tree[f.date][f.location].push(f);
+    }}
+    var dates=Object.keys(tree).sort().reverse();
+    var el=document.getElementById('sidebar-tree');
+    if(!dates.length||!el)return;
+    var h='';
+    for(var di=0;di<dates.length;di++){{
+      var date=dates[di];
+      h+='<div class="st-date" onclick="this.classList.toggle(\'st-open\')"><span class="st-arr">&#9654;</span>'+date+'</div><div class="st-locs">';
+      var locs=tree[date];
+      var locKeys=Object.keys(locs);
+      for(var li=0;li<locKeys.length;li++){{
+        var loc=locKeys[li];
+        var subs=locs[loc];
+        var hasSubs=false;
+        for(var si=0;si<subs.length;si++){{if(subs[si].name){{hasSubs=true;break;}}}}
+        if(hasSubs){{
+          h+='<div class="st-loc" onclick="this.classList.toggle(\'st-open\')"><span class="st-arr">&#9654;</span>'+loc+'</div><div class="st-subs">';
+          for(var si2=0;si2<subs.length;si2++){{
+            var fs=subs[si2];
+            if(!fs.name)continue;
+            var u='/admin/dashboard?od='+encodeURIComponent(fs.date)+'&ol='+encodeURIComponent(fs.location)+'&of='+encodeURIComponent(fs.name);
+            h+='<div class="st-sub" onclick="location.href=\''+u+'\'">'+fs.name+'<span class="st-cnt">'+fs.photo_count+'</span></div>';
+          }}
+          h+='</div>';
+        }}else{{
+          var f0=subs[0]||{{}};
+          var u2='/admin/dashboard?od='+encodeURIComponent(f0.date||'')+'&ol='+encodeURIComponent(loc)+'&of=';
+          h+='<div class="st-sub" style="padding-left:1.5rem" onclick="location.href=\''+u2+'\'">'+loc+'<span class="st-cnt">'+(f0.photo_count||'')+'</span></div>';
+        }}
+      }}
+      h+='</div>';
+    }}
+    el.innerHTML=h;
+    var first=el.querySelector('.st-date');
+    if(first)first.classList.add('st-open');
+  }}catch(e){{}}
+}})();
 </script>
   <div class="stats">
     <div class="stat"><div class="label">Orders</div><div class="val">{len(rows)}</div></div>
