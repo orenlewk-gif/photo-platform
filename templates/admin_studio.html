@@ -907,7 +907,6 @@ function setupDropZone() {
 function browseFolder() { document.getElementById('folder-input').click(); }
 function browseFiles()  { document.getElementById('file-input').click(); }
 function handleFolderInput(files) {
-  uploadFolders = []; looseFiles = [];
   const map = {};
   for (const f of files) {
     if (!/\.(jpg|jpeg|png)$/i.test(f.name)) continue;
@@ -915,7 +914,9 @@ function handleFolderInput(files) {
     if (!map[top]) map[top] = [];
     map[top].push(f);
   }
-  uploadFolders = Object.entries(map).map(([name, files]) => ({name, files}));
+  for (const [name, fls] of Object.entries(map)) {
+    if (!uploadFolders.find(f => f.name === name)) uploadFolders.push({name, files: fls});
+  }
   renderDetectedFolders(); updateUploadBtn();
 }
 function handleFileInput(files) {
