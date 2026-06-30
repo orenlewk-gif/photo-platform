@@ -2659,7 +2659,7 @@ def timecards_page(request: Request):
 
 # ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
 
-ZIP_LOCS_SET = {"adventure zip", "adventure zip line"}
+ZIP_LOCS_SET = {"adventure zip", "adventure zip line", "adventure zipline"}
 ZIP_PRICING_KEY = "meta/zip_pricing.json"
 FOLDER_META_KEY = "meta/folder_meta.json"
 
