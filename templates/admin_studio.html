@@ -76,6 +76,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #drop-zone:hover,#drop-zone.drag-over{border-color:#F5C518;color:rgba(255,255,255,.7);background:rgba(245,197,24,.04)}
 #drop-zone .dz-icon{font-size:1.8rem;margin-bottom:.45rem}
 #drop-zone .dz-hint{font-size:.8rem;margin-top:.3rem}
+.dz-link{color:#F5C518;cursor:pointer;text-decoration:underline}
 #detected-folders{margin-bottom:.85rem}
 .det-folder{display:flex;align-items:center;justify-content:space-between;
   background:rgba(255,255,255,.04);border-radius:8px;padding:.45rem .82rem;margin-bottom:.38rem;font-size:.82rem}
@@ -287,8 +288,16 @@ input[type=file]{display:none}
         <div id="drop-zone">
           <div class="dz-icon">📁</div>
           <div>Drop folders or photos here</div>
-          <div class="dz-hint">Drag multiple last-name folders at once · or click to browse</div>
+          <div class="dz-hint">
+            <span class="dz-link" onclick="event.stopPropagation();browseFolder()">Browse folder</span>
+            &nbsp;·&nbsp;
+            <span class="dz-link" onclick="event.stopPropagation();browseFiles()">Browse files</span>
+          </div>
         </div>
+        <input id="folder-input" type="file" webkitdirectory multiple style="display:none"
+          onchange="handleFolderInput(this.files);this.value=''">
+        <input id="file-input" type="file" multiple accept="image/*" style="display:none"
+          onchange="handleFileInput(this.files);this.value=''">
 
         <div id="detected-folders"></div>
 
@@ -893,12 +902,26 @@ function setupDropZone() {
   dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
   dz.addEventListener('drop', handleDrop);
-  dz.addEventListener('click', () => {
-    const inp = document.createElement('input');
-    inp.type='file'; inp.multiple=true; inp.accept='image/*';
-    inp.onchange = e => { looseFiles=[...e.target.files].filter(f=>/\.(jpg|jpeg|png)$/i.test(f.name)); renderDetectedFolders(); updateUploadBtn(); };
-    inp.click();
-  });
+  dz.addEventListener('click', () => browseFolder());
+}
+function browseFolder() { document.getElementById('folder-input').click(); }
+function browseFiles()  { document.getElementById('file-input').click(); }
+function handleFolderInput(files) {
+  uploadFolders = []; looseFiles = [];
+  const map = {};
+  for (const f of files) {
+    if (!/\.(jpg|jpeg|png)$/i.test(f.name)) continue;
+    const top = f.webkitRelativePath.split('/')[0];
+    if (!map[top]) map[top] = [];
+    map[top].push(f);
+  }
+  uploadFolders = Object.entries(map).map(([name, files]) => ({name, files}));
+  renderDetectedFolders(); updateUploadBtn();
+}
+function handleFileInput(files) {
+  uploadFolders = [];
+  looseFiles = [...files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name));
+  renderDetectedFolders(); updateUploadBtn();
 }
 
 async function handleDrop(e) {
