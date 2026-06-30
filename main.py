@@ -3434,6 +3434,9 @@ async def admin_folder_rename(request: Request):
         try:
             s3.copy_object(Bucket=R2_BUCKET,
                            CopySource={"Bucket": R2_BUCKET, "Key": old_key}, Key=new_key)
+            # Verify the copy actually landed before touching the original.
+            # R2 can silently drop concurrent copy operations under load.
+            s3.head_object(Bucket=R2_BUCKET, Key=new_key)
             s3.delete_object(Bucket=R2_BUCKET, Key=old_key)
             try:
                 s3.copy_object(Bucket=R2_BUCKET,
