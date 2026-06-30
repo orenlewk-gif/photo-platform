@@ -1000,17 +1000,28 @@ async function startUpload() {
   let done=0;
   const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`; };
   setProgress();
+  // Presign every folder up front so all uploads can run as one shared pool
+  const allItems=[]; // {url,key,filename,folder,file}
   for (const {folder,files} of batches) {
     if (!files.length) continue;
     const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
     if (!pr.ok) { showToast(`Presign failed for ${folder||'files'}`,'error'); continue; }
     const {urls}=await pr.json();
-    for (let i=0;i<urls.length;i+=CONCURRENCY)
-      await Promise.all(urls.slice(i,i+CONCURRENCY).map(async(u,j)=>{ await fetch(u.url,{method:'PUT',body:files[i+j],headers:{'Content-Type':files[i+j].type||'image/jpeg'}}); done++; setProgress(); }));
-    await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys:urls.map(u=>u.key)})});
+    urls.forEach((u,i)=>allItems.push({...u,folder,file:files[i]}));
   }
+  // Upload everything in one continuous pool of CONCURRENCY at a time, across all folders
+  for (let i=0;i<allItems.length;i+=CONCURRENCY)
+    await Promise.all(allItems.slice(i,i+CONCURRENCY).map(async it=>{
+      await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}});
+      done++; setProgress();
+    }));
+  // Index each folder once its photos are uploaded
+  const byFolder={};
+  for (const it of allItems) (byFolder[it.folder]=byFolder[it.folder]||[]).push(it.key);
+  for (const [folder,keys] of Object.entries(byFolder))
+    await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,keys})});
   label.textContent=`Done — ${done} photos uploaded`;
   showToast(`${done} photos uploaded as draft`);
   await loadSidebar();
