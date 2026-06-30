@@ -3036,7 +3036,7 @@ async def admin_discard_draft(request: Request):
 
 @app.post("/api/admin/delete-folder")
 async def admin_delete_folder(request: Request):
-    """Permanently delete all photos in a folder from R2 and the index."""
+    """Move all photos in a folder to trash (7-day recovery window)."""
     global data
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -3052,20 +3052,43 @@ async def admin_delete_folder(request: Request):
             and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()
         )
 
-    to_delete = [item for item in data if _matches(item)]
+    to_trash  = [item for item in data if _matches(item)]
+    now       = datetime.now(timezone.utc)
+    purge_at  = (now + timedelta(days=7)).isoformat()
+    trash_meta = _load_trash_meta()
+    trashed   = 0
 
-    # Batch-delete from R2 (up to 1000 per call)
-    deleted_r2 = 0
-    if to_delete:
-        keys = [{"Key": item["path"]} for item in to_delete]
-        for i in range(0, len(keys), 1000):
-            resp = s3.delete_objects(Bucket=R2_BUCKET, Delete={"Objects": keys[i:i+1000]})
-            deleted_r2 += len(resp.get("Deleted", []))
+    for item in to_trash:
+        key       = to_r2_key(item["path"])
+        uid       = str(uuid.uuid4())[:8]
+        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": key},
+                           Key=trash_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=key)
+        except Exception as e:
+            print(f"Folder trash failed {key}: {e}")
+            continue
+        trash_meta.append({
+            "key":          trash_key,
+            "original_key": key,
+            "filename":     os.path.basename(item["path"]),
+            "date":         item["date"],
+            "location":     item["location"],
+            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
+            "trashed_at":   now.isoformat(),
+            "purge_at":     purge_at,
+            "type":         "studio",
+            "image_entry":  item,
+        })
+        trashed += 1
 
-    # Remove from index
     data = [item for item in data if not _matches(item)]
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(), ContentType="application/json")
+    if trashed:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_trash_meta(trash_meta)
 
     # Clean up folder_meta
     try:
@@ -3077,7 +3100,7 @@ async def admin_delete_folder(request: Request):
     except Exception as e:
         print(f"folder_meta cleanup error: {e}")
 
-    return {"deleted": deleted_r2, "removed_index": len(to_delete)}
+    return {"deleted": trashed, "removed_index": len(to_trash)}
 
 
 # ── Admin Folders (phase 2) ──────────────────────────────────────────────────

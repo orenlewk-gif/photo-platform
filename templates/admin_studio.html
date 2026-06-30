@@ -848,7 +848,7 @@ async function deleteCurrentFolder() {
   const {date,location,folder} = currentFolder;
   const f = allFolders.find(x => x.date===date && x.location===location && x.name===folder);
   const count = f ? f.photo_count : '?';
-  if (!confirm(`Permanently delete all ${count} photos for "${folder||location}"?\n\nThis removes them from R2 and the index and cannot be undone.`)) return;
+  if (!confirm(`Move all ${count} photos in "${folder||location}" to trash?\n\nThey can be recovered from the Trash page within 7 days.`)) return;
   const res = await fetch('/api/admin/delete-folder',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({date,location,folder})});
   if (res.ok) {
