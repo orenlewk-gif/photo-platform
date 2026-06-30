@@ -2674,16 +2674,28 @@ def _save_zip_pricing(d):
     s3.put_object(Bucket=R2_BUCKET, Key=ZIP_PRICING_KEY,
                   Body=json.dumps(d).encode(), ContentType="application/json")
 
+_folder_meta_cache: dict = {"data": None, "ts": 0.0}
+_FOLDER_META_TTL = 10  # seconds
+
 def _load_folder_meta():
+    import time
+    now = time.monotonic()
+    if _folder_meta_cache["data"] is not None and now - _folder_meta_cache["ts"] < _FOLDER_META_TTL:
+        return _folder_meta_cache["data"]
     try:
         obj = s3.get_object(Bucket=R2_BUCKET, Key=FOLDER_META_KEY)
-        return json.loads(obj["Body"].read())
+        d = json.loads(obj["Body"].read())
     except:
-        return {}
+        d = {}
+    _folder_meta_cache["data"] = d
+    _folder_meta_cache["ts"] = now
+    return d
 
 def _save_folder_meta(d):
     s3.put_object(Bucket=R2_BUCKET, Key=FOLDER_META_KEY,
                   Body=json.dumps(d).encode(), ContentType="application/json")
+    _folder_meta_cache["data"] = d
+    import time; _folder_meta_cache["ts"] = time.monotonic()
 
 def _folder_key(date, location, last_name):
     return f"{date}|{location}|{last_name}"
@@ -3114,10 +3126,11 @@ def api_admin_folders(request: Request):
             folders[fk]["draft_count"] += 1
         if folders[fk]["_preview"] is None:
             folders[fk]["_preview"] = item.get("path")
+    from urllib.parse import quote as _quote
     result = []
     for f in sorted(folders.values(), key=lambda x: (x["date"], x["location"], x["name"]), reverse=True):
         preview_path = f.pop("_preview", None)
-        f["preview_url"] = _presigned_get(to_r2_key(preview_path), expires=3600) if preview_path else ""
+        f["preview_url"] = f"/api/admin/photo?path={_quote(preview_path)}&size=thumb" if preview_path else ""
         result.append(f)
     return {"folders": result}
 
@@ -3193,12 +3206,12 @@ def api_admin_folder_photos(
         item_name = (item.get("last_name") or item.get("group") or "").strip().lower()
         if item_name != folder_lower:
             continue
-        key = to_r2_key(item["path"])
+        from urllib.parse import quote as _quote
         photos.append({
             "path":     item["path"],
             "filename": os.path.basename(item["path"]),
             "is_draft": bool(item.get("draft")),
-            "url":      _presigned_get(key, expires=3600),
+            "url":      f"/api/admin/photo?path={_quote(item['path'])}&size=medium",
         })
     photos.sort(key=lambda x: natural_sort_key(x["path"]))
     live_count  = sum(1 for p in photos if not p["is_draft"])
