@@ -887,13 +887,27 @@ async function handleAddPhotosInput(fileList) {
     body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
   if (!res.ok) { showToast('Presign failed','error'); return; }
   const {urls} = await res.json();
-  let done=0;
-  for (let i=0;i<urls.length;i+=CONCURRENCY)
-    await Promise.all(urls.slice(i,i+CONCURRENCY).map((u,j)=>fetch(u.url,{method:'PUT',body:files[i+j],headers:{'Content-Type':files[i+j].type||'image/jpeg'}})));
-  const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({date,location,folder,keys:urls.map(u=>u.key)})});
-  if (ir.ok) { showToast(`${files.length} photo${files.length!==1?'s':''} added`); await loadFolderPhotos(); await loadSidebar(); }
-  else showToast('Index failed','error');
+  const items = urls.map((u,i)=>({...u,file:files[i],ok:false}));
+  async function putOne(it) {
+    for (let attempt=0; attempt<2 && !it.ok; attempt++) {
+      try {
+        const r = await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}});
+        if (r.ok) it.ok = true;
+      } catch (e) { /* retry once below */ }
+    }
+  }
+  for (let i=0;i<items.length;i+=CONCURRENCY)
+    await Promise.all(items.slice(i,i+CONCURRENCY).map(putOne));
+  const okKeys = items.filter(it=>it.ok).map(it=>it.key);
+  const failedCount = items.length - okKeys.length;
+  if (okKeys.length) {
+    const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,keys:okKeys})});
+    if (!ir.ok) { showToast('Index failed','error'); document.getElementById('add-photos-input').value=''; return; }
+  }
+  if (failedCount) showToast(`${okKeys.length} added, ${failedCount} failed — try again`,'error');
+  else showToast(`${files.length} photo${files.length!==1?'s':''} added`);
+  if (okKeys.length) { await loadFolderPhotos(); await loadSidebar(); }
   document.getElementById('add-photos-input').value='';
 }
 
@@ -997,11 +1011,11 @@ async function startUpload() {
   const btn=document.getElementById('upload-action-btn'); btn.disabled=true;
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
-  let done=0;
-  const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`; };
+  let done=0, failed=0;
+  const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
   setProgress();
   // Presign every folder up front so all uploads can run as one shared pool
-  const allItems=[]; // {url,key,filename,folder,file}
+  const allItems=[]; // {url,key,filename,folder,file,ok}
   for (const {folder,files} of batches) {
     if (!files.length) continue;
     const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1010,20 +1024,36 @@ async function startUpload() {
     const {urls}=await pr.json();
     urls.forEach((u,i)=>allItems.push({...u,folder,file:files[i]}));
   }
-  // Upload everything in one continuous pool of CONCURRENCY at a time, across all folders
+  // Upload everything in one continuous pool of CONCURRENCY at a time, across all folders.
+  // A non-2xx PUT response doesn't throw in fetch(), so it must be checked explicitly —
+  // otherwise a failed upload still gets indexed as if the photo were really there.
+  async function putOne(it) {
+    for (let attempt=0; attempt<2 && !it.ok; attempt++) {
+      try {
+        const res = await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}});
+        if (res.ok) it.ok = true;
+      } catch (e) { /* retry once below */ }
+    }
+    done++; if (!it.ok) failed++; setProgress();
+  }
   for (let i=0;i<allItems.length;i+=CONCURRENCY)
-    await Promise.all(allItems.slice(i,i+CONCURRENCY).map(async it=>{
-      await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}});
-      done++; setProgress();
-    }));
-  // Index each folder once its photos are uploaded
+    await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>putOne(it)));
+  // Index only the files that actually finished uploading
   const byFolder={};
-  for (const it of allItems) (byFolder[it.folder]=byFolder[it.folder]||[]).push(it.key);
-  for (const [folder,keys] of Object.entries(byFolder))
+  for (const it of allItems) if (it.ok) (byFolder[it.folder]=byFolder[it.folder]||[]).push(it.key);
+  for (const [folder,keys] of Object.entries(byFolder)) {
+    if (!keys.length) continue;
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys})});
-  label.textContent=`Done — ${done} photos uploaded`;
-  showToast(`${done} photos uploaded as draft`);
+  }
+  const succeeded = done - failed;
+  if (failed) {
+    label.textContent = `Done — ${succeeded} uploaded, ${failed} failed (not added)`;
+    showToast(`${succeeded} uploaded, ${failed} failed — try uploading the failed ones again`,'error');
+  } else {
+    label.textContent = `Done — ${done} photos uploaded`;
+    showToast(`${done} photos uploaded as draft`);
+  }
   await loadSidebar();
   const firstBatch=batches[0];
   if (firstBatch) setTimeout(()=>openFolder(date,location,firstBatch.folder||''),400);

@@ -320,7 +320,7 @@ async function startUpload() {
           xhr.open('PUT', item.url);
           xhr.setRequestHeader('Content-Type', item.file.type || 'image/jpeg');
           xhr.onload = () => {
-            if (xhr.status >= 200 && xhr.status < 300) { done++; setProgress(done, total); resolve(); }
+            if (xhr.status >= 200 && xhr.status < 300) { item.ok = true; done++; setProgress(done, total); resolve(); }
             else reject(new Error('HTTP ' + xhr.status));
           };
           xhr.onerror = () => reject(new Error('Network error'));
@@ -344,7 +344,7 @@ async function startUpload() {
   setProgress(succeeded, total, 'Indexing…');
   let totalIndexed = 0;
   for (const f of folders) {
-    const keys = allItems.filter(i => i.folderName === f.name).map(i => i.key);
+    const keys = allItems.filter(i => i.folderName === f.name && i.ok).map(i => i.key);
     if (!keys.length) continue;
     try {
       const res = await fetch('/api/admin/upload/index', {
