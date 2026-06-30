@@ -575,7 +575,7 @@ async function openFolder(date, location, folder) {
   renderTree();
   setView('folder');
   document.getElementById('folder-name-display').textContent = folder || location;
-  document.getElementById('folder-name-input').style.display = 'none';
+  cancelNameEdit();
   document.getElementById('photo-grid').innerHTML = '<div class="loading-text">Loading photos…</div>';
   clearSelection();
   await loadFolderPhotos();
