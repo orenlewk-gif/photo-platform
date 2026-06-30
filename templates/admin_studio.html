@@ -326,7 +326,11 @@ input[type=file]{display:none}
           <span id="folder-name-display"></span>
           <button id="rename-btn" onclick="startNameEdit()" title="Rename folder"
             style="background:none;border:none;color:rgba(255,255,255,.35);cursor:pointer;font-size:.9rem;padding:0 0 0 6px;line-height:1">✏️</button>
-          <input id="folder-name-input" placeholder="New name…">
+          <span id="rename-form" style="display:none;align-items:center;gap:6px">
+            <input id="folder-name-input" placeholder="New name…">
+            <button onclick="commitNameEdit()" style="background:#F5C518;border:none;color:#07151f;border-radius:6px;padding:3px 10px;cursor:pointer;font-weight:700">Save</button>
+            <button onclick="cancelNameEdit()" style="background:rgba(255,255,255,.1);border:none;color:#fff;border-radius:6px;padding:3px 10px;cursor:pointer">✕</button>
+          </span>
           <span id="folder-status-badge"></span>
         </div>
         <div id="folder-actions-row">
@@ -789,20 +793,23 @@ function _lbKey(e) { if (e.key === 'Escape') closeLightbox(); }
 
 // ── Inline rename ──
 function setupInlineEdit() {
-  document.getElementById('folder-name-display').addEventListener('click', startNameEdit);
   const inp = document.getElementById('folder-name-input');
   inp.addEventListener('keydown', e => { if(e.key==='Enter') commitNameEdit(); if(e.key==='Escape') cancelNameEdit(); });
-  inp.addEventListener('blur', commitNameEdit);
 }
 
 function startNameEdit() {
   const disp = document.getElementById('folder-name-display');
-  const inp = document.getElementById('folder-name-input');
-  inp.value = disp.textContent; disp.style.display='none'; inp.style.display=''; inp.focus(); inp.select();
+  const inp  = document.getElementById('folder-name-input');
+  inp.value  = disp.textContent;
+  disp.style.display = 'none';
+  document.getElementById('rename-btn').style.display  = 'none';
+  document.getElementById('rename-form').style.display = 'flex';
+  inp.focus(); inp.select();
 }
 function cancelNameEdit() {
-  document.getElementById('folder-name-input').style.display='none';
-  document.getElementById('folder-name-display').style.display='';
+  document.getElementById('rename-form').style.display  = 'none';
+  document.getElementById('folder-name-display').style.display = '';
+  document.getElementById('rename-btn').style.display   = '';
 }
 async function commitNameEdit() {
   const inp = document.getElementById('folder-name-input');
