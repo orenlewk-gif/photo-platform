@@ -616,10 +616,13 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
     with open("pricing.json", "r") as f:
         pricing = json.load(f)
     combos = pricing.get("combos", [])
-    if location and location in pricing.get("activities", {}):
-        result = dict(pricing["activities"][location])
-        result["combos"] = combos
-        return result
+    if location:
+        activities = pricing.get("activities", {})
+        act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
+        if act_key:
+            result = dict(activities[act_key])
+            result["combos"] = combos
+            return result
     result = dict(pricing.get("default", default))
     result["combos"] = combos
     return result
