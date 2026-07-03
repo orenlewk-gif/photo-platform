@@ -36,7 +36,7 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(BASE_DIR, "images")
 
 # Portrait locations use last_name sub-folders (family/session name)
-PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola"}
+PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits"}
 # Activity locations whose groups are searchable (trail name + date)
 SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
 
