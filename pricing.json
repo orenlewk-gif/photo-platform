@@ -33,6 +33,14 @@
         {"label": "All Photos", "count": "all", "price": 100}
       ]
     },
+    "Nature Zipline": {
+      "tiers": [
+        {"label": "1 Photo",    "count": 1,     "price": 45},
+        {"label": "2 Photos",   "count": 2,     "price": 70},
+        {"label": "3 Photos",   "count": 3,     "price": 80},
+        {"label": "All Photos", "count": "all", "price": 100}
+      ]
+    },
     "Mountain Biking": {
       "tiers": [
         {"label": "1 Photo",         "count": 1,  "price": 30},
