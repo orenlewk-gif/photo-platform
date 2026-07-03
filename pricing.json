@@ -49,6 +49,13 @@
         {"label": "All Photos", "count": "all", "price": 100}
       ]
     },
+    "Dirt Days": {
+      "tiers": [
+        {"label": "1 Photo",          "count": 1,  "price": 20},
+        {"label": "2 Photos",         "count": 2,  "price": 30},
+        {"label": "Up to 10 Photos",  "count": 10, "price": 40, "max": true}
+      ]
+    },
     "Mountain Biking": {
       "tiers": [
         {"label": "1 Photo",         "count": 1,  "price": 30},
