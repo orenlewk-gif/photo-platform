@@ -1000,6 +1000,9 @@ function renderDetectedFolders() {
 function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); }
 function updateUploadBtn() { document.getElementById('upload-action-btn').disabled=!(uploadFolders.length||looseFiles.length); }
 
+let _uploadActive = false;
+function _beforeUnloadGuard(e) { e.preventDefault(); e.returnValue = ''; }
+
 async function startUpload() {
   const date=document.getElementById('upload-date').value;
   const location=document.getElementById('upload-location').value.trim();
@@ -1009,6 +1012,8 @@ async function startUpload() {
     : [{folder:document.getElementById('upload-folder-name').value.trim(), files:looseFiles}];
   const totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
   if (!totalFiles) { showToast('No photos to upload','error'); return; }
+  _uploadActive = true;
+  window.addEventListener('beforeunload', _beforeUnloadGuard);
   const btn=document.getElementById('upload-action-btn'); btn.disabled=true;
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
@@ -1055,6 +1060,8 @@ async function startUpload() {
     label.textContent = `Done — ${done} photos uploaded`;
     showToast(`${done} photos uploaded as draft`);
   }
+  _uploadActive = false;
+  window.removeEventListener('beforeunload', _beforeUnloadGuard);
   await loadSidebar();
   const firstBatch=batches[0];
   if (firstBatch) setTimeout(()=>openFolder(date,location,firstBatch.folder||''),400);
