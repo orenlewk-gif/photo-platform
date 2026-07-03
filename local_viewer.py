@@ -371,12 +371,22 @@ def last_name_search(q: str = Query("")):
     return {"results": results[:20]}
 
 
+def _canonical_location(loc: str) -> str:
+    """Map local folder name variants to the canonical name used in folder_meta keys on Railway."""
+    l = loc.strip().lower()
+    if l in {"nature zip", "nature zipline"}:
+        return "Nature Zip Line"
+    if l in {"adventure zipline"}:
+        return "Adventure Zip Line"
+    return loc
+
+
 @app.get("/api/pricing")
 def proxy_pricing(location: str = Query(None), date: str = Query(None), family: str = Query(None)):
     """Proxy to live pricing API so the local viewer shows current pricing without CORS issues."""
     try:
         params = {}
-        if location: params["location"] = location
+        if location: params["location"] = _canonical_location(location)
         if date:     params["date"]     = date
         if family:   params["family"]   = family
         url = LIVE_API + "/api/pricing"
