@@ -1512,6 +1512,17 @@ def admin_orders(request: Request, days: int = 30,
     total_rev  = sum(r["total"]      for r in rows)
     total_fees = sum(r["stripe_fee"] for r in rows)
     total_net  = sum(r["net"]        for r in rows)
+
+    # Location breakdown
+    loc_stats = {}
+    for r in rows:
+        loc = r["location"] or "Unknown"
+        if loc not in loc_stats:
+            loc_stats[loc] = {"count": 0, "revenue": 0.0, "net": 0.0}
+        loc_stats[loc]["count"]   += 1
+        loc_stats[loc]["revenue"] += r["total"]
+        loc_stats[loc]["net"]     += r["net"]
+    loc_stats = dict(sorted(loc_stats.items(), key=lambda x: x[1]["revenue"], reverse=True))
     now_utc    = datetime.now(timezone.utc)
 
     # Photographer prefix map
@@ -1539,6 +1550,7 @@ def admin_orders(request: Request, days: int = 30,
         detail_data = _json.dumps({
             "name":         f"{r['first']} {r['last']}",
             "email":        r['email'],
+            "location":     r['location'] or '—',
             "photographer": photographer,
             "what":         r['what'],
             "files":        r['filenames'] or '—',
@@ -1562,6 +1574,7 @@ def admin_orders(request: Request, days: int = 30,
         trs += f"""<tr class="order-row" onclick="showDetail('{detail_data}')" style="cursor:pointer">
           {td(r['date'])}
           {td(f"{r['first']} {r['last']}")}
+          {td(r['location'] or '—')}
           {td(r['email'])}
           {td(r['what'])}
           {td(photographer)}
@@ -1644,6 +1657,17 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 .modal-val{{color:#fff;word-break:break-word}}
 .modal-close{{float:right;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer;margin-top:-4px}}
 .modal-close:hover{{color:#fff}}
+.loc-breakdown{{margin-bottom:1.5rem}}
+.loc-breakdown-title{{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.6rem}}
+.loc-bars{{display:flex;flex-direction:column;gap:.45rem}}
+.loc-bar-row{{display:flex;align-items:center;gap:.75rem;font-size:.82rem}}
+.loc-bar-label{{width:160px;flex-shrink:0;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.loc-bar-track{{flex:1;background:rgba(255,255,255,.06);border-radius:4px;height:8px;overflow:hidden}}
+.loc-bar-fill{{height:100%;background:#F5C518;border-radius:4px;transition:width .3s}}
+.loc-bar-stats{{width:200px;flex-shrink:0;display:flex;gap:.75rem;color:rgba(255,255,255,.5);white-space:nowrap;font-size:.78rem}}
+.loc-bar-pct{{color:#F5C518;font-weight:700;min-width:38px;text-align:right}}
+.loc-bar-rev{{color:#e2e8f0}}
+.loc-bar-cnt{{color:rgba(255,255,255,.35)}}
 #toast{{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}}
 #toast.show{{opacity:1;background:#16a34a;color:#fff}}
 #toast.err{{opacity:1;background:#dc2626;color:#fff}}
@@ -1676,7 +1700,7 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 function showDetail(encoded) {{
   const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
   const fields = [
-    ['Name', d.name], ['Email', d.email], ['Photographer', d.photographer], ['Ordered', d.what],
+    ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
     ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
     ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
     ['Billing Address', d.address], ['Photo Files', d.files],
@@ -1775,6 +1799,22 @@ async function copyLink(orderId, e) {{
     <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
   </div>
+  <div class="loc-breakdown">
+    <div class="loc-breakdown-title">Revenue by Location</div>
+    <div class="loc-bars">
+      {"".join(
+        f'<div class="loc-bar-row">'
+        f'<span class="loc-bar-label">{loc}</span>'
+        f'<div class="loc-bar-track"><div class="loc-bar-fill" style="width:{(s["revenue"]/total_rev*100) if total_rev else 0:.1f}%"></div></div>'
+        f'<div class="loc-bar-stats">'
+        f'<span class="loc-bar-pct">{(s["revenue"]/total_rev*100) if total_rev else 0:.1f}%</span>'
+        f'<span class="loc-bar-rev">${s["revenue"]:.0f}</span>'
+        f'<span class="loc-bar-cnt">{s["count"]} order{"s" if s["count"]!=1 else ""}</span>'
+        f'</div></div>'
+        for loc, s in loc_stats.items()
+      ) if loc_stats else "<span style='color:rgba(255,255,255,.3);font-size:.82rem'>No orders in this period.</span>"}
+    </div>
+  </div>
   <div class="controls">
     <form method="get" style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
       <select name="days" onchange="this.form.submit()">
@@ -1790,11 +1830,11 @@ async function copyLink(orderId, e) {{
   <div class="wrap">
   <table>
     <thead><tr>
-      <th>Date</th><th>Name</th><th>Email</th><th>Ordered</th><th>Photographer</th>
+      <th>Date</th><th>Name</th><th>Location</th><th>Email</th><th>Ordered</th><th>Photographer</th>
       <th>Photo Files</th><th>Total</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
       <th>Coupon</th><th>Shipping</th><th>Address</th><th>Action</th>
     </tr></thead>
-    <tbody>{trs if trs else '<tr><td colspan="14" class="empty">No completed orders in this period.</td></tr>'}</tbody>
+    <tbody>{trs if trs else '<tr><td colspan="15" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
   </div>
   </div>
