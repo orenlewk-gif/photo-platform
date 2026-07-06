@@ -173,10 +173,6 @@ function folderRow(f) {
     ? `<a href="/admin/zip-preview/${f.date}/${encodeURIComponent(f.name)}" target="_blank"><button class="btn btn-ghost">Preview →</button></a>`
     : `<a href="/?date=${f.date}&location=${encodeURIComponent(f.location)}&${f.is_portrait?'family':'group'}=${encodeURIComponent(f.name)}" target="_blank"><button class="btn btn-ghost">View →</button></a>`;
 
-  const dlParam   = f.is_portrait ? 'family' : 'group';
-  const dlUrl     = `/api/admin/download-folder?date=${encodeURIComponent(f.date)}&location=${encodeURIComponent(f.location)}&${dlParam}=${encodeURIComponent(f.name)}`;
-  const dlHtml    = `<a href="${dlUrl}" download><button class="btn btn-ghost" title="Download all photos as ZIP">⬇ ZIP</button></a>`;
-
   const pushLiveHtml = isDraft
     ? `<button class="btn btn-live" onclick="pushLive('${esc(f.folder_key)}', this)">Push Live</button>
        <button class="btn btn-discard" onclick="discardDraft('${esc(f.folder_key)}', this)">Discard</button>`
@@ -191,7 +187,6 @@ function folderRow(f) {
     ${pushLiveHtml}
     ${deleteHtml}
     ${previewHtml}
-    ${dlHtml}
   </div>`;
 }
 
