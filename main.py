@@ -1436,6 +1436,51 @@ def api_admin_order_link(request: Request, order_id: int):
     return {"url": f"{SITE_URL}/download/{token}", "expired": expired,
             "expires": expires_dt.isoformat()}
 
+@app.get("/api/admin/download-folder")
+def admin_download_folder(
+    request: Request,
+    date: str = Query(...),
+    location: str = Query(...),
+    family: str = Query(None),
+    group: str = Query(None),
+):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    all_data = _r2_json_load("images.json", [])
+    loc_lower = location.strip().lower()
+    sub = (family or group or '').strip().lower()
+    field = "last_name" if family else "group"
+    matches = []
+    for item in all_data:
+        if item.get("date") != date:
+            continue
+        if (item.get("location") or "").strip().lower() != loc_lower:
+            continue
+        if sub and (item.get(field) or "").strip().lower() != sub:
+            continue
+        path = item.get("path", "")
+        if path:
+            matches.append(path)
+    if not matches:
+        return JSONResponse(status_code=404, content={"error": "No photos found"})
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for path in matches:
+            idx = path.find("images/")
+            r2_key = path[idx:].replace("\\", "/") if idx >= 0 else path
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)
+                zf.writestr(os.path.basename(r2_key), obj["Body"].read())
+            except Exception:
+                pass
+    buf.seek(0)
+    label = "_".join(filter(None, [date, location.replace(" ", "_"), family or group]))
+    return Response(
+        content=buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{label}.zip"'},
+    )
+
 def _get_token_by_order_id(order_id):
     """Find download token matching a WooCommerce order ID."""
     try:
@@ -1563,6 +1608,8 @@ def admin_orders(request: Request, days: int = 30,
             "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
             "address":      r['ship_addr'] or '—',
             "photo_paths":  r['photo_paths'] or '',
+            "date":         r['date'] or '',
+            "last_name":    r['last'] or '',
         }).replace("'", "&#39;").replace('"', '&quot;')
         try:
             order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -1733,6 +1780,10 @@ function showDetail(encoded) {{
       ).join('') + '</div>';
     }} else {{
       box.classList.remove('wide'); box.classList.add('narrow');
+    }}
+    if (d.date && d.location && d.location !== '—' && d.last_name) {{
+      const dlUrl = `/api/admin/download-folder?date=${{encodeURIComponent(d.date)}}&location=${{encodeURIComponent(d.location)}}&family=${{encodeURIComponent(d.last_name)}}`;
+      html += `<div style="margin-top:1.2rem;text-align:right"><a href="${{dlUrl}}" class="copy-btn" style="display:inline-block;text-decoration:none;padding:.45rem 1rem;font-size:.82rem">⬇ Download All Folder Photos</a></div>`;
     }}
 
     document.getElementById('detail-body').innerHTML = html;

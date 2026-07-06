@@ -2889,10 +2889,44 @@ function selectLnResult(i) {
 }
 
 // Fallback: old cross-gallery search (used when no dropdown result is selected)
-function doLnSearch() {
+async function doLnSearch() {
   const ln = document.getElementById('ln-input').value.trim();
   if (!ln) return;
-  navigate({ view: 'gallery', ln });
+  hideLnDropdown();
+  showSpinner();
+  try {
+    const res     = await fetch(`/api/last-name-search?q=${enc(ln)}`);
+    const d       = await res.json();
+    const results = d.results || [];
+    hideSpinner();
+    if (!results.length) { showMsg(`No photos found for "${ln}"`); return; }
+    if (results.length === 1) {
+      const r = results[0];
+      navigate(r.group
+        ? { view:'gallery', date:r.date, location:r.location, group:r.group }
+        : { view:'gallery', date:r.date, location:r.location, family:r.last_name });
+      return;
+    }
+    // Multiple matches — show as selectable folder cards
+    showView('families');
+    setBreadcrumb([{ label:'All Days', state:{ view:'days' } }], `"${ln}"`);
+    document.getElementById('ln-bar').style.display = '';
+    const el = document.getElementById('view-families');
+    el.innerHTML = `<div class="grid">${results.map(r => {
+      const name = r.last_name || r.group || '';
+      const cs = r.group
+        ? `{view:"gallery",date:"${escQ(r.date)}",location:"${escQ(r.location)}",group:"${escQ(r.group)}"}`
+        : `{view:"gallery",date:"${escQ(r.date)}",location:"${escQ(r.location)}",family:"${escQ(name)}"}`;
+      return `<div class="grid-card" onclick='navigate(${cs})'>
+        <div class="collage-inner" style="display:flex;align-items:center;justify-content:center;min-height:120px;font-size:2.5rem">📷</div>
+        <div class="card-title">${name}</div>
+        <div style="text-align:center;font-size:.8rem;color:rgba(255,255,255,.5);margin-top:4px">${r.location}&nbsp;·&nbsp;${formatDateLong(r.date)}</div>
+      </div>`;
+    }).join('')}</div>`;
+  } catch(e) {
+    hideSpinner();
+    showMsg('Search failed — please try again');
+  }
 }
 
 // ── Lazy image loading ──
