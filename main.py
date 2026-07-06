@@ -1712,33 +1712,35 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 <div id="toast"></div>
 <script>
 function showDetail(encoded) {{
-  const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
-  const fields = [
-    ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
-    ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
-    ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
-    ['Billing Address', d.address],
-  ];
-  let html = fields.map(([l,v]) =>
-    `<div class="modal-row"><span class="modal-label">${{l}}</span><span class="modal-val">${{v}}</span></div>`
-  ).join('');
+  try {{
+    const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
+    const fields = [
+      ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
+      ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
+      ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
+      ['Billing Address', d.address],
+    ];
+    let html = fields.map(([l,v]) =>
+      `<div class="modal-row"><span class="modal-label">${{l}}</span><span class="modal-val">${{v}}</span></div>`
+    ).join('');
 
-  const paths = d.photo_paths ? d.photo_paths.split('|').filter(Boolean) : [];
-  const box = document.getElementById('detail-modal-box');
-  if (paths.length) {{
-    box.classList.replace('narrow','wide');
-    html += `<div style="margin-top:1rem;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3)">
-      Photos Ordered (${{paths.length}})</div>`;
-    html += '<div class="photo-grid">' + paths.map(p =>
-      `<img src="/api/admin/photo?path=${{encodeURIComponent(p)}}&size=thumb"
-            loading="lazy" onclick="openLb(this)" alt="">`
-    ).join('') + '</div>';
-  }} else {{
-    box.classList.replace('wide','narrow');
+    const paths = (d.photo_paths || '').split('|').filter(Boolean);
+    const box = document.getElementById('detail-modal-box');
+    if (paths.length) {{
+      box.classList.remove('narrow'); box.classList.add('wide');
+      html += `<div style="margin-top:1rem;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3)">Photos Ordered (${{paths.length}})</div>`;
+      html += '<div class="photo-grid">' + paths.map(p =>
+        `<img src="/api/admin/photo?path=${{encodeURIComponent(p)}}&amp;size=thumb" loading="lazy" onclick="openLb(this)" alt="">`
+      ).join('') + '</div>';
+    }} else {{
+      box.classList.remove('wide'); box.classList.add('narrow');
+    }}
+
+    document.getElementById('detail-body').innerHTML = html;
+    document.getElementById('detail-modal').classList.add('open');
+  }} catch(e) {{
+    console.error('showDetail error:', e);
   }}
-
-  document.getElementById('detail-body').innerHTML = html;
-  document.getElementById('detail-modal').classList.add('open');
 }}
 function closeDetail(e) {{
   if (e.target === document.getElementById('detail-modal'))
