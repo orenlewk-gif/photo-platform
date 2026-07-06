@@ -345,6 +345,7 @@ input[type=file]{display:none}
           <button class="act-btn warn" onclick="pullDraft()">Pull to Draft</button>
           <button class="act-btn" onclick="openAddPhotos()">+ Add Photos</button>
           <button class="act-btn" onclick="openMoveModal()">Move</button>
+          <button class="act-btn" onclick="downloadFolder()">⬇ Download All</button>
           <button class="act-btn danger" onclick="deleteCurrentFolder()">Delete Folder</button>
         </div>
         <div id="pricing-preview"></div>
@@ -410,7 +411,8 @@ input[type=file]{display:none}
 
 <script>
 const CONCURRENCY = 10;
-const ZIP_LOCS = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip line"]);
+const ZIP_LOCS      = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip line"]);
+const PORTRAIT_LOCS = new Set(["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip"]);
 
 // ── State ──
 let allFolders = [];
@@ -862,6 +864,16 @@ async function doMove() {
     currentFolder={...currentFolder,date:newDate,location:newLoc};
     await loadSidebar(); await loadFolderPhotos();
   } else showToast('Move failed','error');
+}
+
+// ── Download folder as ZIP ──
+function downloadFolder() {
+  if (!currentFolder) return;
+  const {date, location, folder} = currentFolder;
+  const isPortrait = PORTRAIT_LOCS.has(location.trim().toLowerCase());
+  const param = isPortrait ? 'family' : 'group';
+  const url = `/api/admin/download-folder?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}&${param}=${encodeURIComponent(folder)}`;
+  window.location.href = url;
 }
 
 // ── Delete folder ──
