@@ -623,6 +623,9 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             result = dict(activities[act_key])
             result["combos"] = combos
             return result
+        # Location provided but not configured — return empty so the viewer shows no pricing
+        # rather than misleading default pricing for a different activity.
+        return {"tiers": [], "combos": combos}
     result = dict(pricing.get("default", default))
     result["combos"] = combos
     return result

@@ -354,6 +354,7 @@ let imgCache         = {};
 let cur              = 0;
 let selectedPhotos   = new Set();   // indices in current gallery
 let currentPricingData = null;
+let _pricingGen = 0;
 
 let PRINT_SIZES = [
   { label: '5×7"',   price: 25 },
@@ -639,11 +640,13 @@ async function showGallery(date, location, family, ln, group) {
 
 async function fetchAndShowPricing(date, location, fam) {
   currentPricingData = null;
+  const gen = ++_pricingGen;
   try {
     let url = `/api/pricing?location=${enc(location)}&date=${enc(date)}`;
     if (fam) url += `&family=${enc(fam)}`;
     const res  = await fetch(url);
     if (!res.ok) return;
+    if (gen !== _pricingGen) return;
     const data = await res.json();
 
     const strip = document.getElementById('pricing-strip');

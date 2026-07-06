@@ -1455,10 +1455,12 @@ async function showGallery(date, location, family, ln, group) {
   saveCurrentFolder();
   currentGroup = group || null;
 
-  // Fetch pricing for this location
-  const pricingLoc = location || '';
+  // Fetch pricing — for last-name searches location is unknown; derive from first photo
+  const pricingLoc  = location         || photos[0]?.location  || '';
+  const pricingDate = date             || photos[0]?.date       || '';
+  const pricingFam  = family || group  || photos[0]?.last_name || '';
   let pricingUrl = `/api/pricing?location=${enc(pricingLoc)}`;
-  if (date && (family || group)) pricingUrl += `&date=${enc(date)}&family=${enc(family || group)}`;
+  if (pricingDate && pricingFam) pricingUrl += `&date=${enc(pricingDate)}&family=${enc(pricingFam)}`;
   const pRes = await fetch(pricingUrl);
   const pricingFull = await pRes.json();
   if (pricingFull.combos) globalCombos = pricingFull.combos;
