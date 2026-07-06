@@ -2917,12 +2917,18 @@ async function doLnSearch() {
       const cs = r.group
         ? `{view:"gallery",date:"${escQ(r.date)}",location:"${escQ(r.location)}",group:"${escQ(r.group)}"}`
         : `{view:"gallery",date:"${escQ(r.date)}",location:"${escQ(r.location)}",family:"${escQ(name)}"}`;
+      const p = r.previews || [];
+      const imgs = [0,1,2,3].map(i => p[i]
+        ? `<img data-path="${escA(p[i])}" src="" alt="" />`
+        : `<div class="collage-placeholder">📷</div>`
+      ).join('');
       return `<div class="grid-card" onclick='navigate(${cs})'>
-        <div class="collage-inner" style="display:flex;align-items:center;justify-content:center;min-height:120px;font-size:2.5rem">📷</div>
+        <div class="collage-inner"><div class="collage-2x2">${imgs}</div></div>
         <div class="card-title">${name}</div>
         <div style="text-align:center;font-size:.8rem;color:rgba(255,255,255,.5);margin-top:4px">${r.location}&nbsp;·&nbsp;${formatDateLong(r.date)}</div>
       </div>`;
     }).join('')}</div>`;
+    lazyLoad(el);
   } catch(e) {
     hideSpinner();
     showMsg('Search failed — please try again');

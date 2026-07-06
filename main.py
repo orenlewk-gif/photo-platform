@@ -397,9 +397,11 @@ def last_name_search(q: str = Query("")):
         return {"results": []}
 
     seen = set()
+    previews: dict = {}  # key -> list of up to 4 paths
     results = []
     for item in data:
         loc = clean_location(item["location"])
+        path = item.get("path", "")
 
         # Last-name search (portrait locations)
         ln = item.get("last_name", "").strip()
@@ -409,12 +411,16 @@ def last_name_search(q: str = Query("")):
                 key = ("ln", ln_lower, item["date"], loc)
                 if key not in seen:
                     seen.add(key)
+                    previews[key] = []
                     results.append({
                         "last_name": ln,
                         "date":      item["date"],
                         "location":  loc,
                         "type":      "family",
+                        "_key":      key,
                     })
+                if path and len(previews[key]) < 4:
+                    previews[key].append(path)
 
         # Group/trail search (Mountain Biking only)
         if loc.lower() in SEARCHABLE_GROUP_LOCATIONS:
@@ -425,19 +431,27 @@ def last_name_search(q: str = Query("")):
                     key = ("grp", g_lower, item["date"], loc)
                     if key not in seen:
                         seen.add(key)
+                        previews[key] = []
                         results.append({
                             "group":    g,
                             "date":     item["date"],
                             "location": loc,
                             "type":     "group",
+                            "_key":     key,
                         })
+                    if path and len(previews[key]) < 4:
+                        previews[key].append(path)
 
     def sort_key(x):
         name = x.get("last_name") or x.get("group", "")
         return (not name.lower().startswith(q_lower), name.lower(), x["date"])
 
     results.sort(key=sort_key)
-    return {"results": results[:20]}
+    results = results[:20]
+    for r in results:
+        k = r.pop("_key")
+        r["previews"] = previews.get(k, [])
+    return {"results": results}
 
 
 def natural_sort_key(path):
