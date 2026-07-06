@@ -623,12 +623,8 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             result = dict(activities[act_key])
             result["combos"] = combos
             return result
-        # Location provided but not configured — return empty so the viewer shows no pricing
-        # rather than misleading default pricing for a different activity.
         return {"tiers": [], "combos": combos}
-    result = dict(pricing.get("default", default))
-    result["combos"] = combos
-    return result
+    return {"tiers": [], "combos": combos}
 
 
 def to_r2_key(path: str) -> str:
@@ -1774,13 +1770,18 @@ async function copyLink(orderId, e) {{
       showToast('Link expired — click Regen Link to renew', 'err');
       return;
     }}
-    await navigator.clipboard.writeText(d.url);
-    btn.textContent = 'Copied!';
-    showToast('Download link copied to clipboard');
-    setTimeout(() => btn.textContent = orig, 2500);
+    try {{
+      await navigator.clipboard.writeText(d.url);
+      btn.textContent = 'Copied!';
+      showToast('Download link copied to clipboard');
+    }} catch(clipErr) {{
+      window.prompt('Copy this download link:', d.url);
+      btn.textContent = orig;
+    }}
+    setTimeout(() => {{ if (btn.textContent === 'Copied!') btn.textContent = orig; }}, 2500);
   }} catch(err) {{
     btn.textContent = orig;
-    showToast('Copy failed — try Regen Link', 'err');
+    showToast('Copy failed', 'err');
   }}
 }}
 (async function(){{
