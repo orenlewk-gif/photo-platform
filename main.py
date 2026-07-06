@@ -1472,6 +1472,7 @@ def _order_row(order) -> dict:
     filenames    = meta.get("_photo_files", "")
     location     = meta.get("_photo_location", "")
     date_raw     = meta.get("_photo_date", "")
+    photo_paths  = meta.get("_photo_paths", "")
     line_items   = order.get("line_items", [])
     what_ordered = ", ".join(li.get("name","") for li in line_items)
     coupon_lines = order.get("coupon_lines", [])
@@ -1493,6 +1494,7 @@ def _order_row(order) -> dict:
         "shipping":    shipping,
         "ship_addr":   ship_addr,
         "coupon_code": coupon_code,
+        "photo_paths": photo_paths,
     }
 
 @app.get("/admin/orders", response_class=HTMLResponse)
@@ -1561,6 +1563,7 @@ def admin_orders(request: Request, days: int = 30,
             "coupon":       r['coupon_code'] or '—',
             "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
             "address":      r['ship_addr'] or '—',
+            "photo_paths":  r['photo_paths'] or '',
         }).replace("'", "&#39;").replace('"', '&quot;')
         try:
             order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -1649,14 +1652,22 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 .regen-btn:hover{{background:rgba(245,197,24,.2)}}
 .modal-overlay{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}}
 .modal-overlay.open{{display:flex}}
-.modal{{background:#1a1d27;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;max-width:560px;width:90%;max-height:80vh;overflow-y:auto}}
-.modal h2{{color:#F5C518;font-size:1rem;margin-bottom:1rem}}
+.modal{{background:#1a1d27;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;width:90%;max-height:90vh;overflow-y:auto;transition:max-width .2s}}
+.modal.narrow{{max-width:560px}}
+.modal.wide{{max-width:980px}}
+.modal h2{{color:#F5C518;font-size:1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.6rem}}
 .modal-row{{display:flex;gap:1rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}}
 .modal-row:last-child{{border-bottom:none}}
 .modal-label{{color:rgba(255,255,255,.4);min-width:110px;flex-shrink:0}}
 .modal-val{{color:#fff;word-break:break-word}}
-.modal-close{{float:right;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer;margin-top:-4px}}
+.modal-close{{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer}}
 .modal-close:hover{{color:#fff}}
+.photo-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.5rem;margin-top:1rem}}
+.photo-grid img{{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;cursor:pointer;transition:opacity .15s}}
+.photo-grid img:hover{{opacity:.85}}
+.photo-grid-lb{{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;align-items:center;justify-content:center}}
+.photo-grid-lb.open{{display:flex}}
+.photo-grid-lb img{{max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain}}
 .loc-breakdown{{margin-bottom:1.5rem}}
 .loc-breakdown-title{{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.6rem}}
 .loc-bars{{display:flex;flex-direction:column;gap:.45rem}}
@@ -1690,10 +1701,13 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
   </div>
   <div id="main">
 <div class="modal-overlay" id="detail-modal" onclick="closeDetail(event)">
-  <div class="modal">
+  <div class="modal narrow" id="detail-modal-box">
     <h2>Order Details <button class="modal-close" onclick="document.getElementById('detail-modal').classList.remove('open')">✕</button></h2>
     <div id="detail-body"></div>
   </div>
+</div>
+<div class="photo-grid-lb" id="photo-lb" onclick="this.classList.remove('open')">
+  <img id="photo-lb-img" src="" alt="">
 </div>
 <div id="toast"></div>
 <script>
@@ -1703,16 +1717,36 @@ function showDetail(encoded) {{
     ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
     ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
     ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
-    ['Billing Address', d.address], ['Photo Files', d.files],
+    ['Billing Address', d.address],
   ];
-  document.getElementById('detail-body').innerHTML = fields.map(([l,v]) =>
+  let html = fields.map(([l,v]) =>
     `<div class="modal-row"><span class="modal-label">${{l}}</span><span class="modal-val">${{v}}</span></div>`
   ).join('');
+
+  const paths = d.photo_paths ? d.photo_paths.split('|').filter(Boolean) : [];
+  const box = document.getElementById('detail-modal-box');
+  if (paths.length) {{
+    box.classList.replace('narrow','wide');
+    html += `<div style="margin-top:1rem;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3)">
+      Photos Ordered (${{paths.length}})</div>`;
+    html += '<div class="photo-grid">' + paths.map(p =>
+      `<img src="/api/admin/photo?path=${{encodeURIComponent(p)}}&size=thumb"
+            loading="lazy" onclick="openLb(this)" alt="">`
+    ).join('') + '</div>';
+  }} else {{
+    box.classList.replace('wide','narrow');
+  }}
+
+  document.getElementById('detail-body').innerHTML = html;
   document.getElementById('detail-modal').classList.add('open');
 }}
 function closeDetail(e) {{
   if (e.target === document.getElementById('detail-modal'))
     document.getElementById('detail-modal').classList.remove('open');
+}}
+function openLb(img) {{
+  document.getElementById('photo-lb-img').src = img.src.replace('size=thumb','size=medium');
+  document.getElementById('photo-lb').classList.add('open');
 }}
 let _tt;
 function showToast(msg, type='show') {{
