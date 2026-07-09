@@ -61,7 +61,7 @@ except Exception as _cors_err:
 # ─────────────────────────────────────────
 
 # Locations that use last-name sub-folders (portrait style)
-PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip"}
+PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip", "nature zip line", "nature zipline", "nature zip"}
 # Locations whose group/sub-folder names are searchable
 SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
 
