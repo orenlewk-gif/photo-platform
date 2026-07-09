@@ -22,7 +22,7 @@ s3 = boto3.client(
 R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
 
 # Portrait locations use last-name sub-folders and don't need CLIP
-PORTRAIT_LOCATIONS = ["lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip"]
+PORTRAIT_LOCATIONS = ["lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip", "nature zip line", "nature zipline", "nature zip"]
 
 # Lazy-load model only if needed
 model     = None
