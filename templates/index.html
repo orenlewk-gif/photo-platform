@@ -9,6 +9,7 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min-height: 100vh; }
 .container { max-width: 1400px; margin: 0 auto; padding: 2rem 3rem 4rem; }
+@media(max-width:640px){ .container { padding: 0.75rem 0.25rem 4rem; } }
 
 /* WordPress nav header */
 .custom-header { position:relative; width:100%; height:120px; background:rgba(4,50,73,0.95); display:flex; align-items:center; justify-content:space-between; padding:0 40px; box-sizing:border-box; font-family:'Inter',Arial,sans-serif; z-index:9999; }
@@ -148,7 +149,7 @@ input[type="range"]::-webkit-slider-thumb {
 .gallery { display:grid; gap:10px; }
 .gallery { grid-template-columns: repeat(var(--cols,3), 1fr); }
 @media(max-width:640px) {
-  .gallery { grid-template-columns: repeat(clamp(2, var(--cols,3), 4), 1fr) !important; }
+  .gallery { grid-template-columns: repeat(2, 1fr) !important; gap:3px; }
 }
 
 /* Thumbnail cards */
@@ -173,8 +174,11 @@ input[type="range"]::-webkit-slider-thumb {
   display:flex; gap:5px; align-items:center;
   opacity:0; transition:opacity 0.15s; pointer-events:all;
 }
-.thumb-card:hover .card-btn-row   { opacity:1; }
+.thumb-card:hover .card-btn-row    { opacity:1; }
 .thumb-card.selected .card-btn-row { opacity:1; }
+@media(hover:none) and (pointer:coarse) {
+  .card-btn-row { opacity:1; bottom:6px; left:6px; }
+}
 
 .select-check {
   width:26px; height:26px; border-radius:50%; flex-shrink:0;
@@ -1553,7 +1557,6 @@ function renderThumbs(photos) {
     card.innerHTML = `
       <div class="card-btn-row">
         <div class="select-check" data-idx="${i}">✓</div>
-        <button class="thumb-shop-btn" data-idx="${i}">🛒<span class="thumb-shop-label"> Quick Shop</span></button>
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
@@ -1566,12 +1569,6 @@ function renderThumbs(photos) {
     card.querySelector('.select-check').addEventListener('click', e => {
       e.stopPropagation();
       toggleSelect(i);
-    });
-
-    // Shop button click: open Quick Shop
-    card.querySelector('.thumb-shop-btn').addEventListener('click', e => {
-      e.stopPropagation();
-      openQuickShop(i);
     });
 
     // Card click: open lightbox (the ::after overlay is transparent so this fires)
