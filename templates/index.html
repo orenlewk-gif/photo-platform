@@ -2900,14 +2900,7 @@ async function doLnSearch() {
     const results = d.results || [];
     hideSpinner();
     if (!results.length) { showMsg(`No photos found for "${ln}"`); return; }
-    if (results.length === 1) {
-      const r = results[0];
-      navigate(r.group
-        ? { view:'gallery', date:r.date, location:r.location, group:r.group }
-        : { view:'gallery', date:r.date, location:r.location, family:r.last_name });
-      return;
-    }
-    // Multiple matches — show as selectable folder cards
+    // Always show folder cards — even a single result gets the card view
     showView('families');
     setBreadcrumb([{ label:'All Days', state:{ view:'days' } }], `"${ln}"`);
     document.getElementById('ln-bar').style.display = '';
