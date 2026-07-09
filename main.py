@@ -229,6 +229,24 @@ else:
         data = []
 print(f"Loaded {len(data)} photos.")
 
+# One-time migration: move group→last_name for Nature Zip Line entries
+_NZ_LOCS = {"nature zip line", "nature zipline", "nature zip"}
+_nz_fixed = 0
+for _item in data:
+    if ((_item.get("location") or "").strip().lower() in _NZ_LOCS
+            and not _item.get("last_name") and _item.get("group")):
+        _item["last_name"] = _item["group"]
+        _item["group"] = ""
+        _nz_fixed += 1
+if _nz_fixed:
+    print(f"Migrated {_nz_fixed} Nature Zip Line entries (group→last_name). Saving to R2…")
+    try:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+        print("Migration saved to R2.")
+    except Exception as _e:
+        print(f"WARNING: could not save migration to R2: {_e}")
+
 
 # ─────────────────────────────────────────
 # API ROUTES
@@ -1449,31 +1467,6 @@ def api_admin_order_link(request: Request, order_id: int):
     expired = datetime.now(timezone.utc) > expires_dt
     return {"url": f"{SITE_URL}/download/{token}", "expired": expired,
             "expires": expires_dt.isoformat()}
-
-@app.post("/api/admin/repair-nature-zip")
-def repair_nature_zip(request: Request):
-    """One-time fix: move group→last_name for Nature Zip Line entries in images.json."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    nature_zip_locs = {"nature zip line", "nature zipline", "nature zip"}
-    all_data = _r2_json_load("images.json", [])
-    fixed = 0
-    for item in all_data:
-        loc = (item.get("location") or "").strip().lower()
-        if loc in nature_zip_locs:
-            if not item.get("last_name") and item.get("group"):
-                item["last_name"] = item["group"]
-                item["group"] = ""
-                fixed += 1
-    if fixed:
-        s3.put_object(
-            Bucket=R2_BUCKET, Key="images.json",
-            Body=json.dumps(all_data).encode(),
-            ContentType="application/json",
-        )
-        global data
-        data = all_data
-    return {"fixed": fixed, "total": len(all_data)}
 
 @app.get("/api/admin/download-folder")
 def admin_download_folder(
