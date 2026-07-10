@@ -174,7 +174,7 @@ def apply_watermark(img, size="medium"):
         img_rgba.paste(wm_scaled, (x, y), wm_scaled)
     else:
         # Two watermarks for enlarged view — side by side on landscape, stacked on portrait
-        wm_size = int(min(img.width, img.height) * 0.40)
+        wm_size = int(min(img.width, img.height) * 0.52)
         gap     = int(wm_size * 0.20)
         wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
         if img.height > img.width:
