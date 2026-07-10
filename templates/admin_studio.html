@@ -1009,7 +1009,7 @@ async function renderDetectedFolders() {
   const isZip = _isZipUpload();
   let gsOpts = '';
   if (isZip) {
-    const tiers = await getZipTiers();
+    const tiers = await loadZipTiers();
     gsOpts = '<option value="">— Size —</option>' +
       tiers.map(t=>`<option value="${t.people}">${t.people}p</option>`).join('');
   }
