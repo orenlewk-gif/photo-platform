@@ -1057,6 +1057,14 @@ async function startUpload() {
   let done=0, failed=0;
   const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
   setProgress();
+  // Save group sizes immediately so local viewer shows correct pricing right away
+  if (_isZipUpload()) {
+    for (const [fi, {folder}] of batches.entries()) {
+      const gs = getUploadGroupSize(fi);
+      if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({folder_key:`${date}|${location}|${folder}`,group_size:gs})}).catch(()=>{});
+    }
+  }
   // Presign every folder up front so all uploads can run as one shared pool
   const allItems=[]; // {url,key,filename,folder,file,ok}
   for (const {folder,files} of batches) {
