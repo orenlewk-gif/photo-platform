@@ -194,6 +194,8 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .pricing-tier-sep { color:rgba(255,255,255,.18); font-size:.75rem; }
 .pricing-strip-btn { background:rgba(245,197,24,.12); border:1px solid rgba(245,197,24,.35); color:#F5C518; font-family:'DM Sans',sans-serif; font-size:.75rem; font-weight:700; border-radius:6px; padding:.3rem .85rem; cursor:pointer; white-space:nowrap; transition:background .2s; }
 .pricing-strip-btn:hover { background:rgba(245,197,24,.25); }
+.gs-viewer-select { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); border-radius:6px; color:#fff; font-family:'DM Sans',sans-serif; font-size:.8rem; padding:.28rem .6rem; cursor:pointer; outline:none; }
+.gs-viewer-select option { background:#0a1e2e; }
 
 /* Pricing modal */
 .pm-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.88); z-index:100002; align-items:center; justify-content:center; padding:1rem; }
@@ -355,6 +357,10 @@ let cur              = 0;
 let selectedPhotos   = new Set();   // indices in current gallery
 let currentPricingData = null;
 let _pricingGen = 0;
+let _viewerCtx = null;
+const ZIP_LOCS_V = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip","nature zip line","nature zipline"]);
+let _zipTiers = [];
+fetch('/api/viewer/zip-pricing').then(r=>r.json()).then(d=>{ _zipTiers = d.tiers || []; }).catch(()=>{});
 
 let PRINT_SIZES = [
   { label: '5×7"',   price: 25 },
@@ -597,6 +603,9 @@ async function showGallery(date, location, family, ln, group) {
     <div class="pricing-strip" id="pricing-strip" style="display:none">
       <span class="pricing-strip-label" id="pricing-strip-label">Pricing</span>
       <div class="pricing-tiers" id="pricing-tiers"></div>
+      <select class="gs-viewer-select" id="gs-viewer-select" style="display:none" onchange="setViewerGroupSize(this.value)">
+        <option value="">— Set group size —</option>
+      </select>
       <button class="pricing-strip-btn" onclick="openPricingModal()">See all pricing</button>
     </div>
     <div class="gallery-controls">
@@ -623,6 +632,7 @@ async function showGallery(date, location, family, ln, group) {
 
   // Fetch pricing display (non-blocking, fails silently if offline)
   if (!ln && date && location) {
+    _viewerCtx = {date, location, family: family||null, group: group||null};
     fetchAndShowPricing(date, location, family || group || null);
   }
 
@@ -655,6 +665,18 @@ async function fetchAndShowPricing(date, location, fam) {
     if (!strip) return;
 
     const tiers = data.tiers || [];
+    const isZip = _viewerCtx && ZIP_LOCS_V.has((_viewerCtx.location||'').trim().toLowerCase());
+    const gsSel = document.getElementById('gs-viewer-select');
+
+    // For zip locations always show the group size picker
+    if (isZip && gsSel && _zipTiers.length) {
+      const currentGs = data.zip_group_size || null;
+      gsSel.innerHTML = '<option value="">— Set group size —</option>' +
+        _zipTiers.map(t => `<option value="${t.people}" ${String(currentGs)===String(t.people)?'selected':''}>${t.people} ${t.people==1?'Person':'People'}</option>`).join('');
+      gsSel.style.display = '';
+      strip.style.display = '';
+    }
+
     if (!tiers.length) return;
 
     currentPricingData = data;
@@ -671,6 +693,18 @@ async function fetchAndShowPricing(date, location, fam) {
   } catch(e) {
     // offline or unreachable — silently hide
   }
+}
+
+async function setViewerGroupSize(size) {
+  if (!_viewerCtx) return;
+  const {date, location, family, group} = _viewerCtx;
+  const folderKey = `${date}|${location}|${group || family || ''}`;
+  await fetch('/api/viewer/set-group-size', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({folder_key: folderKey, group_size: size || null})
+  }).catch(()=>{});
+  fetchAndShowPricing(date, location, family || group || null);
 }
 
 function openPricingModal() {

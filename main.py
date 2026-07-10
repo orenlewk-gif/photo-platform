@@ -2884,6 +2884,30 @@ def api_get_zip_pricing(request: Request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return _load_zip_pricing()
 
+@app.get("/api/viewer/zip-pricing")
+def viewer_zip_pricing(request: Request):
+    """Local-only: return zip pricing tiers for the viewer group size picker."""
+    if request.client.host not in ("127.0.0.1", "::1"):
+        return JSONResponse(status_code=403, content={"error": "Local only"})
+    return _load_zip_pricing()
+
+@app.post("/api/viewer/set-group-size")
+async def viewer_set_group_size(request: Request):
+    """Local-only: set zip group size for a folder so viewer shows correct pricing."""
+    if request.client.host not in ("127.0.0.1", "::1"):
+        return JSONResponse(status_code=403, content={"error": "Local only"})
+    body = await request.json()
+    fk         = body.get("folder_key")
+    group_size = body.get("group_size")
+    if not fk:
+        return JSONResponse(status_code=400, content={"error": "Missing folder_key"})
+    folder_meta = _load_folder_meta()
+    if fk not in folder_meta:
+        folder_meta[fk] = {}
+    folder_meta[fk]["group_size"] = group_size
+    _save_folder_meta(folder_meta)
+    return {"status": "ok"}
+
 @app.post("/api/zip-pricing")
 async def api_save_zip_pricing(request: Request):
     if not _admin_authed(request):
