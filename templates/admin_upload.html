@@ -102,6 +102,14 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
     </div>
   </div>
 
+  <!-- Group size — shown only for zip locations -->
+  <div class="folder-field" id="group-size-field" style="display:none">
+    <label>Group Size</label>
+    <select id="group-size">
+      <option value="">— Select group size —</option>
+    </select>
+  </div>
+
   <!-- Shown only when loose files dropped (no folder structure) -->
   <div class="folder-field" id="folder-field" style="display:none">
     <label>Last Name / Group</label>
@@ -138,13 +146,36 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 
 <script>
 const CONCURRENCY = 10;
+const ZIP_LOCS_U  = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip","nature zip line","nature zipline"]);
 
 // State
 let detectedFolders = []; // [{name, files[]}]
 let flatFiles       = []; // File[] — loose drop with no folder structure
 let folderMode      = false;
+let zipTiers        = [];
 
 document.getElementById('date').value = new Date().toISOString().slice(0, 10);
+
+// Load zip pricing tiers for group size selector
+fetch('/api/zip-pricing').then(r => r.json()).then(d => {
+  zipTiers = d.tiers || [];
+}).catch(() => {});
+
+// Show/hide group size field based on location
+document.getElementById('location').addEventListener('change', function() {
+  const isZip = ZIP_LOCS_U.has(this.value.toLowerCase().trim());
+  const gsField = document.getElementById('group-size-field');
+  const gsSel   = document.getElementById('group-size');
+  if (isZip) {
+    gsSel.innerHTML = '<option value="">— Select group size —</option>' +
+      zipTiers.map(t => `<option value="${t.people}">${t.people} ${t.people==1?'Person':'People'}</option>`).join('');
+    gsField.style.display = '';
+  } else {
+    gsField.style.display = 'none';
+    gsSel.value = '';
+  }
+  updateBtn();
+});
 
 // ── File input (flat files only) ─────────────────────────────────────────────
 document.getElementById('file-input').addEventListener('change', function() {
@@ -249,7 +280,13 @@ function updateBtn() {
 }
 
 function validate() {
-  return document.getElementById('date').value && document.getElementById('location').value;
+  const date = document.getElementById('date').value;
+  const loc  = document.getElementById('location').value;
+  if (!date || !loc) return false;
+  if (ZIP_LOCS_U.has(loc.toLowerCase().trim())) {
+    if (!document.getElementById('group-size').value) return false;
+  }
+  return true;
 }
 
 ['date', 'location', 'folder'].forEach(id => {
@@ -341,34 +378,55 @@ async function startUpload() {
     return;
   }
 
-  // Auto-index each folder as draft
+  // Index, set group size, and push live for each folder
   setProgress(succeeded, total, 'Indexing…');
-  let totalIndexed = 0;
+  const isZip    = ZIP_LOCS_U.has(location.toLowerCase().trim());
+  const groupSize = document.getElementById('group-size').value || null;
+  let totalIndexed = 0, totalLive = 0;
+
   for (const f of folders) {
     const keys = allItems.filter(i => i.folderName === f.name && i.ok).map(i => i.key);
     if (!keys.length) continue;
     try {
-      const res = await fetch('/api/admin/upload/index', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
+      const idxRes = await fetch('/api/admin/upload/index', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ date, location, folder: f.name, keys })
       });
-      const d = await res.json();
-      totalIndexed += d.indexed || 0;
+      const idxD = await idxRes.json();
+      totalIndexed += idxD.indexed || 0;
+    } catch(e) {}
+
+    // Set group size for zip folders before pushing live
+    if (isZip && groupSize) {
+      const folderKey = `${date}|${location}|${f.name}`;
+      await fetch('/api/zip-folder/set-group-size', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ folder_key: folderKey, group_size: groupSize })
+      }).catch(() => {});
+    }
+
+    // Push live
+    try {
+      const liveRes = await fetch('/api/admin/push-live', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ date, location, folder: f.name })
+      });
+      const liveD = await liveRes.json();
+      totalLive += liveD.pushed || 0;
     } catch(e) {}
   }
 
   // Done
   const locSlug = location.toLowerCase().replace(/ /g, '-');
-  setProgress(succeeded, total, `${succeeded} uploaded · ${totalIndexed} indexed as draft`);
-  document.getElementById('done-heading').textContent = 'Ready to publish';
+  setProgress(succeeded, total, `${succeeded} uploaded · ${totalLive} live`);
+  document.getElementById('done-heading').textContent = '✓ Photos are live';
   document.getElementById('done-count').textContent =
     folders.length > 1
-      ? `${folders.length} folders — ${succeeded} photos indexed as draft.`
-      : `${succeeded} photo${succeeded !== 1 ? 's' : ''} indexed as draft.`;
+      ? `${folders.length} folders — ${totalLive} photos pushed live.`
+      : `${totalLive} photo${totalLive !== 1 ? 's' : ''} pushed live.`;
   document.getElementById('done-path').textContent = `images/${date}/${locSlug}/`;
   document.getElementById('done-actions').innerHTML =
-    `<a class="folders-btn" href="/admin/folders">Go to Folders →</a>`;
+    `<a class="folders-btn" href="/admin/dashboard">View in Dashboard →</a>`;
   document.getElementById('done-card').style.display = 'block';
 
   btn.textContent = 'Upload More';
