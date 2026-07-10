@@ -630,6 +630,13 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                 fm = _load_folder_meta()
                 fk = _folder_key(date, location.strip(), family.strip())
                 group_size = fm.get(fk, {}).get("group_size")
+                # Fallback: try old "Zip Line" key variants for uploads done before rename
+                if not group_size:
+                    _ZIP_ALIASES = {"Nature Zip": "Nature Zip Line", "Adventure Zip": "Adventure Zip Line"}
+                    alt_loc = _ZIP_ALIASES.get(location.strip())
+                    if alt_loc:
+                        alt_fk = _folder_key(date, alt_loc, family.strip())
+                        group_size = fm.get(alt_fk, {}).get("group_size")
                 if group_size:
                     zp = _load_zip_pricing()
                     for t in zp.get("tiers", []):

@@ -372,7 +372,12 @@ def last_name_search(q: str = Query("")):
 
 
 def _canonical_location(loc: str) -> str:
-    """Pass location through unchanged — live API accepts all variants and keys must match upload."""
+    """Normalize zip location variants to current canonical names used in dashboard/folder_meta."""
+    l = loc.strip().lower()
+    if "nature zip" in l:
+        return "Nature Zip"
+    if "adventure zip" in l:
+        return "Adventure Zip"
     return loc
 
 
