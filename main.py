@@ -76,7 +76,7 @@ def fix_orientation(img):
         pass
     return img
 
-WATERMARK_OPACITY = 0.40
+WATERMARK_OPACITY = 0.50
 _watermark_cache  = None
 _watermark_lock   = threading.Lock()
 
@@ -173,16 +173,26 @@ def apply_watermark(img, size="medium"):
         y = (img.height - wm_size) // 2
         img_rgba.paste(wm_scaled, (x, y), wm_scaled)
     else:
-        # Two watermarks side by side for enlarged view
+        # Two watermarks for enlarged view — side by side on landscape, stacked on portrait
         wm_size = int(min(img.width, img.height) * 0.40)
         gap     = int(wm_size * 0.20)
-        total_w = wm_size * 2 + gap
         wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
-        y  = (img.height - wm_size) // 2
-        x1 = (img.width  - total_w) // 2
-        x2 = x1 + wm_size + gap
-        img_rgba.paste(wm_scaled, (x1, y), wm_scaled)
-        img_rgba.paste(wm_scaled, (x2, y), wm_scaled)
+        if img.height > img.width:
+            # Portrait: stack vertically
+            total_h = wm_size * 2 + gap
+            x  = (img.width  - wm_size) // 2
+            y1 = (img.height - total_h) // 2
+            y2 = y1 + wm_size + gap
+            img_rgba.paste(wm_scaled, (x, y1), wm_scaled)
+            img_rgba.paste(wm_scaled, (x, y2), wm_scaled)
+        else:
+            # Landscape: side by side
+            total_w = wm_size * 2 + gap
+            y  = (img.height - wm_size) // 2
+            x1 = (img.width  - total_w) // 2
+            x2 = x1 + wm_size + gap
+            img_rgba.paste(wm_scaled, (x1, y), wm_scaled)
+            img_rgba.paste(wm_scaled, (x2, y), wm_scaled)
 
     return img_rgba.convert("RGB")
 
