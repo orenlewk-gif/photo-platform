@@ -683,7 +683,7 @@ async function fetchAndShowPricing(date, location, fam) {
 
     // Local iMac only: mountain biking "Up to 30 Photos" → "All Photos"
     // (in-store you can explain the group scope; online we can't enforce it)
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const isLocal = window.location.port === '8080';
     const isMtb = (_viewerCtx?.location || '').trim().toLowerCase() === 'mountain biking';
     if (isLocal && isMtb) {
       tiers.forEach(t => { if (t.label === 'Up to 30 Photos') t.label = 'All Photos'; });
