@@ -372,12 +372,7 @@ def last_name_search(q: str = Query("")):
 
 
 def _canonical_location(loc: str) -> str:
-    """Map local folder name variants to the canonical name used in folder_meta keys on Railway."""
-    l = loc.strip().lower()
-    if l in {"nature zip", "nature zipline"}:
-        return "Nature Zip Line"
-    if l in {"adventure zipline"}:
-        return "Adventure Zip Line"
+    """Pass location through unchanged — live API accepts all variants and keys must match upload."""
     return loc
 
 
