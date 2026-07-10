@@ -84,6 +84,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .det-folder .fcount{color:rgba(255,255,255,.32);font-size:.73rem}
 .det-remove{background:none;border:none;color:rgba(255,255,255,.22);cursor:pointer;font-size:.88rem}
 .det-remove:hover{color:#e53e3e}
+.det-gs{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:6px;color:#fff;font-family:inherit;font-size:.78rem;padding:.22rem .45rem;cursor:pointer;outline:none}
+.det-gs option{background:#091928}
 #folder-name-field{margin-bottom:.85rem}
 #upload-progress{display:none;margin-bottom:.85rem}
 .prog-bar-wrap{background:rgba(255,255,255,.08);border-radius:100px;height:5px;overflow:hidden;margin-bottom:.32rem}
@@ -428,6 +430,7 @@ let zipTiers = null;
 // ── Init ──
 (async function() {
   document.getElementById('upload-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('upload-location').addEventListener('input', () => { renderDetectedFolders(); updateUploadBtn(); });
   setupDropZone();
   setupInlineEdit();
   await loadSidebar();
@@ -993,14 +996,28 @@ async function readDirFiles(dirEntry) {
   return files;
 }
 
-function renderDetectedFolders() {
+function _isZipUpload() {
+  return ZIP_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
+}
+function getUploadGroupSize(i) {
+  const sel = document.querySelector(`.det-gs[data-idx="${i}"]`);
+  return sel ? sel.value : '';
+}
+async function renderDetectedFolders() {
   const el = document.getElementById('detected-folders');
   const fnField = document.getElementById('folder-name-field');
+  const isZip = _isZipUpload();
+  let gsOpts = '';
+  if (isZip) {
+    const tiers = await getZipTiers();
+    gsOpts = '<option value="">— Size —</option>' +
+      tiers.map(t=>`<option value="${t.people}">${t.people}p</option>`).join('');
+  }
   let html='';
   if (uploadFolders.length) {
     for (let i=0;i<uploadFolders.length;i++) {
       const f=uploadFolders[i];
-      html+=`<div class="det-folder"><span class="fname">${esc(f.name)}</span><span class="fcount">${f.files.length} photos</span><button class="det-remove" onclick="removeDetected(${i})">✕</button></div>`;
+      html+=`<div class="det-folder"><span class="fname">${esc(f.name)}</span><span class="fcount">${f.files.length} photos</span>${isZip?`<select class="det-gs" data-idx="${i}" onchange="updateUploadBtn()">${gsOpts}</select>`:''}<button class="det-remove" onclick="removeDetected(${i})">✕</button></div>`;
     }
     if (looseFiles.length) html+=`<div class="det-folder"><span class="fname">+ ${looseFiles.length} loose files</span></div>`;
     fnField.style.display='none';
@@ -1011,7 +1028,14 @@ function renderDetectedFolders() {
   el.innerHTML=html;
 }
 function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); }
-function updateUploadBtn() { document.getElementById('upload-action-btn').disabled=!(uploadFolders.length||looseFiles.length); }
+function updateUploadBtn() {
+  const hasFiles = uploadFolders.length || looseFiles.length;
+  let valid = !!hasFiles;
+  if (hasFiles && _isZipUpload() && uploadFolders.length) {
+    if (uploadFolders.some((_,i) => !getUploadGroupSize(i))) valid = false;
+  }
+  document.getElementById('upload-action-btn').disabled = !valid;
+}
 
 let _uploadActive = false;
 function _beforeUnloadGuard(e) { e.preventDefault(); e.returnValue = ''; }
@@ -1057,21 +1081,32 @@ async function startUpload() {
   }
   for (let i=0;i<allItems.length;i+=CONCURRENCY)
     await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>putOne(it)));
-  // Index only the files that actually finished uploading
+  // Index, set group size, and push live for each folder
+  const isZip = _isZipUpload();
   const byFolder={};
   for (const it of allItems) if (it.ok) (byFolder[it.folder]=byFolder[it.folder]||[]).push(it.key);
-  for (const [folder,keys] of Object.entries(byFolder)) {
-    if (!keys.length) continue;
+  let totalLive = 0;
+  for (const [fi, {folder}] of batches.entries()) {
+    const keys = byFolder[folder];
+    if (!keys?.length) continue;
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys})});
+    if (isZip) {
+      const gs = getUploadGroupSize(fi);
+      if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({folder_key:`${date}|${location}|${folder}`,group_size:gs})}).catch(()=>{});
+    }
+    const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder})}).catch(()=>null);
+    if (lr?.ok) { const ld=await lr.json(); totalLive+=ld.pushed||0; }
   }
   const succeeded = done - failed;
   if (failed) {
-    label.textContent = `Done — ${succeeded} uploaded, ${failed} failed (not added)`;
+    label.textContent = `Done — ${succeeded} uploaded, ${failed} failed`;
     showToast(`${succeeded} uploaded, ${failed} failed — try uploading the failed ones again`,'error');
   } else {
-    label.textContent = `Done — ${done} photos uploaded`;
-    showToast(`${done} photos uploaded as draft`);
+    label.textContent = `Done — ${totalLive} photos live`;
+    showToast(`${done} photos uploaded and live`);
   }
   _uploadActive = false;
   window.removeEventListener('beforeunload', _beforeUnloadGuard);
