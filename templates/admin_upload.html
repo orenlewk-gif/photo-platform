@@ -44,6 +44,8 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
 .fi-name{font-size:.88rem;font-weight:600;color:#fff}
 .fi-count{font-size:.78rem;color:rgba(255,255,255,.4)}
 .folder-total{padding:.5rem 1rem;font-size:.78rem;font-weight:700;color:#F5C518;border-top:1px solid rgba(255,255,255,.07);text-align:right}
+.fi-gs{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:6px;color:#fff;font-family:inherit;font-size:.8rem;padding:.25rem .5rem;cursor:pointer;outline:none}
+.fi-gs option{background:#0c2336}
 
 /* Upload button */
 .upload-btn{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:10px;padding:.85rem;font-size:1rem;font-weight:700;cursor:pointer;font-family:inherit;transition:background .2s;margin-bottom:1.5rem}
@@ -91,8 +93,7 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
       <select id="location">
         <option value="">— Select —</option>
         <option>Adventure Zip</option>
-        <option>Adventure Zip Line</option>
-        <option>Nature Zip Line</option>
+        <option>Nature Zip</option>
         <option>Dirt Days</option>
         <option>Mountain Biking</option>
         <option>Lone Peak Portraits</option>
@@ -100,14 +101,6 @@ h2{font-size:1.1rem;font-weight:600;margin-bottom:.35rem}
         <option>Ramcharger Portraits</option>
       </select>
     </div>
-  </div>
-
-  <!-- Group size — shown only for zip locations -->
-  <div class="folder-field" id="group-size-field" style="display:none">
-    <label>Group Size</label>
-    <select id="group-size">
-      <option value="">— Select group size —</option>
-    </select>
   </div>
 
   <!-- Shown only when loose files dropped (no folder structure) -->
@@ -161,21 +154,7 @@ fetch('/api/zip-pricing').then(r => r.json()).then(d => {
   zipTiers = d.tiers || [];
 }).catch(() => {});
 
-// Show/hide group size field based on location
-document.getElementById('location').addEventListener('change', function() {
-  const isZip = ZIP_LOCS_U.has(this.value.toLowerCase().trim());
-  const gsField = document.getElementById('group-size-field');
-  const gsSel   = document.getElementById('group-size');
-  if (isZip) {
-    gsSel.innerHTML = '<option value="">— Select group size —</option>' +
-      zipTiers.map(t => `<option value="${t.people}">${t.people} ${t.people==1?'Person':'People'}</option>`).join('');
-    gsField.style.display = '';
-  } else {
-    gsField.style.display = 'none';
-    gsSel.value = '';
-  }
-  updateBtn();
-});
+document.getElementById('location').addEventListener('change', () => { renderFolderList(); updateBtn(); });
 
 // ── File input (flat files only) ─────────────────────────────────────────────
 document.getElementById('file-input').addEventListener('change', function() {
@@ -265,13 +244,22 @@ function setFlatMode(files) {
 function renderFolderList() {
   const el    = document.getElementById('folder-list');
   const total = detectedFolders.reduce((s, f) => s + f.files.length, 0);
-  el.innerHTML = detectedFolders.map(f =>
+  const isZip = ZIP_LOCS_U.has((document.getElementById('location').value || '').toLowerCase().trim());
+  const gsOpts = '<option value="">— Size —</option>' +
+    zipTiers.map(t => `<option value="${t.people}">${t.people}p</option>`).join('');
+  el.innerHTML = detectedFolders.map((f, i) =>
     `<div class="folder-item">
       <span class="fi-name">${f.name}</span>
       <span class="fi-count">${f.files.length} photos</span>
+      ${isZip ? `<select class="fi-gs" data-idx="${i}" onchange="updateBtn()">${gsOpts}</select>` : ''}
     </div>`
   ).join('') + `<div class="folder-total">${total} photos total</div>`;
-  el.style.display = '';
+  el.style.display = detectedFolders.length ? '' : 'none';
+}
+
+function getFolderGroupSize(i) {
+  const sel = document.querySelector(`.fi-gs[data-idx="${i}"]`);
+  return sel ? sel.value : '';
 }
 
 function updateBtn() {
@@ -283,8 +271,9 @@ function validate() {
   const date = document.getElementById('date').value;
   const loc  = document.getElementById('location').value;
   if (!date || !loc) return false;
-  if (ZIP_LOCS_U.has(loc.toLowerCase().trim())) {
-    if (!document.getElementById('group-size').value) return false;
+  if (ZIP_LOCS_U.has(loc.toLowerCase().trim()) && folderMode) {
+    // Every folder must have a group size selected
+    if (detectedFolders.some((_, i) => !getFolderGroupSize(i))) return false;
   }
   return true;
 }
@@ -380,11 +369,10 @@ async function startUpload() {
 
   // Index, set group size, and push live for each folder
   setProgress(succeeded, total, 'Indexing…');
-  const isZip    = ZIP_LOCS_U.has(location.toLowerCase().trim());
-  const groupSize = document.getElementById('group-size').value || null;
+  const isZip = ZIP_LOCS_U.has(location.toLowerCase().trim());
   let totalIndexed = 0, totalLive = 0;
 
-  for (const f of folders) {
+  for (const [fi, f] of folders.entries()) {
     const keys = allItems.filter(i => i.folderName === f.name && i.ok).map(i => i.key);
     if (!keys.length) continue;
     try {
@@ -396,13 +384,16 @@ async function startUpload() {
       totalIndexed += idxD.indexed || 0;
     } catch(e) {}
 
-    // Set group size for zip folders before pushing live
-    if (isZip && groupSize) {
-      const folderKey = `${date}|${location}|${f.name}`;
-      await fetch('/api/zip-folder/set-group-size', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ folder_key: folderKey, group_size: groupSize })
-      }).catch(() => {});
+    // Set per-folder group size for zip locations before pushing live
+    if (isZip) {
+      const groupSize = getFolderGroupSize(fi);
+      if (groupSize) {
+        const folderKey = `${date}|${location}|${f.name}`;
+        await fetch('/api/zip-folder/set-group-size', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ folder_key: folderKey, group_size: groupSize })
+        }).catch(() => {});
+      }
     }
 
     // Push live
