@@ -3051,12 +3051,6 @@ def api_zip_preview(request: Request, date: str, last_name: str):
 
 # ── Admin Upload ──────────────────────────────────────────────────────────────
 
-@app.get("/admin/upload", response_class=HTMLResponse)
-def admin_upload_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/upload")
-    return HTMLResponse(open("templates/admin_upload.html").read())
-
 @app.post("/api/admin/upload/presign")
 async def admin_upload_presign(request: Request):
     if not _admin_authed(request):
