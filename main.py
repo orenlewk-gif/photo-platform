@@ -257,6 +257,24 @@ if _nz_fixed:
     except Exception as _e:
         print(f"WARNING: could not save migration to R2: {_e}")
 
+# One-time migration: push local pricing.json to R2 if R2 doesn't have it yet
+try:
+    s3.head_object(Bucket=R2_BUCKET, Key=PRICING_KEY)
+    print("pricing.json already in R2.")
+except Exception:
+    if os.path.exists("pricing.json"):
+        with open("pricing.json") as _pf:
+            _local_pricing = json.load(_pf)
+        if isinstance(_local_pricing, dict):
+            s3.put_object(Bucket=R2_BUCKET, Key=PRICING_KEY,
+                          Body=json.dumps(_local_pricing, indent=2).encode(),
+                          ContentType="application/json")
+            print("Migrated local pricing.json → R2.")
+        else:
+            print("WARNING: local pricing.json is not a dict, skipping migration.")
+    else:
+        print("No local pricing.json found, starting with empty pricing in R2.")
+
 
 # ─────────────────────────────────────────
 # API ROUTES
@@ -660,10 +678,7 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                                 return {"tiers": tiers, "combos": [], "zip_group_size": group_size}
             except Exception as e:
                 print(f"zip pricing lookup error: {e}")
-    if not os.path.exists("pricing.json"):
-        return default
-    with open("pricing.json", "r") as f:
-        pricing = json.load(f)
+    pricing = _load_pricing()
     combos = pricing.get("combos", [])
     if location:
         activities = pricing.get("activities", {})
@@ -944,10 +959,7 @@ async def create_checkout(request: Request):
         # ── Pre-calculate combo price adjustments ────────────────────────────
         # Instead of a negative discount fee line, each combo album gets its
         # share of the combo price (e.g. $95 / 2 locations = $47.50 each).
-        _combos_cfg = []
-        if os.path.exists("pricing.json"):
-            with open("pricing.json") as _pf:
-                _combos_cfg = json.load(_pf).get("combos", [])
+        _combos_cfg = _load_pricing().get("combos", [])
         _combo_adj = {}  # index in digital_albums -> adjusted price
         for _combo in _combos_cfg:
             _clocs    = set(_combo.get("locations", []))
@@ -2843,8 +2855,37 @@ def timecards_page(request: Request):
 # ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
 
 ZIP_LOCS_SET = {"adventure zip", "adventure zip line", "adventure zipline", "nature zip", "nature zip line", "nature zipline"}
-ZIP_PRICING_KEY = "meta/zip_pricing.json"
-FOLDER_META_KEY = "meta/folder_meta.json"
+ZIP_PRICING_KEY   = "meta/zip_pricing.json"
+FOLDER_META_KEY   = "meta/folder_meta.json"
+PRICING_KEY       = "meta/pricing.json"
+
+# ── Activity Pricing (R2) ─────────────────────────────────────────────────────
+_pricing_cache: dict = {"data": None, "ts": 0.0}
+_PRICING_TTL = 30  # seconds
+
+def _load_pricing():
+    import time
+    now = time.monotonic()
+    if _pricing_cache["data"] is not None and now - _pricing_cache["ts"] < _PRICING_TTL:
+        return _pricing_cache["data"]
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRICING_KEY)
+        d = json.loads(obj["Body"].read())
+        if not isinstance(d, dict):
+            raise ValueError("pricing.json is not a dict")
+    except s3.exceptions.NoSuchKey:
+        d = {"default": {"tiers": []}, "activities": {}, "combos": []}
+    except Exception:
+        d = {"default": {"tiers": []}, "activities": {}, "combos": []}
+    _pricing_cache["data"] = d
+    _pricing_cache["ts"] = now
+    return d
+
+def _save_pricing(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=PRICING_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+    _pricing_cache["data"] = d
+    import time; _pricing_cache["ts"] = time.monotonic()
 
 def _load_zip_pricing():
     try:
@@ -3190,12 +3231,9 @@ async def admin_push_live(request: Request):
         if not any(str(t.get("people")) == str(group_size) for t in zp.get("tiers", [])):
             return JSONResponse(status_code=400, content={"error": f"No zip pricing for {group_size} people — add it in Pricing"})
     else:
-        has_pricing = False
-        if os.path.exists("pricing.json"):
-            with open("pricing.json") as _pf:
-                _pr = json.load(_pf)
-            has_pricing = bool(_pr.get("default", {}).get("tiers")) or \
-                          bool(_pr.get("activities", {}).get(location, {}).get("tiers"))
+        _pr = _load_pricing()
+        has_pricing = bool(_pr.get("default", {}).get("tiers")) or \
+                      bool(_pr.get("activities", {}).get(location, {}).get("tiers"))
         if not has_pricing:
             return JSONResponse(status_code=400, content={"error": f"No pricing configured for {location} — set it up in Pricing"})
 
@@ -3712,18 +3750,16 @@ async def api_save_print_pricing(request: Request):
 def api_admin_pricing_get(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    if not os.path.exists("pricing.json"):
-        return {"default": {"tiers": []}, "activities": {}, "combos": []}
-    with open("pricing.json") as f:
-        return json.load(f)
+    return _load_pricing()
 
 @app.post("/api/admin/pricing")
 async def api_admin_pricing_save(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body = await request.json()
-    with open("pricing.json", "w") as f:
-        json.dump(body, f, indent=2)
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"error": "Invalid pricing data"})
+    _save_pricing(body)
     return {"status": "ok"}
 
 @app.get("/admin/pricing", response_class=HTMLResponse)
