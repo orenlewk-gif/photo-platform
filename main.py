@@ -40,7 +40,34 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
     config=BotocoreConfig(signature_version="s3v4"),
 )
-R2_BUCKET = os.getenv("R2_BUCKET_NAME", "crystal-images")
+R2_BUCKET    = os.getenv("R2_BUCKET_NAME", "crystal-images")
+PRICING_KEY  = "meta/pricing.json"
+
+# ── Activity Pricing (R2) ─────────────────────────────────────────────────────
+_pricing_cache: dict = {"data": None, "ts": 0.0}
+_PRICING_TTL = 30  # seconds
+
+def _load_pricing():
+    import time
+    now = time.monotonic()
+    if _pricing_cache["data"] is not None and now - _pricing_cache["ts"] < _PRICING_TTL:
+        return _pricing_cache["data"]
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRICING_KEY)
+        d = json.loads(obj["Body"].read())
+        if not isinstance(d, dict):
+            raise ValueError("pricing.json is not a dict")
+    except Exception:
+        d = {"default": {"tiers": []}, "activities": {}, "combos": []}
+    _pricing_cache["data"] = d
+    _pricing_cache["ts"] = now
+    return d
+
+def _save_pricing(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=PRICING_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+    _pricing_cache["data"] = d
+    import time; _pricing_cache["ts"] = time.monotonic()
 
 # Allow browser direct PUT uploads from any origin
 try:
@@ -2854,38 +2881,9 @@ def timecards_page(request: Request):
 
 # ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
 
-ZIP_LOCS_SET = {"adventure zip", "adventure zip line", "adventure zipline", "nature zip", "nature zip line", "nature zipline"}
-ZIP_PRICING_KEY   = "meta/zip_pricing.json"
-FOLDER_META_KEY   = "meta/folder_meta.json"
-PRICING_KEY       = "meta/pricing.json"
-
-# ── Activity Pricing (R2) ─────────────────────────────────────────────────────
-_pricing_cache: dict = {"data": None, "ts": 0.0}
-_PRICING_TTL = 30  # seconds
-
-def _load_pricing():
-    import time
-    now = time.monotonic()
-    if _pricing_cache["data"] is not None and now - _pricing_cache["ts"] < _PRICING_TTL:
-        return _pricing_cache["data"]
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRICING_KEY)
-        d = json.loads(obj["Body"].read())
-        if not isinstance(d, dict):
-            raise ValueError("pricing.json is not a dict")
-    except s3.exceptions.NoSuchKey:
-        d = {"default": {"tiers": []}, "activities": {}, "combos": []}
-    except Exception:
-        d = {"default": {"tiers": []}, "activities": {}, "combos": []}
-    _pricing_cache["data"] = d
-    _pricing_cache["ts"] = now
-    return d
-
-def _save_pricing(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=PRICING_KEY,
-                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
-    _pricing_cache["data"] = d
-    import time; _pricing_cache["ts"] = time.monotonic()
+ZIP_LOCS_SET    = {"adventure zip", "adventure zip line", "adventure zipline", "nature zip", "nature zip line", "nature zipline"}
+ZIP_PRICING_KEY = "meta/zip_pricing.json"
+FOLDER_META_KEY = "meta/folder_meta.json"
 
 def _load_zip_pricing():
     try:
