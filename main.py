@@ -1941,7 +1941,7 @@ async function copyLink(orderId, e) {{
     var h='';
     for(var di=0;di<dates.length;di++){{
       var date=dates[di];
-      h+='<div class="st-date" onclick="this.classList.toggle(\'st-open\')"><span class="st-arr">&#9654;</span>'+date+'</div><div class="st-locs">';
+      h+='<div class="st-date" onclick="this.classList.toggle(\\'st-open\\')"><span class="st-arr">&#9654;</span>'+date+'</div><div class="st-locs">';
       var locs=tree[date];
       var locKeys=Object.keys(locs);
       for(var li=0;li<locKeys.length;li++){{
@@ -1950,18 +1950,18 @@ async function copyLink(orderId, e) {{
         var hasSubs=false;
         for(var si=0;si<subs.length;si++){{if(subs[si].name){{hasSubs=true;break;}}}}
         if(hasSubs){{
-          h+='<div class="st-loc" onclick="this.classList.toggle(\'st-open\')"><span class="st-arr">&#9654;</span>'+loc+'</div><div class="st-subs">';
+          h+='<div class="st-loc" onclick="this.classList.toggle(\\'st-open\\')"><span class="st-arr">&#9654;</span>'+loc+'</div><div class="st-subs">';
           for(var si2=0;si2<subs.length;si2++){{
             var fs=subs[si2];
             if(!fs.name)continue;
             var u='/admin/dashboard?od='+encodeURIComponent(fs.date)+'&ol='+encodeURIComponent(fs.location)+'&of='+encodeURIComponent(fs.name);
-            h+='<div class="st-sub" onclick="location.href=\''+u+'\'">'+fs.name+'<span class="st-cnt">'+fs.photo_count+'</span></div>';
+            h+='<div class="st-sub" onclick="location.href=\\''+u+'\\'">'+fs.name+'<span class="st-cnt">'+fs.photo_count+'</span></div>';
           }}
           h+='</div>';
         }}else{{
           var f0=subs[0]||{{}};
           var u2='/admin/dashboard?od='+encodeURIComponent(f0.date||'')+'&ol='+encodeURIComponent(loc)+'&of=';
-          h+='<div class="st-sub" style="padding-left:1.5rem" onclick="location.href=\''+u2+'\'">'+loc+'<span class="st-cnt">'+(f0.photo_count||'')+'</span></div>';
+          h+='<div class="st-sub" style="padding-left:1.5rem" onclick="location.href=\\''+u2+'\\'">'+loc+'<span class="st-cnt">'+(f0.photo_count||'')+'</span></div>';
         }}
       }}
       h+='</div>';
