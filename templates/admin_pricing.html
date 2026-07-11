@@ -257,7 +257,7 @@ Promise.all([
   zipData     = zd;
   printData   = ppd;
   renderAll();
-}).catch(e => showToast('Load error: '+e, 'err'));
+}).catch(e => { console.error('Pricing load error:', e); showToast('Load error: '+e, 'err'); });
 
 function renderAll() {
   renderDefaultTiers();
