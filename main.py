@@ -1168,23 +1168,17 @@ WC_WEBHOOK_SECRET  = os.getenv("WC_WEBHOOK_SECRET", "")
 DOWNLOAD_EXPIRE_DAYS = 30
 SITE_URL = "https://photos.bigskyphotos.com"
 
-_token_cache: dict = {}          # str(order_id) → (token, rec, expires_dt)
-_token_cache_lock = threading.Lock()
-_token_cache_warm = False        # True once the full R2 scan has completed
-
 def _store_token(token: str, payload: dict):
     body = json.dumps(payload).encode()
     s3.put_object(Bucket=R2_BUCKET, Key=f"downloads/{token}.json",
                   Body=body, ContentType="application/json")
-    # Keep in-memory cache current so copy link is instant after a new order
+    # Write a per-order lookup so _get_best_token_for_order needs only 2 R2 reads
     oid = str(payload.get("order_id", ""))
     if oid:
         try:
-            exp = datetime.fromisoformat(payload["expires"])
-            with _token_cache_lock:
-                existing = _token_cache.get(oid)
-                if existing is None or exp > existing[2]:
-                    _token_cache[oid] = (token, payload, exp)
+            idx = {"token": token, "expires": payload.get("expires", "")}
+            s3.put_object(Bucket=R2_BUCKET, Key=f"downloads/by_order/{oid}.json",
+                          Body=json.dumps(idx).encode(), ContentType="application/json")
         except Exception:
             pass
 
@@ -1194,37 +1188,6 @@ def _load_token(token: str):
         return json.loads(obj["Body"].read())
     except Exception:
         return None
-
-def _rebuild_token_cache():
-    """Scan all download tokens in R2 and populate the in-memory cache.
-    Runs once in the background when the Orders page is first loaded."""
-    global _token_cache_warm
-    cache: dict = {}
-    try:
-        import time as _time
-        paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
-            for obj in page.get("Contents", []):
-                key   = obj["Key"]
-                token = key.replace("downloads/", "").replace(".json", "")
-                rec   = _load_token(token)
-                if not rec:
-                    continue
-                oid = str(rec.get("order_id", ""))
-                if not oid:
-                    continue
-                try:
-                    exp = datetime.fromisoformat(rec["expires"])
-                    existing = cache.get(oid)
-                    if existing is None or exp > existing[2]:
-                        cache[oid] = (token, rec, exp)
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    with _token_cache_lock:
-        _token_cache.update(cache)
-        _token_cache_warm = True
 
 @app.post("/webhook")
 async def wc_webhook(request: Request):
@@ -1539,23 +1502,29 @@ def _list_tokens():
     return tokens
 
 def _get_best_token_for_order(order_id):
-    """Return (token, rec, expires_dt) for the most-recently-expiring token on this order.
-    Fast path: reads from the in-memory cache (populated by _rebuild_token_cache in the background).
-    Slow fallback: scans R2 directly if the cache hasn't been populated yet."""
-    with _token_cache_lock:
-        entry = _token_cache.get(str(order_id))
-    if entry:
-        return entry
-    if _token_cache_warm:
-        # Cache is fully built and we got nothing — order truly has no token
-        return None, None, None
-    # Cache is still being built; do a targeted scan for just this order
+    """Return (token, rec, expires_dt) for the order's download token.
+    Fast path (2 R2 reads): checks the per-order index written by _store_token.
+    Slow fallback (N reads): full scan for orders created before the index existed."""
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=f"downloads/by_order/{order_id}.json")
+        idx = json.loads(obj["Body"].read())
+        token = idx.get("token")
+        if token:
+            rec = _load_token(token)
+            if rec:
+                exp = datetime.fromisoformat(rec["expires"])
+                return token, rec, exp
+    except Exception:
+        pass
+    # Fallback: scan all tokens (only hits for orders predating this index)
     best_token, best_rec, best_exp = None, None, None
     try:
         paginator = s3.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
             for obj in page.get("Contents", []):
-                key   = obj["Key"]
+                key = obj["Key"]
+                if "/by_order/" in key:
+                    continue
                 token = key.replace("downloads/", "").replace(".json", "")
                 rec   = _load_token(token)
                 if rec and str(rec.get("order_id")) == str(order_id):
@@ -1567,6 +1536,14 @@ def _get_best_token_for_order(order_id):
                         pass
     except Exception:
         pass
+    # Write the index now so next lookup is instant
+    if best_token and best_rec:
+        try:
+            idx = {"token": best_token, "expires": best_rec.get("expires", "")}
+            s3.put_object(Bucket=R2_BUCKET, Key=f"downloads/by_order/{order_id}.json",
+                          Body=json.dumps(idx).encode(), ContentType="application/json")
+        except Exception:
+            pass
     return best_token, best_rec, best_exp
 
 @app.get("/api/admin/order-link/{order_id}")
@@ -1690,9 +1667,6 @@ def admin_orders(request: Request, days: int = 30,
                  date_from: str = "", date_to: str = ""):
     if not _admin_authed(request):
         return RedirectResponse("/admin")
-    # Warm the token cache in background so Copy Link is instant once page loads
-    if not _token_cache_warm:
-        threading.Thread(target=_rebuild_token_cache, daemon=True).start()
     custom = bool(date_from and date_to)
     if custom:
         after  = f"{date_from}T00:00:00"
