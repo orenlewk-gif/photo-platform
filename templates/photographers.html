@@ -390,12 +390,47 @@ async function loadCommission() {
             </td>
           </tr>`;
       }).join('');
+      const inputStyle = "background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .6rem;font-size:.82rem";
+      const locOpts = ['Lone Peak Portraits','Explorer Gondola','Ramcharger Portraits','Mountain Biking','Adventure Zip Line','Nature Zip Line','Dirt Days']
+        .map(l => `<option>${l}</option>`).join('');
       return `
         <div class="photrec" data-pname="${p.name.replace(/"/g,'&quot;')}" style="margin-bottom:1.25rem">
-          <div style="font-weight:600;margin-bottom:.5rem;color:rgba(255,255,255,.8)">${p.name} — Clock Records</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+            <div style="font-weight:600;color:rgba(255,255,255,.8)">${p.name} — Clock Records</div>
+            <button class="btn btn-add" style="padding:.3rem .7rem;font-size:.75rem" onclick="showAddRow('${p.id}')">+ Add Entry</button>
+          </div>
           <table class="records-table">
             <thead><tr><th>Date</th><th>Location</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th></th></tr></thead>
-            <tbody>${rows}</tbody>
+            <tbody>
+              ${rows}
+              <tr id="addrow_${p.id}" style="display:none">
+                <td colspan="6" style="padding:.75rem">
+                  <div style="display:flex;gap:.75rem;flex-wrap:wrap;align-items:flex-end">
+                    <div>
+                      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">DATE</div>
+                      <input type="date" id="add_date_${p.id}" style="${inputStyle}">
+                    </div>
+                    <div>
+                      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">CLOCK IN</div>
+                      <input type="time" id="add_ci_${p.id}" style="${inputStyle}">
+                    </div>
+                    <div>
+                      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">CLOCK OUT</div>
+                      <input type="time" id="add_co_${p.id}" style="${inputStyle}">
+                    </div>
+                    <div>
+                      <div style="font-size:.7rem;color:rgba(255,255,255,.4);margin-bottom:.25rem">LOCATION</div>
+                      <select id="add_loc_${p.id}" style="${inputStyle}">
+                        <option value="">—</option>
+                        ${locOpts}
+                      </select>
+                    </div>
+                    <button class="btn btn-add" style="padding:.4rem .8rem;font-size:.78rem" onclick="submitAddRow('${p.id}')">Save</button>
+                    <button class="btn btn-edit" style="padding:.4rem .8rem;font-size:.78rem" onclick="hideAddRow('${p.id}')">Cancel</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
           </table>
         </div>`;
     }).join('');
@@ -455,6 +490,35 @@ async function deleteClockRow(id) {
     showToast('Deleted');
     loadCommission();
   } catch(e) { showToast('Failed to delete'); }
+}
+
+function showAddRow(pid) {
+  document.getElementById('addrow_' + pid).style.display = '';
+  document.getElementById('add_date_' + pid).focus();
+}
+
+function hideAddRow(pid) {
+  document.getElementById('addrow_' + pid).style.display = 'none';
+}
+
+async function submitAddRow(pid) {
+  const date   = document.getElementById('add_date_' + pid).value;
+  const ciTime = document.getElementById('add_ci_'   + pid).value;
+  const coTime = document.getElementById('add_co_'   + pid).value;
+  const loc    = document.getElementById('add_loc_'  + pid).value;
+  if (!date || !ciTime) { showToast('Date and clock-in time are required'); return; }
+  const clockIn  = toISO(date + 'T' + ciTime);
+  const clockOut = coTime ? toISO(date + 'T' + coTime) : null;
+  try {
+    const res = await fetch('/api/clock/record', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ photographer_id: pid, location: loc, clock_in: clockIn, clock_out: clockOut })
+    });
+    if (!res.ok) { showToast('Failed to add record'); return; }
+    showToast('Record added');
+    loadCommission();
+  } catch(e) { showToast('Failed to add record'); }
 }
 
 function slugPg(s){return s.replace(/[^a-zA-Z0-9]/g,'_').toLowerCase();}
