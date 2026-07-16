@@ -433,7 +433,7 @@ let zipTiers = null;
   document.getElementById('upload-location').addEventListener('input', () => { renderDetectedFolders(); updateUploadBtn(); });
   setupDropZone();
   setupInlineEdit();
-  await loadSidebar();
+  loadSidebar(); // fire and forget — sidebar populates in background
   const sp = new URLSearchParams(location.search);
   const od = sp.get('od'), ol = sp.get('ol'), of_ = sp.get('of');
   if (od && ol) {
