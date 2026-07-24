@@ -64,9 +64,26 @@ def _build_cache(full_path: str, cache_path: str) -> bool:
     except Exception:
         return False
 
+CACHE_EXPIRE_DAYS = 30
+
+def _purge_old_cache():
+    """Delete date folders in image_cache/ older than CACHE_EXPIRE_DAYS."""
+    cutoff = time.time() - CACHE_EXPIRE_DAYS * 86400
+    if not os.path.isdir(CACHE_DIR):
+        return
+    for date_entry in os.listdir(CACHE_DIR):
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', date_entry):
+            continue
+        folder_path = os.path.join(CACHE_DIR, date_entry)
+        if os.path.isdir(folder_path) and os.path.getmtime(folder_path) < cutoff:
+            import shutil
+            shutil.rmtree(folder_path, ignore_errors=True)
+            print(f"Purged old cache: {date_entry}")
+
 def _preload_worker():
     """Background thread: pre-build 4000px cache for all photos, then re-scan every 5 min."""
     while True:
+        _purge_old_cache()
         if os.path.isdir(IMAGES_DIR):
             for root, _, files in os.walk(IMAGES_DIR):
                 for fname in files:
