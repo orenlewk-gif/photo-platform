@@ -14,12 +14,14 @@ Photos are served directly from the local `images/` folder.
 import os
 import re
 import json
+import time
+import threading
 import urllib.request
 import urllib.parse
 from io import BytesIO
 
 from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, FileResponse
 from PIL import Image, ImageOps
 from rapidfuzz import fuzz
 import uvicorn
@@ -34,6 +36,8 @@ app = FastAPI()
 
 BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 IMAGES_DIR = os.path.join(BASE_DIR, "images")
+CACHE_DIR  = os.path.join(BASE_DIR, "image_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
 
 # Portrait locations use last_name sub-folders (family/session name)
 PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits",
@@ -41,6 +45,43 @@ PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger por
                       "nature zip", "nature zip line", "nature zipline"}
 # Activity locations whose groups are searchable (trail name + date)
 SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
+
+
+def _cache_path_for(rel: str) -> str:
+    """Return the pre-built cache file path for a given image rel path."""
+    subpath = rel[len("images/"):]
+    return os.path.join(CACHE_DIR, subpath)
+
+def _build_cache(full_path: str, cache_path: str) -> bool:
+    """Resize image to 4000px and save to cache. Returns True on success."""
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        img = Image.open(full_path).convert("RGB")
+        img = fix_orientation(img)
+        img.thumbnail((4000, 4000), Image.LANCZOS)
+        img.save(cache_path, format="JPEG", quality=95, optimize=True)
+        return True
+    except Exception:
+        return False
+
+def _preload_worker():
+    """Background thread: pre-build 4000px cache for all photos, then re-scan every 5 min."""
+    while True:
+        if os.path.isdir(IMAGES_DIR):
+            for root, _, files in os.walk(IMAGES_DIR):
+                for fname in files:
+                    if not fname.lower().endswith(('.jpg', '.jpeg', '.png')):
+                        continue
+                    full_path = os.path.join(root, fname)
+                    rel = "images/" + os.path.relpath(full_path, IMAGES_DIR)
+                    cache_path = _cache_path_for(rel)
+                    if not os.path.exists(cache_path) or \
+                            os.path.getmtime(cache_path) < os.path.getmtime(full_path):
+                        _build_cache(full_path, cache_path)
+                        time.sleep(0.05)  # yield briefly between photos
+        time.sleep(300)  # re-scan every 5 minutes for newly added photos
+
+threading.Thread(target=_preload_worker, daemon=True).start()
 
 
 def _safe_path(rel: str):
@@ -436,32 +477,34 @@ def search(last_name: str = Query(None), date: str = Query(None), location: str 
 @app.get("/api/photo")
 def get_photo(path: str, size: str = Query("thumb")):
     """
-    size=thumb  → 500px q80  (gallery thumbnails, cached 24h)
-    size=medium → original resolution q95 (lightbox)
-    size=full   → original resolution q95 (full view)
+    size=thumb  → 500px q80 generated on-the-fly (grid thumbnails)
+    size=medium → 4000px q95 served from pre-built disk cache
+    size=full   → 4000px q95 served from pre-built disk cache
     """
     full_path = _safe_path(path)
     if full_path is None or not os.path.isfile(full_path):
         return JSONResponse(status_code=404, content={"error": "File not found"})
 
     try:
-        img = Image.open(full_path).convert("RGB")
-        img = fix_orientation(img)
         if size == "thumb":
+            img = Image.open(full_path).convert("RGB")
+            img = fix_orientation(img)
             img.thumbnail((500, 500), Image.LANCZOS)
-            quality = 80
-        else:
-            img.thumbnail((4000, 4000), Image.LANCZOS)
-            quality = 95
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=quality, optimize=True)
-        buf.seek(0)
-        cache_secs = 86400 if size == "thumb" else 3600
-        return StreamingResponse(
-            buf,
-            media_type="image/jpeg",
-            headers={"Cache-Control": f"public, max-age={cache_secs}"},
-        )
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=80, optimize=True)
+            buf.seek(0)
+            return StreamingResponse(buf, media_type="image/jpeg",
+                                     headers={"Cache-Control": "public, max-age=86400"})
+
+        # Serve from pre-built cache — instant if preloader has run
+        cache_path = _cache_path_for(path)
+        if not os.path.exists(cache_path) or \
+                os.path.getmtime(cache_path) < os.path.getmtime(full_path):
+            _build_cache(full_path, cache_path)
+
+        return FileResponse(cache_path, media_type="image/jpeg",
+                            headers={"Cache-Control": "public, max-age=3600"})
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
