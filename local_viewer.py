@@ -436,18 +436,10 @@ def search(last_name: str = Query(None), date: str = Query(None), location: str 
 @app.get("/api/photo")
 def get_photo(path: str, size: str = Query("thumb")):
     """
-    size=thumb  → 500px  q80  (gallery thumbnails, cached 24h)
-    size=medium → 1800px q90  (lightbox)
-    size=full   → 2400px q92  (download-quality)
+    size=thumb  → 500px q80  (gallery thumbnails, cached 24h)
+    size=medium → original resolution q95 (lightbox)
+    size=full   → original resolution q95 (full view)
     """
-    SIZE_MAP = {
-        "thumb":  (500,  80),
-        "medium": (1800, 90),
-        "full":   (2400, 92),
-    }
-    max_px, quality = SIZE_MAP.get(size, SIZE_MAP["thumb"])
-    cache_secs = 86400 if size == "thumb" else 3600
-
     full_path = _safe_path(path)
     if full_path is None or not os.path.isfile(full_path):
         return JSONResponse(status_code=404, content={"error": "File not found"})
@@ -455,10 +447,15 @@ def get_photo(path: str, size: str = Query("thumb")):
     try:
         img = Image.open(full_path).convert("RGB")
         img = fix_orientation(img)
-        img.thumbnail((max_px, max_px), Image.LANCZOS)
+        if size == "thumb":
+            img.thumbnail((500, 500), Image.LANCZOS)
+            quality = 80
+        else:
+            quality = 95  # full original resolution for medium and full
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         buf.seek(0)
+        cache_secs = 86400 if size == "thumb" else 3600
         return StreamingResponse(
             buf,
             media_type="image/jpeg",
