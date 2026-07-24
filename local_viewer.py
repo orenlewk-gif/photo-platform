@@ -451,7 +451,8 @@ def get_photo(path: str, size: str = Query("thumb")):
             img.thumbnail((500, 500), Image.LANCZOS)
             quality = 80
         else:
-            quality = 95  # full original resolution for medium and full
+            img.thumbnail((4000, 4000), Image.LANCZOS)
+            quality = 95
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
         buf.seek(0)
