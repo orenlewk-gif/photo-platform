@@ -707,6 +707,14 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                 print(f"zip pricing lookup error: {e}")
     pricing = _load_pricing()
     combos = pricing.get("combos", [])
+    if location and date:
+        date_overrides = pricing.get("date_overrides", {})
+        date_ov = date_overrides.get(date, {})
+        ov_key = next((k for k in date_ov if k.lower() == location.strip().lower()), None)
+        if ov_key:
+            result = dict(date_ov[ov_key])
+            result["combos"] = combos
+            return result
     if location:
         activities = pricing.get("activities", {})
         act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
