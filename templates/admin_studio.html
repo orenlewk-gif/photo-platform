@@ -158,6 +158,8 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .sel-link-btn{background:rgba(245,197,24,.14);border:1px solid rgba(245,197,24,.4);color:#F5C518;
   border-radius:6px;padding:.28rem .8rem;font-size:.76rem;cursor:pointer;font-weight:600;margin-left:.25rem}
 .sel-link-btn:hover{background:rgba(245,197,24,.25)}
+.sfd-item{padding:.42rem .9rem;font-size:.8rem;color:rgba(255,255,255,.8);cursor:pointer;white-space:nowrap}
+.sfd-item:hover{background:rgba(255,255,255,.08);color:#fff}
 .col-slider-wrap{display:flex;align-items:center;gap:.45rem;margin-left:auto}
 .col-slider-wrap label{font-size:.73rem;color:rgba(255,255,255,.32)}
 #col-slider{width:85px;accent-color:#F5C518;cursor:pointer}
@@ -359,7 +361,10 @@ input[type=file]{display:none}
 
       <div id="grid-controls">
         <div id="selection-bar">
-          <span id="selection-count"></span>
+          <div style="position:relative;display:inline-flex;align-items:center">
+            <span id="selection-count"></span>
+            <div id="sel-folder-dd" style="display:none;position:absolute;top:100%;left:0;margin-top:4px;background:#1a2e42;border:1px solid rgba(255,255,255,.12);border-radius:6px;min-width:160px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,.4);padding:.3rem 0"></div>
+          </div>
           <button class="sel-clear" onclick="clearSelection()">Unselect All</button>
           <button class="sel-link-btn" onclick="openCreateLinkModal()">Create Link</button>
         </div>
@@ -465,6 +470,7 @@ let currentFolder = null;
 let currentLocation = null;
 let folderPhotos = [];
 let selectedPaths = new Set();
+let selectedFolderMap = new Map(); // "date|loc|folder" → {date, location, folder}
 let lastClickPath = null;
 let colCount = 4;
 let uploadFolders = [];
@@ -707,6 +713,15 @@ function setView(view) {
 }
 
 // ── Selection ──
+function _folderKey(cf) { return `${cf.date}|${cf.location}|${cf.folder}`; }
+function _syncFolderMap() {
+  if (!currentFolder) return;
+  const key = _folderKey(currentFolder);
+  const anySelected = folderPhotos.some(p => selectedPaths.has(p.path));
+  if (anySelected) selectedFolderMap.set(key, {...currentFolder});
+  else selectedFolderMap.delete(key);
+}
+
 function selectPhoto(event, path) {
   if (event.shiftKey && lastClickPath) {
     const paths = folderPhotos.map(p => p.path);
@@ -718,6 +733,7 @@ function selectPhoto(event, path) {
     else selectedPaths.add(path);
     lastClickPath = path;
   }
+  _syncFolderMap();
   updateSelectionUI();
 }
 
@@ -731,10 +747,20 @@ function updateSelectionUI() {
   if (n > 0) {
     const inCurrent = folderPhotos.filter(p => selectedPaths.has(p.path)).length;
     const other = n - inCurrent;
-    let label = `${n} selected`;
-    if (other > 0 && inCurrent > 0) label += ` (${inCurrent} here + ${other} from other folders)`;
-    else if (other > 0) label += ` from other folders`;
-    document.getElementById('selection-count').textContent = label;
+    const otherFolders = [...selectedFolderMap.values()].filter(f => !currentFolder || _folderKey(f) !== _folderKey(currentFolder));
+    const el = document.getElementById('selection-count');
+    if (other > 0 && inCurrent > 0) {
+      el.innerHTML = `${n} selected &nbsp;(${inCurrent} here + <span id="sel-folders-btn" onclick="toggleFolderDropdown(event)" style="text-decoration:underline;cursor:pointer">${otherFolders.length} other folder${otherFolders.length!==1?'s':''} ▾</span>)`;
+    } else if (other > 0) {
+      el.innerHTML = `${n} selected from <span id="sel-folders-btn" onclick="toggleFolderDropdown(event)" style="text-decoration:underline;cursor:pointer">${otherFolders.length} folder${otherFolders.length!==1?'s':''} ▾</span>`;
+    } else {
+      el.textContent = `${n} selected`;
+    }
+    // rebuild dropdown items
+    const dd = document.getElementById('sel-folder-dd');
+    dd.innerHTML = otherFolders.map(f =>
+      `<div class="sfd-item" onclick="closeFolderDropdown();openFolder(${JSON.stringify(f.date)},${JSON.stringify(f.location)},${JSON.stringify(f.folder)})">${f.folder || f.location}</div>`
+    ).join('');
   }
   const btn = document.getElementById('select-all-btn');
   const inFolder = document.getElementById('folder-view').style.display !== 'none';
@@ -744,8 +770,18 @@ function updateSelectionUI() {
 }
 
 function clearSelection() {
-  selectedPaths.clear(); lastClickPath = null; updateSelectionUI();
+  selectedPaths.clear(); selectedFolderMap.clear(); lastClickPath = null; updateSelectionUI();
 }
+function toggleFolderDropdown(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('sel-folder-dd');
+  dd.style.display = dd.style.display === 'none' ? 'block' : 'none';
+}
+function closeFolderDropdown() {
+  const dd = document.getElementById('sel-folder-dd');
+  if (dd) dd.style.display = 'none';
+}
+document.addEventListener('click', closeFolderDropdown);
 
 function selectAll() {
   const allCurrentSelected = folderPhotos.length > 0 && folderPhotos.every(p => selectedPaths.has(p.path));
@@ -755,6 +791,7 @@ function selectAll() {
     folderPhotos.forEach(p => selectedPaths.add(p.path));
   }
   lastClickPath = null;
+  _syncFolderMap();
   updateSelectionUI();
 }
 
