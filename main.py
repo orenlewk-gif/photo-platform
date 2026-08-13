@@ -4011,7 +4011,7 @@ def package_page(token: str):
     title_esc = pkg["title"].replace("<", "&lt;").replace(">", "&gt;")
 
     photo_items = "\n".join(
-        f'<div class="pi"><img src="/package/{token}/thumb/{i}" loading="lazy" alt=""><a href="/package/{token}/file/{i}" download class="dib">⬇ Download</a></div>'
+        f'<div class="pi"><img src="/package/{token}/thumb/{i}" alt=""><a href="/package/{token}/file/{i}" download class="dib">⬇ Download</a></div>'
         for i, _ in enumerate(paths)
     )
 
@@ -4032,12 +4032,10 @@ header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
 .lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;
   padding:.7rem 1rem;margin-bottom:1.1rem;font-size:.76rem;color:rgba(255,255,255,.42);line-height:1.8}}
 .lic strong{{color:rgba(255,255,255,.68)}}
-.grid{{columns:5;column-gap:8px}}
-@media(max-width:1100px){{.grid{{columns:4}}}}
-@media(max-width:780px){{.grid{{columns:3}}}}
-@media(max-width:500px){{.grid{{columns:2}}}}
-.pi{{position:relative;break-inside:avoid;margin-bottom:8px;display:inline-block;width:100%;overflow:hidden;border-radius:6px;background:#111;cursor:pointer}}
-.pi img{{width:100%;height:auto;display:block;transition:opacity .15s}}
+.grid{{position:relative;min-height:100px}}
+.pi{{position:absolute;overflow:hidden;border-radius:6px;background:#111;cursor:pointer;transition:opacity .15s}}
+.pi:hover{{opacity:.88}}
+.pi img{{width:100%;height:auto;display:block}}
 .pi:hover img{{opacity:.78}}
 .dib{{position:absolute;bottom:7px;right:7px;background:#F2C94C;color:#0d1f2d;border-radius:5px;
   padding:.3rem .7rem;font-size:.75rem;font-weight:700;text-decoration:none;
@@ -4070,7 +4068,7 @@ header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
     Please do not resell or redistribute the original files.
     Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
   </div>
-  <div class="grid">{photo_items}</div>
+  <div class="grid" id="masonry-grid">{photo_items}</div>
 </div>
 <div id="lb">
   <div id="lb-bar">
@@ -4080,6 +4078,35 @@ header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
   <img id="lb-img" src="" alt="">
 </div>
 <script>
+// Masonry: place each item into the shortest column so portrait/landscape alternate naturally
+function runMasonry() {{
+  const grid = document.getElementById('masonry-grid');
+  const items = [...grid.children];
+  if (!items.length) return;
+  const gap = 8;
+  const W = grid.offsetWidth;
+  const cols = W < 500 ? 2 : W < 780 ? 3 : W < 1100 ? 4 : 5;
+  const colW = (W - gap * (cols - 1)) / cols;
+  const heights = new Array(cols).fill(0);
+  grid.style.position = 'relative';
+  items.forEach(item => {{
+    item.style.width = colW + 'px';
+    const c = heights.indexOf(Math.min(...heights));
+    item.style.left = (c * (colW + gap)) + 'px';
+    item.style.top = heights[c] + 'px';
+    heights[c] += item.offsetHeight + gap;
+  }});
+  grid.style.height = Math.max(...heights) + 'px';
+}}
+let _masonryTimer;
+function scheduleMasonry() {{ clearTimeout(_masonryTimer); _masonryTimer = setTimeout(runMasonry, 60); }}
+// Run once each image loads so layout fills in progressively, then again on resize
+document.querySelectorAll('#masonry-grid img').forEach(img => {{
+  if (img.complete) scheduleMasonry();
+  else img.addEventListener('load', scheduleMasonry);
+}});
+window.addEventListener('resize', scheduleMasonry);
+
 let lbIdx = 0;
 document.querySelectorAll('.pi img').forEach((img,i)=>{{
   img.parentElement.addEventListener('click',e=>{{
