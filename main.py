@@ -4032,8 +4032,11 @@ header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
 .lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;
   padding:.7rem 1rem;margin-bottom:1.1rem;font-size:.76rem;color:rgba(255,255,255,.42);line-height:1.8}}
 .lic strong{{color:rgba(255,255,255,.68)}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}}
-.pi{{position:relative;overflow:hidden;border-radius:6px;background:#111;cursor:pointer}}
+.grid{{columns:5;column-gap:8px}}
+@media(max-width:1100px){{.grid{{columns:4}}}}
+@media(max-width:780px){{.grid{{columns:3}}}}
+@media(max-width:500px){{.grid{{columns:2}}}}
+.pi{{position:relative;break-inside:avoid;margin-bottom:8px;display:inline-block;width:100%;overflow:hidden;border-radius:6px;background:#111;cursor:pointer}}
 .pi img{{width:100%;height:auto;display:block;transition:opacity .15s}}
 .pi:hover img{{opacity:.78}}
 .dib{{position:absolute;bottom:7px;right:7px;background:#F2C94C;color:#0d1f2d;border-radius:5px;
