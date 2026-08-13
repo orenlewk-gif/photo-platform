@@ -4011,7 +4011,7 @@ def package_page(token: str):
     title_esc = pkg["title"].replace("<", "&lt;").replace(">", "&gt;")
 
     photo_items = "\n".join(
-        f'<div class="pi"><img src="/package/{token}/thumb/{i}" loading="lazy" alt=""><a href="/package/{token}/file/{i}" download class="dib">⬇</a></div>'
+        f'<div class="pi"><img src="/package/{token}/thumb/{i}" loading="lazy" alt=""><a href="/package/{token}/file/{i}" download class="dib">⬇ Download</a></div>'
         for i, _ in enumerate(paths)
     )
 
@@ -4021,56 +4021,74 @@ def package_page(token: str):
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
 body{{background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}}
-header{{background:rgba(0,0,0,.3);border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 1.5rem;
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;position:sticky;top:0;z-index:10;backdrop-filter:blur(6px)}}
-header h1{{color:#F2C94C;font-size:1.05rem;font-weight:700}}
-header .meta{{font-size:.74rem;color:rgba(255,255,255,.38);margin-top:.18rem}}
-.dla{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:7px;padding:.52rem 1.15rem;
-  font-weight:700;font-size:.85rem;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}}
-.wrap{{max-width:1300px;margin:0 auto;padding:1.25rem 1rem}}
-.lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;
-  padding:.75rem 1rem;margin-bottom:1rem;font-size:.74rem;color:rgba(255,255,255,.45);line-height:1.7}}
-.lic strong{{color:rgba(255,255,255,.72)}}
-.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}}
-.pi{{position:relative;aspect-ratio:1;overflow:hidden;border-radius:5px;background:#111;cursor:pointer}}
-.pi img{{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s}}
-.pi:hover img{{opacity:.72}}
-.dib{{position:absolute;bottom:5px;right:5px;background:#F2C94C;color:#0d1f2d;border-radius:4px;
-  width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:.82rem;
-  text-decoration:none;opacity:0;transition:opacity .15s}}
+header{{background:rgba(0,0,0,.35);border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 1.5rem;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;
+  position:sticky;top:0;z-index:10;backdrop-filter:blur(8px)}}
+header h1{{color:#F2C94C;font-size:1.1rem;font-weight:700}}
+header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
+.dla{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:7px;padding:.55rem 1.2rem;
+  font-weight:700;font-size:.88rem;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}}
+.wrap{{max-width:1400px;margin:0 auto;padding:1.25rem 1rem}}
+.lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;
+  padding:.7rem 1rem;margin-bottom:1.1rem;font-size:.76rem;color:rgba(255,255,255,.42);line-height:1.8}}
+.lic strong{{color:rgba(255,255,255,.68)}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px}}
+.pi{{position:relative;overflow:hidden;border-radius:6px;background:#111;cursor:pointer}}
+.pi img{{width:100%;height:auto;display:block;transition:opacity .15s}}
+.pi:hover img{{opacity:.78}}
+.dib{{position:absolute;bottom:7px;right:7px;background:#F2C94C;color:#0d1f2d;border-radius:5px;
+  padding:.3rem .7rem;font-size:.75rem;font-weight:700;text-decoration:none;
+  opacity:0;transition:opacity .15s;display:flex;align-items:center;gap:.3rem}}
 .pi:hover .dib{{opacity:1}}
-#lb{{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:none;align-items:center;justify-content:center;cursor:zoom-out}}
+#lb{{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:999;display:none;
+  flex-direction:column;align-items:center;justify-content:center}}
 #lb.open{{display:flex}}
-#lb img{{max-width:93vw;max-height:93vh;object-fit:contain;border-radius:4px;cursor:default}}
-#lb-close{{position:absolute;top:.9rem;right:1.1rem;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:1.4rem;cursor:pointer;border-radius:5px;padding:1px 7px;opacity:.7}}
+#lb-img{{max-width:92vw;max-height:84vh;object-fit:contain;border-radius:4px;cursor:default}}
+#lb-bar{{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:flex-end;
+  padding:.75rem 1rem;gap:.65rem;background:linear-gradient(rgba(0,0,0,.5),transparent)}}
+#lb-dl{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:6px;padding:.38rem .9rem;
+  font-weight:700;font-size:.82rem;cursor:pointer;text-decoration:none}}
+#lb-close{{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:1.1rem;cursor:pointer;
+  border-radius:6px;padding:.35rem .7rem;opacity:.8}}
 #lb-close:hover{{opacity:1}}
 </style></head>
 <body>
 <header>
-  <div><h1>{title_esc}</h1><div class="meta">{len(paths)} photo{'s' if len(paths)!=1 else ''} &nbsp;·&nbsp; Link expires {expire_str}</div></div>
+  <div>
+    <h1>{title_esc}</h1>
+    <div class="meta">{len(paths)} photo{'s' if len(paths)!=1 else ''} &nbsp;·&nbsp; Link expires {expire_str}</div>
+  </div>
   <a href="/package/{token}/all" download class="dla">⬇ Download All ({len(paths)} photos)</a>
 </header>
 <div class="wrap">
   <div class="lic">
-    <strong>Personal use:</strong> print, frame, share freely. &nbsp;
-    <strong>Commercial use:</strong> tag @crystalimagesbigsky on Instagram. &nbsp;
-    <strong>No resale</strong> of original files.
-    &nbsp; Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
+    All photos are for <strong>personal use</strong> — print, frame, and share freely.
+    For commercial use, tag <strong>@crystalimagesbigsky</strong> on Instagram.
+    Please do not resell or redistribute the original files.
+    Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
   </div>
   <div class="grid">{photo_items}</div>
 </div>
-<div id="lb"><button id="lb-close" onclick="closeLb()">✕</button><img id="lb-img" src="" alt=""></div>
+<div id="lb">
+  <div id="lb-bar">
+    <a id="lb-dl" href="#" download>⬇ Download</a>
+    <button id="lb-close" onclick="closeLb()">✕</button>
+  </div>
+  <img id="lb-img" src="" alt="">
+</div>
 <script>
+let lbIdx = 0;
 document.querySelectorAll('.pi img').forEach((img,i)=>{{
   img.parentElement.addEventListener('click',e=>{{
     if(e.target.tagName==='A')return;
-    document.getElementById('lb-img').src=img.src.replace('/thumb/','/file/').replace('/file/{{}}'.replace('{{}}',i),'/file/'+i).replace(/\\/thumb\\/\\d+/,'/medium/'+i);
+    lbIdx = i;
     document.getElementById('lb-img').src='/package/{token}/medium/'+i;
+    document.getElementById('lb-dl').href='/package/{token}/file/'+i;
     document.getElementById('lb').classList.add('open');
   }});
 }});
 function closeLb(){{document.getElementById('lb').classList.remove('open')}}
-document.getElementById('lb').addEventListener('click',e=>{{if(e.target===document.getElementById('lb'))closeLb()}});
+document.getElementById('lb').addEventListener('click',e=>{{if(e.target.id==='lb'||e.target.id==='lb-img')closeLb()}});
 document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeLb()}});
 </script>
 </body></html>""")
