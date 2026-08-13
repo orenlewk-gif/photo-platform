@@ -3819,34 +3819,40 @@ def _send_package_email(to_emails: list, title: str, download_url: str, photo_co
     if not RESEND_API_KEY:
         print("RESEND_API_KEY not set — skipping email")
         return
-    subject = f"Your Photos Are Ready — {title}"
-    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#0d1f2d;font-family:'Segoe UI',Arial,sans-serif">
-<div style="max-width:580px;margin:0 auto;padding:2rem 1rem">
-  <div style="background:#F2C94C;padding:1.1rem 1.5rem;border-radius:10px 10px 0 0;text-align:center">
-    <span style="font-size:1.25rem;font-weight:800;color:#0d1f2d;letter-spacing:.5px">Crystal Images</span>
-  </div>
-  <div style="background:#163347;border:1px solid rgba(255,255,255,.12);border-top:none;border-radius:0 0 10px 10px;padding:2rem 1.5rem">
-    <h2 style="color:#F2C94C;margin:0 0 .5rem;font-size:1.15rem">{title}</h2>
-    <p style="color:rgba(255,255,255,.7);margin:0 0 1.75rem;font-size:.92rem;line-height:1.6">Your photos are ready to download. Click the button below to access your gallery and save your files.</p>
-    <div style="text-align:center;margin:0 0 1.75rem">
-      <a href="{download_url}" style="background:#F2C94C;color:#0d1f2d;padding:.75rem 2.25rem;border-radius:8px;font-weight:700;font-size:1rem;text-decoration:none;display:inline-block">
-        ⬇&nbsp; Download My Photos ({photo_count} file{'s' if photo_count != 1 else ''})
-      </a>
-    </div>
-    <p style="color:rgba(255,255,255,.35);font-size:.75rem;text-align:center;margin:0 0 1.5rem">Link expires {expire_str}</p>
-    <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:0 0 1.25rem">
-    <p style="color:rgba(255,255,255,.38);font-size:.72rem;line-height:1.6;margin:0">
-      Personal use: print, frame, and share freely. Commercial use: tag @crystalimagesbigsky on Instagram. No resale of original files.
-      Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
+    subject = f"Your {title} photos are ready"
+    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">
+  <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:2rem 2rem 1.5rem">
+    <p style="margin:0 0 .25rem;font-size:.8rem;color:#999;text-transform:uppercase;letter-spacing:.5px">Crystal Images</p>
+    <h2 style="margin:0 0 1.25rem;font-size:1.2rem;color:#111">{title}</h2>
+    <p style="margin:0 0 1.25rem;font-size:.95rem;color:#333;line-height:1.6">Hi, your photos from Crystal Images are ready. You can view and download all {photo_count} file{'s' if photo_count != 1 else ''} using the link below.</p>
+    <p style="margin:0 0 1.5rem">
+      <a href="{download_url}" style="background:#1a73e8;color:#fff;padding:.65rem 1.5rem;border-radius:6px;font-size:.95rem;font-weight:600;text-decoration:none;display:inline-block">View &amp; Download Photos</a>
     </p>
+    <p style="margin:0 0 1.5rem;font-size:.82rem;color:#777">This link expires {expire_str}. If you have any trouble accessing your photos, reply to this email or reach us at <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a>.</p>
+    <hr style="border:none;border-top:1px solid #eee;margin:0 0 1rem">
+    <p style="margin:0;font-size:.75rem;color:#aaa;line-height:1.6">Photos are for personal use — print, frame, and share freely. For commercial use, tag @crystalimagesbigsky. Please do not resell original files.</p>
   </div>
 </div></body></html>"""
+    text = f"""Your {title} photos are ready — Crystal Images
+
+Hi, your photos from Crystal Images are ready to download.
+
+View and download your {photo_count} photo{'s' if photo_count != 1 else ''} here:
+{download_url}
+
+This link expires {expire_str}.
+
+Questions? Reply to this email or contact us at info@bigskyphotos.com.
+
+Photos are for personal use. Please do not resell original files.
+"""
     for email in to_emails:
         try:
             r = http_requests.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-                json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html},
+                json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": text},
                 timeout=10,
             )
             if not r.ok:
