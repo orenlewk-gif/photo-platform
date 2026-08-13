@@ -741,6 +741,24 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .lb-upsell .upsell-upgrade { font-size:.84rem; color:rgba(255,255,255,.85); margin-bottom:9px; line-height:1.5; }
 .lb-upsell .upsell-perks { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
 .lb-upsell .upsell-perk { background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.28); color:#4ade80; font-size:.72rem; font-weight:500; padding:3px 11px; border-radius:20px; white-space:nowrap; }
+/* ── Calendar widget ── */
+.cal-btn{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:20px;padding:5px 11px;font-size:14px;cursor:pointer;transition:border-color .2s;white-space:nowrap}
+.cal-btn:hover{border-color:#F5C518;color:#F5C518}
+#cal-wrap{position:relative}
+#cal-dropdown{position:absolute;top:calc(100% + 8px);right:0;background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:1rem;width:270px;z-index:20000;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.cal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem}
+.cal-hdr-label{font-weight:700;font-size:.95rem;color:#F5C518}
+.cal-hdr button{background:none;border:none;color:rgba(255,255,255,.6);font-size:1.1rem;cursor:pointer;padding:2px 6px;border-radius:4px}
+.cal-hdr button:hover{color:#fff;background:rgba(255,255,255,.08)}
+.cal-dow{display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:.35rem}
+.cal-dow span{text-align:center;font-size:.65rem;color:rgba(255,255,255,.3);padding-bottom:4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-day{text-align:center;padding:5px 2px;font-size:.8rem;border-radius:5px}
+.cal-day.cal-empty{}
+.cal-day.cal-no-photos{color:rgba(255,255,255,.18)}
+.cal-day.cal-has-photos{color:#fff;background:rgba(242,201,76,.15);cursor:pointer;font-weight:600;border:1px solid rgba(242,201,76,.3)}
+.cal-day.cal-has-photos:hover{background:#F2C94C;color:#0d1f2d}
+.cal-day.cal-today{outline:1px solid rgba(255,255,255,.25)}
 </style>
 </head>
 <body>
@@ -819,6 +837,24 @@ select.co-input option { background:#0a1e2e; color:#fff; }
       <div id="ln-dropdown" class="ln-dropdown" style="display:none;"></div>
     </div>
     <button class="btn" id="ln-btn">Find My Photos</button>
+  </div>
+
+  <!-- Calendar widget -->
+  <div id="cal-wrap" style="text-align:center;margin-bottom:1.5rem">
+    <button class="cal-btn" onclick="toggleCal(event)">📅 Browse by Date</button>
+    <div id="cal-dropdown" style="display:none;position:relative;margin-top:10px">
+      <div style="display:inline-block;background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:1rem;width:270px;box-shadow:0 8px 32px rgba(0,0,0,.5)">
+        <div class="cal-hdr">
+          <button onclick="calNav(-1);event.stopPropagation()">‹</button>
+          <span class="cal-hdr-label" id="cal-label"></span>
+          <button onclick="calNav(1);event.stopPropagation()">›</button>
+        </div>
+        <div class="cal-dow">
+          <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+    </div>
   </div>
 
   <div class="breadcrumb" id="breadcrumb"></div>
@@ -3505,6 +3541,69 @@ document.addEventListener('contextmenu', e => {
 });
 
 init();
+
+// ── Calendar ──
+let _calDates = null;
+let _calY = new Date().getFullYear();
+let _calM = new Date().getMonth();
+const _calMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+async function _loadCalDates() {
+  if (_calDates) return;
+  const res = await fetch('/api/dates');
+  const d = await res.json();
+  _calDates = new Set(d.dates);
+  if (d.dates.length) {
+    const [y, m] = d.dates[0].split('-').map(Number);
+    _calY = y; _calM = m - 1;
+  }
+}
+
+function _renderCal() {
+  document.getElementById('cal-label').textContent = `${_calMonths[_calM]} ${_calY}`;
+  const first = new Date(_calY, _calM, 1).getDay();
+  const days  = new Date(_calY, _calM + 1, 0).getDate();
+  const today = new Date().toISOString().slice(0,10);
+  let html = '<div class="cal-day cal-empty"></div>'.repeat(first);
+  for (let d = 1; d <= days; d++) {
+    const ds = `${_calY}-${String(_calM+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const has = _calDates && _calDates.has(ds);
+    const isToday = ds === today ? ' cal-today' : '';
+    html += has
+      ? `<div class="cal-day cal-has-photos${isToday}" onclick="calPick('${ds}')">${d}</div>`
+      : `<div class="cal-day cal-no-photos${isToday}">${d}</div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = html;
+}
+
+async function toggleCal(e) {
+  e.stopPropagation();
+  const dd = document.getElementById('cal-dropdown');
+  if (dd.style.display === 'none') {
+    dd.style.display = 'block';
+    await _loadCalDates();
+    _renderCal();
+  } else {
+    dd.style.display = 'none';
+  }
+}
+
+function calNav(dir) {
+  _calM += dir;
+  if (_calM > 11) { _calM = 0; _calY++; }
+  if (_calM < 0)  { _calM = 11; _calY--; }
+  _renderCal();
+}
+
+function calPick(ds) {
+  document.getElementById('cal-dropdown').style.display = 'none';
+  navigate({ view: 'locations', date: ds });
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('cal-wrap').contains(e.target))
+    document.getElementById('cal-dropdown').style.display = 'none';
+});
 </script>
 </body>
 </html>
