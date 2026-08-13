@@ -758,9 +758,10 @@ function updateSelectionUI() {
     }
     // rebuild dropdown items
     const dd = document.getElementById('sel-folder-dd');
-    dd.innerHTML = otherFolders.map(f =>
-      `<div class="sfd-item" onclick="closeFolderDropdown();openFolder(${JSON.stringify(f.date)},${JSON.stringify(f.location)},${JSON.stringify(f.folder)})">${f.folder || f.location}</div>`
-    ).join('');
+    dd.innerHTML = otherFolders.map(f => {
+      const d = (f.date||'').replace(/"/g,'&quot;'), l = (f.location||'').replace(/"/g,'&quot;'), fo = (f.folder||'').replace(/"/g,'&quot;');
+      return `<div class="sfd-item" data-date="${d}" data-loc="${l}" data-folder="${fo}">${f.folder || f.location}</div>`;
+    }).join('');
   }
   const btn = document.getElementById('select-all-btn');
   const inFolder = document.getElementById('folder-view').style.display !== 'none';
@@ -782,6 +783,11 @@ function closeFolderDropdown() {
   if (dd) dd.style.display = 'none';
 }
 document.addEventListener('click', closeFolderDropdown);
+document.addEventListener('click', e => {
+  const item = e.target.closest('.sfd-item');
+  if (!item) return;
+  openFolder(item.dataset.date, item.dataset.loc, item.dataset.folder);
+});
 
 function selectAll() {
   const allCurrentSelected = folderPhotos.length > 0 && folderPhotos.every(p => selectedPaths.has(p.path));
