@@ -360,8 +360,8 @@ input[type=file]{display:none}
       <div id="grid-controls">
         <div id="selection-bar">
           <span id="selection-count"></span>
-          <button class="sel-btn" onclick="trashSelected()">Delete to Trash</button>
-          <button class="sel-clear" onclick="clearSelection()">Clear</button>
+          <button id="trash-sel-btn" class="sel-btn" onclick="trashSelected()">Delete to Trash</button>
+          <button class="sel-clear" onclick="clearSelection()">Unselect All</button>
           <button class="sel-link-btn" onclick="openCreateLinkModal()">Create Link</button>
         </div>
         <button id="select-all-btn" onclick="selectAll()" style="display:none;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.28rem .7rem;font-size:.76rem;cursor:pointer">Select All</button>
@@ -736,6 +736,7 @@ function updateSelectionUI() {
     if (other > 0 && inCurrent > 0) label += ` (${inCurrent} here + ${other} from other folders)`;
     else if (other > 0) label += ` from other folders`;
     document.getElementById('selection-count').textContent = label;
+    document.getElementById('trash-sel-btn').style.display = inCurrent > 0 ? '' : 'none';
   }
   const btn = document.getElementById('select-all-btn');
   const inFolder = document.getElementById('folder-view').style.display !== 'none';
