@@ -629,7 +629,6 @@ async function openFolder(date, location, folder) {
   document.getElementById('folder-name-display').textContent = folder || location;
   cancelNameEdit();
   document.getElementById('photo-grid').innerHTML = '<div class="loading-text">Loading photos…</div>';
-  clearSelection();
   await loadFolderPhotos();
 }
 
@@ -690,6 +689,7 @@ function renderPhotoGrid() {
       <div class="draft-ribbon">DRAFT</div>
     </div>`;
   }).join('');
+  updateSelectionUI();
 }
 
 function setColCount(v) {
@@ -729,11 +729,19 @@ function updateSelectionUI() {
   const n = selectedPaths.size;
   const bar = document.getElementById('selection-bar');
   bar.style.display = n > 0 ? 'flex' : 'none';
-  if (n > 0) document.getElementById('selection-count').textContent = `${n} selected`;
+  if (n > 0) {
+    const inCurrent = folderPhotos.filter(p => selectedPaths.has(p.path)).length;
+    const other = n - inCurrent;
+    let label = `${n} selected`;
+    if (other > 0 && inCurrent > 0) label += ` (${inCurrent} here + ${other} from other folders)`;
+    else if (other > 0) label += ` from other folders`;
+    document.getElementById('selection-count').textContent = label;
+  }
   const btn = document.getElementById('select-all-btn');
   const inFolder = document.getElementById('folder-view').style.display !== 'none';
   btn.style.display = inFolder && folderPhotos.length > 0 ? '' : 'none';
-  btn.textContent = n === folderPhotos.length && folderPhotos.length > 0 ? 'Deselect All' : 'Select All';
+  const allCurrentSelected = folderPhotos.length > 0 && folderPhotos.every(p => selectedPaths.has(p.path));
+  btn.textContent = allCurrentSelected ? 'Deselect Folder' : 'Select All';
 }
 
 function clearSelection() {
@@ -741,14 +749,14 @@ function clearSelection() {
 }
 
 function selectAll() {
-  if (selectedPaths.size === folderPhotos.length) {
-    clearSelection();
+  const allCurrentSelected = folderPhotos.length > 0 && folderPhotos.every(p => selectedPaths.has(p.path));
+  if (allCurrentSelected) {
+    folderPhotos.forEach(p => selectedPaths.delete(p.path));
   } else {
     folderPhotos.forEach(p => selectedPaths.add(p.path));
-    lastClickPath = null;
-    updateSelectionUI();
-    renderPhotoGrid();
   }
+  lastClickPath = null;
+  updateSelectionUI();
 }
 
 // ── Trash ──
