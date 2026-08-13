@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Links — Crystal Images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color:#fff}
+#topbar{height:46px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem;flex-shrink:0}
+#topbar h1{color:#F5C518;font-size:1rem;font-weight:700;margin-right:auto}
+#topbar a{color:rgba(255,255,255,.45);font-size:.82rem;text-decoration:none}
+#topbar a:hover{color:#fff}
+#layout{display:flex;height:calc(100vh - 46px)}
+#sidebar{width:220px;flex-shrink:0;background:#0a1e2e;border-right:1px solid rgba(255,255,255,.07);
+  display:flex;flex-direction:column;overflow:hidden;padding:.5rem 0}
+.nav-section-label{padding:.65rem .75rem .2rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
+.nav-link{display:flex;align-items:center;gap:.5rem;padding:.5rem .75rem;border-radius:6px;margin:.05rem .35rem;
+  color:rgba(255,255,255,.5);font-size:.88rem;text-decoration:none}
+.nav-link:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8)}
+.nav-link.active-page{color:#F5C518;background:rgba(245,197,24,.08)}
+#main{flex:1;overflow-y:auto;padding:1.75rem 2rem}
+.page-title{font-size:1.25rem;font-weight:700;color:#fff;margin-bottom:.35rem}
+.page-sub{font-size:.82rem;color:rgba(255,255,255,.38);margin-bottom:1.5rem}
+
+/* Success banner */
+#new-banner{display:none;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);
+  border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem}
+#new-banner .nb-title{color:#4ade80;font-weight:700;font-size:.92rem;margin-bottom:.35rem}
+#new-banner .nb-url{font-family:monospace;font-size:.82rem;color:rgba(255,255,255,.7);
+  background:rgba(0,0,0,.25);border-radius:5px;padding:.35rem .65rem;display:inline-block;
+  word-break:break-all;margin-bottom:.55rem}
+.nb-copy{background:#4ade80;color:#07151f;border:none;border-radius:6px;padding:.35rem .85rem;
+  font-weight:700;font-size:.8rem;cursor:pointer}
+.nb-copy:hover{background:#22c55e}
+
+/* Table */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid rgba(255,255,255,.07)}
+table{width:100%;border-collapse:collapse;font-size:.83rem;min-width:720px}
+thead th{background:#0a1e2e;color:rgba(255,255,255,.4);font-weight:600;font-size:.7rem;
+  letter-spacing:.8px;text-transform:uppercase;padding:.55rem .9rem;text-align:left;
+  border-bottom:1px solid rgba(255,255,255,.07);white-space:nowrap}
+tbody td{padding:.65rem .9rem;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover td{background:rgba(255,255,255,.02)}
+.badge-live{background:rgba(74,222,128,.15);color:#4ade80;border:1px solid rgba(74,222,128,.3);
+  padding:.15rem .5rem;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap}
+.badge-exp{background:rgba(239,68,68,.12);color:#ef4444;border:1px solid rgba(239,68,68,.25);
+  padding:.15rem .5rem;border-radius:100px;font-size:.68rem;font-weight:700;white-space:nowrap}
+.action-btns{display:flex;gap:.38rem;flex-wrap:wrap}
+.abtn{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);
+  color:rgba(255,255,255,.65);border-radius:6px;padding:.28rem .7rem;font-size:.75rem;cursor:pointer;white-space:nowrap}
+.abtn:hover{background:rgba(255,255,255,.1);color:#fff}
+.abtn.copy{background:rgba(99,179,237,.1);border-color:rgba(99,179,237,.3);color:#63b3ed}
+.abtn.copy:hover{background:rgba(99,179,237,.2)}
+.abtn.del{background:rgba(239,68,68,.08);border-color:rgba(239,68,68,.25);color:#ef4444}
+.abtn.del:hover{background:rgba(239,68,68,.18)}
+.abtn.resend{background:rgba(167,139,250,.08);border-color:rgba(167,139,250,.3);color:#a78bfa}
+.abtn.resend:hover{background:rgba(167,139,250,.18)}
+.emails-list{font-size:.74rem;color:rgba(255,255,255,.45);line-height:1.5}
+.empty-state{text-align:center;padding:4rem 2rem;color:rgba(255,255,255,.25);font-size:.9rem}
+
+/* Extend modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;width:340px;max-width:92vw}
+.modal-box h3{color:#F5C518;font-size:.98rem;margin-bottom:1rem}
+.modal-field{margin-bottom:.85rem}
+.modal-field label{display:block;font-size:.72rem;color:rgba(255,255,255,.4);margin-bottom:.3rem;text-transform:uppercase}
+.modal-field select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);
+  border-radius:8px;padding:.58rem .82rem;color:#fff;font-size:.88rem;outline:none}
+.modal-field select:focus{border-color:#F5C518}
+.modal-field select option{background:#0c2336}
+.modal-actions{display:flex;gap:.55rem;justify-content:flex-end;margin-top:1.1rem}
+.modal-cancel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.11);color:rgba(255,255,255,.55);
+  border-radius:8px;padding:.48rem .95rem;cursor:pointer;font-size:.86rem}
+.modal-ok{background:#F5C518;color:#07151f;border:none;border-radius:8px;padding:.48rem 1.2rem;font-weight:700;cursor:pointer;font-size:.86rem}
+.modal-ok:hover{background:#f0bc00}
+
+/* Toast */
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3248;
+  border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:.6rem 1.2rem;
+  font-size:.84rem;color:#fff;z-index:9999;opacity:0;pointer-events:none;transition:opacity .22s;white-space:nowrap}
+#toast.show{opacity:1}
+#toast.err{background:#3d1515;border-color:rgba(239,68,68,.3);color:#ef4444}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>Crystal Images — Admin</h1>
+  <a href="/admin/logout">Sign out</a>
+</div>
+<div id="layout">
+  <div id="sidebar">
+    <div class="nav-section-label">Admin</div>
+    <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+    <a href="/admin/pricing" class="nav-link">Pricing</a>
+    <a href="/admin/photographers" class="nav-link">Photographers</a>
+    <a href="/admin/orders" class="nav-link">Orders</a>
+    <a href="/admin/links" class="nav-link active-page">Links</a>
+    <a href="/admin/trash" class="nav-link" style="margin-top:auto">Trash</a>
+  </div>
+  <div id="main">
+    <div class="page-title">Download Links</div>
+    <div class="page-sub">Manually created photo packages. Create from the studio by selecting photos and clicking <strong>Create Link</strong>.</div>
+
+    <div id="new-banner">
+      <div class="nb-title">✓ Link created and email sent!</div>
+      <div class="nb-url" id="new-url">__NEW_URL__</div><br>
+      <button class="nb-copy" onclick="copyNewLink()">Copy Link</button>
+      &nbsp;
+      <a href="/admin/dashboard" style="color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none;margin-left:.5rem">← Back to Studio</a>
+    </div>
+
+    <div id="table-area"><div class="empty-state">Loading…</div></div>
+  </div>
+</div>
+
+<!-- Extend modal -->
+<div class="modal-overlay" id="extend-modal" onclick="closeExtend(event)">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <h3>Extend Link</h3>
+    <div class="modal-field">
+      <label>New expiry from today</label>
+      <select id="extend-days">
+        <option value="30">30 days</option>
+        <option value="60">60 days</option>
+        <option value="90">90 days</option>
+        <option value="180">6 months</option>
+        <option value="365">1 year</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="document.getElementById('extend-modal').classList.remove('open')">Cancel</button>
+      <button class="modal-ok" onclick="doExtend()">Extend</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const NEW_TOKEN = '__NEW_TOKEN__';
+const NEW_URL   = '__NEW_URL__';
+let _extendToken = null;
+let _tt;
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type ? `show ${type}` : 'show';
+  clearTimeout(_tt); _tt = setTimeout(() => t.className = '', 2500);
+}
+
+function copyUrl(url) {
+  navigator.clipboard.writeText(url).then(() => showToast('Link copied!')).catch(() => {
+    window.prompt('Copy link:', url);
+  });
+}
+
+function copyNewLink() { copyUrl(NEW_URL); }
+
+async function deletePackage(token, title) {
+  if (!confirm(`Delete "${title}"?\n\nThis cannot be undone — the link will stop working immediately.`)) return;
+  const r = await fetch(`/api/admin/packages/${token}`, {method:'DELETE'});
+  if (r.ok) { showToast('Deleted'); loadPackages(); }
+  else showToast('Delete failed', 'err');
+}
+
+async function resendEmail(token) {
+  const r = await fetch(`/api/admin/packages/${token}/resend-email`, {method:'POST'});
+  if (r.ok) showToast('Email resent!');
+  else showToast('Resend failed', 'err');
+}
+
+function openExtend(token) {
+  _extendToken = token;
+  document.getElementById('extend-modal').classList.add('open');
+}
+function closeExtend(e) {
+  if (e.target === document.getElementById('extend-modal'))
+    document.getElementById('extend-modal').classList.remove('open');
+}
+async function doExtend() {
+  const days = parseInt(document.getElementById('extend-days').value, 10);
+  const r = await fetch(`/api/admin/packages/${_extendToken}/extend`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({days})
+  });
+  if (r.ok) {
+    showToast('Link extended!');
+    document.getElementById('extend-modal').classList.remove('open');
+    loadPackages();
+  } else showToast('Extend failed', 'err');
+}
+
+function fmtDate(s) {
+  if (!s) return '—';
+  try { return new Date(s + (s.length === 10 ? 'T00:00:00Z' : '')).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}); }
+  catch { return s; }
+}
+
+async function loadPackages() {
+  const r = await fetch('/api/admin/packages');
+  const d = await r.json();
+  const pkgs = d.packages || [];
+  const area = document.getElementById('table-area');
+  if (!pkgs.length) {
+    area.innerHTML = '<div class="empty-state">No links yet — select photos in the studio and click <strong>Create Link</strong>.</div>';
+    return;
+  }
+  let rows = pkgs.map(p => {
+    const url = `https://photos.bigskyphotos.com/package/${p.token}`;
+    const badge = p.expired
+      ? '<span class="badge-exp">Expired</span>'
+      : '<span class="badge-live">Live</span>';
+    const emails = (p.emails||[]).join('<br>');
+    return `<tr>
+      <td><strong style="color:#e2e8f0">${p.title}</strong></td>
+      <td><div class="emails-list">${emails || '—'}</div></td>
+      <td>${p.count} photo${p.count!==1?'s':''}</td>
+      <td>${fmtDate(p.created)}</td>
+      <td>${fmtDate(p.expires)}</td>
+      <td>${badge}</td>
+      <td>
+        <div class="action-btns">
+          <button class="abtn copy" onclick="copyUrl('${url}')">Copy Link</button>
+          <button class="abtn resend" onclick="resendEmail('${p.token}')">Resend Email</button>
+          <button class="abtn" onclick="openExtend('${p.token}')">Extend</button>
+          <button class="abtn del" onclick="deletePackage('${p.token}',${JSON.stringify(p.title)})">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  area.innerHTML = `<div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Title</th><th>Sent To</th><th>Photos</th><th>Created</th><th>Expires</th><th>Status</th><th>Actions</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+// Show new-link banner if just created
+if (NEW_TOKEN && NEW_URL) {
+  const banner = document.getElementById('new-banner');
+  banner.style.display = 'block';
+  document.getElementById('new-url').textContent = NEW_URL;
+}
+
+loadPackages();
+</script>
+</body>
+</html>

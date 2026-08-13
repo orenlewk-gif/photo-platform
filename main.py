@@ -3806,3 +3806,420 @@ def admin_pricing_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/pricing")
     return HTMLResponse(open("templates/admin_pricing.html").read())
+
+
+# ─────────────────────────────────────────
+# DOWNLOAD PACKAGES (admin-created)
+# ─────────────────────────────────────────
+
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM    = os.getenv("RESEND_FROM", "Crystal Images <downloads@bigskyphotos.com>")
+
+def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str):
+    if not RESEND_API_KEY:
+        print("RESEND_API_KEY not set — skipping email")
+        return
+    subject = f"Your Photos Are Ready — {title}"
+    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#0d1f2d;font-family:'Segoe UI',Arial,sans-serif">
+<div style="max-width:580px;margin:0 auto;padding:2rem 1rem">
+  <div style="background:#F2C94C;padding:1.1rem 1.5rem;border-radius:10px 10px 0 0;text-align:center">
+    <span style="font-size:1.25rem;font-weight:800;color:#0d1f2d;letter-spacing:.5px">Crystal Images</span>
+  </div>
+  <div style="background:#163347;border:1px solid rgba(255,255,255,.12);border-top:none;border-radius:0 0 10px 10px;padding:2rem 1.5rem">
+    <h2 style="color:#F2C94C;margin:0 0 .5rem;font-size:1.15rem">{title}</h2>
+    <p style="color:rgba(255,255,255,.7);margin:0 0 1.75rem;font-size:.92rem;line-height:1.6">Your photos are ready to download. Click the button below to access your gallery and save your files.</p>
+    <div style="text-align:center;margin:0 0 1.75rem">
+      <a href="{download_url}" style="background:#F2C94C;color:#0d1f2d;padding:.75rem 2.25rem;border-radius:8px;font-weight:700;font-size:1rem;text-decoration:none;display:inline-block">
+        ⬇&nbsp; Download My Photos ({photo_count} file{'s' if photo_count != 1 else ''})
+      </a>
+    </div>
+    <p style="color:rgba(255,255,255,.35);font-size:.75rem;text-align:center;margin:0 0 1.5rem">Link expires {expire_str}</p>
+    <hr style="border:none;border-top:1px solid rgba(255,255,255,.08);margin:0 0 1.25rem">
+    <p style="color:rgba(255,255,255,.38);font-size:.72rem;line-height:1.6;margin:0">
+      Personal use: print, frame, and share freely. Commercial use: tag @crystalimagesbigsky on Instagram. No resale of original files.
+      Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
+    </p>
+  </div>
+</div></body></html>"""
+    for email in to_emails:
+        try:
+            r = http_requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html},
+                timeout=10,
+            )
+            if not r.ok:
+                print(f"Resend error ({email}): {r.text}")
+        except Exception as e:
+            print(f"Email send failed ({email}): {e}")
+
+
+def _store_pkg(token: str, payload: dict):
+    s3.put_object(Bucket=R2_BUCKET, Key=f"packages/{token}/meta.json",
+                  Body=json.dumps(payload).encode(), ContentType="application/json")
+
+def _load_pkg(token: str):
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=f"packages/{token}/meta.json")
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return None
+
+def _list_pkgs():
+    pkgs = []
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="packages/", Delimiter="/"):
+            for pfx in page.get("CommonPrefixes", []):
+                token = pfx["Prefix"].replace("packages/", "").rstrip("/")
+                pkg = _load_pkg(token)
+                if pkg:
+                    pkgs.append(pkg)
+    except Exception as e:
+        print(f"_list_pkgs: {e}")
+    return sorted(pkgs, key=lambda p: p.get("created", ""), reverse=True)
+
+def _delete_pkg_r2(token: str):
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=f"packages/{token}/"):
+            keys = [{"Key": o["Key"]} for o in page.get("Contents", [])]
+            if keys:
+                s3.delete_objects(Bucket=R2_BUCKET, Delete={"Objects": keys})
+    except Exception as e:
+        print(f"_delete_pkg_r2: {e}")
+
+
+@app.post("/api/admin/packages")
+async def api_create_package(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    title = body.get("title", "").strip()
+    emails = [e.strip() for e in body.get("emails", []) if e.strip()]
+    paths = body.get("paths", [])
+    expire_days = int(body.get("expire_days", 30))
+
+    if not title or not emails or not paths:
+        return JSONResponse(status_code=400, content={"error": "title, emails, and paths required"})
+
+    token = str(uuid.uuid4()).replace("-", "")
+    now = datetime.now(timezone.utc)
+    expires = (now + timedelta(days=expire_days)).isoformat()
+    expire_str = (now + timedelta(days=expire_days)).strftime("%B %d, %Y")
+
+    pkg = {
+        "token": token,
+        "title": title,
+        "emails": emails,
+        "paths": paths,
+        "created": now.isoformat(),
+        "expires": expires,
+        "expire_days": expire_days,
+    }
+    _store_pkg(token, pkg)
+
+    download_url = f"{SITE_URL}/package/{token}"
+    _send_package_email(emails, title, download_url, len(paths), expire_str)
+
+    return {"token": token, "url": download_url}
+
+
+@app.get("/api/admin/packages")
+def api_list_packages(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    pkgs = _list_pkgs()
+    now = datetime.now(timezone.utc)
+    result = []
+    for p in pkgs:
+        try:
+            exp = datetime.fromisoformat(p["expires"])
+            expired = now > exp
+        except Exception:
+            expired = False
+        result.append({
+            "token":   p["token"],
+            "title":   p["title"],
+            "emails":  p.get("emails", []),
+            "count":   len(p.get("paths", [])),
+            "created": p.get("created", "")[:10],
+            "expires": p.get("expires", "")[:10],
+            "expired": expired,
+        })
+    return {"packages": result}
+
+
+@app.delete("/api/admin/packages/{token}")
+def api_delete_package(token: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    _delete_pkg_r2(token)
+    return {"status": "ok"}
+
+
+@app.post("/api/admin/packages/{token}/extend")
+async def api_extend_package(token: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    days = int(body.get("days", 30))
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    pkg["expires"] = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+    pkg["expire_days"] = days
+    _store_pkg(token, pkg)
+    return {"expires": pkg["expires"]}
+
+
+@app.post("/api/admin/packages/{token}/resend-email")
+async def api_resend_pkg_email(token: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    download_url = f"{SITE_URL}/package/{token}"
+    try:
+        exp_str = datetime.fromisoformat(pkg["expires"]).strftime("%B %d, %Y")
+    except Exception:
+        exp_str = "soon"
+    _send_package_email(pkg.get("emails", []), pkg["title"], download_url, len(pkg.get("paths", [])), exp_str)
+    return {"status": "ok"}
+
+
+@app.get("/package/{token}")
+def package_page(token: str):
+    pkg = _load_pkg(token)
+    if not pkg:
+        return HTMLResponse(_pkg_error("Invalid or expired download link.", 404), status_code=404)
+    try:
+        expires_dt = datetime.fromisoformat(pkg["expires"])
+    except Exception:
+        return HTMLResponse(_pkg_error("Invalid link.", 404), status_code=404)
+    if datetime.now(timezone.utc) > expires_dt:
+        return HTMLResponse(_pkg_error(
+            "This download link has expired.",
+            410,
+            sub="Please contact us at <a href='mailto:info@bigskyphotos.com' style='color:#F2C94C'>info@bigskyphotos.com</a> to receive a new link."
+        ), status_code=410)
+
+    paths = pkg.get("paths", [])
+    expire_str = expires_dt.strftime("%B %d, %Y")
+    title_esc = pkg["title"].replace("<", "&lt;").replace(">", "&gt;")
+
+    photo_items = "\n".join(
+        f'<div class="pi"><img src="/package/{token}/thumb/{i}" loading="lazy" alt=""><a href="/package/{token}/file/{i}" download class="dib">⬇</a></div>'
+        for i, _ in enumerate(paths)
+    )
+
+    return HTMLResponse(f"""<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{title_esc} — Crystal Images</title>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}}
+header{{background:rgba(0,0,0,.3);border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 1.5rem;
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;position:sticky;top:0;z-index:10;backdrop-filter:blur(6px)}}
+header h1{{color:#F2C94C;font-size:1.05rem;font-weight:700}}
+header .meta{{font-size:.74rem;color:rgba(255,255,255,.38);margin-top:.18rem}}
+.dla{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:7px;padding:.52rem 1.15rem;
+  font-weight:700;font-size:.85rem;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}}
+.wrap{{max-width:1300px;margin:0 auto;padding:1.25rem 1rem}}
+.lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;
+  padding:.75rem 1rem;margin-bottom:1rem;font-size:.74rem;color:rgba(255,255,255,.45);line-height:1.7}}
+.lic strong{{color:rgba(255,255,255,.72)}}
+.grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:6px}}
+.pi{{position:relative;aspect-ratio:1;overflow:hidden;border-radius:5px;background:#111;cursor:pointer}}
+.pi img{{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s}}
+.pi:hover img{{opacity:.72}}
+.dib{{position:absolute;bottom:5px;right:5px;background:#F2C94C;color:#0d1f2d;border-radius:4px;
+  width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:.82rem;
+  text-decoration:none;opacity:0;transition:opacity .15s}}
+.pi:hover .dib{{opacity:1}}
+#lb{{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;display:none;align-items:center;justify-content:center;cursor:zoom-out}}
+#lb.open{{display:flex}}
+#lb img{{max-width:93vw;max-height:93vh;object-fit:contain;border-radius:4px;cursor:default}}
+#lb-close{{position:absolute;top:.9rem;right:1.1rem;background:rgba(0,0,0,.5);border:none;color:#fff;font-size:1.4rem;cursor:pointer;border-radius:5px;padding:1px 7px;opacity:.7}}
+#lb-close:hover{{opacity:1}}
+</style></head>
+<body>
+<header>
+  <div><h1>{title_esc}</h1><div class="meta">{len(paths)} photo{'s' if len(paths)!=1 else ''} &nbsp;·&nbsp; Link expires {expire_str}</div></div>
+  <a href="/package/{token}/all" download class="dla">⬇ Download All ({len(paths)} photos)</a>
+</header>
+<div class="wrap">
+  <div class="lic">
+    <strong>Personal use:</strong> print, frame, share freely. &nbsp;
+    <strong>Commercial use:</strong> tag @crystalimagesbigsky on Instagram. &nbsp;
+    <strong>No resale</strong> of original files.
+    &nbsp; Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
+  </div>
+  <div class="grid">{photo_items}</div>
+</div>
+<div id="lb"><button id="lb-close" onclick="closeLb()">✕</button><img id="lb-img" src="" alt=""></div>
+<script>
+document.querySelectorAll('.pi img').forEach((img,i)=>{{
+  img.parentElement.addEventListener('click',e=>{{
+    if(e.target.tagName==='A')return;
+    document.getElementById('lb-img').src=img.src.replace('/thumb/','/file/').replace('/file/{{}}'.replace('{{}}',i),'/file/'+i).replace(/\\/thumb\\/\\d+/,'/medium/'+i);
+    document.getElementById('lb-img').src='/package/{token}/medium/'+i;
+    document.getElementById('lb').classList.add('open');
+  }});
+}});
+function closeLb(){{document.getElementById('lb').classList.remove('open')}}
+document.getElementById('lb').addEventListener('click',e=>{{if(e.target===document.getElementById('lb'))closeLb()}});
+document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeLb()}});
+</script>
+</body></html>""")
+
+
+def _pkg_error(msg: str, status: int, sub: str = "") -> str:
+    return f"""<!DOCTYPE html><html><body style="margin:0;background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;
+display:flex;align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:2rem">
+<div><h2 style="color:#{'c0392b' if status>=400 else 'F2C94C'};margin-bottom:.75rem">{msg}</h2>
+{"<p style='color:rgba(255,255,255,.5);font-size:.9rem'>"+sub+"</p>" if sub else ""}
+</div></body></html>"""
+
+
+@app.get("/package/{token}/thumb/{idx}")
+def package_thumb(token: str, idx: int):
+    from fastapi.responses import StreamingResponse as SR
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Invalid"})
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
+            return JSONResponse(status_code=410, content={"error": "Expired"})
+    except Exception:
+        pass
+    paths = pkg.get("paths", [])
+    if idx < 0 or idx >= len(paths):
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    key = to_r2_key(paths[idx])
+    cache_key = ("admin_thumbs/" + key[len("images/"):]) if key.startswith("images/") else ("admin_thumbs/" + key)
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=cache_key)
+        buf = BytesIO(obj["Body"].read()); buf.seek(0)
+        return SR(buf, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+    except Exception:
+        pass
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+        img = Image.open(obj["Body"]).convert("RGB")
+        img = fix_orientation(img)
+        img.thumbnail((450, 450), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=72, optimize=True)
+        try:
+            buf.seek(0)
+            s3.put_object(Bucket=R2_BUCKET, Key=cache_key, Body=buf.read(),
+                          ContentType="image/jpeg", CacheControl="public, max-age=86400")
+        except Exception:
+            pass
+        buf.seek(0)
+        return SR(buf, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/package/{token}/medium/{idx}")
+def package_medium(token: str, idx: int):
+    from fastapi.responses import StreamingResponse as SR
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Invalid"})
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
+            return JSONResponse(status_code=410, content={"error": "Expired"})
+    except Exception:
+        pass
+    paths = pkg.get("paths", [])
+    if idx < 0 or idx >= len(paths):
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    key = to_r2_key(paths[idx])
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+        img = Image.open(obj["Body"]).convert("RGB")
+        img = fix_orientation(img)
+        img.thumbnail((1800, 1800), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=88, optimize=True)
+        buf.seek(0)
+        return SR(buf, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.get("/package/{token}/file/{idx}")
+def package_file(token: str, idx: int):
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Invalid"})
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
+            return JSONResponse(status_code=410, content={"error": "Expired"})
+    except Exception:
+        pass
+    paths = pkg.get("paths", [])
+    if idx < 0 or idx >= len(paths):
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    key = to_r2_key(paths[idx])
+    presigned = s3.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": R2_BUCKET, "Key": key,
+                "ResponseContentDisposition": f"attachment; filename={os.path.basename(key)}"},
+        ExpiresIn=3600,
+    )
+    return RedirectResponse(presigned)
+
+
+@app.get("/package/{token}/all")
+def package_all(token: str):
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Invalid"})
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
+            return JSONResponse(status_code=410, content={"error": "Expired"})
+    except Exception:
+        pass
+    paths = pkg.get("paths", [])
+    safe_title = re.sub(r'[^\w\-_. ]', '', pkg.get("title", "photos"))[:60].strip().replace(" ", "_")
+    filename = f"{safe_title}.zip"
+
+    def iter_zip():
+        buf = BytesIO(); last_pos = 0
+        zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
+        for path in paths:
+            key = to_r2_key(path)
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
+                zf.writestr(os.path.basename(path), obj["Body"].read())
+                cur_pos = buf.tell(); buf.seek(last_pos)
+                chunk = buf.read(cur_pos - last_pos); last_pos = cur_pos
+                if chunk: yield chunk
+            except Exception:
+                pass
+        zf.close(); buf.seek(last_pos)
+        rem = buf.read()
+        if rem: yield rem
+
+    from fastapi.responses import StreamingResponse
+    return StreamingResponse(iter_zip(), media_type="application/zip",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/admin/links", response_class=HTMLResponse)
+def admin_links_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/links")
+    new_token = request.query_params.get("new", "")
+    new_url   = f"{SITE_URL}/package/{new_token}" if new_token else ""
+    return HTMLResponse(
+        open("templates/admin_links.html").read()
+        .replace("__NEW_TOKEN__", new_token)
+        .replace("__NEW_URL__", new_url)
+    )

@@ -155,6 +155,9 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .sel-clear{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.45);
   border-radius:6px;padding:.28rem .62rem;font-size:.76rem;cursor:pointer}
 .sel-clear:hover{background:rgba(255,255,255,.1)}
+.sel-link-btn{background:rgba(245,197,24,.14);border:1px solid rgba(245,197,24,.4);color:#F5C518;
+  border-radius:6px;padding:.28rem .8rem;font-size:.76rem;cursor:pointer;font-weight:600;margin-left:.25rem}
+.sel-link-btn:hover{background:rgba(245,197,24,.25)}
 .col-slider-wrap{display:flex;align-items:center;gap:.45rem;margin-left:auto}
 .col-slider-wrap label{font-size:.73rem;color:rgba(255,255,255,.32)}
 #col-slider{width:85px;accent-color:#F5C518;cursor:pointer}
@@ -249,6 +252,7 @@ input[type=file]{display:none}
       <a href="/admin/pricing" class="nav-link">Pricing</a>
       <a href="/admin/photographers" class="nav-link">Photographers</a>
       <a href="/admin/orders" class="nav-link">Orders</a>
+      <a href="/admin/links" class="nav-link">Links</a>
     </div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
@@ -357,6 +361,7 @@ input[type=file]{display:none}
           <span id="selection-count"></span>
           <button class="sel-btn" onclick="trashSelected()">Delete to Trash</button>
           <button class="sel-clear" onclick="clearSelection()">Clear</button>
+          <button class="sel-link-btn" onclick="openCreateLinkModal()">Create Link</button>
         </div>
         <div class="col-slider-wrap">
           <label>Columns</label>
@@ -396,6 +401,44 @@ input[type=file]{display:none}
     <div class="modal-actions">
       <button class="modal-cancel" onclick="document.getElementById('move-modal-overlay').classList.remove('open')">Cancel</button>
       <button class="modal-ok" id="move-ok-btn" onclick="doMove()">Move Folder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Link modal -->
+<div class="modal-overlay" id="create-link-modal" onclick="closeCreateLinkModal(event)">
+  <div class="modal-box" onclick="event.stopPropagation()" style="width:400px">
+    <h3>Create Download Link</h3>
+    <div id="cl-form">
+      <div class="modal-field">
+        <label>Title</label>
+        <input type="text" id="cl-title" placeholder="e.g. Smith Family – Mountain Biking" autocomplete="off">
+      </div>
+      <div class="modal-field">
+        <label>Send To (one email per line)</label>
+        <textarea id="cl-emails" rows="3" placeholder="customer@email.com" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);border-radius:8px;padding:.58rem .82rem;color:#fff;font-size:.88rem;outline:none;resize:vertical;font-family:inherit"></textarea>
+      </div>
+      <div class="modal-field">
+        <label>Link expires after</label>
+        <select id="cl-days">
+          <option value="30">30 days</option>
+          <option value="60">60 days</option>
+          <option value="90">90 days</option>
+          <option value="180">6 months</option>
+          <option value="365">1 year</option>
+        </select>
+      </div>
+      <div id="cl-count" style="font-size:.78rem;color:rgba(255,255,255,.38);margin-bottom:.75rem"></div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="document.getElementById('create-link-modal').classList.remove('open')">Cancel</button>
+        <button class="modal-ok" id="cl-send-btn" onclick="submitCreateLink()">Send Link</button>
+      </div>
+    </div>
+    <div id="cl-sending" style="display:none;text-align:center;padding:1.5rem 0">
+      <div style="font-size:.9rem;color:rgba(255,255,255,.6);margin-bottom:1rem">Creating link and sending email…</div>
+      <div style="background:rgba(255,255,255,.08);border-radius:100px;height:5px;overflow:hidden">
+        <div id="cl-progress" style="height:100%;background:#F5C518;border-radius:100px;width:0;transition:width .4s"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -1138,6 +1181,61 @@ function showToast(msg,type) {
 // ── Helpers ──
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+// ── Create Link ──
+function openCreateLinkModal() {
+  const n = selectedPaths.size;
+  if (!n) return;
+  document.getElementById('cl-count').textContent = `${n} photo${n!==1?'s':''} selected`;
+  document.getElementById('cl-title').value = '';
+  document.getElementById('cl-emails').value = '';
+  document.getElementById('cl-days').value = '30';
+  document.getElementById('cl-form').style.display = '';
+  document.getElementById('cl-sending').style.display = 'none';
+  document.getElementById('create-link-modal').classList.add('open');
+  setTimeout(() => document.getElementById('cl-title').focus(), 80);
+}
+
+function closeCreateLinkModal(e) {
+  if (e.target === document.getElementById('create-link-modal'))
+    document.getElementById('create-link-modal').classList.remove('open');
+}
+
+async function submitCreateLink() {
+  const title = document.getElementById('cl-title').value.trim();
+  const emailsRaw = document.getElementById('cl-emails').value;
+  const emails = emailsRaw.split(/[\n,;]+/).map(e=>e.trim()).filter(Boolean);
+  const days = parseInt(document.getElementById('cl-days').value, 10);
+
+  if (!title) { showToast('Please enter a title', 'error'); return; }
+  if (!emails.length) { showToast('Please enter at least one email', 'error'); return; }
+
+  document.getElementById('cl-form').style.display = 'none';
+  document.getElementById('cl-sending').style.display = '';
+  // Animate progress bar
+  const bar = document.getElementById('cl-progress');
+  bar.style.width = '0';
+  requestAnimationFrame(() => { bar.style.width = '60%'; });
+
+  try {
+    const r = await fetch('/api/admin/packages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ title, emails, paths: [...selectedPaths], expire_days: days }),
+    });
+    bar.style.width = '100%';
+    await new Promise(res => setTimeout(res, 400));
+    if (!r.ok) throw new Error((await r.json()).error || 'Server error');
+    const d = await r.json();
+    document.getElementById('create-link-modal').classList.remove('open');
+    clearSelection();
+    window.location.href = `/admin/links?new=${d.token}`;
+  } catch(err) {
+    document.getElementById('cl-form').style.display = '';
+    document.getElementById('cl-sending').style.display = 'none';
+    showToast('Failed: ' + err.message, 'error');
+  }
+}
 </script>
 </body>
 </html>
