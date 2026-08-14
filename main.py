@@ -39,7 +39,7 @@ s3 = boto3.client(
     endpoint_url=os.getenv("R2_ENDPOINT_URL"),
     aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
-    config=BotocoreConfig(signature_version="s3v4"),
+    config=BotocoreConfig(signature_version="s3v4", max_pool_connections=50),
 )
 R2_BUCKET    = os.getenv("R2_BUCKET_NAME", "crystal-images")
 PRICING_KEY  = "meta/pricing.json"
@@ -3347,7 +3347,7 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
             return None
 
     results = []
-    with ThreadPoolExecutor(max_workers=20) as pool:
+    with ThreadPoolExecutor(max_workers=50) as pool:
         for r in as_completed([pool.submit(_copy_one, item) for item in to_trash]):
             v = r.result()
             if v:
