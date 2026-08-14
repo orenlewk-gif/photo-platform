@@ -3551,6 +3551,13 @@ async def admin_settings_page(request: Request):
     return HTMLResponse(open("templates/admin_settings.html").read())
 
 
+@app.get("/admin/activities", response_class=HTMLResponse)
+async def admin_activities_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/activities")
+    return HTMLResponse(open("templates/admin_activities.html").read())
+
+
 @app.get("/api/admin/debug-data")
 async def admin_debug_data(request: Request):
     """Temporary diagnostic: shows what's in memory vs R2."""

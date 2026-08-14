@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Activities — Crystal Images Admin</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0f1117;color:#e8eaf0;font-family:'Inter',system-ui,sans-serif;font-size:14px;min-height:100vh;display:flex;flex-direction:column}
+a{color:inherit;text-decoration:none}
+#topbar{height:52px;background:#0a1320;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 1.4rem;flex-shrink:0}
+#topbar .logo{font-size:13px;font-weight:700;letter-spacing:.5px;color:#a0aec0;margin-right:auto}
+#topbar a.signout{font-size:12px;color:rgba(255,255,255,.35);padding:.3rem .6rem;border-radius:5px}
+#topbar a.signout:hover{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}
+#layout{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}
+#sidebar{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow:hidden}
+#sidebar-nav{flex:1;overflow-y:auto;padding:.4rem 0}
+.nav-sec-label{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
+.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}
+.nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
+.nav-link.active-page{color:#F5C518;background:rgba(245,197,24,.08)}
+#main{flex:1;overflow-y:auto;padding:2rem 2.5rem}
+
+/* Page header */
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.75rem}
+.page-header h1{font-size:22px;font-weight:700}
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.4rem .85rem;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:#F5C518;color:#07151f;font-weight:700}
+.btn-ghost{background:rgba(255,255,255,.06);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.1)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.btn-back{background:none;border:none;color:rgba(255,255,255,.45);font-size:13px;cursor:pointer;padding:.3rem 0;display:inline-flex;align-items:center;gap:.4rem;margin-bottom:1.25rem}
+.btn-back:hover{color:#fff}
+
+/* Activity list */
+.act-table{width:100%;max-width:820px}
+.act-header-row{display:grid;grid-template-columns:1fr 130px 110px 110px;gap:.5rem;padding:.35rem 1rem;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.28);border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:.3rem}
+.act-row{display:grid;grid-template-columns:1fr 130px 110px 110px;gap:.5rem;align-items:center;padding:.7rem 1rem;border-radius:8px;background:#1a1d27;border:1px solid rgba(255,255,255,.06);margin-bottom:.45rem;cursor:pointer;transition:border-color .15s}
+.act-row:hover{border-color:rgba(255,255,255,.14)}
+.act-name{font-weight:600;font-size:13px;color:#e8eaf0}
+.act-badge{font-size:10px;font-weight:700;letter-spacing:.5px;padding:.22rem .6rem;border-radius:5px;text-transform:uppercase;width:fit-content}
+.badge-custom{background:rgba(52,211,153,.12);color:#34d399}
+.badge-default{background:rgba(99,179,237,.12);color:#63b3ed}
+.badge-zip{background:rgba(245,197,24,.12);color:#F5C518}
+.badge-none{background:rgba(255,255,255,.06);color:rgba(255,255,255,.35)}
+.act-stat{font-size:13px;color:rgba(255,255,255,.5)}
+.empty-state{color:rgba(255,255,255,.3);font-size:13px;padding:2rem 0;text-align:center}
+
+/* Create form */
+#create-view{display:none;max-width:520px}
+.card{background:#1a1d27;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1.4rem 1.6rem}
+.card h3{font-size:14px;font-weight:600;margin-bottom:1.25rem;color:#e8eaf0}
+.field-group{margin-bottom:1.1rem}
+.field-label{font-size:12px;color:rgba(255,255,255,.45);margin-bottom:.45rem;display:block}
+input[type="text"]{width:100%;background:#252836;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#e8eaf0;padding:.5rem .75rem;font-size:14px;outline:none;transition:border-color .15s}
+input[type="text"]:focus{border-color:#F5C518}
+.pricing-options{display:flex;flex-direction:column;gap:.6rem;margin-top:.25rem}
+.pricing-opt{display:flex;align-items:center;gap:.75rem;padding:.7rem .9rem;border-radius:7px;border:1px solid rgba(255,255,255,.1);cursor:pointer;transition:border-color .15s,background .15s}
+.pricing-opt:hover{background:rgba(255,255,255,.04)}
+.pricing-opt.selected{border-color:#F5C518;background:rgba(245,197,24,.06)}
+.opt-dot{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.25);flex-shrink:0;transition:border-color .15s,background .15s}
+.pricing-opt.selected .opt-dot{border-color:#F5C518;background:#F5C518}
+.opt-text{font-size:13px;color:rgba(255,255,255,.75)}
+.pricing-opt.selected .opt-text{color:#e8eaf0}
+.btn-row{display:flex;gap:.6rem;margin-top:1.1rem}
+
+/* Toast */
+#toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}
+#toast.show{opacity:1;background:#16a34a;color:#fff}
+#toast.err{opacity:1;background:#dc2626;color:#fff}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="logo">Crystal Images — Admin</span>
+  <a href="/admin/logout" class="signout">Sign out</a>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <div id="sidebar-nav">
+      <div class="nav-sec-label">Admin</div>
+      <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+      <a href="/admin/pricing" class="nav-link">Pricing</a>
+      <a href="/admin/photographers" class="nav-link">Photographers</a>
+      <a href="/admin/orders" class="nav-link">Orders</a>
+      <a href="/admin/links" class="nav-link">Links</a>
+      <a href="/admin/settings" class="nav-link">Settings</a>
+      <a href="/admin/activities" class="nav-link active-page">Activities</a>
+      <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem .45rem"></div>
+      <a href="/admin/trash" class="nav-link">Trash</a>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <!-- List view -->
+    <div id="list-view">
+      <div class="page-header">
+        <h1>Activities</h1>
+        <button class="btn btn-primary" onclick="showCreate()">+ New Activity</button>
+      </div>
+
+      <div class="act-table">
+        <div class="act-header-row">
+          <span>Activity</span>
+          <span>Price List</span>
+          <span>Galleries</span>
+          <span>Photos</span>
+        </div>
+        <div id="act-list-body">
+          <div class="empty-state">Loading…</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create view -->
+    <div id="create-view">
+      <button class="btn-back" onclick="showList()">← Back to Activities</button>
+      <div class="card">
+        <h3>New Activity</h3>
+        <div class="field-group">
+          <label class="field-label">Activity Name</label>
+          <input type="text" id="new-act-name" placeholder="e.g. Ski Photos" onkeydown="if(event.key==='Enter')createActivity()">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Pricing Type</label>
+          <div class="pricing-options">
+            <div class="pricing-opt selected" id="opt-standard" onclick="selectType('standard')">
+              <div class="opt-dot"></div>
+              <span class="opt-text">Standard Digital — per-photo tiers (1 photo, 3 photos, etc.)</span>
+            </div>
+            <div class="pricing-opt" id="opt-zip" onclick="selectType('zip')">
+              <div class="opt-dot"></div>
+              <span class="opt-text">Zip / Group Size — priced by group, not photo count</span>
+            </div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="createActivity()">Create Activity</button>
+          <button class="btn btn-ghost" onclick="showList()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let pricingData = null;
+let _actType = 'standard';
+
+async function loadData() {
+  try {
+    const [pr, fr] = await Promise.all([
+      fetch('/api/admin/pricing').then(r => r.json()),
+      fetch('/api/admin/folders').then(r => r.json()),
+    ]);
+    pricingData = pr;
+    renderList(fr.folders || []);
+  } catch(e) {
+    document.getElementById('act-list-body').innerHTML = '<div class="empty-state">Failed to load — try refreshing</div>';
+  }
+}
+
+function renderList(folders) {
+  const acts = pricingData.activities || {};
+
+  // Build stats per location (case-insensitive key)
+  const statsMap = {};
+  for (const f of folders) {
+    const key = f.location.toLowerCase();
+    if (!statsMap[key]) statsMap[key] = {name: f.location, galleries: 0, photos: 0};
+    statsMap[key].galleries++;
+    statsMap[key].photos += f.photo_count || 0;
+  }
+
+  // Merge: activities from pricing + locations from folders
+  const seen = new Set();
+  const items = [];
+  for (const [actName, cfg] of Object.entries(acts)) {
+    const key = actName.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const stats = statsMap[key] || {galleries: 0, photos: 0};
+    items.push({name: actName, cfg, galleries: stats.galleries, photos: stats.photos});
+  }
+  for (const [key, stats] of Object.entries(statsMap)) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push({name: stats.name, cfg: null, galleries: stats.galleries, photos: stats.photos});
+  }
+  items.sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!items.length) {
+    document.getElementById('act-list-body').innerHTML = '<div class="empty-state">No activities found. Create one to get started.</div>';
+    return;
+  }
+
+  document.getElementById('act-list-body').innerHTML = items.map(item => {
+    const {name, cfg, galleries, photos} = item;
+    const isZip = name.toLowerCase().includes('zip');
+    let badge, badgeClass;
+    if (isZip) { badge = 'Zip'; badgeClass = 'badge-zip'; }
+    else if (!cfg) { badge = 'No Pricing'; badgeClass = 'badge-none'; }
+    else if (cfg.use_default !== false && (!cfg.tiers || !cfg.tiers.length)) { badge = 'Default'; badgeClass = 'badge-default'; }
+    else { badge = 'Custom'; badgeClass = 'badge-custom'; }
+    return `<div class="act-row" onclick="goToPricing('${esc(name)}')">
+      <span class="act-name">${esc(name)}</span>
+      <span><span class="act-badge ${badgeClass}">${badge}</span></span>
+      <span class="act-stat">${galleries}</span>
+      <span class="act-stat">${photos.toLocaleString()}</span>
+    </div>`;
+  }).join('');
+}
+
+function goToPricing(name) {
+  window.location.href = '/admin/pricing#digital';
+}
+
+function showCreate() {
+  document.getElementById('list-view').style.display = 'none';
+  document.getElementById('create-view').style.display = 'block';
+  document.getElementById('new-act-name').focus();
+}
+
+function showList() {
+  document.getElementById('create-view').style.display = 'none';
+  document.getElementById('list-view').style.display = 'block';
+}
+
+function selectType(type) {
+  _actType = type;
+  document.getElementById('opt-standard').classList.toggle('selected', type === 'standard');
+  document.getElementById('opt-zip').classList.toggle('selected', type === 'zip');
+}
+
+async function createActivity() {
+  const name = document.getElementById('new-act-name').value.trim();
+  if (!name) { showToast('Enter an activity name', 'err'); return; }
+  if (!pricingData) { showToast('Pricing data not loaded', 'err'); return; }
+  if (!pricingData.activities) pricingData.activities = {};
+  if (pricingData.activities[name]) { showToast(`"${name}" already exists`, 'err'); return; }
+
+  pricingData.activities[name] = {use_default: false, tiers: []};
+  try {
+    const r = await fetch('/api/admin/pricing', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pricingData),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    showToast(`"${name}" created`);
+    document.getElementById('new-act-name').value = '';
+    selectType('standard');
+    showList();
+    loadData();
+  } catch(e) {
+    showToast('Save failed: ' + e, 'err');
+  }
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+let _tt;
+function showToast(msg, type='show') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type;
+  clearTimeout(_tt); _tt = setTimeout(() => t.className = '', 2800);
+}
+
+loadData();
+</script>
+</body>
+</html>
