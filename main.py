@@ -3339,15 +3339,17 @@ async def admin_discard_draft(request: Request):
 
 
 def _bulk_trash(to_trash: list) -> tuple[list, int]:
-    """Copy items to trash in parallel, then batch-delete originals. Returns (meta_entries, count)."""
+    """Copy items to trash sequentially, then batch-delete originals in one call."""
     if not to_trash:
         return [], 0
 
-    now        = datetime.now(timezone.utc)
-    now_iso    = now.isoformat()
-    purge_iso  = (now + timedelta(days=7)).isoformat()
+    now       = datetime.now(timezone.utc)
+    now_iso   = now.isoformat()
+    purge_iso = (now + timedelta(days=7)).isoformat()
+    new_meta  = []
+    orig_keys = []
 
-    def _copy_one(item):
+    for item in to_trash:
         key       = to_r2_key(item["path"])
         uid       = str(uuid.uuid4())[:8]
         trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
@@ -3355,43 +3357,36 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
             s3.copy_object(Bucket=R2_BUCKET,
                            CopySource={"Bucket": R2_BUCKET, "Key": key},
                            Key=trash_key)
-            return key, trash_key, {
-                "key":          trash_key,
-                "original_key": key,
-                "filename":     os.path.basename(item["path"]),
-                "date":         item["date"],
-                "location":     item["location"],
-                "folder":       (item.get("last_name") or item.get("group") or "").strip(),
-                "trashed_at":   now_iso,
-                "purge_at":     purge_iso,
-                "type":         "studio",
-                "image_entry":  item,
-            }
         except Exception as e:
-            print(f"[trash] copy failed src={key!r} → {trash_key!r}: {e}")
-            return None
+            print(f"[trash] copy failed {key}: {e}")
+            continue
+        orig_keys.append(key)
+        new_meta.append({
+            "key":          trash_key,
+            "original_key": key,
+            "filename":     os.path.basename(item["path"]),
+            "date":         item["date"],
+            "location":     item["location"],
+            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
+            "trashed_at":   now_iso,
+            "purge_at":     purge_iso,
+            "type":         "studio",
+            "image_entry":  item,
+        })
 
-    results = []
-    with ThreadPoolExecutor(max_workers=50) as pool:
-        for r in as_completed([pool.submit(_copy_one, item) for item in to_trash]):
-            v = r.result()
-            if v:
-                results.append(v)
-
-    if not results:
+    if not orig_keys:
         return [], 0
 
-    # Batch-delete all originals (up to 1000 per call)
-    orig_keys = [r[0] for r in results]
+    # Batch-delete originals (up to 1000 per call instead of one-by-one)
     for i in range(0, len(orig_keys), 1000):
         chunk = orig_keys[i:i+1000]
         try:
             s3.delete_objects(Bucket=R2_BUCKET,
                               Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True})
         except Exception as e:
-            print(f"Batch delete failed: {e}")
+            print(f"[trash] batch delete failed: {e}")
 
-    return [r[2] for r in results], len(results)
+    return new_meta, len(new_meta)
 
 
 @app.post("/api/admin/delete-folder")
