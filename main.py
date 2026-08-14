@@ -3617,25 +3617,42 @@ async def normalize_locations(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
-    # Normalize every location field to its clean display form
+    # Step 1: normalize all location fields to their clean display form
     for item in data:
         raw = item.get("location", "")
         if raw:
             item["location"] = clean_location(raw)
 
-    # Deduplicate by path — keeps first occurrence of each unique R2 path
+    # Step 2: dedup by exact R2 path (same file indexed twice)
     seen_paths: set = set()
-    deduped = []
-    removed = 0
+    after_path: list = []
     for item in data:
         path = item.get("path", "")
         if path and path in seen_paths:
-            removed += 1
             continue
         if path:
             seen_paths.add(path)
+        after_path.append(item)
+
+    # Step 3: dedup by (date, location, family/group, filename)
+    # Catches the same photo stored under two different directory names in R2
+    seen_keys: set = set()
+    deduped: list = []
+    for item in after_path:
+        filename = os.path.basename(item.get("path", ""))
+        key = (
+            item.get("date", ""),
+            item.get("location", ""),
+            item.get("last_name", "") or item.get("group", ""),
+            filename,
+        )
+        if filename and key in seen_keys:
+            continue
+        if filename:
+            seen_keys.add(key)
         deduped.append(item)
 
+    removed = len(data) - len(deduped)
     data = deduped
     s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                   Body=json.dumps(data).encode(),
