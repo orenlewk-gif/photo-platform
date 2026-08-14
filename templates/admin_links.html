@@ -250,7 +250,7 @@ async function loadPackages() {
           <button class="abtn copy" onclick="copyUrl('${url}')">Copy Link</button>
           <button class="abtn resend" onclick="resendEmail('${p.token}')">Resend Email</button>
           <button class="abtn" onclick="openExtend('${p.token}')">Extend</button>
-          <button class="abtn del" onclick="deletePackage('${p.token}',${JSON.stringify(p.title)})">Delete</button>
+          <button class="abtn del" data-token="${p.token}" data-title="${(p.title||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}" onclick="deletePackage(this.dataset.token,this.dataset.title)">Delete</button>
         </div>
       </td>
     </tr>`;
