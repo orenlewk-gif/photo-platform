@@ -130,8 +130,12 @@ input[type="text"]:focus{border-color:#F5C518}
     <div id="list-view">
       <div class="page-header">
         <h1>Activities</h1>
-        <button class="btn btn-primary" onclick="showCreate()">+ New Activity</button>
+        <div style="display:flex;gap:.6rem;align-items:center">
+          <button class="btn btn-ghost" id="fix-btn" onclick="fixDuplicates()" title="Normalizes all location names and removes duplicate photo entries">Fix Duplicates</button>
+          <button class="btn btn-primary" onclick="showCreate()">+ New Activity</button>
+        </div>
       </div>
+      <div id="fix-notice" style="display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;font-size:13px;color:#f87171"></div>
 
       <div class="act-table">
         <div class="act-header-row">
@@ -332,6 +336,24 @@ async function doRename(oldName) {
   } catch(e) {
     showToast('Rename failed: ' + e, 'err');
     if (input) input.disabled = false;
+  }
+}
+
+async function fixDuplicates() {
+  const btn = document.getElementById('fix-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fixing…';
+  try {
+    const r = await fetch('/api/admin/normalize-locations', {method: 'POST'});
+    if (!r.ok) throw new Error(await r.text());
+    const d = await r.json();
+    showToast(`Done — ${d.duplicates_removed} duplicates removed, ${d.total} photos remaining`);
+    await loadData();
+  } catch(e) {
+    showToast('Fix failed: ' + e, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Fix Duplicates';
   }
 }
 

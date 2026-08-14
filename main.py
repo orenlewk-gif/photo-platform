@@ -3578,10 +3578,25 @@ async def rename_activity(request: Request):
             item["location"] = new_name
             updated += 1
 
-    if updated:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(),
-                      ContentType="application/json")
+    # Normalize all locations and deduplicate by path to prevent merge duplicates
+    for item in data:
+        raw = item.get("location", "")
+        if raw:
+            item["location"] = clean_location(raw)
+    seen_paths: set = set()
+    deduped = []
+    for item in data:
+        path = item.get("path", "")
+        if path and path in seen_paths:
+            continue
+        if path:
+            seen_paths.add(path)
+        deduped.append(item)
+    data = deduped
+
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(),
+                  ContentType="application/json")
 
     # Rename / merge the pricing config key
     pricing = _load_pricing()
@@ -3594,6 +3609,39 @@ async def rename_activity(request: Request):
     _save_pricing(pricing)
 
     return {"renamed": True, "photos_updated": updated}
+
+
+@app.post("/api/admin/normalize-locations")
+async def normalize_locations(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    # Normalize every location field to its clean display form
+    for item in data:
+        raw = item.get("location", "")
+        if raw:
+            item["location"] = clean_location(raw)
+
+    # Deduplicate by path — keeps first occurrence of each unique R2 path
+    seen_paths: set = set()
+    deduped = []
+    removed = 0
+    for item in data:
+        path = item.get("path", "")
+        if path and path in seen_paths:
+            removed += 1
+            continue
+        if path:
+            seen_paths.add(path)
+        deduped.append(item)
+
+    data = deduped
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(),
+                  ContentType="application/json")
+
+    return {"normalized": True, "total": len(data), "duplicates_removed": removed}
 
 
 @app.get("/api/admin/debug-data")
