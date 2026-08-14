@@ -1,5 +1,6 @@
 import threading
 import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -3312,6 +3313,62 @@ async def admin_discard_draft(request: Request):
     return {"removed": removed}
 
 
+def _bulk_trash(to_trash: list) -> tuple[list, int]:
+    """Copy items to trash in parallel, then batch-delete originals. Returns (meta_entries, count)."""
+    if not to_trash:
+        return [], 0
+
+    now        = datetime.now(timezone.utc)
+    now_iso    = now.isoformat()
+    purge_iso  = (now + timedelta(days=7)).isoformat()
+
+    def _copy_one(item):
+        key       = to_r2_key(item["path"])
+        uid       = str(uuid.uuid4())[:8]
+        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": key},
+                           Key=trash_key)
+            return key, trash_key, {
+                "key":          trash_key,
+                "original_key": key,
+                "filename":     os.path.basename(item["path"]),
+                "date":         item["date"],
+                "location":     item["location"],
+                "folder":       (item.get("last_name") or item.get("group") or "").strip(),
+                "trashed_at":   now_iso,
+                "purge_at":     purge_iso,
+                "type":         "studio",
+                "image_entry":  item,
+            }
+        except Exception as e:
+            print(f"Trash copy failed {key}: {e}")
+            return None
+
+    results = []
+    with ThreadPoolExecutor(max_workers=20) as pool:
+        for r in as_completed([pool.submit(_copy_one, item) for item in to_trash]):
+            v = r.result()
+            if v:
+                results.append(v)
+
+    if not results:
+        return [], 0
+
+    # Batch-delete all originals (up to 1000 per call)
+    orig_keys = [r[0] for r in results]
+    for i in range(0, len(orig_keys), 1000):
+        chunk = orig_keys[i:i+1000]
+        try:
+            s3.delete_objects(Bucket=R2_BUCKET,
+                              Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True})
+        except Exception as e:
+            print(f"Batch delete failed: {e}")
+
+    return [r[2] for r in results], len(results)
+
+
 @app.post("/api/admin/delete-folder")
 async def admin_delete_folder(request: Request):
     """Move all photos in a folder to trash (7-day recovery window)."""
@@ -3330,45 +3387,17 @@ async def admin_delete_folder(request: Request):
             and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()
         )
 
-    to_trash  = [item for item in data if _matches(item)]
-    now       = datetime.now(timezone.utc)
-    purge_at  = (now + timedelta(days=7)).isoformat()
-    trash_meta = _load_trash_meta()
-    trashed   = 0
+    to_trash = [item for item in data if _matches(item)]
+    new_meta, trashed = _bulk_trash(to_trash)
 
-    for item in to_trash:
-        key       = to_r2_key(item["path"])
-        uid       = str(uuid.uuid4())[:8]
-        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": key},
-                           Key=trash_key)
-            s3.delete_object(Bucket=R2_BUCKET, Key=key)
-        except Exception as e:
-            print(f"Folder trash failed {key}: {e}")
-            continue
-        trash_meta.append({
-            "key":          trash_key,
-            "original_key": key,
-            "filename":     os.path.basename(item["path"]),
-            "date":         item["date"],
-            "location":     item["location"],
-            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
-            "trashed_at":   now.isoformat(),
-            "purge_at":     purge_at,
-            "type":         "studio",
-            "image_entry":  item,
-        })
-        trashed += 1
-
-    data = [item for item in data if not _matches(item)]
     if trashed:
+        trash_meta = _load_trash_meta()
+        trash_meta.extend(new_meta)
+        _save_trash_meta(trash_meta)
+        data = [item for item in data if not _matches(item)]
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
-    _save_trash_meta(trash_meta)
 
-    # Clean up folder_meta
     try:
         fm = _load_folder_meta()
         fk = _folder_key(date, location, folder)
@@ -3397,45 +3426,17 @@ async def admin_delete_location(request: Request):
             and item["location"].strip().lower() == location.lower()
         )
 
-    to_trash   = [item for item in data if _matches(item)]
-    now        = datetime.now(timezone.utc)
-    purge_at   = (now + timedelta(days=7)).isoformat()
-    trash_meta = _load_trash_meta()
-    trashed    = 0
+    to_trash = [item for item in data if _matches(item)]
+    new_meta, trashed = _bulk_trash(to_trash)
 
-    for item in to_trash:
-        key       = to_r2_key(item["path"])
-        uid       = str(uuid.uuid4())[:8]
-        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": key},
-                           Key=trash_key)
-            s3.delete_object(Bucket=R2_BUCKET, Key=key)
-        except Exception as e:
-            print(f"Location trash failed {key}: {e}")
-            continue
-        trash_meta.append({
-            "key":          trash_key,
-            "original_key": key,
-            "filename":     os.path.basename(item["path"]),
-            "date":         item["date"],
-            "location":     item["location"],
-            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
-            "trashed_at":   now.isoformat(),
-            "purge_at":     purge_at,
-            "type":         "studio",
-            "image_entry":  item,
-        })
-        trashed += 1
-
-    data = [item for item in data if not _matches(item)]
     if trashed:
+        trash_meta = _load_trash_meta()
+        trash_meta.extend(new_meta)
+        _save_trash_meta(trash_meta)
+        data = [item for item in data if not _matches(item)]
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
-    _save_trash_meta(trash_meta)
 
-    # Clean up folder_meta entries for this location
     try:
         fm = _load_folder_meta()
         keys_to_del = [k for k in fm if k.startswith(f"{date}|{location}|") or k == f"{date}|{location}|"]
@@ -3458,45 +3459,17 @@ async def admin_delete_date(request: Request):
     body = await request.json()
     date = body.get("date", "")
 
-    to_trash   = [item for item in data if item["date"] == date]
-    now        = datetime.now(timezone.utc)
-    purge_at   = (now + timedelta(days=7)).isoformat()
-    trash_meta = _load_trash_meta()
-    trashed    = 0
+    to_trash = [item for item in data if item["date"] == date]
+    new_meta, trashed = _bulk_trash(to_trash)
 
-    for item in to_trash:
-        key       = to_r2_key(item["path"])
-        uid       = str(uuid.uuid4())[:8]
-        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": key},
-                           Key=trash_key)
-            s3.delete_object(Bucket=R2_BUCKET, Key=key)
-        except Exception as e:
-            print(f"Date trash failed {key}: {e}")
-            continue
-        trash_meta.append({
-            "key":          trash_key,
-            "original_key": key,
-            "filename":     os.path.basename(item["path"]),
-            "date":         item["date"],
-            "location":     item["location"],
-            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
-            "trashed_at":   now.isoformat(),
-            "purge_at":     purge_at,
-            "type":         "studio",
-            "image_entry":  item,
-        })
-        trashed += 1
-
-    data = [item for item in data if item["date"] != date]
     if trashed:
+        trash_meta = _load_trash_meta()
+        trash_meta.extend(new_meta)
+        _save_trash_meta(trash_meta)
+        data = [item for item in data if item["date"] != date]
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
-    _save_trash_meta(trash_meta)
 
-    # Clean up all folder_meta entries for this date
     try:
         fm = _load_folder_meta()
         keys_to_del = [k for k in fm if k.startswith(f"{date}|")]
