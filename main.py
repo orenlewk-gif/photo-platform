@@ -3544,6 +3544,29 @@ async def admin_settings_page(request: Request):
     return HTMLResponse(open("templates/admin_settings.html").read())
 
 
+@app.get("/api/admin/debug-data")
+async def admin_debug_data(request: Request):
+    """Temporary diagnostic: shows what's in memory vs R2."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    dates_in_memory = sorted({item.get("date", "NO_DATE") for item in data}, reverse=True)
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
+        r2_data = json.loads(obj["Body"].read())
+        dates_in_r2 = sorted({item.get("date", "NO_DATE") for item in r2_data}, reverse=True)
+        r2_count = len(r2_data)
+    except Exception as e:
+        dates_in_r2 = [f"error: {e}"]
+        r2_count = -1
+    return {
+        "memory_count": len(data),
+        "memory_dates": dates_in_memory,
+        "r2_count": r2_count,
+        "r2_dates": dates_in_r2,
+        "sample_paths": [item.get("path", "") for item in data[:5]],
+    }
+
+
 # ── Admin Folders (phase 2) ──────────────────────────────────────────────────
 
 _KNOWN_LOCATIONS = [
