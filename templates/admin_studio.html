@@ -55,7 +55,12 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .tree-sub.active{background:rgba(245,197,24,.12);color:#F5C518}
 .tree-sub .sub-count{font-size:.68rem;color:rgba(255,255,255,.28)}
 .tree-sub.active .sub-count{color:rgba(245,197,24,.45)}
-.tree-draft-dot{width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0;margin-left:auto}
+.tree-draft-dot{width:5px;height:5px;border-radius:50%;background:#f59e0b;flex-shrink:0}
+.tree-right{margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0}
+.tree-del-btn{display:none;color:rgba(239,68,68,.38);font-size:.63rem;padding:1px 4px;
+  border-radius:3px;flex-shrink:0;cursor:pointer;line-height:1.6;user-select:none}
+.tree-date:hover .tree-del-btn,.tree-loc:hover .tree-del-btn,.tree-sub:hover .tree-del-btn{display:inline-block}
+.tree-del-btn:hover{background:rgba(239,68,68,.18);color:#ef4444}
 
 /* ── Main area ── */
 #main{flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column}
@@ -259,6 +264,7 @@ input[type=file]{display:none}
       <a href="/admin/photographers" class="nav-link">Photographers</a>
       <a href="/admin/orders" class="nav-link">Orders</a>
       <a href="/admin/links" class="nav-link">Links</a>
+      <a href="/admin/settings" class="nav-link">Settings</a>
     </div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
@@ -535,8 +541,12 @@ function renderTree() {
     const isOpen = treeExpanded[dk];
     const locs = tree[date];
     const anyDraft = Object.values(locs).flat().some(f => f.draft_count > 0);
-    html += `<div class="tree-date ${isOpen?'open':''}" onclick="toggleDate('${date}')">
-      <span class="arrow">▶</span>${date}${anyDraft ? '<span class="tree-draft-dot"></span>' : ''}
+    html += `<div class="tree-date ${isOpen?'open':''}" onclick="toggleDate('${escAttr(date)}')">
+      <span class="arrow">▶</span>${date}
+      <span class="tree-right">
+        ${anyDraft ? '<span class="tree-draft-dot"></span>' : ''}
+        <span class="tree-del-btn" onclick="event.stopPropagation();confirmDeleteDate('${escAttr(date)}')">✕</span>
+      </span>
     </div>
     <div class="tree-loc-group">`;
     for (const [loc, subs] of Object.entries(locs)) {
@@ -548,13 +558,18 @@ function renderTree() {
         html += `<div class="tree-loc ${isLocOpen?'open':''} ${isLocActive?'loc-active':''}"
           onclick="openLocationClick('${escAttr(date)}','${escAttr(loc)}')">
           <span class="arrow">▶</span>${esc(loc)}
+          <span class="tree-right"><span class="tree-del-btn" onclick="event.stopPropagation();confirmDeleteLocation('${escAttr(date)}','${escAttr(loc)}')">✕</span></span>
         </div>
         <div class="tree-sub-group">`;
         for (const f of subs) {
           if (!f.name) continue;
           const isActive = currentFolder && currentFolder.date===f.date && currentFolder.location===f.location && currentFolder.folder===f.name;
           html += `<div class="tree-sub ${isActive?'active':''}" onclick="openFolderByKey('${escAttr(f.folder_key)}')">
-            <span>${esc(f.name)}</span><span class="sub-count">${f.photo_count}</span>
+            <span>${esc(f.name)}</span>
+            <span style="display:flex;align-items:center;gap:4px">
+              <span class="sub-count">${f.photo_count}</span>
+              <span class="tree-del-btn" onclick="event.stopPropagation();confirmDeleteFolder('${escAttr(f.folder_key)}')">✕</span>
+            </span>
           </div>`;
         }
         html += `</div>`;
@@ -563,7 +578,11 @@ function renderTree() {
         const isActive = currentFolder && currentFolder.date===f.date && currentFolder.location===loc && !currentFolder.folder;
         html += `<div class="tree-sub ${isActive?'active':''}" style="padding-left:1.5rem"
           onclick="openFolderByKey('${escAttr(f.folder_key||'')}')">
-          <span>${esc(loc)}</span><span class="sub-count">${subs.reduce((a,x)=>a+x.photo_count,0)}</span>
+          <span>${esc(loc)}</span>
+          <span style="display:flex;align-items:center;gap:4px">
+            <span class="sub-count">${subs.reduce((a,x)=>a+x.photo_count,0)}</span>
+            <span class="tree-del-btn" onclick="event.stopPropagation();confirmDeleteLocation('${escAttr(date)}','${escAttr(loc)}')">✕</span>
+          </span>
         </div>`;
       }
     }
@@ -834,6 +853,46 @@ async function trashPaths(paths) {
 }
 
 // ── Push / Pull Live ──
+// ── Sidebar tree delete ──
+async function confirmDeleteDate(date) {
+  const count = allFolders.filter(f=>f.date===date).reduce((a,f)=>a+f.photo_count,0);
+  if (!confirm(`Move all ${count} photos from ${date} to trash?\nRecoverable for 7 days.`)) return;
+  const res = await fetch('/api/admin/delete-date', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date})});
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.deleted} photos moved to trash`);
+    if (currentFolder?.date===date || currentLocation?.date===date) { currentFolder=null; currentLocation=null; showUploadView(); }
+    await loadSidebar();
+  } else showToast('Delete failed','error');
+}
+
+async function confirmDeleteLocation(date, loc) {
+  const count = allFolders.filter(f=>f.date===date&&f.location===loc).reduce((a,f)=>a+f.photo_count,0);
+  if (!confirm(`Move all ${count} photos from ${loc} on ${date} to trash?\nRecoverable for 7 days.`)) return;
+  const res = await fetch('/api/admin/delete-location', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date,location:loc})});
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.deleted} photos moved to trash`);
+    if (currentFolder?.date===date&&currentFolder?.location===loc) { currentFolder=null; currentLocation=null; showUploadView(); }
+    if (currentLocation?.date===date&&currentLocation?.location===loc) { currentLocation=null; showUploadView(); }
+    await loadSidebar();
+  } else showToast('Delete failed','error');
+}
+
+async function confirmDeleteFolder(folderKey) {
+  const f = allFolders.find(x=>x.folder_key===folderKey);
+  if (!f) return;
+  const name = f.name || f.location;
+  if (!confirm(`Move all ${f.photo_count} photos from "${name}" to trash?\nRecoverable for 7 days.`)) return;
+  const res = await fetch('/api/admin/delete-folder', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:f.date,location:f.location,folder:f.name||''})});
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.deleted} photos moved to trash`);
+    if (currentFolder?.date===f.date&&currentFolder?.location===f.location&&currentFolder?.folder===f.name) { currentFolder=null; showUploadView(); }
+    await loadSidebar();
+  } else showToast('Delete failed','error');
+}
+
 async function pushLive() {
   if (!currentFolder) return;
   const {date, location, folder} = currentFolder;

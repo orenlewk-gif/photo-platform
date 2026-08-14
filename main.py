@@ -3381,6 +3381,170 @@ async def admin_delete_folder(request: Request):
     return {"deleted": trashed, "removed_index": len(to_trash)}
 
 
+@app.post("/api/admin/delete-location")
+async def admin_delete_location(request: Request):
+    """Move all photos at a date+location to trash (7-day recovery)."""
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+
+    def _matches(item):
+        return (
+            item["date"] == date
+            and item["location"].strip().lower() == location.lower()
+        )
+
+    to_trash   = [item for item in data if _matches(item)]
+    now        = datetime.now(timezone.utc)
+    purge_at   = (now + timedelta(days=7)).isoformat()
+    trash_meta = _load_trash_meta()
+    trashed    = 0
+
+    for item in to_trash:
+        key       = to_r2_key(item["path"])
+        uid       = str(uuid.uuid4())[:8]
+        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": key},
+                           Key=trash_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=key)
+        except Exception as e:
+            print(f"Location trash failed {key}: {e}")
+            continue
+        trash_meta.append({
+            "key":          trash_key,
+            "original_key": key,
+            "filename":     os.path.basename(item["path"]),
+            "date":         item["date"],
+            "location":     item["location"],
+            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
+            "trashed_at":   now.isoformat(),
+            "purge_at":     purge_at,
+            "type":         "studio",
+            "image_entry":  item,
+        })
+        trashed += 1
+
+    data = [item for item in data if not _matches(item)]
+    if trashed:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_trash_meta(trash_meta)
+
+    # Clean up folder_meta entries for this location
+    try:
+        fm = _load_folder_meta()
+        keys_to_del = [k for k in fm if k.startswith(f"{date}|{location}|") or k == f"{date}|{location}|"]
+        for k in keys_to_del:
+            del fm[k]
+        if keys_to_del:
+            _save_folder_meta(fm)
+    except Exception as e:
+        print(f"folder_meta cleanup error: {e}")
+
+    return {"deleted": trashed}
+
+
+@app.post("/api/admin/delete-date")
+async def admin_delete_date(request: Request):
+    """Move all photos on a date to trash (7-day recovery)."""
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    date = body.get("date", "")
+
+    to_trash   = [item for item in data if item["date"] == date]
+    now        = datetime.now(timezone.utc)
+    purge_at   = (now + timedelta(days=7)).isoformat()
+    trash_meta = _load_trash_meta()
+    trashed    = 0
+
+    for item in to_trash:
+        key       = to_r2_key(item["path"])
+        uid       = str(uuid.uuid4())[:8]
+        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
+        try:
+            s3.copy_object(Bucket=R2_BUCKET,
+                           CopySource={"Bucket": R2_BUCKET, "Key": key},
+                           Key=trash_key)
+            s3.delete_object(Bucket=R2_BUCKET, Key=key)
+        except Exception as e:
+            print(f"Date trash failed {key}: {e}")
+            continue
+        trash_meta.append({
+            "key":          trash_key,
+            "original_key": key,
+            "filename":     os.path.basename(item["path"]),
+            "date":         item["date"],
+            "location":     item["location"],
+            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
+            "trashed_at":   now.isoformat(),
+            "purge_at":     purge_at,
+            "type":         "studio",
+            "image_entry":  item,
+        })
+        trashed += 1
+
+    data = [item for item in data if item["date"] != date]
+    if trashed:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_trash_meta(trash_meta)
+
+    # Clean up all folder_meta entries for this date
+    try:
+        fm = _load_folder_meta()
+        keys_to_del = [k for k in fm if k.startswith(f"{date}|")]
+        for k in keys_to_del:
+            del fm[k]
+        if keys_to_del:
+            _save_folder_meta(fm)
+    except Exception as e:
+        print(f"folder_meta cleanup error: {e}")
+
+    return {"deleted": trashed}
+
+
+def _load_settings() -> dict:
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key="settings/config.json")
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return {}
+
+def _save_settings(cfg: dict):
+    s3.put_object(Bucket=R2_BUCKET, Key="settings/config.json",
+                  Body=json.dumps(cfg).encode(), ContentType="application/json")
+
+
+@app.get("/api/admin/settings")
+async def get_admin_settings(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return _load_settings()
+
+
+@app.post("/api/admin/settings")
+async def save_admin_settings(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_settings(body)
+    return {"ok": True}
+
+
+@app.get("/admin/settings", response_class=HTMLResponse)
+async def admin_settings_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/settings")
+    return HTMLResponse(open("templates/admin_settings.html").read())
+
+
 # ── Admin Folders (phase 2) ──────────────────────────────────────────────────
 
 _KNOWN_LOCATIONS = [
