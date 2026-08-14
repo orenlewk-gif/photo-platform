@@ -3558,6 +3558,44 @@ async def admin_activities_page(request: Request):
     return HTMLResponse(open("templates/admin_activities.html").read())
 
 
+@app.post("/api/admin/rename-activity")
+async def rename_activity(request: Request):
+    global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    old_name = body.get("old_name", "").strip()
+    new_name = body.get("new_name", "").strip()
+    if not old_name or not new_name:
+        return JSONResponse(status_code=400, content={"error": "Both old_name and new_name are required"})
+    if old_name == new_name:
+        return {"renamed": True, "photos_updated": 0}
+
+    # Update location on every matching photo in memory
+    updated = 0
+    for item in data:
+        if item.get("location", "").strip() == old_name:
+            item["location"] = new_name
+            updated += 1
+
+    if updated:
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(),
+                      ContentType="application/json")
+
+    # Rename / merge the pricing config key
+    pricing = _load_pricing()
+    acts    = pricing.get("activities", {})
+    if old_name in acts:
+        old_cfg = acts.pop(old_name)
+        if new_name not in acts:          # don't clobber existing config
+            acts[new_name] = old_cfg
+    pricing["activities"] = acts
+    _save_pricing(pricing)
+
+    return {"renamed": True, "photos_updated": updated}
+
+
 @app.get("/api/admin/debug-data")
 async def admin_debug_data(request: Request):
     """Temporary diagnostic: shows what's in memory vs R2."""
