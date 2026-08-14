@@ -34,10 +34,10 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 .tag-x:hover{opacity:1}
 .tag-empty{font-size:.78rem;color:rgba(255,255,255,.25);font-style:italic}
 .add-row{display:flex;gap:.6rem}
-.add-row input{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
-  border-radius:8px;padding:.55rem .85rem;color:#fff;font-size:.85rem;outline:none}
-.add-row input:focus{border-color:#F5C518}
-.add-row input::placeholder{color:rgba(255,255,255,.25)}
+.add-row select{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:.55rem .85rem;color:#fff;font-size:.85rem;outline:none;cursor:pointer}
+.add-row select:focus{border-color:#F5C518}
+.add-row select option{background:#0a1e2e;color:#fff}
 .btn-add{background:rgba(245,197,24,.15);border:1px solid rgba(245,197,24,.3);color:#F5C518;
   border-radius:8px;padding:.55rem 1rem;font-size:.82rem;cursor:pointer;white-space:nowrap}
 .btn-add:hover{background:rgba(245,197,24,.25)}
@@ -46,8 +46,6 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
   padding:.58rem 1.4rem;font-size:.88rem;font-weight:700;cursor:pointer}
 .btn-save:hover{background:#f0bc00}
 #save-status{font-size:.78rem;color:rgba(255,255,255,.35)}
-.badge-winter{font-size:.65rem;background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.25);
-  color:#93c5fd;border-radius:10px;padding:2px 7px;margin-left:.5rem;vertical-align:middle}
 </style>
 </head>
 <body>
@@ -71,16 +69,14 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
     <div class="page-title">Settings</div>
 
     <div class="settings-section">
-      <div class="section-title">Time Filter Locations <span class="badge-winter">Winter Build</span></div>
-      <div class="section-desc">
-        Locations added here will show 15-minute time-block filters on the public storefront.
-        Intended for ski run action folders. EXIF timestamp extraction must be active at index time for this to work.
-      </div>
+      <div class="section-title">Time Filter Locations</div>
       <div class="tag-list" id="tf-tags">
         <span class="tag-empty">No locations configured</span>
       </div>
       <div class="add-row">
-        <input id="tf-input" type="text" placeholder="Location name (e.g. Lone Peak Ski)" onkeydown="if(event.key==='Enter')addTfTag()">
+        <select id="tf-select">
+          <option value="">Select a location…</option>
+        </select>
         <button class="btn-add" onclick="addTfTag()">+ Add</button>
       </div>
       <div class="save-row">
@@ -95,8 +91,22 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 let settings = {};
 
 async function loadSettings() {
-  const res = await fetch('/api/admin/settings');
-  if (res.ok) settings = await res.json();
+  const [settingsRes, foldersRes] = await Promise.all([
+    fetch('/api/admin/settings'),
+    fetch('/api/admin/folders'),
+  ]);
+  if (settingsRes.ok) settings = await settingsRes.json();
+  if (foldersRes.ok) {
+    const d = await foldersRes.json();
+    const locs = [...new Set((d.folders || []).map(f => f.location))].sort();
+    const sel = document.getElementById('tf-select');
+    locs.forEach(loc => {
+      const opt = document.createElement('option');
+      opt.value = loc;
+      opt.textContent = loc;
+      sel.appendChild(opt);
+    });
+  }
   renderTfTags();
 }
 
@@ -113,15 +123,15 @@ function renderTfTags() {
 }
 
 function addTfTag() {
-  const inp = document.getElementById('tf-input');
-  const val = inp.value.trim();
+  const sel = document.getElementById('tf-select');
+  const val = sel.value;
   if (!val) return;
   if (!settings.time_filter_locations) settings.time_filter_locations = [];
   if (!settings.time_filter_locations.includes(val)) {
     settings.time_filter_locations.push(val);
     renderTfTags();
   }
-  inp.value = '';
+  sel.value = '';
 }
 
 function removeTfTag(loc) {
