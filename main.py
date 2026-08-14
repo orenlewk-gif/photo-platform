@@ -2503,6 +2503,7 @@ async def cull_golive(request: Request):
     if not to_pub:
         return JSONResponse(status_code=404, content={"error": "No pending photos found"})
 
+    location    = clean_location(location)
     loc_slug    = location.lower().replace(" ", "-")
     folder_slug = folder.lower().replace(" ", "-") if folder else ""
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
@@ -3216,6 +3217,7 @@ async def admin_upload_index(request: Request):
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
     existing    = {item["path"] for item in data}
     added       = 0
+    location = clean_location(location)
     for key in keys:
         if key not in existing:
             data.append({
@@ -3244,6 +3246,7 @@ async def admin_reindex_folder(request: Request):
     folder   = body.get("folder", "").strip()
     if not date or not location:
         return JSONResponse(status_code=400, content={"error": "Missing date or location"})
+    location    = clean_location(location)
     loc_slug    = location.lower().replace(" ", "-")
     folder_slug = folder.lower().replace(" ", "-") if folder else ""
     prefix = f"images/{date}/{loc_slug}/{folder_slug}/" if folder_slug else f"images/{date}/{loc_slug}/"
