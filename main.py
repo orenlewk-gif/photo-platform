@@ -3408,16 +3408,14 @@ async def admin_delete_folder(request: Request):
         )
 
     to_trash = [item for item in data if _matches(item)]
-    new_meta, trashed = _bulk_trash(to_trash)
+    if not to_trash:
+        return {"deleted": 0, "removed_index": 0}
 
-    if trashed:
-        trash_meta = _load_trash_meta()
-        trash_meta.extend(new_meta)
-        _save_trash_meta(trash_meta)
-        data = [item for item in data if not _matches(item)]
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
-
+    # Remove from index immediately so the response is instant
+    count = len(to_trash)
+    data = [item for item in data if not _matches(item)]
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(), ContentType="application/json")
     try:
         fm = _load_folder_meta()
         fk = _folder_key(date, location, folder)
@@ -3427,7 +3425,15 @@ async def admin_delete_folder(request: Request):
     except Exception as e:
         print(f"folder_meta cleanup error: {e}")
 
-    return {"deleted": trashed, "removed_index": len(to_trash)}
+    # Copy to trash in background so we don't block the HTTP response
+    def _bg():
+        new_meta, trashed = _bulk_trash(to_trash)
+        if trashed:
+            tm = _load_trash_meta(); tm.extend(new_meta); _save_trash_meta(tm)
+        print(f"[delete-folder] bg trash done: {trashed}/{count}")
+    threading.Thread(target=_bg, daemon=True).start()
+
+    return {"deleted": count, "removed_index": count}
 
 
 @app.post("/api/admin/delete-location")
@@ -3447,16 +3453,13 @@ async def admin_delete_location(request: Request):
         )
 
     to_trash = [item for item in data if _matches(item)]
-    new_meta, trashed = _bulk_trash(to_trash)
+    if not to_trash:
+        return {"deleted": 0}
 
-    if trashed:
-        trash_meta = _load_trash_meta()
-        trash_meta.extend(new_meta)
-        _save_trash_meta(trash_meta)
-        data = [item for item in data if not _matches(item)]
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
-
+    count = len(to_trash)
+    data = [item for item in data if not _matches(item)]
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(), ContentType="application/json")
     try:
         fm = _load_folder_meta()
         keys_to_del = [k for k in fm if k.startswith(f"{date}|{location}|") or k == f"{date}|{location}|"]
@@ -3467,7 +3470,14 @@ async def admin_delete_location(request: Request):
     except Exception as e:
         print(f"folder_meta cleanup error: {e}")
 
-    return {"deleted": trashed}
+    def _bg():
+        new_meta, trashed = _bulk_trash(to_trash)
+        if trashed:
+            tm = _load_trash_meta(); tm.extend(new_meta); _save_trash_meta(tm)
+        print(f"[delete-location] bg trash done: {trashed}/{count}")
+    threading.Thread(target=_bg, daemon=True).start()
+
+    return {"deleted": count}
 
 
 @app.post("/api/admin/delete-date")
@@ -3480,17 +3490,13 @@ async def admin_delete_date(request: Request):
     date = body.get("date", "")
 
     to_trash = [item for item in data if item.get("date", "") == date]
-    print(f"[delete-date] requested={date!r} data_total={len(data)} matched={len(to_trash)} sample_dates={list({item.get('date','') for item in data[:50]})[:8]}")
-    new_meta, trashed = _bulk_trash(to_trash)
+    if not to_trash:
+        return {"deleted": 0}
 
-    if trashed:
-        trash_meta = _load_trash_meta()
-        trash_meta.extend(new_meta)
-        _save_trash_meta(trash_meta)
-        data = [item for item in data if item.get("date", "") != date]
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
-
+    count = len(to_trash)
+    data = [item for item in data if item.get("date", "") != date]
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(), ContentType="application/json")
     try:
         fm = _load_folder_meta()
         keys_to_del = [k for k in fm if k.startswith(f"{date}|")]
@@ -3501,7 +3507,14 @@ async def admin_delete_date(request: Request):
     except Exception as e:
         print(f"folder_meta cleanup error: {e}")
 
-    return {"deleted": trashed}
+    def _bg():
+        new_meta, trashed = _bulk_trash(to_trash)
+        if trashed:
+            tm = _load_trash_meta(); tm.extend(new_meta); _save_trash_meta(tm)
+        print(f"[delete-date] bg trash done: {trashed}/{count}")
+    threading.Thread(target=_bg, daemon=True).start()
+
+    return {"deleted": count}
 
 
 def _load_settings() -> dict:
