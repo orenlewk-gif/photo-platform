@@ -274,19 +274,12 @@ def _autopurge_loop():
         try:
             trash = _load_trash_meta()
             now   = datetime.now(timezone.utc)
-            keep, purged = [], 0
-            for t in trash:
-                if datetime.fromisoformat(t["purge_at"]) <= now:
-                    try:
-                        s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
-                        purged += 1
-                    except Exception:
-                        keep.append(t)
-                else:
-                    keep.append(t)
-            if purged:
+            keep  = [t for t in trash if datetime.fromisoformat(t["purge_at"]) > now]
+            purge = [t for t in trash if datetime.fromisoformat(t["purge_at"]) <= now]
+            if purge:
                 _save_trash_meta(keep)
-                print(f"[autopurge] removed {purged} expired trash items")
+                _batch_delete_keys([t["key"] for t in purge])
+                print(f"[autopurge] removed {len(purge)} expired trash items")
         except Exception as e:
             print(f"[autopurge] error: {e}")
 
@@ -2607,35 +2600,41 @@ async def trash_restore(request: Request):
     _save_trash_meta([t for t in trash if t["key"] != trash_key])
     return {"restored": True}
 
+def _batch_delete_keys(keys: list):
+    """Batch-delete R2 keys, up to 1000 per call. Ignores missing keys."""
+    for i in range(0, len(keys), 1000):
+        chunk = keys[i:i+1000]
+        try:
+            s3.delete_objects(Bucket=R2_BUCKET,
+                              Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True})
+        except Exception as e:
+            print(f"[batch_delete] error: {e}")
+
+
 @app.post("/api/trash/empty")
 async def trash_empty(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     trash = _load_trash_meta()
-    for t in trash:
-        try:
-            s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
-        except Exception:
-            pass
-    _save_trash_meta([])
-    return {"emptied": len(trash)}
+    if not trash:
+        return {"emptied": 0}
+    count = len(trash)
+    _save_trash_meta([])   # clear meta immediately so UI updates fast
+    keys = [t["key"] for t in trash]
+    threading.Thread(target=_batch_delete_keys, args=(keys,), daemon=True).start()
+    return {"emptied": count}
+
 
 @app.post("/api/trash/autopurge")
 async def trash_autopurge():
-    trash = _load_trash_meta()
-    now   = datetime.now(timezone.utc)
-    keep, purged = [], 0
-    for t in trash:
-        if datetime.fromisoformat(t["purge_at"]) <= now:
-            try:
-                s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
-                purged += 1
-            except Exception:
-                keep.append(t)
-        else:
-            keep.append(t)
-    _save_trash_meta(keep)
-    return {"purged": purged}
+    trash  = _load_trash_meta()
+    now    = datetime.now(timezone.utc)
+    keep   = [t for t in trash if datetime.fromisoformat(t["purge_at"]) > now]
+    purge  = [t for t in trash if datetime.fromisoformat(t["purge_at"]) <= now]
+    if purge:
+        _save_trash_meta(keep)
+        _batch_delete_keys([t["key"] for t in purge])
+    return {"purged": len(purge)}
 
 # ── Photographer management (admin) ──
 @app.get("/api/photographers")
