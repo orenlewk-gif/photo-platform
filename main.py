@@ -267,6 +267,31 @@ else:
         data = []
 print(f"Loaded {len(data)} photos.")
 
+def _autopurge_loop():
+    import time
+    while True:
+        time.sleep(3600)
+        try:
+            trash = _load_trash_meta()
+            now   = datetime.now(timezone.utc)
+            keep, purged = [], 0
+            for t in trash:
+                if datetime.fromisoformat(t["purge_at"]) <= now:
+                    try:
+                        s3.delete_object(Bucket=R2_BUCKET, Key=t["key"])
+                        purged += 1
+                    except Exception:
+                        keep.append(t)
+                else:
+                    keep.append(t)
+            if purged:
+                _save_trash_meta(keep)
+                print(f"[autopurge] removed {purged} expired trash items")
+        except Exception as e:
+            print(f"[autopurge] error: {e}")
+
+threading.Thread(target=_autopurge_loop, daemon=True).start()
+
 # One-time migration: move group→last_name for Nature Zip Line entries
 _NZ_LOCS = {"nature zip line", "nature zipline", "nature zip"}
 _nz_fixed = 0
@@ -3343,7 +3368,7 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
                 "image_entry":  item,
             }
         except Exception as e:
-            print(f"Trash copy failed {key}: {e}")
+            print(f"[trash] copy failed src={key!r} → {trash_key!r}: {e}")
             return None
 
     results = []
@@ -3459,14 +3484,15 @@ async def admin_delete_date(request: Request):
     body = await request.json()
     date = body.get("date", "")
 
-    to_trash = [item for item in data if item["date"] == date]
+    to_trash = [item for item in data if item.get("date", "") == date]
+    print(f"[delete-date] requested={date!r} data_total={len(data)} matched={len(to_trash)} sample_dates={list({item.get('date','') for item in data[:50]})[:8]}")
     new_meta, trashed = _bulk_trash(to_trash)
 
     if trashed:
         trash_meta = _load_trash_meta()
         trash_meta.extend(new_meta)
         _save_trash_meta(trash_meta)
-        data = [item for item in data if item["date"] != date]
+        data = [item for item in data if item.get("date", "") != date]
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
 
