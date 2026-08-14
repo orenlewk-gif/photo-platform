@@ -1689,9 +1689,126 @@ def _order_row(order) -> dict:
         "photo_paths": photo_paths,
     }
 
+def _fetch_wc_orders_all(after: str = None, before: str = None, max_pages: int = 20):
+    """Paginate through WooCommerce completed orders, returning all results."""
+    all_orders = []
+    for page in range(1, max_pages + 1):
+        params = {"status": "completed", "per_page": 100, "page": page,
+                  "orderby": "date", "order": "desc"}
+        if after:  params["after"]  = after
+        if before: params["before"] = before
+        try:
+            r = http_requests.get(f"{WC_BASE}/orders", params=params,
+                                  auth=(WC_KEY, WC_SECRET), timeout=20)
+            if not r.ok:
+                break
+            batch = r.json()
+            if not isinstance(batch, list) or not batch:
+                break
+            all_orders.extend(batch)
+            if len(batch) < 100:
+                break
+        except Exception:
+            break
+    return all_orders
+
+
+@app.get("/admin/reports", response_class=HTMLResponse)
+async def admin_reports_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/orders")
+    return RedirectResponse("/admin/orders?tab=reports")
+
+
+@app.get("/api/admin/reports")
+def api_admin_reports(request: Request, days: int = 30,
+                      date_from: str = "", date_to: str = "",
+                      all_time: int = 0):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    from collections import defaultdict
+    if all_time:
+        orders = _fetch_wc_orders_all()
+    elif date_from and date_to:
+        orders = _fetch_wc_orders_all(after=f"{date_from}T00:00:00",
+                                      before=f"{date_to}T23:59:59")
+    else:
+        after = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        orders = _fetch_wc_orders_all(after=after)
+
+    rows = [_order_row(o) for o in orders]
+
+    # Summary
+    total_rev  = sum(r["total"]      for r in rows)
+    total_net  = sum(r["net"]        for r in rows)
+    total_fees = sum(r["stripe_fee"] for r in rows)
+    n          = len(rows)
+    avg_order  = total_rev / n if n else 0
+
+    # Daily buckets
+    daily: dict = defaultdict(lambda: {"revenue": 0.0, "orders": 0})
+    for r in rows:
+        d = r["date"]
+        if d:
+            daily[d]["revenue"] += r["total"]
+            daily[d]["orders"]  += 1
+    daily_series = [{"date": k, "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+                    for k, v in sorted(daily.items())]
+
+    # Monthly buckets
+    monthly: dict = defaultdict(lambda: {"revenue": 0.0, "orders": 0})
+    for r in rows:
+        if r["date"] and len(r["date"]) >= 7:
+            m = r["date"][:7]
+            monthly[m]["revenue"] += r["total"]
+            monthly[m]["orders"]  += 1
+    monthly_series = [{"month": k, "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+                      for k, v in sorted(monthly.items())]
+
+    # By activity
+    by_act: dict = defaultdict(lambda: {"revenue": 0.0, "net": 0.0, "orders": 0})
+    for r in rows:
+        loc = clean_location(r["location"]) if r["location"] else "Unknown"
+        by_act[loc]["revenue"] += r["total"]
+        by_act[loc]["net"]     += r["net"]
+        by_act[loc]["orders"]  += 1
+    by_activity = [{"name": k, "revenue": round(v["revenue"], 2),
+                    "net": round(v["net"], 2), "orders": v["orders"]}
+                   for k, v in sorted(by_act.items(), key=lambda x: x[1]["revenue"], reverse=True)]
+
+    # By day of week
+    dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    by_dow: dict = defaultdict(lambda: {"revenue": 0.0, "orders": 0})
+    for r in rows:
+        try:
+            dt  = datetime.strptime(r["date"], "%Y-%m-%d")
+            day = dow_names[dt.weekday()]
+            by_dow[day]["revenue"] += r["total"]
+            by_dow[day]["orders"]  += 1
+        except Exception:
+            pass
+    dow_series = [{"day": d, "revenue": round(by_dow[d]["revenue"], 2),
+                   "orders": by_dow[d]["orders"]} for d in dow_names]
+
+    return {
+        "summary": {
+            "revenue":   round(total_rev, 2),
+            "net":       round(total_net, 2),
+            "fees":      round(total_fees, 2),
+            "orders":    n,
+            "avg_order": round(avg_order, 2),
+        },
+        "daily":       daily_series,
+        "monthly":     monthly_series,
+        "by_activity": by_activity,
+        "by_dow":      dow_series,
+    }
+
+
 @app.get("/admin/orders", response_class=HTMLResponse)
 def admin_orders(request: Request, days: int = 30,
-                 date_from: str = "", date_to: str = ""):
+                 date_from: str = "", date_to: str = "",
+                 tab: str = ""):
     if not _admin_authed(request):
         return RedirectResponse("/admin")
     custom = bool(date_from and date_to)
@@ -1736,6 +1853,94 @@ def admin_orders(request: Request, days: int = 30,
         return " & ".join(names) if names else "Oren Lewkowski"
 
     import json as _json
+    from collections import defaultdict as _dd
+    _daily_agg: dict = _dd(lambda: {"rev": 0.0, "net": 0.0, "cnt": 0})
+    _dow_agg: dict = _dd(lambda: {"rev": 0.0, "cnt": 0})
+    _dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    for r in rows:
+        _day = (r.get("date") or "")[:10]
+        if _day:
+            _daily_agg[_day]["rev"] += r["total"]
+            _daily_agg[_day]["net"] += r["net"]
+            _daily_agg[_day]["cnt"] += 1
+        try:
+            _dow = datetime.strptime(_day, "%Y-%m-%d").strftime("%a")
+            _dow_agg[_dow]["rev"] += r["total"]
+            _dow_agg[_dow]["cnt"] += 1
+        except Exception:
+            pass
+    _daily_json = _json.dumps([
+        {"d": k, "r": round(v["rev"], 2), "n": round(v["net"], 2), "c": v["cnt"]}
+        for k, v in sorted(_daily_agg.items())
+    ])
+    _dow_json = _json.dumps([
+        {"d": k, "r": round(_dow_agg[k]["rev"], 2), "c": _dow_agg[k]["cnt"]}
+        for k in _dow_names
+    ])
+    _act_json = _json.dumps([
+        {"a": loc, "r": round(s["revenue"], 2), "n": round(s["net"], 2), "c": s["count"]}
+        for loc, s in loc_stats.items()
+    ])
+    chart_script = (
+        f'<script>\nwindow._D={_daily_json};window._W={_dow_json};window._A={_act_json};\n'
+        + '''function switchTab(n,b){document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('view-orders').style.display=n==='orders'?'':'none';const rv=document.getElementById('view-reports');rv.style.display=n==='reports'?'':'none';if(n==='reports')renderReports();}
+let _rr=false;
+function renderReports(){if(_rr)return;_rr=true;drawLine(document.getElementById('chart-daily'),window._D);drawHoriz(document.getElementById('chart-activity'),window._A);drawDow(document.getElementById('chart-dow'),window._W);}
+function drawLine(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-chart-empty">No orders in this period.</div>';return;}
+  const W=700,H=180,P={t:20,r:20,b:36,l:58};
+  const iW=W-P.l-P.r,iH=H-P.t-P.b;
+  const maxV=Math.max(...data.map(d=>d.r),1);
+  const n=data.length;
+  function px(i){return P.l+(n>1?i/(n-1)*iW:iW/2);}
+  function py(v){return P.t+iH-(v/maxV)*iH;}
+  const pts=data.map((d,i)=>[px(i),py(d.r)]);
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area='M'+px(0)+' '+(P.t+iH)+' '+line.slice(1)+' L'+px(n-1)+' '+(P.t+iH)+' Z';
+  let grid='',xLab='';
+  for(let i=0;i<=4;i++){
+    const v=(maxV/4)*i,y=py(v);
+    grid+=`<line x1="${P.l}" y1="${y.toFixed(1)}" x2="${W-P.r}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.06)" stroke-width="1"/>`;
+    grid+=`<text x="${P.l-5}" y="${(y+4).toFixed(1)}" font-size="10" fill="rgba(255,255,255,.38)" text-anchor="end">$${v===0?'0':v.toFixed(0)}</text>`;
+  }
+  const step=Math.max(1,Math.ceil(n/10));
+  data.forEach((d,i)=>{if(i%step===0)xLab+=`<text x="${px(i).toFixed(1)}" y="${H-4}" font-size="9" fill="rgba(255,255,255,.32)" text-anchor="middle">${d.d.slice(5)}</text>`;});
+  const dots=n<=90?pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="#F5C518" opacity=".65"/>`).join(''):'';
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%">${grid}<path d="${area}" fill="#F5C518" opacity=".07"/><path d="${line}" fill="none" stroke="#F5C518" stroke-width="1.8" stroke-linejoin="round"/>${dots}${xLab}</svg>`;
+}
+function drawHoriz(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-chart-empty">No data.</div>';return;}
+  const maxV=Math.max(...data.map(d=>d.r),1);
+  el.innerHTML=data.slice(0,15).map(d=>{
+    const pct=(d.r/maxV*100).toFixed(1);
+    return `<div class="rpt-bar-row"><div class="rpt-bar-label">${d.a}</div><div class="rpt-bar-track"><div class="rpt-bar-fill" style="width:${pct}%"></div></div><div class="rpt-bar-val">$${d.r.toFixed(0)}<span class="rpt-bar-cnt">${d.c} order${d.c!==1?'s':''}</span></div></div>`;
+  }).join('');
+}
+function drawDow(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-chart-empty">No data.</div>';return;}
+  const maxV=Math.max(...data.map(d=>d.r),1);
+  const W=500,H=150,P={t:15,r:20,b:30,l:50};
+  const iW=W-P.l-P.r,iH=H-P.t-P.b;
+  const bW=iW/data.length-4;
+  let bars='',xLab='',grid='';
+  for(let i=0;i<=3;i++){
+    const v=(maxV/3)*i,y=P.t+iH-(v/maxV)*iH;
+    grid+=`<line x1="${P.l}" y1="${y.toFixed(1)}" x2="${W-P.r}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.06)" stroke-width="1"/>`;
+    grid+=`<text x="${P.l-4}" y="${(y+4).toFixed(1)}" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="end">$${v===0?'0':v.toFixed(0)}</text>`;
+  }
+  data.forEach((d,i)=>{
+    const x=P.l+i*(iW/data.length);
+    const h=(d.r/maxV)*iH;
+    const y=P.t+iH-h;
+    const col=d.d==='Sat'||d.d==='Sun'?'#F5C518':'rgba(245,197,24,.55)';
+    bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bW.toFixed(1)}" height="${Math.max(h,0).toFixed(1)}" fill="${col}" rx="2"/>`;
+    xLab+=`<text x="${(x+bW/2).toFixed(1)}" y="${H-4}" font-size="9" fill="rgba(255,255,255,.4)" text-anchor="middle">${d.d}</text>`;
+  });
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px">${grid}${bars}${xLab}</svg>`;
+}
+if(window._INIT_TAB==='reports'){const b=document.querySelector('.tab-btn:last-child');if(b)b.click();}
+</script>'''
+    )
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
     trs = ""
     for r in rows:
@@ -1876,6 +2081,19 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 #toast{{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}}
 #toast.show{{opacity:1;background:#16a34a;color:#fff}}
 #toast.err{{opacity:1;background:#dc2626;color:#fff}}
+.tab-bar{{display:flex;gap:.5rem;margin-bottom:1.25rem}}
+.tab-btn{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:8px;padding:.42rem 1.1rem;font-size:.85rem;cursor:pointer;transition:all .15s}}
+.tab-btn:hover{{background:rgba(255,255,255,.1);color:#fff}}
+.tab-btn.active{{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.3);color:#F5C518}}
+.rpt-section{{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:1.25rem}}
+.rpt-title{{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.9rem}}
+.rpt-bar-row{{display:flex;align-items:center;gap:.75rem;margin-bottom:.55rem;font-size:.82rem}}
+.rpt-bar-label{{width:180px;flex-shrink:0;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
+.rpt-bar-track{{flex:1;background:rgba(255,255,255,.06);border-radius:4px;height:10px;overflow:hidden}}
+.rpt-bar-fill{{height:100%;background:#F5C518;border-radius:4px}}
+.rpt-bar-val{{width:160px;flex-shrink:0;color:#e2e8f0;text-align:right}}
+.rpt-bar-cnt{{color:rgba(255,255,255,.35);font-size:.75rem;margin-left:.5rem}}
+.rpt-chart-empty{{color:rgba(255,255,255,.3);font-size:.85rem;padding:1rem 0}}
 </style></head><body>
 <div id="topbar">
   <h1>Crystal Images — Admin</h1>
@@ -1886,8 +2104,11 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
     <div class="nav-sec-label">Admin</div>
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
     <a href="/admin/pricing" class="nav-link">Pricing</a>
+    <a href="/admin/activities" class="nav-link">Activities</a>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link active">Orders</a>
+    <a href="/admin/links" class="nav-link">Links</a>
+    <a href="/admin/settings" class="nav-link">Settings</a>
     <div id="sidebar-tree"></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
       <a href="/admin/trash" class="nav-link">Trash</a>
@@ -1905,6 +2126,7 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 </div>
 <div id="toast"></div>
 <script>
+window._INIT_TAB='{tab}';
 function showDetail(encoded) {{
   try {{
     const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
@@ -2038,6 +2260,11 @@ async function copyLink(orderId, e) {{
     <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
   </div>
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('orders',this)">Orders</button>
+    <button class="tab-btn" onclick="switchTab('reports',this)">Reports</button>
+  </div>
+  <div id="view-orders">
   <div class="loc-breakdown">
     <div class="loc-breakdown-title">Revenue by Location</div>
     <div class="loc-bars">
@@ -2077,7 +2304,24 @@ async function copyLink(orderId, e) {{
   </table>
   </div>
   </div>
-</div></body></html>"""
+  <div id="view-reports" style="display:none">
+    <div class="rpt-section">
+      <div class="rpt-title">Revenue Over Time</div>
+      <div id="chart-daily"></div>
+    </div>
+    <div class="rpt-section">
+      <div class="rpt-title">Revenue by Activity</div>
+      <div id="chart-activity"></div>
+    </div>
+    <div class="rpt-section">
+      <div class="rpt-title">Revenue by Day of Week</div>
+      <div id="chart-dow"></div>
+    </div>
+  </div>
+  </div>
+</div>
+{chart_script}
+</body></html>"""
     return HTMLResponse(html)
 
 @app.get("/admin/export")
