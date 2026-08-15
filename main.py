@@ -1746,23 +1746,29 @@ def api_admin_reports(request: Request, days: int = 30,
     avg_order  = total_rev / n if n else 0
 
     # Daily buckets
-    daily: dict = defaultdict(lambda: {"revenue": 0.0, "orders": 0})
+    daily: dict = defaultdict(lambda: {"revenue": 0.0, "net": 0.0, "fees": 0.0, "orders": 0})
     for r in rows:
         d = r["date"]
         if d:
             daily[d]["revenue"] += r["total"]
+            daily[d]["net"]     += r["net"]
+            daily[d]["fees"]    += r["stripe_fee"]
             daily[d]["orders"]  += 1
-    daily_series = [{"date": k, "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+    daily_series = [{"date": k, "revenue": round(v["revenue"], 2),
+                     "net": round(v["net"], 2), "fees": round(v["fees"], 2), "orders": v["orders"]}
                     for k, v in sorted(daily.items())]
 
     # Monthly buckets
-    monthly: dict = defaultdict(lambda: {"revenue": 0.0, "orders": 0})
+    monthly: dict = defaultdict(lambda: {"revenue": 0.0, "net": 0.0, "fees": 0.0, "orders": 0})
     for r in rows:
         if r["date"] and len(r["date"]) >= 7:
             m = r["date"][:7]
             monthly[m]["revenue"] += r["total"]
+            monthly[m]["net"]     += r["net"]
+            monthly[m]["fees"]    += r["stripe_fee"]
             monthly[m]["orders"]  += 1
-    monthly_series = [{"month": k, "revenue": round(v["revenue"], 2), "orders": v["orders"]}
+    monthly_series = [{"month": k, "revenue": round(v["revenue"], 2),
+                       "net": round(v["net"], 2), "fees": round(v["fees"], 2), "orders": v["orders"]}
                       for k, v in sorted(monthly.items())]
 
     # By activity
@@ -1853,94 +1859,143 @@ def admin_orders(request: Request, days: int = 30,
         return " & ".join(names) if names else "Oren Lewkowski"
 
     import json as _json
-    from collections import defaultdict as _dd
-    _daily_agg: dict = _dd(lambda: {"rev": 0.0, "net": 0.0, "cnt": 0})
-    _dow_agg: dict = _dd(lambda: {"rev": 0.0, "cnt": 0})
-    _dow_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    for r in rows:
-        _day = (r.get("date") or "")[:10]
-        if _day:
-            _daily_agg[_day]["rev"] += r["total"]
-            _daily_agg[_day]["net"] += r["net"]
-            _daily_agg[_day]["cnt"] += 1
-        try:
-            _dow = datetime.strptime(_day, "%Y-%m-%d").strftime("%a")
-            _dow_agg[_dow]["rev"] += r["total"]
-            _dow_agg[_dow]["cnt"] += 1
-        except Exception:
-            pass
-    _daily_json = _json.dumps([
-        {"d": k, "r": round(v["rev"], 2), "n": round(v["net"], 2), "c": v["cnt"]}
-        for k, v in sorted(_daily_agg.items())
-    ])
-    _dow_json = _json.dumps([
-        {"d": k, "r": round(_dow_agg[k]["rev"], 2), "c": _dow_agg[k]["cnt"]}
-        for k in _dow_names
-    ])
-    _act_json = _json.dumps([
-        {"a": loc, "r": round(s["revenue"], 2), "n": round(s["net"], 2), "c": s["count"]}
-        for loc, s in loc_stats.items()
-    ])
-    chart_script = (
-        f'<script>\nwindow._D={_daily_json};window._W={_dow_json};window._A={_act_json};\n'
-        + '''function switchTab(n,b){document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.getElementById('view-orders').style.display=n==='orders'?'':'none';const rv=document.getElementById('view-reports');rv.style.display=n==='reports'?'':'none';if(n==='reports')renderReports();}
-let _rr=false;
-function renderReports(){if(_rr)return;_rr=true;drawLine(document.getElementById('chart-daily'),window._D);drawHoriz(document.getElementById('chart-activity'),window._A);drawDow(document.getElementById('chart-dow'),window._W);}
-function drawLine(el,data){
-  if(!data||!data.length){el.innerHTML='<div class="rpt-chart-empty">No orders in this period.</div>';return;}
-  const W=700,H=180,P={t:20,r:20,b:36,l:58};
-  const iW=W-P.l-P.r,iH=H-P.t-P.b;
-  const maxV=Math.max(...data.map(d=>d.r),1);
-  const n=data.length;
-  function px(i){return P.l+(n>1?i/(n-1)*iW:iW/2);}
-  function py(v){return P.t+iH-(v/maxV)*iH;}
-  const pts=data.map((d,i)=>[px(i),py(d.r)]);
-  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const area='M'+px(0)+' '+(P.t+iH)+' '+line.slice(1)+' L'+px(n-1)+' '+(P.t+iH)+' Z';
-  let grid='',xLab='';
-  for(let i=0;i<=4;i++){
-    const v=(maxV/4)*i,y=py(v);
-    grid+=`<line x1="${P.l}" y1="${y.toFixed(1)}" x2="${W-P.r}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.06)" stroke-width="1"/>`;
-    grid+=`<text x="${P.l-5}" y="${(y+4).toFixed(1)}" font-size="10" fill="rgba(255,255,255,.38)" text-anchor="end">$${v===0?'0':v.toFixed(0)}</text>`;
-  }
-  const step=Math.max(1,Math.ceil(n/10));
-  data.forEach((d,i)=>{if(i%step===0)xLab+=`<text x="${px(i).toFixed(1)}" y="${H-4}" font-size="9" fill="rgba(255,255,255,.32)" text-anchor="middle">${d.d.slice(5)}</text>`;});
-  const dots=n<=90?pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="#F5C518" opacity=".65"/>`).join(''):'';
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%">${grid}<path d="${area}" fill="#F5C518" opacity=".07"/><path d="${line}" fill="none" stroke="#F5C518" stroke-width="1.8" stroke-linejoin="round"/>${dots}${xLab}</svg>`;
+    chart_script = '''<script>
+function switchTab(n,b){
+  document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active');});
+  b.classList.add('active');
+  document.getElementById('view-orders').style.display=n==='orders'?'':'none';
+  var rv=document.getElementById('view-reports');
+  rv.style.display=n==='reports'?'':'none';
+  if(n==='reports'&&!window._rptLoaded)loadReports();
 }
-function drawHoriz(el,data){
-  if(!data||!data.length){el.innerHTML='<div class="rpt-chart-empty">No data.</div>';return;}
-  const maxV=Math.max(...data.map(d=>d.r),1);
-  el.innerHTML=data.slice(0,15).map(d=>{
-    const pct=(d.r/maxV*100).toFixed(1);
-    return `<div class="rpt-bar-row"><div class="rpt-bar-label">${d.a}</div><div class="rpt-bar-track"><div class="rpt-bar-fill" style="width:${pct}%"></div></div><div class="rpt-bar-val">$${d.r.toFixed(0)}<span class="rpt-bar-cnt">${d.c} order${d.c!==1?'s':''}</span></div></div>`;
+window._rptDays=30;window._rptFrom='';window._rptTo='';window._rptAllTime=0;window._rptLoaded=false;
+function setRptRange(days,btn){
+  document.querySelectorAll('.rpt-qbtn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  window._rptDays=days;window._rptFrom='';window._rptTo='';window._rptAllTime=0;
+  loadReports();
+}
+function setRptAllTime(btn){
+  document.querySelectorAll('.rpt-qbtn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  window._rptAllTime=1;window._rptFrom='';window._rptTo='';
+  loadReports();
+}
+function applyRptCustom(){
+  var from=document.getElementById('rpt-from').value;
+  var to=document.getElementById('rpt-to').value;
+  if(!from||!to)return;
+  document.querySelectorAll('.rpt-qbtn').forEach(function(b){b.classList.remove('active');});
+  window._rptFrom=from;window._rptTo=to;window._rptAllTime=0;
+  loadReports();
+}
+async function loadReports(){
+  window._rptLoaded=true;
+  var loading=document.getElementById('rpt-loading');
+  var content=document.getElementById('rpt-content');
+  loading.style.display='block';loading.textContent='Loading…';content.style.display='none';
+  var qs='';
+  if(window._rptAllTime)qs='all_time=1';
+  else if(window._rptFrom&&window._rptTo)qs='date_from='+window._rptFrom+'&date_to='+window._rptTo;
+  else qs='days='+window._rptDays;
+  try{
+    var res=await fetch('/api/admin/reports?'+qs);
+    if(!res.ok)throw new Error();
+    var d=await res.json();
+    loading.style.display='none';content.style.display='block';
+    renderRpt(d);
+  }catch(e){
+    loading.textContent='Failed to load reports. Please try again.';
+  }
+}
+function renderRpt(d){
+  var s=d.summary;
+  var feeRate=s.revenue>0?(s.fees/s.revenue*100).toFixed(1)+'%':'—';
+  var netMarg=s.revenue>0?(s.net/s.revenue*100).toFixed(1)+'%':'—';
+  document.getElementById('rpt-sum').innerHTML=
+    rptCard('Orders',s.orders,'','')+
+    rptCard('Gross Revenue','$'+s.revenue.toFixed(2),'','')+
+    rptCard('Stripe Fees','-$'+s.fees.toFixed(2),'rpv-red',feeRate+' of gross')+
+    rptCard('Net Revenue','$'+s.net.toFixed(2),'rpv-grn',netMarg+' margin')+
+    rptCard('Avg Order','$'+s.avg_order.toFixed(2),'','');
+  var useM=d.daily.length>60;
+  drawRevTime(document.getElementById('chart-time'),useM?d.monthly:d.daily,!useM);
+  drawActBars(document.getElementById('chart-act'),d.by_activity);
+  drawDowBars(document.getElementById('chart-dow'),d.by_dow);
+}
+function rptCard(label,val,valCls,sub){
+  return '<div class="rpt-stat"><div class="rpl">'+label+'</div><div class="rpv '+(valCls||'')+'">'+val+'</div>'+(sub?'<div class="rp-sub">'+sub+'</div>':'')+'</div>';
+}
+function drawRevTime(el,data,isDaily){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data for this period.</div>';return;}
+  var W=720,H=220,Pl=68,Pt=25,Pr=20,Pb=40;
+  var iW=W-Pl-Pr,iH=H-Pt-Pb;
+  var maxV=0;data.forEach(function(d){if(d.revenue>maxV)maxV=d.revenue;});
+  if(!maxV){el.innerHTML='<div class="rpt-empty">No revenue in this period.</div>';return;}
+  var n=data.length,bSlot=iW/Math.max(n,1),bW=Math.max(2,bSlot-Math.max(2,bSlot*.2));
+  var grid='',bars='',xLab='';
+  for(var i=0;i<=4;i++){
+    var v=(maxV/4)*i,y=Pt+iH-(v/maxV)*iH;
+    grid+='<line x1="'+Pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-Pr)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
+    var lbl=v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':v.toFixed(0);
+    grid+='<text x="'+(Pl-6)+'" y="'+(y+4).toFixed(1)+'" font-size="10" fill="rgba(255,255,255,.38)" text-anchor="end">$'+lbl+'</text>';
+  }
+  data.forEach(function(d,i){
+    var cx=Pl+i*bSlot+bSlot/2,x=cx-bW/2;
+    var gH=(d.revenue/maxV)*iH,nH=d.net!=null?(d.net/maxV)*iH:0,base=Pt+iH;
+    bars+='<rect x="'+x.toFixed(1)+'" y="'+(base-gH).toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+gH.toFixed(1)+'" fill="rgba(245,197,24,.4)" rx="2"/>';
+    if(nH>0)bars+='<rect x="'+x.toFixed(1)+'" y="'+(base-nH).toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+nH.toFixed(1)+'" fill="#4ade80" rx="2" opacity=".75"/>';
+  });
+  var step=Math.max(1,Math.ceil(n/8));
+  data.forEach(function(d,i){
+    if(i%step===0){
+      var lbl=isDaily?(d.date||'').slice(5):(d.month||'');
+      xLab+='<text x="'+(Pl+i*bSlot+bSlot/2).toFixed(1)+'" y="'+(H-6)+'" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="middle">'+lbl+'</text>';
+    }
+  });
+  var leg='<rect x="'+Pl+'" y="7" width="10" height="7" fill="rgba(245,197,24,.4)" rx="1"/><text x="'+(Pl+13)+'" y="14" font-size="9" fill="rgba(255,255,255,.45)">Gross</text><rect x="'+(Pl+50)+'" y="7" width="10" height="7" fill="#4ade80" rx="1" opacity=".75"/><text x="'+(Pl+63)+'" y="14" font-size="9" fill="rgba(255,255,255,.45)">Net</text>';
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%">'+grid+bars+leg+xLab+'</svg>';
+}
+function drawActBars(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data.</div>';return;}
+  var maxV=0;data.forEach(function(d){if(d.revenue>maxV)maxV=d.revenue;});
+  if(!maxV){el.innerHTML='<div class="rpt-empty">No revenue data.</div>';return;}
+  el.innerHTML=data.slice(0,15).map(function(d){
+    var gPct=(d.revenue/maxV*100).toFixed(1),nPct=(d.net/maxV*100).toFixed(1);
+    return '<div class="rpt-bar-row">'
+      +'<div class="rpt-bar-label">'+d.name+'</div>'
+      +'<div style="flex:1;position:relative;height:18px;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden">'
+      +'<div style="position:absolute;left:0;top:0;height:100%;width:'+gPct+'%;background:rgba(245,197,24,.4);border-radius:4px"></div>'
+      +'<div style="position:absolute;left:0;top:3px;height:calc(100% - 6px);width:'+nPct+'%;background:#4ade80;border-radius:3px;opacity:.75"></div>'
+      +'</div>'
+      +'<div class="rpt-bar-val">$'+d.revenue.toFixed(0)+'<span class="rpt-bar-cnt">'+d.orders+' order'+(d.orders!==1?'s':'')+'</span></div>'
+      +'</div>';
   }).join('');
 }
-function drawDow(el,data){
-  if(!data||!data.length){el.innerHTML='<div class="rpt-chart-empty">No data.</div>';return;}
-  const maxV=Math.max(...data.map(d=>d.r),1);
-  const W=500,H=150,P={t:15,r:20,b:30,l:50};
-  const iW=W-P.l-P.r,iH=H-P.t-P.b;
-  const bW=iW/data.length-4;
-  let bars='',xLab='',grid='';
-  for(let i=0;i<=3;i++){
-    const v=(maxV/3)*i,y=P.t+iH-(v/maxV)*iH;
-    grid+=`<line x1="${P.l}" y1="${y.toFixed(1)}" x2="${W-P.r}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,.06)" stroke-width="1"/>`;
-    grid+=`<text x="${P.l-4}" y="${(y+4).toFixed(1)}" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="end">$${v===0?'0':v.toFixed(0)}</text>`;
+function drawDowBars(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data.</div>';return;}
+  var maxV=0;data.forEach(function(d){if(d.revenue>maxV)maxV=d.revenue;});
+  var W=520,H=160,Pl=52,Pt=18,Pr=20,Pb=30;
+  var iW=W-Pl-Pr,iH=H-Pt-Pb,bSlot=iW/data.length,bW=Math.max(2,bSlot-8);
+  var bars='',xLab='',grid='';
+  for(var i=0;i<=3;i++){
+    var v=maxV?(maxV/3)*i:0,y=Pt+iH-(maxV&&v?v/maxV:0)*iH;
+    grid+='<line x1="'+Pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-Pr)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
+    var lbl=v>=1000?(v/1000).toFixed(0)+'k':v.toFixed(0);
+    grid+='<text x="'+(Pl-4)+'" y="'+(y+4).toFixed(1)+'" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="end">$'+lbl+'</text>';
   }
-  data.forEach((d,i)=>{
-    const x=P.l+i*(iW/data.length);
-    const h=(d.r/maxV)*iH;
-    const y=P.t+iH-h;
-    const col=d.d==='Sat'||d.d==='Sun'?'#F5C518':'rgba(245,197,24,.55)';
-    bars+=`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bW.toFixed(1)}" height="${Math.max(h,0).toFixed(1)}" fill="${col}" rx="2"/>`;
-    xLab+=`<text x="${(x+bW/2).toFixed(1)}" y="${H-4}" font-size="9" fill="rgba(255,255,255,.4)" text-anchor="middle">${d.d}</text>`;
+  data.forEach(function(d,i){
+    var cx=Pl+i*bSlot+bSlot/2,x=cx-bW/2;
+    var h=maxV?(d.revenue/maxV)*iH:0,y=Pt+iH-h;
+    var col=(d.day==='Sat'||d.day==='Sun')?'#F5C518':'rgba(245,197,24,.55)';
+    bars+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+Math.max(h,0).toFixed(1)+'" fill="'+col+'" rx="2"/>';
+    if(d.orders>0)bars+='<text x="'+cx.toFixed(1)+'" y="'+(y-4).toFixed(1)+'" font-size="8" fill="rgba(255,255,255,.35)" text-anchor="middle">'+d.orders+'</text>';
+    xLab+='<text x="'+cx.toFixed(1)+'" y="'+(H-4)+'" font-size="9" fill="rgba(255,255,255,.4)" text-anchor="middle">'+d.day+'</text>';
   });
-  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:500px">${grid}${bars}${xLab}</svg>`;
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:520px">'+grid+bars+xLab+'</svg>';
 }
-if(window._INIT_TAB==='reports'){const b=document.querySelector('.tab-btn:last-child');if(b)b.click();}
+if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-child');if(_rb)_rb.click();}
 </script>'''
-    )
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
     trs = ""
     for r in rows:
@@ -2094,6 +2149,23 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 .rpt-bar-val{{width:160px;flex-shrink:0;color:#e2e8f0;text-align:right}}
 .rpt-bar-cnt{{color:rgba(255,255,255,.35);font-size:.75rem;margin-left:.5rem}}
 .rpt-chart-empty{{color:rgba(255,255,255,.3);font-size:.85rem;padding:1rem 0}}
+.rpt-controls{{display:flex;gap:1rem;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap}}
+.rpt-qbtn{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.38rem .85rem;font-size:.82rem;cursor:pointer;transition:all .15s}}
+.rpt-qbtn:hover{{background:rgba(255,255,255,.1);color:#fff}}
+.rpt-qbtn.active{{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.3);color:#F5C518}}
+.rpt-custom{{display:flex;gap:.5rem;align-items:center}}
+.rpt-custom input[type=date]{{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.36rem .65rem;border-radius:6px;font-size:.82rem}}
+.rpt-custom button{{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.25);color:#F5C518;padding:.36rem .85rem;border-radius:6px;font-size:.82rem;cursor:pointer}}
+.rpt-custom button:hover{{background:rgba(245,197,24,.22)}}
+.rpt-sum{{display:flex;gap:.85rem;margin-bottom:1.25rem;flex-wrap:wrap}}
+.rpt-stat{{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.85rem 1.1rem;flex:1;min-width:120px}}
+.rpl{{font-size:10px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}}
+.rpv{{font-size:1.22rem;font-weight:700;color:#F5C518}}
+.rpv-red{{color:#f87171}}
+.rpv-grn{{color:#4ade80}}
+.rp-sub{{font-size:.75rem;color:rgba(255,255,255,.3);margin-top:2px}}
+.rpt-loading{{padding:2.5rem;text-align:center;color:rgba(255,255,255,.35);font-size:.9rem;display:none}}
+.rpt-empty{{padding:1.2rem 0;color:rgba(255,255,255,.3);font-size:.85rem}}
 </style></head><body>
 <div id="topbar">
   <h1>Crystal Images — Admin</h1>
@@ -2305,17 +2377,36 @@ async function copyLink(orderId, e) {{
   </div>
   </div>
   <div id="view-reports" style="display:none">
-    <div class="rpt-section">
-      <div class="rpt-title">Revenue Over Time</div>
-      <div id="chart-daily"></div>
+    <div class="rpt-controls">
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+        <button class="rpt-qbtn active" onclick="setRptRange(7,this)">7D</button>
+        <button class="rpt-qbtn" onclick="setRptRange(30,this)">30D</button>
+        <button class="rpt-qbtn" onclick="setRptRange(90,this)">90D</button>
+        <button class="rpt-qbtn" onclick="setRptRange(365,this)">12M</button>
+        <button class="rpt-qbtn" onclick="setRptAllTime(this)">All Time</button>
+      </div>
+      <div class="rpt-custom">
+        <input type="date" id="rpt-from" />
+        <span style="color:rgba(255,255,255,.3);font-size:.82rem">to</span>
+        <input type="date" id="rpt-to" />
+        <button onclick="applyRptCustom()">Apply</button>
+      </div>
     </div>
-    <div class="rpt-section">
-      <div class="rpt-title">Revenue by Activity</div>
-      <div id="chart-activity"></div>
-    </div>
-    <div class="rpt-section">
-      <div class="rpt-title">Revenue by Day of Week</div>
-      <div id="chart-dow"></div>
+    <div id="rpt-loading" class="rpt-loading">Loading&hellip;</div>
+    <div id="rpt-content" style="display:none">
+      <div id="rpt-sum" class="rpt-sum"></div>
+      <div class="rpt-section">
+        <div class="rpt-title">Revenue Over Time &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">gold&nbsp;=&nbsp;gross &nbsp; green&nbsp;=&nbsp;net</span></div>
+        <div id="chart-time"></div>
+      </div>
+      <div class="rpt-section">
+        <div class="rpt-title">Revenue by Activity &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">gold&nbsp;=&nbsp;gross &nbsp; green&nbsp;=&nbsp;net</span></div>
+        <div id="chart-act"></div>
+      </div>
+      <div class="rpt-section">
+        <div class="rpt-title">Revenue by Day of Week &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">weekend highlighted</span></div>
+        <div id="chart-dow"></div>
+      </div>
     </div>
   </div>
   </div>
