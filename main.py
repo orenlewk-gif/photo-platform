@@ -2413,7 +2413,7 @@ async function copyLink(orderId, e) {{
 </div>
 {chart_script}
 </body></html>"""
-    return HTMLResponse(html)
+    return HTMLResponse(_theme_inject(html, _load_settings(), is_admin=True))
 
 @app.get("/admin/export")
 def admin_export(request: Request, days: int = 30,
@@ -3064,7 +3064,7 @@ def photographer_commission(request: Request,
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return HTMLResponse(open("templates/index.html").read())
+    return HTMLResponse(_theme_inject(open("templates/index.html").read(), _load_settings(), is_admin=False))
 
 @app.get("/checkout", response_class=HTMLResponse)
 def checkout_page():
@@ -3261,25 +3261,25 @@ def downloads_page(request: Request):
 def cull_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/cull")
-    return HTMLResponse(open("templates/cull.html").read())
+    return HTMLResponse(_theme_inject(open("templates/cull.html").read(), _load_settings(), is_admin=True))
 
 @app.get("/admin/trash", response_class=HTMLResponse)
 def trash_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/trash")
-    return HTMLResponse(open("templates/trash.html").read())
+    return HTMLResponse(_theme_inject(open("templates/trash.html").read(), _load_settings(), is_admin=True))
 
 @app.get("/admin/photographers", response_class=HTMLResponse)
 def photographers_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/photographers")
-    return HTMLResponse(open("templates/photographers.html").read())
+    return HTMLResponse(_theme_inject(open("templates/photographers.html").read(), _load_settings(), is_admin=True))
 
 @app.get("/admin/timecards", response_class=HTMLResponse)
 def timecards_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/timecards")
-    return HTMLResponse(open("templates/timecards.html").read())
+    return HTMLResponse(_theme_inject(open("templates/timecards.html").read(), _load_settings(), is_admin=True))
 
 # ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
 
@@ -3854,16 +3854,73 @@ async def admin_delete_date(request: Request):
     return {"deleted": count}
 
 
+_SITE_SETTINGS: dict | None = None
+
+_SETTINGS_DEFAULTS: dict = {
+    "time_filter_locations": [],
+    "site":     {"name": "Crystal Images", "tagline": "", "logo_url": ""},
+    "frontend": {"accent": "#F5C518", "page_bg": "#0c2336", "panel_bg": "#0a1e2e"},
+    "admin":    {"accent": "#F5C518", "page_bg": "#0f1117", "panel_bg": "#0a1320"},
+}
+
 def _load_settings() -> dict:
+    global _SITE_SETTINGS
+    if _SITE_SETTINGS is not None:
+        return _SITE_SETTINGS
+    import copy
+    cfg = copy.deepcopy(_SETTINGS_DEFAULTS)
     try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key="settings/config.json")
-        return json.loads(obj["Body"].read())
+        obj   = s3.get_object(Bucket=R2_BUCKET, Key="settings/config.json")
+        saved = json.loads(obj["Body"].read())
+        for k, v in saved.items():
+            if isinstance(v, dict) and k in cfg and isinstance(cfg[k], dict):
+                cfg[k].update(v)
+            else:
+                cfg[k] = v
     except Exception:
-        return {}
+        pass
+    _SITE_SETTINGS = cfg
+    return _SITE_SETTINGS
 
 def _save_settings(cfg: dict):
+    global _SITE_SETTINGS
+    _SITE_SETTINGS = None
     s3.put_object(Bucket=R2_BUCKET, Key="settings/config.json",
                   Body=json.dumps(cfg).encode(), ContentType="application/json")
+
+def _theme_inject(html: str, cfg: dict, is_admin: bool = False) -> str:
+    def _sc(val: str, default: str) -> str:
+        v = str(val).strip()
+        if re.match(r'^#[0-9a-fA-F]{3,8}$', v):          return v
+        if re.match(r'^rgba?\(\s*[\d.,\s%]+\)$', v):      return v
+        if re.match(r'^hsl[a]?\(\s*[\d.,\s%]+\)$', v):   return v
+        return default
+    if is_admin:
+        c      = cfg.get("admin", {})
+        accent = _sc(c.get("accent",   "#F5C518"), "#F5C518")
+        page   = _sc(c.get("page_bg",  "#0f1117"), "#0f1117")
+        panel  = _sc(c.get("panel_bg", "#0a1320"), "#0a1320")
+        block  = (f'<style id="s-theme">'
+                  f':root{{--sa:{accent};--sp:{page};--sc:{panel}}}'
+                  f'body{{background:var(--sp)!important}}'
+                  f'#topbar{{background:var(--sc)!important}}'
+                  f'#sidebar{{background:var(--sc)!important}}'
+                  f'.nav-link.active-page{{color:var(--sa)!important}}'
+                  f'#topbar h1,.page-title,.stat .val{{color:var(--sa)!important}}'
+                  f'.btn-save,.export-btn,.abtn.pri,.rpt-go{{background:var(--sa)!important;color:#07151f!important}}'
+                  f'.tab-btn.active,.rpt-qbtn.active{{border-color:var(--sa)!important;color:var(--sa)!important}}'
+                  f'</style>')
+    else:
+        c      = cfg.get("frontend", {})
+        accent = _sc(c.get("accent",   "#F5C518"), "#F5C518")
+        page   = _sc(c.get("page_bg",  "#0c2336"), "#0c2336")
+        panel  = _sc(c.get("panel_bg", "#0a1e2e"), "#0a1e2e")
+        block  = (f'<style id="s-theme">'
+                  f':root{{--sa:{accent};--sp:{page};--sc:{panel}}}'
+                  f'body{{background:var(--sp)!important}}'
+                  f'.custom-header{{background:var(--sc)!important}}'
+                  f'</style>')
+    return html.replace("</head>", block + "\n</head>", 1)
 
 
 @app.get("/api/admin/settings")
@@ -3886,14 +3943,15 @@ async def save_admin_settings(request: Request):
 async def admin_settings_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/settings")
-    return HTMLResponse(open("templates/admin_settings.html").read())
+    cfg = _load_settings()
+    return HTMLResponse(_theme_inject(open("templates/admin_settings.html").read(), cfg, is_admin=True))
 
 
 @app.get("/admin/activities", response_class=HTMLResponse)
 async def admin_activities_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/activities")
-    return HTMLResponse(open("templates/admin_activities.html").read())
+    return HTMLResponse(_theme_inject(open("templates/admin_activities.html").read(), _load_settings(), is_admin=True))
 
 
 @app.post("/api/admin/rename-activity")
@@ -4034,7 +4092,7 @@ _SLUG_TO_LOC = {loc.lower().replace(" ", "-"): loc for loc in _KNOWN_LOCATIONS}
 def admin_folders_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/folders")
-    return HTMLResponse(open("templates/admin_folders.html").read())
+    return HTMLResponse(_theme_inject(open("templates/admin_folders.html").read(), _load_settings(), is_admin=True))
 
 @app.get("/api/admin/folders")
 def api_admin_folders(request: Request):
@@ -4122,7 +4180,7 @@ def api_admin_r2_scan(request: Request):
 def admin_dashboard_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/dashboard")
-    return HTMLResponse(open("templates/admin_studio.html").read())
+    return HTMLResponse(_theme_inject(open("templates/admin_studio.html").read(), _load_settings(), is_admin=True))
 
 @app.get("/admin/studio")
 def admin_studio_redirect():
@@ -4446,7 +4504,7 @@ async def api_admin_pricing_save(request: Request):
 def admin_pricing_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/pricing")
-    return HTMLResponse(open("templates/admin_pricing.html").read())
+    return HTMLResponse(_theme_inject(open("templates/admin_pricing.html").read(), _load_settings(), is_admin=True))
 
 
 # ─────────────────────────────────────────
@@ -4913,8 +4971,7 @@ def admin_links_page(request: Request):
         return RedirectResponse("/admin?next=/admin/links")
     new_token = request.query_params.get("new", "")
     new_url   = f"{SITE_URL}/package/{new_token}" if new_token else ""
-    return HTMLResponse(
-        open("templates/admin_links.html").read()
-        .replace("__NEW_TOKEN__", new_token)
-        .replace("__NEW_URL__", new_url)
-    )
+    html = (open("templates/admin_links.html").read()
+            .replace("__NEW_TOKEN__", new_token)
+            .replace("__NEW_URL__", new_url))
+    return HTMLResponse(_theme_inject(html, _load_settings(), is_admin=True))
