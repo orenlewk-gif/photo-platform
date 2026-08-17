@@ -29,6 +29,9 @@ app = FastAPI()
 if os.path.exists("frames"):
     app.mount("/frames", StaticFiles(directory="frames"), name="frames")
 
+os.makedirs("static", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # ─────────────────────────────────────────
 # R2 CLIENT
 # ─────────────────────────────────────────
@@ -2166,7 +2169,9 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 .rp-sub{{font-size:.75rem;color:rgba(255,255,255,.3);margin-top:2px}}
 .rpt-loading{{padding:2.5rem;text-align:center;color:rgba(255,255,255,.35);font-size:.9rem;display:none}}
 .rpt-empty{{padding:1.2rem 0;color:rgba(255,255,255,.3);font-size:.85rem}}
-</style></head><body>
+</style>
+<link rel="stylesheet" href="/static/theme-admin.css">
+</head><body>
 <div id="topbar">
   <h1>Crystal Images — Admin</h1>
   <a href="/admin/logout">Sign out</a>
@@ -2413,7 +2418,7 @@ async function copyLink(orderId, e) {{
 </div>
 {chart_script}
 </body></html>"""
-    return HTMLResponse(_theme_inject(html, _load_settings(), is_admin=True))
+    return HTMLResponse(html)
 
 @app.get("/admin/export")
 def admin_export(request: Request, days: int = 30,
@@ -3064,7 +3069,7 @@ def photographer_commission(request: Request,
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return HTMLResponse(_theme_inject(open("templates/index.html").read(), _load_settings(), is_admin=False))
+    return HTMLResponse(open("templates/index.html").read())
 
 @app.get("/checkout", response_class=HTMLResponse)
 def checkout_page():
@@ -3261,25 +3266,25 @@ def downloads_page(request: Request):
 def cull_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/cull")
-    return HTMLResponse(_theme_inject(open("templates/cull.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/cull.html").read())
 
 @app.get("/admin/trash", response_class=HTMLResponse)
 def trash_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/trash")
-    return HTMLResponse(_theme_inject(open("templates/trash.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/trash.html").read())
 
 @app.get("/admin/photographers", response_class=HTMLResponse)
 def photographers_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/photographers")
-    return HTMLResponse(_theme_inject(open("templates/photographers.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/photographers.html").read())
 
 @app.get("/admin/timecards", response_class=HTMLResponse)
 def timecards_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/timecards")
-    return HTMLResponse(_theme_inject(open("templates/timecards.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/timecards.html").read())
 
 # ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
 
@@ -3854,7 +3859,7 @@ async def admin_delete_date(request: Request):
     return {"deleted": count}
 
 
-_SITE_SETTINGS: dict | None = None
+import copy as _copy
 
 _SETTINGS_DEFAULTS: dict = {
     "time_filter_locations": [],
@@ -3863,12 +3868,15 @@ _SETTINGS_DEFAULTS: dict = {
     "admin":    {"accent": "#F5C518", "page_bg": "#0f1117", "panel_bg": "#0a1320"},
 }
 
+def _safe_color(val: str, default: str) -> str:
+    v = str(val).strip()
+    if re.match(r'^#[0-9a-fA-F]{3,8}$', v):        return v
+    if re.match(r'^rgba?\(\s*[\d.,\s%]+\)$', v):    return v
+    if re.match(r'^hsl[a]?\(\s*[\d.,\s%]+\)$', v): return v
+    return default
+
 def _load_settings() -> dict:
-    global _SITE_SETTINGS
-    if _SITE_SETTINGS is not None:
-        return _SITE_SETTINGS
-    import copy
-    cfg = copy.deepcopy(_SETTINGS_DEFAULTS)
+    cfg = _copy.deepcopy(_SETTINGS_DEFAULTS)
     try:
         obj   = s3.get_object(Bucket=R2_BUCKET, Key="settings/config.json")
         saved = json.loads(obj["Body"].read())
@@ -3879,48 +3887,49 @@ def _load_settings() -> dict:
                 cfg[k] = v
     except Exception:
         pass
-    _SITE_SETTINGS = cfg
-    return _SITE_SETTINGS
+    return cfg
 
-def _save_settings(cfg: dict):
-    global _SITE_SETTINGS
-    _SITE_SETTINGS = None
-    s3.put_object(Bucket=R2_BUCKET, Key="settings/config.json",
-                  Body=json.dumps(cfg).encode(), ContentType="application/json")
-
-def _theme_inject(html: str, cfg: dict, is_admin: bool = False) -> str:
-    def _sc(val: str, default: str) -> str:
-        v = str(val).strip()
-        if re.match(r'^#[0-9a-fA-F]{3,8}$', v):          return v
-        if re.match(r'^rgba?\(\s*[\d.,\s%]+\)$', v):      return v
-        if re.match(r'^hsl[a]?\(\s*[\d.,\s%]+\)$', v):   return v
-        return default
+def _generate_theme_css(cfg: dict, is_admin: bool) -> str:
     if is_admin:
         c      = cfg.get("admin", {})
-        accent = _sc(c.get("accent",   "#F5C518"), "#F5C518")
-        page   = _sc(c.get("page_bg",  "#0f1117"), "#0f1117")
-        panel  = _sc(c.get("panel_bg", "#0a1320"), "#0a1320")
-        block  = (f'<style id="s-theme">'
-                  f':root{{--sa:{accent};--sp:{page};--sc:{panel}}}'
-                  f'body{{background:var(--sp)!important}}'
-                  f'#topbar{{background:var(--sc)!important}}'
-                  f'#sidebar{{background:var(--sc)!important}}'
-                  f'.nav-link.active-page{{color:var(--sa)!important}}'
-                  f'#topbar h1,.page-title,.stat .val{{color:var(--sa)!important}}'
-                  f'.btn-save,.export-btn,.abtn.pri,.rpt-go{{background:var(--sa)!important;color:#07151f!important}}'
-                  f'.tab-btn.active,.rpt-qbtn.active{{border-color:var(--sa)!important;color:var(--sa)!important}}'
-                  f'</style>')
+        accent = _safe_color(c.get("accent",   "#F5C518"), "#F5C518")
+        page   = _safe_color(c.get("page_bg",  "#0f1117"), "#0f1117")
+        panel  = _safe_color(c.get("panel_bg", "#0a1320"), "#0a1320")
+        return (
+            "/* Crystal Images — Admin Theme (generated) */\n"
+            f"body{{background:{page}!important}}\n"
+            f"#topbar{{background:{panel}!important}}\n"
+            f"#sidebar{{background:{panel}!important}}\n"
+            f".nav-link.active-page{{color:{accent}!important}}\n"
+            f"#topbar h1,.page-title,.stat .val{{color:{accent}!important}}\n"
+            f".btn-save,.export-btn,.abtn.pri,.rpt-go{{background:{accent}!important;color:#07151f!important}}\n"
+            f".tab-btn.active,.rpt-qbtn.active{{border-color:{accent}!important;color:{accent}!important}}\n"
+        )
     else:
         c      = cfg.get("frontend", {})
-        accent = _sc(c.get("accent",   "#F5C518"), "#F5C518")
-        page   = _sc(c.get("page_bg",  "#0c2336"), "#0c2336")
-        panel  = _sc(c.get("panel_bg", "#0a1e2e"), "#0a1e2e")
-        block  = (f'<style id="s-theme">'
-                  f':root{{--sa:{accent};--sp:{page};--sc:{panel}}}'
-                  f'body{{background:var(--sp)!important}}'
-                  f'.custom-header{{background:var(--sc)!important}}'
-                  f'</style>')
-    return html.replace("</head>", block + "\n</head>", 1)
+        accent = _safe_color(c.get("accent",   "#F5C518"), "#F5C518")
+        page   = _safe_color(c.get("page_bg",  "#0c2336"), "#0c2336")
+        panel  = _safe_color(c.get("panel_bg", "#0a1e2e"), "#0a1e2e")
+        return (
+            "/* Crystal Images — Frontend Theme (generated) */\n"
+            f"body{{background:{page}!important}}\n"
+            f".custom-header{{background:{panel}!important}}\n"
+        )
+
+def _write_theme_files(cfg: dict) -> None:
+    os.makedirs("static", exist_ok=True)
+    with open("static/theme-frontend.css", "w") as fh:
+        fh.write(_generate_theme_css(cfg, is_admin=False))
+    with open("static/theme-admin.css", "w") as fh:
+        fh.write(_generate_theme_css(cfg, is_admin=True))
+
+def _save_settings(cfg: dict) -> None:
+    s3.put_object(Bucket=R2_BUCKET, Key="settings/config.json",
+                  Body=json.dumps(cfg).encode(), ContentType="application/json")
+    _write_theme_files(cfg)
+
+# Write theme CSS files on every server start so templates always have current styles
+_write_theme_files(_load_settings())
 
 
 @app.get("/api/admin/settings")
@@ -3943,15 +3952,14 @@ async def save_admin_settings(request: Request):
 async def admin_settings_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/settings")
-    cfg = _load_settings()
-    return HTMLResponse(_theme_inject(open("templates/admin_settings.html").read(), cfg, is_admin=True))
+    return HTMLResponse(open("templates/admin_settings.html").read())
 
 
 @app.get("/admin/activities", response_class=HTMLResponse)
 async def admin_activities_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/activities")
-    return HTMLResponse(_theme_inject(open("templates/admin_activities.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/admin_activities.html").read())
 
 
 @app.post("/api/admin/rename-activity")
@@ -4092,7 +4100,7 @@ _SLUG_TO_LOC = {loc.lower().replace(" ", "-"): loc for loc in _KNOWN_LOCATIONS}
 def admin_folders_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/folders")
-    return HTMLResponse(_theme_inject(open("templates/admin_folders.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/admin_folders.html").read())
 
 @app.get("/api/admin/folders")
 def api_admin_folders(request: Request):
@@ -4180,7 +4188,7 @@ def api_admin_r2_scan(request: Request):
 def admin_dashboard_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/dashboard")
-    return HTMLResponse(_theme_inject(open("templates/admin_studio.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/admin_studio.html").read())
 
 @app.get("/admin/studio")
 def admin_studio_redirect():
@@ -4504,7 +4512,7 @@ async def api_admin_pricing_save(request: Request):
 def admin_pricing_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/pricing")
-    return HTMLResponse(_theme_inject(open("templates/admin_pricing.html").read(), _load_settings(), is_admin=True))
+    return HTMLResponse(open("templates/admin_pricing.html").read())
 
 
 # ─────────────────────────────────────────
@@ -4974,4 +4982,4 @@ def admin_links_page(request: Request):
     html = (open("templates/admin_links.html").read()
             .replace("__NEW_TOKEN__", new_token)
             .replace("__NEW_URL__", new_url))
-    return HTMLResponse(_theme_inject(html, _load_settings(), is_admin=True))
+    return HTMLResponse(html)
