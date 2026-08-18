@@ -146,7 +146,7 @@ input[type="range"]::-webkit-slider-thumb {
 .combo-banner strong { color: rgba(255,255,255,0.9); font-weight: 700; }
 
 /* Gallery grid */
-.gallery { display:grid; gap:10px; }
+.gallery { display:grid; gap:10px; align-items:start; }
 .gallery { grid-template-columns: repeat(var(--cols,3), 1fr); }
 @media(max-width:640px) {
   .gallery { grid-template-columns: repeat(2, 1fr) !important; gap:3px; }
@@ -168,21 +168,21 @@ input[type="range"]::-webkit-slider-thumb {
   background:transparent;
 }
 
-/* Select circle — bottom left, above filename strip */
+/* Select circle — bottom left, above filename overlay */
 .card-btn-row {
-  position:absolute; bottom:36px; left:8px; z-index:5;
+  position:absolute; bottom:28px; left:8px; z-index:5;
   display:flex; gap:5px; align-items:center;
   opacity:0; transition:opacity 0.15s; pointer-events:all;
 }
 .thumb-card:hover .card-btn-row    { opacity:1; }
 .thumb-card.selected .card-btn-row { opacity:1; }
 @media(hover:none) and (pointer:coarse) {
-  .card-btn-row { opacity:1; bottom:36px; left:6px; }
+  .card-btn-row { opacity:1; bottom:28px; left:6px; }
 }
 
-/* Shop button — bottom right, above filename strip, hover-reveal */
+/* Shop button — bottom right, above filename overlay, hover-reveal */
 .card-shop-btn {
-  position:absolute; bottom:36px; right:8px; z-index:5;
+  position:absolute; bottom:28px; right:8px; z-index:5;
   background:#F5C518; color:#0c2336; border:none;
   border-radius:6px; padding:.3rem .75rem; font-size:.75rem; font-weight:700;
   cursor:pointer; opacity:0; transition:opacity 0.15s; pointer-events:all;
@@ -191,7 +191,21 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-card:hover .card-shop-btn    { opacity:1; }
 .thumb-card.selected .card-shop-btn { opacity:1; }
 @media(hover:none) and (pointer:coarse) {
-  .card-shop-btn { opacity:1; bottom:36px; right:6px; }
+  .card-shop-btn { opacity:1; bottom:28px; right:6px; }
+}
+
+/* Filename — hover-only overlay bar at bottom of image */
+.card-fname {
+  position:absolute; bottom:0; left:0; right:0; z-index:4;
+  background:rgba(0,0,0,0.55); color:rgba(255,255,255,.8);
+  font-size:.7rem; padding:5px 8px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  opacity:0; transition:opacity 0.15s; pointer-events:none;
+}
+.thumb-card:hover .card-fname    { opacity:1; }
+.thumb-card.selected .card-fname { opacity:1; }
+@media(hover:none) and (pointer:coarse) {
+  .card-fname { display:none; }
 }
 
 .select-check {
@@ -217,10 +231,7 @@ input[type="range"]::-webkit-slider-thumb {
   /* opacity: 0.35; */
 }
 
-.thumb-meta { padding:6px 10px; display:flex; align-items:center; }
-.thumb-fname { color:rgba(255,255,255,.45); font-size:.7rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:640px) {
-  .thumb-meta { display:none; }
   .ln-bar { flex-direction:column; gap:0.6rem; padding:0.9rem 1rem; }
   .ln-input-wrap { width:100%; }
   .ln-bar .btn { width:100%; }
@@ -1613,9 +1624,7 @@ function renderThumbs(photos) {
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
       <button class="card-shop-btn" data-idx="${i}">🛒 Shop</button>
-      <div class="thumb-meta">
-        <span class="thumb-fname">${photo.filename || ''}</span>
-      </div>`;
+      <div class="card-fname">${photo.filename || ''}</div>`;
 
     // Select-check click: toggle selection
     card.querySelector('.select-check').addEventListener('click', e => {
