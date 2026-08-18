@@ -146,9 +146,9 @@ input[type="range"]::-webkit-slider-thumb {
 .combo-banner strong { color: rgba(255,255,255,0.9); font-weight: 700; }
 
 /* Gallery grid */
-.gallery { columns: var(--cols,3); column-gap: 10px; }
+.gallery { display:flex; flex-wrap:wrap; gap:10px; align-content:flex-start; }
 @media(max-width:640px) {
-  .gallery { columns: 2 !important; column-gap: 3px; }
+  .gallery { gap:4px; }
 }
 
 /* Thumbnail cards */
@@ -156,14 +156,10 @@ input[type="range"]::-webkit-slider-thumb {
   background:rgba(255,255,255,.04); border:2px solid rgba(255,255,255,.08);
   border-radius:12px; overflow:hidden; cursor:pointer;
   transition:transform .2s, border-color .2s, box-shadow .2s;
-  position:relative;
-  break-inside:avoid; display:block; margin-bottom:10px;
-}
-@media(max-width:640px) {
-  .thumb-card { margin-bottom:3px; }
+  position:relative; flex-shrink:0;
 }
 .thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
-.thumb-card img { width:100%; height:auto; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.thumb-card img { width:100%; height:100%; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
 
 /* Transparent click blocker */
 .thumb-card::after {
@@ -1182,6 +1178,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 <script>
 // ── State ──
 let allPhotos      = [];
+let _jTargetH      = 230;   // current justified-layout row height
 let imgCache       = {};
 let cur            = 0;
 let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
@@ -1566,7 +1563,7 @@ async function showGallery(date, location, family, ln, group) {
         <span>⊞</span>
       </div>
     </div>
-    <div class="gallery" id="gallery" style="--cols:${window.innerWidth<=640?2:6}"></div>`;
+    <div class="gallery" id="gallery"></div>`;
 
   renderThumbs(photos);
   // Re-highlight any photos that were already selected in this folder
@@ -1578,13 +1575,12 @@ async function showGallery(date, location, family, ln, group) {
   updateCart();
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
-    let cols;
-    if (isMobile) {
-      cols = [4, 4, 3, 2, 2][parseInt(this.value) - 1];
-    } else {
-      cols = [8, 7, 6, 5, 4][parseInt(this.value) - 1];
-    }
-    document.getElementById('gallery').style.setProperty('--cols', cols);
+    const heights  = isMobile
+      ? [90, 120, 160, 210, 270]
+      : [130, 170, 230, 320, 450];
+    const targetH  = heights[parseInt(this.value) - 1];
+    const gallery  = document.getElementById('gallery');
+    if (gallery) justifyLayout(gallery, allPhotos, targetH);
   });
 }
 
@@ -1607,6 +1603,64 @@ function buildPricingBox() {
     <span class="pricing-hint">Hover a photo to select it</span>
   </div>`;
 }
+
+function justifyLayout(gallery, photos, targetH) {
+  _jTargetH = targetH;
+  const cards = Array.from(gallery.querySelectorAll('.thumb-card'));
+  const gap   = window.innerWidth <= 640 ? 4 : 10;
+  const W     = gallery.clientWidth;
+  if (!W || !photos.length) return;
+
+  // Group photos into rows
+  const rows = [];
+  let rStart = 0, rW = 0;
+  for (let i = 0; i < photos.length; i++) {
+    const p     = photos[i];
+    const ratio = (p.w && p.h) ? p.w / p.h : 1.5;
+    const natW  = targetH * ratio;
+    const addW  = (i === rStart) ? natW : natW + gap;
+    if (rW + addW > W + 0.5 && i > rStart) {
+      rows.push({ start: rStart, end: i - 1 });
+      rStart = i; rW = natW;
+    } else {
+      rW += addW;
+    }
+  }
+  rows.push({ start: rStart, end: photos.length - 1 });
+
+  // Scale each row to fill container width exactly
+  rows.forEach((row, ri) => {
+    const isLast   = ri === rows.length - 1;
+    const count    = row.end - row.start + 1;
+    const totalGap = gap * (count - 1);
+    const natWidths = [];
+    for (let i = row.start; i <= row.end; i++) {
+      const p = photos[i];
+      natWidths.push(targetH * ((p.w && p.h) ? p.w / p.h : 1.5));
+    }
+    const totalNat = natWidths.reduce((a, b) => a + b, 0);
+    const scale    = (isLast && (totalNat + totalGap) < W * 0.85)
+      ? 1
+      : (W - totalGap) / totalNat;
+    const finalH   = Math.round(targetH * scale);
+    for (let i = row.start; i <= row.end; i++) {
+      const card = cards[i];
+      if (!card) continue;
+      card.style.width  = Math.round(natWidths[i - row.start] * scale) + 'px';
+      card.style.height = finalH + 'px';
+    }
+  });
+}
+
+// Re-run layout on resize
+let _resizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(_resizeTimer);
+  _resizeTimer = setTimeout(() => {
+    const g = document.getElementById('gallery');
+    if (g && allPhotos.length) justifyLayout(g, allPhotos, _jTargetH);
+  }, 150);
+});
 
 function renderThumbs(photos) {
   const gallery = document.getElementById('gallery');
@@ -1647,6 +1701,10 @@ function renderThumbs(photos) {
     gallery.appendChild(card);
   });
   lazyLoad(gallery);
+  requestAnimationFrame(() => {
+    const isMobile = window.innerWidth <= 640;
+    justifyLayout(gallery, photos, isMobile ? 160 : _jTargetH);
+  });
 }
 
 // ── Photo selection ──

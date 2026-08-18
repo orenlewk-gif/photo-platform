@@ -270,6 +270,60 @@ else:
         data = []
 print(f"Loaded {len(data)} photos.")
 
+# ── Dimension cache ──────────────────────────────────────────────────────────
+_dim_cache: dict = {}
+
+def _load_dim_cache() -> None:
+    global _dim_cache
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key="metadata/dimensions.json")
+        _dim_cache = json.loads(obj["Body"].read())
+        print(f"Dim cache: {len(_dim_cache)} entries")
+    except Exception:
+        _dim_cache = {}
+
+def _save_dim_cache_bg() -> None:
+    try:
+        s3.put_object(Bucket=R2_BUCKET, Key="metadata/dimensions.json",
+                      Body=json.dumps(_dim_cache).encode(),
+                      ContentType="application/json")
+    except Exception as e:
+        print(f"dim cache save error: {e}")
+
+def _fetch_dims(path: str) -> tuple:
+    try:
+        resp     = s3.get_object(Bucket=R2_BUCKET, Key=path, Range="bytes=0-16383")
+        img_data = resp["Body"].read()
+        img      = Image.open(BytesIO(img_data))
+        return img.size  # (w, h)
+    except Exception:
+        return (0, 0)
+
+_DIM_EXECUTOR = ThreadPoolExecutor(max_workers=20)
+
+def _dims_for_paths(paths: list) -> dict:
+    """Return {path: (w, h)} for all paths, fetching missing ones in parallel."""
+    import concurrent.futures as _cf
+    uncached = [p for p in paths if p not in _dim_cache]
+    if uncached:
+        futures  = {_DIM_EXECUTOR.submit(_fetch_dims, p): p for p in uncached}
+        done, _  = _cf.wait(futures, timeout=6)
+        new_count = 0
+        for f in done:
+            p = futures[f]
+            try:
+                w, h = f.result()
+                if w and h:
+                    _dim_cache[p] = [w, h]
+                    new_count += 1
+            except Exception:
+                pass
+        if new_count:
+            threading.Thread(target=_save_dim_cache_bg, daemon=True).start()
+    return {p: tuple(_dim_cache[p]) if p in _dim_cache else (0, 0) for p in paths}
+
+_load_dim_cache()
+
 def _autopurge_loop():
     import time
     while True:
@@ -582,14 +636,19 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
                  or (family and not item.get("last_name","").strip() and item.get("group","").strip().lower() == family.lower()))
             and group_matches(item)]
     pool.sort(key=lambda x: natural_sort_key(x["path"]))
+    paths = [item["path"] for item in pool]
+    dims  = _dims_for_paths(paths)
     results = []
     for item in pool:
+        w, h = dims.get(item["path"], (0, 0))
         results.append({
             "path":      item["path"],
             "date":      item["date"],
             "location":  clean_location(item["location"]),
             "last_name": item.get("last_name", ""),
-            "filename":  os.path.basename(item["path"])
+            "filename":  os.path.basename(item["path"]),
+            "w": w,
+            "h": h,
         })
     return {"count": len(results), "photos": results}
 
@@ -679,15 +738,20 @@ def _search(query, last_name, date, location, group=None):
     else:
         results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
 
+    paths  = [item["path"] for _, item in results]
+    dims   = _dims_for_paths(paths)
     photos = []
     for score, item in results:
+        w, h = dims.get(item["path"], (0, 0))
         photos.append({
             "path":      item["path"],
             "date":      item["date"],
             "location":  clean_location(item["location"]),
             "last_name": item.get("last_name", ""),
             "filename":  os.path.basename(item["path"]),
-            "score":     round(score, 4)
+            "score":     round(score, 4),
+            "w": w,
+            "h": h,
         })
     return {"count": len(photos), "photos": photos}
 
