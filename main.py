@@ -280,7 +280,7 @@ def _load_dim_cache() -> None:
         _dim_cache = json.loads(obj["Body"].read())
         print(f"Dim cache: {len(_dim_cache)} entries")
     except Exception:
-        _dim_cache = {}
+        pass  # empty cache is fine — misses are fetched on demand
 
 def _save_dim_cache_bg() -> None:
     try:
@@ -322,7 +322,7 @@ def _dims_for_paths(paths: list) -> dict:
             threading.Thread(target=_save_dim_cache_bg, daemon=True).start()
     return {p: tuple(_dim_cache[p]) if p in _dim_cache else (0, 0) for p in paths}
 
-_load_dim_cache()
+threading.Thread(target=_load_dim_cache, daemon=True).start()
 
 def _autopurge_loop():
     import time
