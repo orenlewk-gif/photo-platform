@@ -324,34 +324,6 @@ def _dims_for_paths(paths: list) -> dict:
 
 _load_dim_cache()
 
-def _prefetch_dims_background() -> None:
-    """Warm the dimension cache for every photo not yet cached, at server startup."""
-    import concurrent.futures as _cf
-    uncached = [item["path"] for item in data if item["path"] not in _dim_cache]
-    if not uncached:
-        return
-    print(f"Dim prefetch: {len(uncached)} photos to fetch...")
-    batch_size = 50
-    new_count  = 0
-    for i in range(0, len(uncached), batch_size):
-        batch   = uncached[i:i + batch_size]
-        futures = {_DIM_EXECUTOR.submit(_fetch_dims, p): p for p in batch}
-        done, _ = _cf.wait(futures, timeout=30)
-        for f in done:
-            p = futures[f]
-            try:
-                w, h = f.result()
-                if w and h:
-                    _dim_cache[p] = [w, h]
-                    new_count += 1
-            except Exception:
-                pass
-    if new_count:
-        _save_dim_cache_bg()
-        print(f"Dim prefetch: cached {new_count} new entries")
-
-threading.Thread(target=_prefetch_dims_background, daemon=True).start()
-
 def _autopurge_loop():
     import time
     while True:
