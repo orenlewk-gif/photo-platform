@@ -146,10 +146,9 @@ input[type="range"]::-webkit-slider-thumb {
 .combo-banner strong { color: rgba(255,255,255,0.9); font-weight: 700; }
 
 /* Gallery grid */
-.gallery { display:grid; gap:10px; align-items:start; }
-.gallery { grid-template-columns: repeat(var(--cols,3), 1fr); }
+.gallery { columns: var(--cols,3); column-gap: 10px; }
 @media(max-width:640px) {
-  .gallery { grid-template-columns: repeat(2, 1fr) !important; gap:3px; }
+  .gallery { columns: 2 !important; column-gap: 3px; }
 }
 
 /* Thumbnail cards */
@@ -158,6 +157,10 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius:12px; overflow:hidden; cursor:pointer;
   transition:transform .2s, border-color .2s, box-shadow .2s;
   position:relative;
+  break-inside:avoid; display:block; margin-bottom:10px;
+}
+@media(max-width:640px) {
+  .thumb-card { margin-bottom:3px; }
 }
 .thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
 .thumb-card img { width:100%; height:auto; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
