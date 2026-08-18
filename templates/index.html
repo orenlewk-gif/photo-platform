@@ -160,7 +160,7 @@ input[type="range"]::-webkit-slider-thumb {
   position:relative;
 }
 .thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
-.thumb-card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.thumb-card img { width:100%; height:auto; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
 
 /* Transparent click blocker */
 .thumb-card::after {
@@ -168,16 +168,30 @@ input[type="range"]::-webkit-slider-thumb {
   background:transparent;
 }
 
-/* Bottom action row — select circle + quick shop side by side */
+/* Select circle — bottom left, above filename strip */
 .card-btn-row {
-  position:absolute; bottom:42px; left:8px; z-index:5;
+  position:absolute; bottom:36px; left:8px; z-index:5;
   display:flex; gap:5px; align-items:center;
   opacity:0; transition:opacity 0.15s; pointer-events:all;
 }
 .thumb-card:hover .card-btn-row    { opacity:1; }
 .thumb-card.selected .card-btn-row { opacity:1; }
 @media(hover:none) and (pointer:coarse) {
-  .card-btn-row { opacity:1; bottom:6px; left:6px; }
+  .card-btn-row { opacity:1; bottom:36px; left:6px; }
+}
+
+/* Shop button — bottom right, above filename strip, hover-reveal */
+.card-shop-btn {
+  position:absolute; bottom:36px; right:8px; z-index:5;
+  background:#F5C518; color:#0c2336; border:none;
+  border-radius:6px; padding:.3rem .75rem; font-size:.75rem; font-weight:700;
+  cursor:pointer; opacity:0; transition:opacity 0.15s; pointer-events:all;
+  font-family:'DM Sans',sans-serif; white-space:nowrap;
+}
+.thumb-card:hover .card-shop-btn    { opacity:1; }
+.thumb-card.selected .card-shop-btn { opacity:1; }
+@media(hover:none) and (pointer:coarse) {
+  .card-shop-btn { opacity:1; bottom:36px; right:6px; }
 }
 
 .select-check {
@@ -203,9 +217,8 @@ input[type="range"]::-webkit-slider-thumb {
   /* opacity: 0.35; */
 }
 
-.thumb-meta { padding:9px 12px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
-.thumb-loc  { color:rgba(255,255,255,.75); font-size:.75rem; font-weight:500; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.thumb-date { color:rgba(255,255,255,.4); font-size:.7rem; }
+.thumb-meta { padding:6px 10px; display:flex; align-items:center; }
+.thumb-fname { color:rgba(255,255,255,.45); font-size:.7rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:640px) {
   .thumb-meta { display:none; }
   .ln-bar { flex-direction:column; gap:0.6rem; padding:0.9rem 1rem; }
@@ -1599,15 +1612,21 @@ function renderThumbs(photos) {
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
+      <button class="card-shop-btn" data-idx="${i}">🛒 Shop</button>
       <div class="thumb-meta">
-        <span class="thumb-loc">${photo.location}</span>
-        <span class="thumb-date">${formatDate(photo.date)}</span>
+        <span class="thumb-fname">${photo.filename || ''}</span>
       </div>`;
 
     // Select-check click: toggle selection
     card.querySelector('.select-check').addEventListener('click', e => {
       e.stopPropagation();
       toggleSelect(i);
+    });
+
+    // Shop button click: open quick shop modal
+    card.querySelector('.card-shop-btn').addEventListener('click', e => {
+      e.stopPropagation();
+      openQuickShop(i);
     });
 
     // Card click: open lightbox (the ::after overlay is transparent so this fires)
