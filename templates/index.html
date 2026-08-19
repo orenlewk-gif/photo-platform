@@ -1643,11 +1643,17 @@ function justifyLayout(gallery, photos, targetH) {
       ? 1
       : (W - totalGap) / totalNat;
     const finalH   = Math.round(targetH * scale);
+    let usedW = 0;
     for (let i = row.start; i <= row.end; i++) {
       const card = cards[i];
       if (!card) continue;
-      card.style.width  = Math.round(natWidths[i - row.start] * scale) + 'px';
+      const isLastInRow = i === row.end;
+      const cardW = isLastInRow
+        ? (W - totalGap) - usedW
+        : Math.round(natWidths[i - row.start] * scale);
+      card.style.width  = cardW + 'px';
       card.style.height = finalH + 'px';
+      if (!isLastInRow) usedW += cardW;
     }
   });
 }
