@@ -1639,7 +1639,7 @@ function justifyLayout(gallery, photos, targetH) {
       natWidths.push(targetH * ((p.w && p.h) ? p.w / p.h : 1.5));
     }
     const totalNat    = natWidths.reduce((a, b) => a + b, 0);
-    const leftAligned = isLast && (totalNat + totalGap) < W * 0.85;
+    const leftAligned = isLast;
     const scale       = leftAligned ? 1 : (W - totalGap) / totalNat;
     const finalH      = Math.round(targetH * scale);
     let usedW = 0;
