@@ -250,25 +250,35 @@ def get_model():
     return model, processor
 
 
-if os.path.exists("images.json"):
-    try:
-        with open("images.json", "r") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"WARNING: local images.json corrupt ({e}), starting empty")
-        data = []
-else:
+data: list = []
+_data_ready = threading.Event()
+
+def _load_data_bg() -> None:
+    global data
+    if os.path.exists("images.json"):
+        try:
+            with open("images.json", "r") as f:
+                loaded = json.load(f)
+            data = loaded
+            print(f"Loaded {len(data)} photos from local file.")
+            _data_ready.set()
+            return
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"WARNING: local images.json corrupt ({e}), trying R2...")
     print("images.json not found locally — downloading from R2...")
     try:
         obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
-        data = json.loads(obj["Body"].read().decode("utf-8"))
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"WARNING: R2 images.json corrupt ({e}), starting empty")
-        data = []
+        loaded = json.loads(obj["Body"].read().decode("utf-8"))
+        data = loaded
+        print(f"Loaded {len(data)} photos from R2.")
     except Exception as e:
-        print(f"WARNING: could not load images.json from R2 ({e}), starting empty")
-        data = []
-print(f"Loaded {len(data)} photos.")
+        print(f"WARNING: could not load images.json ({e}), starting empty")
+    _data_ready.set()
+
+threading.Thread(target=_load_data_bg, daemon=True).start()
+# Wait up to 8 s so the first request isn't served with empty data,
+# but don't block Railway's health check indefinitely.
+_data_ready.wait(timeout=8)
 
 # ── Dimension cache ──────────────────────────────────────────────────────────
 _dim_cache: dict = {}
