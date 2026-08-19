@@ -299,15 +299,14 @@ def _fetch_dims(path: str) -> tuple:
     except Exception:
         return (0, 0)
 
-_DIM_EXECUTOR = ThreadPoolExecutor(max_workers=20)
-
 def _dims_for_paths(paths: list) -> dict:
     """Return {path: (w, h)} for all paths, fetching missing ones in parallel."""
     import concurrent.futures as _cf
     uncached = [p for p in paths if p not in _dim_cache]
     if uncached:
-        futures  = {_DIM_EXECUTOR.submit(_fetch_dims, p): p for p in uncached}
-        done, _  = _cf.wait(futures, timeout=6)
+        with ThreadPoolExecutor(max_workers=20) as ex:
+            futures = {ex.submit(_fetch_dims, p): p for p in uncached}
+            done, _ = _cf.wait(futures, timeout=6)
         new_count = 0
         for f in done:
             p = futures[f]
