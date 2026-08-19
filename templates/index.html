@@ -1638,17 +1638,17 @@ function justifyLayout(gallery, photos, targetH) {
       const p = photos[i];
       natWidths.push(targetH * ((p.w && p.h) ? p.w / p.h : 1.5));
     }
-    const totalNat = natWidths.reduce((a, b) => a + b, 0);
-    const scale    = (isLast && (totalNat + totalGap) < W * 0.85)
-      ? 1
-      : (W - totalGap) / totalNat;
-    const finalH   = Math.round(targetH * scale);
+    const totalNat    = natWidths.reduce((a, b) => a + b, 0);
+    const leftAligned = isLast && (totalNat + totalGap) < W * 0.85;
+    const scale       = leftAligned ? 1 : (W - totalGap) / totalNat;
+    const finalH      = Math.round(targetH * scale);
     let usedW = 0;
     for (let i = row.start; i <= row.end; i++) {
       const card = cards[i];
       if (!card) continue;
       const isLastInRow = i === row.end;
-      const cardW = isLastInRow
+      // Only use remainder fill on stretched rows — left-aligned rows keep natural width
+      const cardW = (!leftAligned && isLastInRow)
         ? (W - totalGap) - usedW
         : Math.round(natWidths[i - row.start] * scale);
       card.style.width  = cardW + 'px';
