@@ -146,7 +146,7 @@ input[type="range"]::-webkit-slider-thumb {
 .combo-banner strong { color: rgba(255,255,255,0.9); font-weight: 700; }
 
 /* Gallery grid */
-.gallery { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; align-items:start; }
+.gallery { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
 @media(max-width:640px) {
   .gallery { grid-template-columns:repeat(2,1fr); gap:4px; }
 }
@@ -159,7 +159,8 @@ input[type="range"]::-webkit-slider-thumb {
   position:relative;
 }
 .thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
-.thumb-card img { width:100%; height:auto; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.thumb-card img { width:100%; height:100%; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.thumb-card.portrait { grid-row: span 2; }
 
 /* Transparent click blocker */
 .thumb-card::after {
@@ -1603,6 +1604,8 @@ function buildPricingBox() {
 function justifyLayout(gallery, photos, cols) {
   _jCols = cols;
   gallery.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  const colW = (gallery.offsetWidth - (cols - 1) * 10) / cols;
+  gallery.style.gridAutoRows = Math.round(colW * 2 / 3) + 'px';
 }
 
 // Re-run layout on resize
@@ -1650,6 +1653,11 @@ function renderThumbs(photos) {
 
     // Card click: open lightbox (the ::after overlay is transparent so this fires)
     card.addEventListener('click', () => openLB(i));
+
+    // Detect portrait orientation from the loaded image's natural dimensions
+    card.querySelector('img').addEventListener('load', function() {
+      if (this.naturalHeight > this.naturalWidth) card.classList.add('portrait');
+    }, { once: true });
 
     gallery.appendChild(card);
   });
