@@ -154,7 +154,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* Thumbnail cards */
 .thumb-card {
   background:rgba(255,255,255,.04); border:2px solid rgba(255,255,255,.08);
-  border-radius:12px; overflow:hidden; cursor:pointer;
+  border-radius:4px; overflow:hidden; cursor:pointer;
   transition:transform .2s, border-color .2s, box-shadow .2s;
   position:relative; flex-shrink:0;
 }
@@ -1178,7 +1178,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 <script>
 // ── State ──
 let allPhotos      = [];
-let _jTargetH      = 230;   // current justified-layout row height
+let _jTargetH      = 160;   // current justified-layout row height
 let imgCache       = {};
 let cur            = 0;
 let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
@@ -1577,7 +1577,7 @@ async function showGallery(date, location, family, ln, group) {
     const isMobile = window.innerWidth <= 640;
     const heights  = isMobile
       ? [90, 120, 160, 210, 270]
-      : [130, 170, 230, 320, 450];
+      : [100, 130, 160, 210, 270];
     const targetH  = heights[parseInt(this.value) - 1];
     const gallery  = document.getElementById('gallery');
     if (gallery) justifyLayout(gallery, allPhotos, targetH);
