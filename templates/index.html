@@ -146,9 +146,9 @@ input[type="range"]::-webkit-slider-thumb {
 .combo-banner strong { color: rgba(255,255,255,0.9); font-weight: 700; }
 
 /* Gallery grid */
-.gallery { display:flex; flex-wrap:wrap; gap:10px; align-content:flex-start; }
+.gallery { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; align-items:start; }
 @media(max-width:640px) {
-  .gallery { gap:4px; }
+  .gallery { grid-template-columns:repeat(2,1fr); gap:4px; }
 }
 
 /* Thumbnail cards */
@@ -156,10 +156,10 @@ input[type="range"]::-webkit-slider-thumb {
   background:rgba(255,255,255,.04); border:2px solid rgba(255,255,255,.08);
   border-radius:4px; overflow:hidden; cursor:pointer;
   transition:transform .2s, border-color .2s, box-shadow .2s;
-  position:relative; flex-shrink:0;
+  position:relative;
 }
 .thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
-.thumb-card img { width:100%; height:100%; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.thumb-card img { width:100%; height:100%; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; position:absolute; inset:0; }
 
 /* Transparent click blocker */
 .thumb-card::after {
@@ -1178,7 +1178,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 <script>
 // ── State ──
 let allPhotos      = [];
-let _jTargetH      = 258;   // current justified-layout row height
+let _jCols         = 4;     // current column count
 let imgCache       = {};
 let cur            = 0;
 let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
@@ -1574,13 +1574,9 @@ async function showGallery(date, location, family, ln, group) {
   // Always call updateCart so the cart bar hides if the new folder has no selections
   updateCart();
   el.querySelector('#size-slider').addEventListener('input', function() {
-    const isMobile = window.innerWidth <= 640;
-    const heights  = isMobile
-      ? [75, 110, 175, 260]
-      : [132, 158, 198, 258];
-    const targetH  = heights[parseInt(this.value) - 1];
-    const gallery  = document.getElementById('gallery');
-    if (gallery) justifyLayout(gallery, allPhotos, targetH);
+    const cols    = [6, 5, 4, 3][parseInt(this.value) - 1];
+    const gallery = document.getElementById('gallery');
+    if (gallery) justifyLayout(gallery, allPhotos, cols);
   });
 }
 
@@ -1604,57 +1600,16 @@ function buildPricingBox() {
   </div>`;
 }
 
-function justifyLayout(gallery, photos, targetH) {
-  _jTargetH = targetH;
+function justifyLayout(gallery, photos, cols) {
+  _jCols = cols;
+  gallery.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
   const cards = Array.from(gallery.querySelectorAll('.thumb-card'));
-  const gap   = window.innerWidth <= 640 ? 4 : 10;
-  const W     = gallery.clientWidth;
-  if (!W || !photos.length) return;
-
-  // Group photos into rows
-  const rows = [];
-  let rStart = 0, rW = 0;
-  for (let i = 0; i < photos.length; i++) {
-    const p     = photos[i];
-    const ratio = (p.w && p.h) ? p.w / p.h : 1.5;
-    const natW  = targetH * ratio;
-    const addW  = (i === rStart) ? natW : natW + gap;
-    if (rW + addW > W + 0.5 && i > rStart) {
-      rows.push({ start: rStart, end: i - 1 });
-      rStart = i; rW = natW;
-    } else {
-      rW += addW;
-    }
-  }
-  rows.push({ start: rStart, end: photos.length - 1 });
-
-  // Scale each row to fill container width exactly
-  rows.forEach((row, ri) => {
-    const isLast   = ri === rows.length - 1;
-    const count    = row.end - row.start + 1;
-    const totalGap = gap * (count - 1);
-    const natWidths = [];
-    for (let i = row.start; i <= row.end; i++) {
-      const p = photos[i];
-      natWidths.push(targetH * ((p.w && p.h) ? p.w / p.h : 1.5));
-    }
-    const totalNat    = natWidths.reduce((a, b) => a + b, 0);
-    const leftAligned = isLast;
-    const scale       = leftAligned ? 1 : (W - totalGap) / totalNat;
-    const finalH      = Math.round(targetH * scale);
-    let usedW = 0;
-    for (let i = row.start; i <= row.end; i++) {
-      const card = cards[i];
-      if (!card) continue;
-      const isLastInRow = i === row.end;
-      // Only use remainder fill on stretched rows — left-aligned rows keep natural width
-      const cardW = (!leftAligned && isLastInRow)
-        ? (W - totalGap) - usedW
-        : Math.round(natWidths[i - row.start] * scale);
-      card.style.width  = cardW + 'px';
-      card.style.height = finalH + 'px';
-      if (!isLastInRow) usedW += cardW;
-    }
+  photos.forEach((p, i) => {
+    const card = cards[i];
+    if (!card) return;
+    card.style.aspectRatio = (p.w && p.h) ? `${p.w} / ${p.h}` : '3 / 2';
+    card.style.width  = '';
+    card.style.height = '';
   });
 }
 
@@ -1664,7 +1619,7 @@ window.addEventListener('resize', () => {
   clearTimeout(_resizeTimer);
   _resizeTimer = setTimeout(() => {
     const g = document.getElementById('gallery');
-    if (g && allPhotos.length) justifyLayout(g, allPhotos, _jTargetH);
+    if (g && allPhotos.length) justifyLayout(g, allPhotos, _jCols);
   }, 150);
 });
 
@@ -1708,8 +1663,7 @@ function renderThumbs(photos) {
   });
   lazyLoad(gallery);
   requestAnimationFrame(() => {
-    const isMobile = window.innerWidth <= 640;
-    justifyLayout(gallery, photos, isMobile ? 160 : _jTargetH);
+    justifyLayout(gallery, photos, _jCols);
   });
 }
 
