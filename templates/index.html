@@ -1178,7 +1178,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 <script>
 // ── State ──
 let allPhotos      = [];
-let _jTargetH      = 210;   // current justified-layout row height
+let _jTargetH      = 258;   // current justified-layout row height
 let imgCache       = {};
 let cur            = 0;
 let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
@@ -1576,8 +1576,8 @@ async function showGallery(date, location, family, ln, group) {
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
     const heights  = isMobile
-      ? [80, 120, 185, 270]
-      : [110, 140, 170, 210];
+      ? [75, 110, 175, 260]
+      : [132, 158, 198, 258];
     const targetH  = heights[parseInt(this.value) - 1];
     const gallery  = document.getElementById('gallery');
     if (gallery) justifyLayout(gallery, allPhotos, targetH);
