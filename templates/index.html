@@ -1560,12 +1560,13 @@ async function showGallery(date, location, family, ln, group) {
     </div>
     <div class="gallery-controls">
       <div class="size-slider-wrap">
-        <input type="range" id="size-slider" min="1" max="4" value="4" />
+        <input type="range" id="size-slider" min="1" max="4" value="3" />
         <span>⊞</span>
       </div>
     </div>
     <div class="gallery" id="gallery"></div>`;
 
+  _jCols = 4;
   renderThumbs(photos);
   // Re-highlight any photos that were already selected in this folder
   selectedPhotos.forEach(idx => {
@@ -1604,7 +1605,8 @@ function buildPricingBox() {
 function justifyLayout(gallery, photos, cols) {
   _jCols = cols;
   gallery.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-  const colW = (gallery.offsetWidth - (cols - 1) * 10) / cols;
+  const w = gallery.offsetWidth || gallery.parentElement?.offsetWidth || 960;
+  const colW = (w - (cols - 1) * 10) / cols;
   gallery.style.gridAutoRows = Math.round(colW * 2 / 3) + 'px';
 }
 
