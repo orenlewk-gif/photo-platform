@@ -292,7 +292,7 @@ def _save_dim_cache_bg() -> None:
 
 def _fetch_dims(path: str) -> tuple:
     try:
-        resp     = s3.get_object(Bucket=R2_BUCKET, Key=path, Range="bytes=0-16383")
+        resp     = s3.get_object(Bucket=R2_BUCKET, Key=path, Range="bytes=0-65535")
         img_data = resp["Body"].read()
         img      = Image.open(BytesIO(img_data))
         return img.size  # (w, h)
