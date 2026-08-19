@@ -1559,7 +1559,7 @@ async function showGallery(date, location, family, ln, group) {
     </div>
     <div class="gallery-controls">
       <div class="size-slider-wrap">
-        <input type="range" id="size-slider" min="1" max="5" value="3" />
+        <input type="range" id="size-slider" min="1" max="4" value="4" />
         <span>⊞</span>
       </div>
     </div>
@@ -1576,8 +1576,8 @@ async function showGallery(date, location, family, ln, group) {
   el.querySelector('#size-slider').addEventListener('input', function() {
     const isMobile = window.innerWidth <= 640;
     const heights  = isMobile
-      ? [90, 120, 160, 210, 270]
-      : [140, 175, 210, 250, 280];
+      ? [80, 120, 185, 270]
+      : [110, 140, 170, 210];
     const targetH  = heights[parseInt(this.value) - 1];
     const gallery  = document.getElementById('gallery');
     if (gallery) justifyLayout(gallery, allPhotos, targetH);
