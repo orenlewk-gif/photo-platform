@@ -1607,7 +1607,9 @@ function justifyLayout(gallery, photos, cols) {
   photos.forEach((p, i) => {
     const card = cards[i];
     if (!card) return;
-    card.style.aspectRatio = (p.w && p.h) ? `${p.w} / ${p.h}` : '3 / 2';
+    const img = card.querySelector('img');
+    if (img) img.style.aspectRatio = (p.w && p.h) ? `${p.w} / ${p.h}` : '3 / 2';
+    card.style.aspectRatio = '';
     card.style.width  = '';
     card.style.height = '';
   });
