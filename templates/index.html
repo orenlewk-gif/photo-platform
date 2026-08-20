@@ -148,7 +148,9 @@ input[type="range"]::-webkit-slider-thumb {
 /* Gallery grid */
 .gallery { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
 @media(max-width:640px) {
-  .gallery { grid-template-columns:repeat(2,1fr); gap:4px; }
+  .gallery { grid-template-columns:repeat(2,1fr); gap:4px; grid-auto-rows:auto; }
+  .thumb-card.portrait { grid-row: span 1; }
+  .thumb-card img { height:auto; object-fit:unset; }
 }
 
 /* Thumbnail cards */
