@@ -1,5 +1,7 @@
 import threading
 import zipfile
+import time as _time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -389,6 +391,114 @@ except Exception:
 
 
 # ─────────────────────────────────────────
+# RATE LIMITER
+# ─────────────────────────────────────────
+
+class _RateLimiter:
+    """Simple sliding-window in-memory rate limiter (no external deps)."""
+    def __init__(self, max_calls: int, window: int):
+        self.max_calls = max_calls
+        self.window = window
+        self._calls: dict = {}
+        self._lock = threading.Lock()
+
+    def is_allowed(self, key: str) -> bool:
+        now = _time.monotonic()
+        with self._lock:
+            dq = self._calls.setdefault(key, deque())
+            while dq and dq[0] < now - self.window:
+                dq.popleft()
+            if len(dq) >= self.max_calls:
+                return False
+            dq.append(now)
+            return True
+
+_search_limiter    = _RateLimiter(max_calls=20, window=60)   # 20 req/min per IP
+_lastname_limiter  = _RateLimiter(max_calls=30, window=60)   # 30 req/min per IP
+
+# ─────────────────────────────────────────
+# CHECKOUT PRICING HELPERS
+# ─────────────────────────────────────────
+
+def _price_from_tiers(tiers: list, count: int):
+    """Return the correct price for `count` photos given a tier list, or None if no match."""
+    all_price = None
+    max_specific = 0
+    for tier in tiers:
+        tc = tier.get("count")
+        price = float(tier.get("price", 0))
+        if tc == "all":
+            all_price = price
+        elif isinstance(tc, int) and tc == count:
+            return price
+        elif isinstance(tc, int):
+            max_specific = max(max_specific, tc)
+    if count > max_specific and all_price is not None:
+        return all_price
+    return None
+
+def _server_digital_price(album: dict, order_date: str) -> float:
+    """Authoritative server-side price for a digital album — never trusts client."""
+    location = (album.get("location") or "").strip()
+    family   = (album.get("last_name") or "").strip()
+    count    = int(album.get("count", 0))
+    loc_lower = location.lower()
+
+    if loc_lower in ZIP_LOCS_SET:
+        fm = _load_folder_meta()
+        fk = _folder_key(order_date, location, family)
+        group_size = fm.get(fk, {}).get("group_size")
+        if not group_size:
+            _ZIP_ALIASES = {"Nature Zip": "Nature Zip Line", "Adventure Zip": "Adventure Zip Line"}
+            alt_loc = _ZIP_ALIASES.get(location)
+            if alt_loc:
+                alt_fk = _folder_key(order_date, alt_loc, family)
+                group_size = fm.get(alt_fk, {}).get("group_size")
+        if group_size:
+            zp = _load_zip_pricing()
+            for t in zp.get("tiers", []):
+                if str(t.get("people")) == str(group_size):
+                    zip_tiers = []
+                    if t.get("one_photo"):    zip_tiers.append({"count": 1,     "price": t["one_photo"]})
+                    if t.get("two_photos"):   zip_tiers.append({"count": 2,     "price": t["two_photos"]})
+                    if t.get("three_photos"): zip_tiers.append({"count": 3,     "price": t["three_photos"]})
+                    if t.get("all_photos"):   zip_tiers.append({"count": "all", "price": t["all_photos"]})
+                    p = _price_from_tiers(zip_tiers, count)
+                    if p is not None:
+                        return p
+
+    pricing = _load_pricing()
+
+    date_ov = pricing.get("date_overrides", {}).get(order_date, {})
+    ov_key = next((k for k in date_ov if k.lower() == loc_lower), None)
+    if ov_key:
+        p = _price_from_tiers(date_ov[ov_key].get("tiers", []), count)
+        if p is not None:
+            return p
+
+    activities = pricing.get("activities", {})
+    act_key = next((k for k in activities if k.lower() == loc_lower), None)
+    if act_key:
+        p = _price_from_tiers(activities[act_key].get("tiers", []), count)
+        if p is not None:
+            return p
+
+    default_tiers = pricing.get("default", {}).get("tiers", [
+        {"count": 1,     "price": 25},
+        {"count": 3,     "price": 60},
+        {"count": "all", "price": 90},
+    ])
+    p = _price_from_tiers(default_tiers, count)
+    return p if p is not None else 0.0
+
+def _server_print_price(size_idx: int) -> float:
+    """Authoritative server-side price for a print by size index."""
+    sizes = _load_print_pricing().get("sizes", list(_DEFAULT_PRINT_SIZES))
+    if 0 <= size_idx < len(sizes):
+        return float(sizes[size_idx].get("price", 0))
+    return 0.0
+
+# ─────────────────────────────────────────
 # API ROUTES
 # ─────────────────────────────────────────
 
@@ -548,8 +658,11 @@ def get_families(date: str, location: str):
 
 
 @app.get("/api/last-name-search")
-def last_name_search(q: str = Query("")):
+def last_name_search(request: Request, q: str = Query("")):
     """Autocomplete: return unique (last_name, date, location) combos matching q."""
+    ip = request.client.host if request.client else "unknown"
+    if not _lastname_limiter.is_allowed(ip):
+        return JSONResponse(status_code=429, content={"error": "Too many requests"})
     q_lower = q.strip().lower()
     if len(q_lower) < 2:
         return {"results": []}
@@ -664,12 +777,16 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
 
 @app.get("/api/search")
 def search(
+    request:   Request,
     query:     str  = Query(None),
     last_name: str  = Query(None),
     date:      str  = Query(None),
     location:  str  = Query(None),
     group:     str  = Query(None),
 ):
+    ip = request.client.host if request.client else "unknown"
+    if not _search_limiter.is_allowed(ip):
+        return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
         return _search(query, last_name, date, location, group)
     except Exception as e:
@@ -850,6 +967,8 @@ def get_photo(path: str, size: str = Query("medium")):
 
     try:
         key = to_r2_key(path)
+        if not key.startswith("images/"):
+            return JSONResponse(status_code=400, content={"error": "Invalid path"})
         if os.getenv("R2_ENDPOINT_URL"):
             # For thumbs: try pre-generated version first (much faster — no processing)
             if size == "thumb":
@@ -954,7 +1073,7 @@ RELOAD_TOKEN = os.getenv("RELOAD_TOKEN", "")
 @app.post("/api/reload")
 def reload_index(token: str = Query("")):
     global data
-    if RELOAD_TOKEN and token != RELOAD_TOKEN:
+    if not RELOAD_TOKEN or token != RELOAD_TOKEN:
         return Response(status_code=401)
     try:
         obj  = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
@@ -1118,7 +1237,9 @@ async def create_checkout(request: Request):
                 count = int(album.get("count", 0))
                 if count == 0:
                     continue
-                album_price = str(_combo_adj.get(_i, float(album.get("price", 0))))
+                # Always use server-computed price — never trust client-supplied price
+                server_price = _server_digital_price(album, date)
+                album_price = str(_combo_adj.get(_i, server_price))
                 album_name  = album.get("last_name") or album.get("location") or "Photos"
                 line_items.append({
                     "product_id": WC_DIGITAL_PRODUCT_ID,
@@ -1129,8 +1250,9 @@ async def create_checkout(request: Request):
                     "meta_data":  [{"key": "Photos", "value": f"{count} digital photo{'s' if count != 1 else ''}"}],
                 })
         elif digital_count > 0:
-            # Legacy fallback: single combined line item
-            price_str    = str(float(digital_price))
+            # Legacy fallback: single combined line item — recompute price server-side
+            _legacy_album = {"count": digital_count, "location": location, "last_name": last_name}
+            price_str    = str(_server_digital_price(_legacy_album, date))
             display_name = last_name if last_name else location
             line_items.append({
                 "product_id": WC_DIGITAL_PRODUCT_ID,
@@ -1142,7 +1264,8 @@ async def create_checkout(request: Request):
             })
 
         for p in prints:
-            print_price = str(float(p["price"]))
+            size_idx    = int(p.get("size_idx", 0))
+            print_price = str(_server_print_price(size_idx))
             line_items.append({
                 "product_id": WC_PRINT_PRODUCT_ID,
                 "quantity":   1,
@@ -1152,10 +1275,9 @@ async def create_checkout(request: Request):
                 "meta_data":  [],
             })
             if p.get("frame") and p["frame"] != "No Frame":
-                size_idx    = int(p.get("size_idx", 0))
                 orientation = p.get("orientation", "landscape")
                 var_id      = FRAME_VARIATION_MAP.get((size_idx, orientation), 1057)
-                frame_price = str(float(p["frame_price"]))
+                frame_price = str(max(0.01, float(p.get("frame_price", 0))))
                 line_items.append({
                     "product_id":   WC_FRAME_PARENT_ID,
                     "variation_id": var_id,
