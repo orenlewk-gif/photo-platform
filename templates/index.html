@@ -148,9 +148,8 @@ input[type="range"]::-webkit-slider-thumb {
 /* Gallery grid */
 .gallery { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
 @media(max-width:640px) {
-  .gallery { grid-template-columns:repeat(2,1fr); gap:4px; grid-auto-rows:auto; }
-  .thumb-card.portrait { grid-row: span 1; }
-  .thumb-card img { height:auto; object-fit:unset; }
+  .gallery { gap:4px; }
+  .gallery-controls { display:none; }
 }
 
 /* Thumbnail cards */
@@ -179,7 +178,7 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-card:hover .card-btn-row    { opacity:1; }
 .thumb-card.selected .card-btn-row { opacity:1; }
 @media(hover:none) and (pointer:coarse) {
-  .card-btn-row { opacity:1; bottom:28px; left:6px; }
+  .card-btn-row { opacity:1; bottom:6px; left:6px; }
 }
 
 /* Shop button — bottom right, above filename overlay, hover-reveal */
@@ -193,7 +192,12 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-card:hover .card-shop-btn    { opacity:1; }
 .thumb-card.selected .card-shop-btn { opacity:1; }
 @media(hover:none) and (pointer:coarse) {
-  .card-shop-btn { opacity:1; bottom:28px; right:6px; }
+  .card-shop-btn {
+    opacity:1; bottom:6px; right:6px;
+    padding:0; width:28px; height:28px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .card-shop-btn .cart-label { display:none; }
 }
 
 /* Filename — hover-only overlay bar at bottom of image */
@@ -1605,10 +1609,12 @@ function buildPricingBox() {
 }
 
 function justifyLayout(gallery, photos, cols) {
-  _jCols = cols;
-  gallery.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
-  const w = gallery.offsetWidth || gallery.parentElement?.offsetWidth || 960;
-  const colW = (w - (cols - 1) * 10) / cols;
+  const mobile = window.innerWidth <= 640;
+  _jCols = mobile ? 2 : cols;
+  const gap = mobile ? 4 : 10;
+  gallery.style.gridTemplateColumns = `repeat(${_jCols}, 1fr)`;
+  const w = gallery.offsetWidth || gallery.parentElement?.offsetWidth || (mobile ? 360 : 960);
+  const colW = (w - (_jCols - 1) * gap) / _jCols;
   gallery.style.gridAutoRows = Math.round(colW * 2 / 3) + 'px';
 }
 
@@ -1640,7 +1646,7 @@ function renderThumbs(photos) {
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
-      <button class="card-shop-btn" data-idx="${i}">🛒 Shop</button>
+      <button class="card-shop-btn" data-idx="${i}"><svg class="cart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="cart-label"> Shop</span></button>
       <div class="card-fname">${photo.filename || ''}</div>`;
 
     // Select-check click: toggle selection
