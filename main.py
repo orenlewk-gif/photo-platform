@@ -944,10 +944,10 @@ def to_r2_key(path: str) -> str:
     return path[idx:] if idx >= 0 else path
 
 def _thumb_r2_key(r2_key: str) -> str:
-    """maps images/foo/bar.jpg → thumbs/foo/bar.jpg"""
+    """maps images/foo/bar.jpg → thumbs/v2/foo/bar.jpg"""
     if r2_key.startswith("images/"):
-        return "thumbs/" + r2_key[len("images/"):]
-    return "thumbs/" + r2_key
+        return "thumbs/v2/" + r2_key[len("images/"):]
+    return "thumbs/v2/" + r2_key
 
 @app.get("/api/photo")
 def get_photo(path: str, size: str = Query("medium")):
@@ -958,7 +958,7 @@ def get_photo(path: str, size: str = Query("medium")):
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
-        "thumb":  (450,  72),
+        "thumb":  (700,  80),
         "medium": (1800, 90),
         "full":   (2400, 92),
     }
