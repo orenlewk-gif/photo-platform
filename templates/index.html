@@ -1400,7 +1400,7 @@ async function init() {
 
   const view = params.get('view');
   if (view === 'frames')   { showView('frames'); showFramesView(); }
-  else if (ln)             navigate({ view:'gallery', ln }, true);
+  else if (ln)             { document.getElementById('ln-input').value = ln; doLnSearch(); }
   else if (group)          navigate({ view:'gallery', date, location:loc, group }, true);
   else if (family)         navigate({ view:'gallery', date, location:loc, family }, true);
   else if (loc)            navigate({ view:'families', date, location:loc }, true);
