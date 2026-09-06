@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 import json
 import torch
 import re
@@ -27,6 +28,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://bigskyphotos.com"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 if os.path.exists("frames"):
     app.mount("/frames", StaticFiles(directory="frames"), name="frames")
