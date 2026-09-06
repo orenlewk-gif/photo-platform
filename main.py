@@ -686,7 +686,7 @@ def last_name_search(request: Request, q: str = Query("")):
         ln = item.get("last_name", "").strip()
         if ln:
             ln_lower = ln.lower()
-            if ln_lower.startswith(q_lower) or fuzz.partial_ratio(q_lower, ln_lower) >= 75:
+            if ln_lower.startswith(q_lower):
                 key = ("ln", ln_lower, item["date"], loc)
                 if key not in seen:
                     seen.add(key)
