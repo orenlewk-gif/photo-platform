@@ -133,6 +133,12 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .badge-mixed{background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);
   padding:.18rem .55rem;border-radius:100px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
 #folder-actions-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+#folder-description-row{margin-top:.65rem;display:none}
+#folder-description-row label{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35);display:block;margin-bottom:.3rem}
+#folder-description{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.85);font-size:.82rem;font-family:'DM Sans',sans-serif;line-height:1.5;padding:.45rem .65rem;resize:vertical;min-height:52px;outline:none;transition:border-color .2s}
+#folder-description:focus{border-color:rgba(245,196,48,.45)}
+#folder-description::placeholder{color:rgba(255,255,255,.2)}
+#desc-save-status{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.25rem;min-height:.85rem}
 #folder-photo-count{font-size:.78rem;color:rgba(255,255,255,.38);margin-right:auto}
 .act-btn{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:rgba(255,255,255,.75);
   border-radius:7px;padding:.34rem .8rem;font-size:.78rem;cursor:pointer;white-space:nowrap}
@@ -368,6 +374,11 @@ input[type=file]{display:none}
           <button class="act-btn danger" onclick="deleteCurrentFolder()">Delete Folder</button>
         </div>
         <div id="pricing-preview"></div>
+        <div id="folder-description-row">
+          <label>Folder Info / Note (shown to customers)</label>
+          <textarea id="folder-description" placeholder='e.g. "Great shoot! Photos available through Dec 31. Contact us with any questions." Leave blank to show nothing.' rows="2" oninput="onDescriptionChange()"></textarea>
+          <div id="desc-save-status"></div>
+        </div>
       </div>
 
       <div id="grid-controls">
@@ -693,6 +704,16 @@ async function loadFolderPhotos() {
     gsLabel.style.display = 'none';
     gsSel.style.display = 'none';
   }
+
+  // Description field
+  const descRow  = document.getElementById('folder-description-row');
+  const descArea = document.getElementById('folder-description');
+  const descStatus = document.getElementById('desc-save-status');
+  descRow.style.display = '';
+  descArea.value = d.description || '';
+  descArea.dataset.folderKey = d.folder_key;
+  descStatus.textContent = '';
+
   renderPhotoGrid();
   updatePricingPreview();
 }
@@ -924,6 +945,27 @@ async function saveGroupSize() {
     body:JSON.stringify({folder_key:fk,group_size:gs})});
   showToast('Group size saved');
   updatePricingPreview();
+}
+
+let _descSaveTimer = null;
+function onDescriptionChange() {
+  const area   = document.getElementById('folder-description');
+  const status = document.getElementById('desc-save-status');
+  status.textContent = '';
+  clearTimeout(_descSaveTimer);
+  _descSaveTimer = setTimeout(async () => {
+    const fk   = area.dataset.folderKey;
+    const desc = area.value.trim();
+    if (!fk) return;
+    status.textContent = 'Saving…';
+    const res = await fetch('/api/admin/folder/description', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({folder_key: fk, description: desc})
+    });
+    status.textContent = res.ok ? 'Saved' : 'Save failed';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  }, 800);
 }
 
 // ── Pricing preview ──

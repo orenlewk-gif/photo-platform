@@ -4436,7 +4436,32 @@ def api_admin_folder_photos(
         "draft_count": draft_count,
         "folder_key":  fk,
         "group_size":  fm.get(fk, {}).get("group_size"),
+        "description": fm.get(fk, {}).get("description", ""),
     }
+
+@app.post("/api/admin/folder/description")
+async def admin_folder_set_description(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    fk   = body.get("folder_key", "").strip()
+    desc = body.get("description", "").strip()
+    if not fk:
+        return JSONResponse(status_code=400, content={"error": "Missing folder_key"})
+    fm = _load_folder_meta()
+    if fk not in fm:
+        fm[fk] = {}
+    fm[fk]["description"] = desc
+    _save_folder_meta(fm)
+    return {"status": "ok"}
+
+@app.get("/api/folder/info")
+def api_folder_info(date: str = Query(None), location: str = Query(None), family: str = Query(None)):
+    if not date or not location or not family:
+        return {"description": ""}
+    fk = _folder_key(date, location.strip(), family.strip())
+    fm = _load_folder_meta()
+    return {"description": fm.get(fk, {}).get("description", "")}
 
 @app.post("/api/admin/photo/trash")
 async def admin_photo_trash(request: Request):

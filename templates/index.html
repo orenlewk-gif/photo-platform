@@ -96,6 +96,18 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .select-all-btn { background:rgba(245,197,24,0.12); border:1px solid rgba(245,197,24,0.4); color:#F5C518; font-family:'DM Sans',sans-serif; font-weight:600; font-size:0.85rem; border-radius:8px; padding:0.45rem 1.1rem; cursor:pointer; margin-left:auto; transition:background 0.2s; }
 .select-all-btn:hover { background:rgba(245,197,24,0.25); }
 
+.folder-info-box {
+  background: rgba(245,196,48,0.07);
+  border: 1px solid rgba(245,196,48,0.2);
+  border-left: 3px solid #F5C430;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.1rem;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: rgba(255,255,255,0.75);
+}
+
 .gallery-controls {
   display:flex; align-items:center; gap:1.5rem; margin-bottom:1.2rem; flex-wrap:wrap;
 }
@@ -1559,17 +1571,27 @@ async function showGallery(date, location, family, ln, group) {
   // Only show last name search for portrait/family galleries
   document.getElementById('ln-bar').style.display = (family || ln) ? '' : 'none';
 
-  const comboBannerHtml = '';
+  // Fetch folder description (portrait + activity folders)
+  let folderInfoHtml = '';
+  if (date && location && (family || group)) {
+    try {
+      const infoRes = await fetch(`/api/folder/info?date=${enc(date)}&location=${enc(location)}&family=${enc(family || group)}`);
+      const infoData = await infoRes.json();
+      if (infoData.description) {
+        folderInfoHtml = `<div class="folder-info-box">${escHtml(infoData.description)}</div>`;
+      }
+    } catch(e) {}
+  }
 
   const el = document.getElementById('view-gallery');
   el.innerHTML = `
-    ${comboBannerHtml}
     <div class="gallery-header">
       <span class="gallery-title">${title}</span>
       <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
       ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
+    ${folderInfoHtml}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" />
@@ -3559,6 +3581,7 @@ function buildCollage(previews, idx) {
 function enc(s)  { return encodeURIComponent(s || ''); }
 function escQ(s) { return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"'); }
 function escA(s) { return (s||'').replace(/"/g,'&quot;'); }
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 function formatDateLong(d) {
   try {
