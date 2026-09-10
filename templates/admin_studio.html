@@ -675,7 +675,11 @@ function renderTree() {
 
 function toggleDate(date) {
   const dk = 'date:' + date;
-  treeExpanded[dk] = !treeExpanded[dk];
+  const dateView = document.getElementById('date-view');
+  const onThisDate = dateView && dateView.style.display !== 'none' &&
+                     document.getElementById('date-view-title').textContent === date;
+  // If already on this date's overview, toggle tree expansion; otherwise always expand
+  treeExpanded[dk] = onThisDate ? !treeExpanded[dk] : true;
   currentFolder = null;
   currentLocation = null;
   renderTree();

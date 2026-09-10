@@ -1466,15 +1466,23 @@ async function showDays() {
 // ── View: Locations ──
 async function showLocations(date) {
   showSpinner();
-  const res  = await fetch(`/api/locations?date=${enc(date)}`);
+  const [res, infoRes] = await Promise.all([
+    fetch(`/api/locations?date=${enc(date)}`),
+    fetch(`/api/folder/info?date=${enc(date)}&location=&family=`)
+  ]);
   const data = await res.json();
+  const infoData = infoRes.ok ? await infoRes.json() : {};
   hideSpinner();
   showView('locations');
   setBreadcrumb([{ label:'All Days', state:{ view:'days' } }], formatDateLong(date));
   document.getElementById('ln-bar').style.display = '';
 
+  const dateInfoHtml = infoData.description
+    ? `<div class="folder-info-box">${escHtml(infoData.description)}</div>`
+    : '';
+
   const el = document.getElementById('view-locations');
-  el.innerHTML = `<div class="grid">${data.locations.map(loc => `
+  el.innerHTML = `${dateInfoHtml}<div class="grid">${data.locations.map(loc => `
     <div class="grid-card" onclick='navigate({view:"families",date:"${date}",location:"${escQ(loc.name)}"})'>
       <div class="collage-inner"><div class="collage-2x2">
         ${[0,1,2,3].map(i => loc.previews[i]
