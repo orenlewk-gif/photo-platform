@@ -167,7 +167,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #folder-description:focus,#loc-description:focus{border-color:rgba(245,196,48,.45)}
 #folder-description::placeholder,#loc-description::placeholder{color:rgba(255,255,255,.2)}
 #desc-save-status,#loc-desc-save-status{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.25rem;min-height:.85rem}
-#loc-description-row{margin-top:.65rem;display:none}
+#loc-description-row{display:none}
 #folder-photo-count{font-size:.78rem;color:rgba(255,255,255,.38);margin-right:auto}
 .act-btn{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:rgba(255,255,255,.75);
   border-radius:7px;padding:.34rem .8rem;font-size:.78rem;cursor:pointer;white-space:nowrap}
@@ -401,6 +401,14 @@ input[type=file]{display:none}
         <div id="location-view-title"></div>
         <div id="location-view-sub"></div>
       </div>
+      <div id="loc-description-row" style="padding:.75rem 1.5rem 0;display:none">
+        <div class="desc-label-row">
+          <label>Location Note (shown when browsing all folders for this day/location)</label>
+          <button class="btn-use-preset" onclick="openPresetDD(this,'loc-description')">Use preset ▾<div class="preset-dd" id="pd-loc"></div></button>
+        </div>
+        <textarea id="loc-description" placeholder='e.g. "All Lone Peak Portrait photos from today are now live!" Leave blank to show nothing.' rows="2" oninput="onLocDescriptionChange()"></textarea>
+        <div id="loc-desc-save-status"></div>
+      </div>
       <div id="location-cards"></div>
     </div>
 
@@ -432,14 +440,6 @@ input[type=file]{display:none}
           <button class="act-btn danger" onclick="deleteCurrentFolder()">Delete Folder</button>
         </div>
         <div id="pricing-preview"></div>
-        <div id="loc-description-row">
-          <div class="desc-label-row">
-            <label>Location Note (shown when browsing all folders for this day/location)</label>
-            <button class="btn-use-preset" onclick="openPresetDD(this,'loc-description')">Use preset ▾<div class="preset-dd" id="pd-loc"></div></button>
-          </div>
-          <textarea id="loc-description" placeholder='e.g. "All Lone Peak Portrait photos from today are now live!" Leave blank to show nothing.' rows="2" oninput="onLocDescriptionChange()"></textarea>
-          <div id="loc-desc-save-status"></div>
-        </div>
         <div id="folder-description-row">
           <div class="desc-label-row">
             <label>Folder Note (shown inside this specific folder)</label>
@@ -804,6 +804,22 @@ function showLocationOverview(date, loc, subs) {
   setView('location');
   document.getElementById('location-view-title').textContent = loc;
   document.getElementById('location-view-sub').textContent = `${date} · ${subs.length} folder${subs.length!==1?'s':''}`;
+
+  // Load location-level description
+  const locDescRow  = document.getElementById('loc-description-row');
+  const locDescArea = document.getElementById('loc-description');
+  const locDescStat = document.getElementById('loc-desc-save-status');
+  if (locDescRow && locDescArea) {
+    const locKey = `${date}|${loc}|`;
+    locDescArea.dataset.folderKey = locKey;
+    locDescArea.value = '';
+    if (locDescStat) locDescStat.textContent = '';
+    locDescRow.style.display = 'block';
+    fetch(`/api/folder/info?date=${encodeURIComponent(date)}&location=${encodeURIComponent(loc)}`)
+      .then(r => r.json()).then(info => { locDescArea.value = info.description || ''; })
+      .catch(() => {});
+  }
+
   const cards = document.getElementById('location-cards');
   if (!subs.length) {
     cards.innerHTML = '<div class="loading-text">No folders</div>';
@@ -886,22 +902,6 @@ async function loadFolderPhotos() {
   descArea.dataset.folderKey = d.folder_key;
   descStatus.textContent = '';
 
-  // Location-level description (keyed at date|location|"")
-  const locDescRow    = document.getElementById('loc-description-row');
-  const locDescArea   = document.getElementById('loc-description');
-  const locDescStatus = document.getElementById('loc-desc-save-status');
-  if (locDescRow && locDescArea) {
-    locDescRow.style.display = 'block';
-    // loc key = same as folder_key but with empty sub-folder
-    const parts = d.folder_key.split('|');
-    const locKey = parts.slice(0, 2).join('|') + '|';
-    locDescArea.dataset.folderKey = locKey;
-    // Fetch existing loc description
-    fetch(`/api/folder/info?date=${encodeURIComponent(parts[0])}&location=${encodeURIComponent(parts[1])}`)
-      .then(r => r.json()).then(info => { locDescArea.value = info.description || ''; })
-      .catch(() => {});
-    locDescStatus.textContent = '';
-  }
 
   renderPhotoGrid();
   updatePricingPreview();
