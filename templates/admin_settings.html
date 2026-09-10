@@ -138,16 +138,31 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 .btn-bulk-apply:hover{background:rgba(74,222,128,.25)}
 .btn-bulk-apply:disabled{opacity:.4;cursor:not-allowed}
 #bulk-status{font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.25rem}
-.folder-checklist{max-height:320px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);
+.folder-checklist{max-height:420px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);
   border-radius:8px;background:rgba(0,0,0,.15)}
-.folder-check-item{display:flex;align-items:flex-start;gap:.65rem;padding:.55rem .85rem;
-  border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer}
+.fc-date-group{border-bottom:1px solid rgba(255,255,255,.07)}
+.fc-date-group:last-child{border-bottom:none}
+.fc-date-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:.5rem .85rem .35rem;background:rgba(255,255,255,.03)}
+.fc-date-label{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.55);letter-spacing:.04em}
+.fc-date-sel{font-size:.7rem;color:rgba(245,197,24,.65);cursor:pointer;padding:.1rem .35rem;
+  border-radius:4px;border:1px solid rgba(245,197,24,.2);background:none}
+.fc-date-sel:hover{color:#F5C518;border-color:rgba(245,197,24,.5)}
+.fc-loc-group{border-left:2px solid rgba(255,255,255,.06);margin-left:.85rem}
+.fc-loc-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:.3rem .75rem .2rem .6rem}
+.fc-loc-label{font-size:.74rem;color:rgba(255,255,255,.36);font-style:italic}
+.fc-loc-sel{font-size:.68rem;color:rgba(255,255,255,.28);cursor:pointer;padding:.07rem .28rem;
+  border-radius:4px;border:1px solid rgba(255,255,255,.1);background:none}
+.fc-loc-sel:hover{color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.3)}
+.folder-check-item{display:flex;align-items:center;gap:.65rem;padding:.4rem .75rem .4rem 1.2rem;
+  border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
 .folder-check-item:last-child{border-bottom:none}
 .folder-check-item:hover{background:rgba(255,255,255,.03)}
-.folder-check-item input[type=checkbox]{margin-top:2px;accent-color:#F5C518;flex-shrink:0}
-.folder-check-label{display:flex;flex-direction:column;gap:.15rem}
-.folder-check-name{font-size:.85rem;color:rgba(255,255,255,.8)}
-.folder-check-meta{font-size:.73rem;color:rgba(255,255,255,.32)}
+.folder-check-item input[type=checkbox]{accent-color:#F5C518;flex-shrink:0;width:14px;height:14px}
+.folder-check-label{display:flex;flex-direction:column;gap:.1rem}
+.folder-check-name{font-size:.84rem;color:rgba(255,255,255,.8)}
+.folder-check-meta{font-size:.71rem;color:rgba(255,255,255,.28)}
 .bulk-sel-row{display:flex;gap:.65rem;margin-bottom:.55rem}
 .btn-sel-all,.btn-sel-none{background:none;border:1px solid rgba(255,255,255,.12);
   color:rgba(255,255,255,.45);border-radius:6px;padding:.22rem .6rem;font-size:.75rem;cursor:pointer}
@@ -360,7 +375,7 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 
         <div class="bulk-sel-row">
           <button class="btn-sel-all" onclick="bulkSelAll(true)">Select All</button>
-          <button class="btn-sel-none" onclick="bulkSelAll(false)">Select None</button>
+          <button class="btn-sel-none" onclick="bulkSelAll(false)">Clear All</button>
         </div>
         <div class="folder-checklist" id="folder-checklist"><div style="padding:1rem;color:rgba(255,255,255,.3);font-size:.82rem">Loading folders…</div></div>
 
@@ -654,17 +669,53 @@ function renderFolderChecklist() {
     el.innerHTML = '<div style="padding:1rem;color:rgba(255,255,255,.3);font-size:.82rem">No folders found</div>';
     return;
   }
-  el.innerHTML = _allFolders.map(f => {
-    const label = f.name ? `${f.name} — ${f.location} · ${f.date}` : `${f.location} · ${f.date}`;
-    const meta  = `${f.photo_count} photos`;
-    return `<label class="folder-check-item">
-      <input type="checkbox" class="folder-cb" data-fk="${escAttr(f.folder_key)}">
-      <span class="folder-check-label">
-        <span class="folder-check-name">${esc(f.name || f.location)}</span>
-        <span class="folder-check-meta">${esc(label.split('—')[1]?.trim()||'')} · ${meta}</span>
-      </span>
-    </label>`;
+  // Group by date → location
+  const byDate = {};
+  for (const f of _allFolders) {
+    if (!byDate[f.date]) byDate[f.date] = {};
+    if (!byDate[f.date][f.location]) byDate[f.date][f.location] = [];
+    byDate[f.date][f.location].push(f);
+  }
+  const dates = Object.keys(byDate).sort((a,b) => b.localeCompare(a));
+  el.innerHTML = dates.map(date => {
+    const locs = byDate[date];
+    const dateKeys = Object.values(locs).flat().map(f => escAttr(f.folder_key)).join(',');
+    const locGroups = Object.entries(locs).map(([loc, folders]) => {
+      const locKeys = folders.map(f => escAttr(f.folder_key)).join(',');
+      const items = folders.map(f => {
+        const name = f.name || loc;
+        return `<label class="folder-check-item">
+          <input type="checkbox" class="folder-cb" data-fk="${escAttr(f.folder_key)}">
+          <span class="folder-check-label">
+            <span class="folder-check-name">${esc(name)}</span>
+            <span class="folder-check-meta">${f.photo_count} photo${f.photo_count!==1?'s':''}</span>
+          </span>
+        </label>`;
+      }).join('');
+      return `<div class="fc-loc-group">
+        <div class="fc-loc-hdr">
+          <span class="fc-loc-label">${esc(loc)}</span>
+          <button class="fc-loc-sel" onclick="bulkSelGroup(this,'${locKeys}')">Select</button>
+        </div>
+        ${items}
+      </div>`;
+    }).join('');
+    return `<div class="fc-date-group">
+      <div class="fc-date-hdr">
+        <span class="fc-date-label">${esc(date)}</span>
+        <button class="fc-date-sel" onclick="bulkSelGroup(this,'${dateKeys}')">Select all</button>
+      </div>
+      ${locGroups}
+    </div>`;
   }).join('');
+}
+
+function bulkSelGroup(btn, keysStr) {
+  const keys = new Set(keysStr.split(','));
+  const all  = [...document.querySelectorAll('.folder-cb')];
+  const inGroup = all.filter(cb => keys.has(cb.dataset.fk));
+  const allChecked = inGroup.every(cb => cb.checked);
+  inGroup.forEach(cb => cb.checked = !allChecked);
 }
 
 function bulkSelAll(on) {
