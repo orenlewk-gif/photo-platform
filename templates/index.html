@@ -97,15 +97,10 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .select-all-btn:hover { background:rgba(245,197,24,0.25); }
 
 .folder-info-box {
-  background: rgba(245,196,48,0.07);
-  border: 1px solid rgba(245,196,48,0.2);
-  border-left: 3px solid #F5C430;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1.1rem;
-  font-size: 0.88rem;
-  line-height: 1.6;
-  color: rgba(255,255,255,0.75);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  color: rgba(255,255,255,0.52);
+  margin-bottom: 0.6rem;
 }
 
 .gallery-controls {
@@ -1602,13 +1597,13 @@ async function showGallery(date, location, family, ln, group) {
 
   const el = document.getElementById('view-gallery');
   el.innerHTML = `
+    ${folderInfoHtml}
     <div class="gallery-header">
       <span class="gallery-title">${title}</span>
       <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
       ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
-    ${folderInfoHtml}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" />
