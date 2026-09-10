@@ -709,7 +709,7 @@ async function loadFolderPhotos() {
   const descRow  = document.getElementById('folder-description-row');
   const descArea = document.getElementById('folder-description');
   const descStatus = document.getElementById('desc-save-status');
-  descRow.style.display = '';
+  descRow.style.display = 'block';
   descArea.value = d.description || '';
   descArea.dataset.folderKey = d.folder_key;
   descStatus.textContent = '';
