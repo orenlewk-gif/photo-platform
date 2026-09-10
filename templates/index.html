@@ -97,10 +97,11 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .select-all-btn:hover { background:rgba(245,197,24,0.25); }
 
 .folder-info-box {
-  font-size: 0.85rem;
+  font-size: 0.97rem;
   line-height: 1.7;
-  color: rgba(255,255,255,0.52);
-  margin-bottom: 0.6rem;
+  color: rgba(255,255,255,0.62);
+  text-align: center;
+  margin: 0.5rem 0 1rem;
 }
 
 .gallery-controls {
@@ -739,9 +740,10 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .lb-overlay.open { display:flex; }
 .lb-inner { position:relative; display:flex; flex-direction:column; align-items:center; width:92vw; max-width:1080px; }
 .lb-img-wrap { position:relative; width:100%; display:flex; align-items:center; justify-content:center; }
-#lb-photo { max-width:100%; max-height:74vh; object-fit:contain; border-radius:8px; box-shadow:0 0 80px rgba(0,0,0,.9); display:block; transition:opacity .18s ease; transform-origin:center center; will-change:transform; user-select:none; }
+#lb-photo { max-width:100%; max-height:74vh; object-fit:contain; border-radius:8px; box-shadow:0 0 80px rgba(0,0,0,.9); display:block; transition:opacity .18s ease; transform-origin:center center; will-change:transform; user-select:none; cursor:zoom-in; }
 #lb-photo.lb-zoomed { cursor:grab; }
 #lb-photo.lb-panning { cursor:grabbing !important; }
+#lb-photo.lb-loupe-active { cursor:crosshair; }
 /* Zoom indicator (desktop scale level) */
 .lb-zoom-ind { position:absolute; top:10px; left:10px; background:rgba(0,0,0,.62); color:#fff; font-size:.7rem; font-weight:600; letter-spacing:.04em; padding:3px 9px; border-radius:20px; pointer-events:none; opacity:0; transition:opacity .25s; z-index:20; }
 .lb-zoom-ind.show { opacity:1; }
@@ -1204,7 +1206,6 @@ select.co-input option { background:#0a1e2e; color:#fff; }
     <div class="lb-btn-row">
       <button class="lb-select-btn" id="lb-select-btn" onclick="toggleSelectFromLB()">+ Add to Selection</button>
       <button class="lb-shop-btn" onclick="openQuickShop(cur)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="lb-shop-label"> Shop</span></button>
-      <button class="lb-loupe-btn" id="lb-loupe-btn" onclick="toggleLBLoupe()">🔍 <span id="lb-loupe-label">Zoom</span></button>
     </div>
     <div class="lb-info"    id="lb-info"></div>
     <div class="lb-filename" id="lb-fn"></div>
@@ -1597,13 +1598,13 @@ async function showGallery(date, location, family, ln, group) {
 
   const el = document.getElementById('view-gallery');
   el.innerHTML = `
-    ${folderInfoHtml}
     <div class="gallery-header">
       <span class="gallery-title">${title}</span>
       <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
       ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
+    ${folderInfoHtml}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" />
@@ -3130,7 +3131,7 @@ function _clampLBPan() {
   _lbZ.ty = Math.max(-maxY, Math.min(maxY, _lbZ.ty));
 }
 
-// Desktop loupe — follows mouse over the image
+// Desktop loupe — click photo to activate, cursor follows, click again to exit
 function _initDesktopLoupe() {
   const ph    = document.getElementById('lb-photo');
   const loupe = document.getElementById('lb-loupe');
@@ -3142,7 +3143,6 @@ function _initDesktopLoupe() {
     const rect = ph.getBoundingClientRect();
     const rx = Math.max(0, Math.min(1, (e.clientX - rect.left)  / rect.width));
     const ry = Math.max(0, Math.min(1, (e.clientY - rect.top)   / rect.height));
-    // position loupe offset from cursor so it doesn't block what you're examining
     let lx = e.clientX - rect.left + 18;
     let ly = e.clientY - rect.top  - SZ / 2;
     if (lx + SZ > rect.width)  lx = e.clientX - rect.left - SZ - 18;
@@ -3157,6 +3157,13 @@ function _initDesktopLoupe() {
 
   ph.addEventListener('mousemove', moveLoupe);
   ph.addEventListener('mouseleave', () => { if (_lbLoupeOn) loupe.style.display = 'none'; });
+  ph.addEventListener('mouseenter', () => { if (_lbLoupeOn) loupe.style.display = 'block'; });
+
+  // Click photo to toggle loupe on desktop
+  ph.addEventListener('click', function(e) {
+    e.stopPropagation();
+    toggleLBLoupe();
+  });
 }
 
 // Mobile pinch-to-zoom + drag pan
@@ -3209,17 +3216,15 @@ function _initMobilePinchZoom() {
 
 function toggleLBLoupe() {
   const loupe = document.getElementById('lb-loupe');
-  const btn   = document.getElementById('lb-loupe-btn');
-  const label = document.getElementById('lb-loupe-label');
+  const ph    = document.getElementById('lb-photo');
   const hint  = document.getElementById('lb-zoom-hint');
   _lbLoupeOn  = !_lbLoupeOn;
-  if (btn) btn.classList.toggle('active', _lbLoupeOn);
+  if (ph) ph.classList.toggle('lb-loupe-active', _lbLoupeOn);
   if (!_lbLoupeOn && loupe) loupe.style.display = 'none';
-  if (label) label.textContent = _lbLoupeOn ? 'Exit Zoom' : 'Zoom';
-  if (hint && _lbLoupeOn) {
-    hint.textContent = _isTouchDevice() ? 'Pinch to zoom · Drag to pan · Double-tap to reset' : 'Move cursor over photo · Click Exit Zoom to close';
-    hint.classList.add('show');
-    setTimeout(() => hint.classList.remove('show'), 3000);
+  if (hint) {
+    hint.textContent = _lbLoupeOn ? 'Move cursor to zoom · Click photo to exit' : '';
+    hint.classList.toggle('show', _lbLoupeOn);
+    if (_lbLoupeOn) setTimeout(() => hint?.classList.remove('show'), 2500);
   }
 }
 

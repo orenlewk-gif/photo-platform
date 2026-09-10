@@ -214,26 +214,24 @@ def apply_watermark(img, size="medium"):
         y = (img.height - wm_size) // 2
         img_rgba.paste(wm_scaled, (x, y), wm_scaled)
     else:
-        # Two watermarks for enlarged view — side by side on landscape, stacked on portrait
-        wm_size = int(min(img.width, img.height) * 0.52)
-        gap     = int(wm_size * 0.20)
+        # Tiled grid — every region of the photo has a watermark so no clean crop is possible
+        wm_size   = int(min(img.width, img.height) * 0.28)
+        step_x    = wm_size          # tight packing, no visible gaps
+        step_y    = wm_size
         wm_scaled = wm.resize((wm_size, wm_size), Image.LANCZOS)
-        if img.height > img.width:
-            # Portrait: stack vertically
-            total_h = wm_size * 2 + gap
-            x  = (img.width  - wm_size) // 2
-            y1 = (img.height - total_h) // 2
-            y2 = y1 + wm_size + gap
-            img_rgba.paste(wm_scaled, (x, y1), wm_scaled)
-            img_rgba.paste(wm_scaled, (x, y2), wm_scaled)
-        else:
-            # Landscape: side by side
-            total_w = wm_size * 2 + gap
-            y  = (img.height - wm_size) // 2
-            x1 = (img.width  - total_w) // 2
-            x2 = x1 + wm_size + gap
-            img_rgba.paste(wm_scaled, (x1, y), wm_scaled)
-            img_rgba.paste(wm_scaled, (x2, y), wm_scaled)
+        row = 0
+        y   = -(wm_size // 4)        # start slightly above edge
+        while y < img.height + wm_size // 2:
+            # Stagger alternate rows so there are no diagonal clear lanes
+            x = -(wm_size // 4) + (step_x // 2 if row % 2 else 0)
+            while x < img.width + wm_size // 2:
+                try:
+                    img_rgba.paste(wm_scaled, (int(x), int(y)), wm_scaled)
+                except Exception:
+                    pass
+                x += step_x
+            y   += step_y
+            row += 1
 
     return img_rgba.convert("RGB")
 
