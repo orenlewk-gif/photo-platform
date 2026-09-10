@@ -685,7 +685,13 @@ function toggleDate(date) {
 async function openDateOverview(date) {
   setView('date');
   document.getElementById('date-view-title').textContent = date;
-  const locs = tree[date] || {};
+  // Build locs from allFolders (tree is local to renderTree)
+  const locs = {};
+  for (const f of allFolders) {
+    if (f.date !== date) continue;
+    if (!locs[f.location]) locs[f.location] = [];
+    locs[f.location].push(f);
+  }
   const locCount = Object.keys(locs).length;
   document.getElementById('date-view-sub').textContent = `${locCount} location${locCount!==1?'s':''}`;
 
