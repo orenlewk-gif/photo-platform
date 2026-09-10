@@ -744,7 +744,20 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .lb-overlay.open { display:flex; }
 .lb-inner { position:relative; display:flex; flex-direction:column; align-items:center; width:92vw; max-width:1080px; }
 .lb-img-wrap { position:relative; width:100%; display:flex; align-items:center; justify-content:center; }
-#lb-photo { max-width:100%; max-height:74vh; object-fit:contain; border-radius:8px; box-shadow:0 0 80px rgba(0,0,0,.9); display:block; transition:opacity .18s ease; }
+#lb-photo { max-width:100%; max-height:74vh; object-fit:contain; border-radius:8px; box-shadow:0 0 80px rgba(0,0,0,.9); display:block; transition:opacity .18s ease; transform-origin:center center; will-change:transform; user-select:none; }
+#lb-photo.lb-zoomed { cursor:grab; }
+#lb-photo.lb-panning { cursor:grabbing !important; }
+/* Zoom indicator (desktop scale level) */
+.lb-zoom-ind { position:absolute; top:10px; left:10px; background:rgba(0,0,0,.62); color:#fff; font-size:.7rem; font-weight:600; letter-spacing:.04em; padding:3px 9px; border-radius:20px; pointer-events:none; opacity:0; transition:opacity .25s; z-index:20; }
+.lb-zoom-ind.show { opacity:1; }
+/* Hint text */
+.lb-zoom-hint { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.5); color:rgba(255,255,255,.55); font-size:.68rem; padding:3px 10px; border-radius:20px; pointer-events:none; white-space:nowrap; opacity:0; transition:opacity .4s; z-index:20; }
+.lb-zoom-hint.show { opacity:1; }
+/* Mobile loupe */
+#lb-loupe { display:none; position:absolute; width:190px; height:190px; border-radius:14px; border:2px solid rgba(245,196,48,.7); box-shadow:0 6px 28px rgba(0,0,0,.7); background-repeat:no-repeat; pointer-events:none; z-index:30; overflow:hidden; }
+/* Loupe button */
+.lb-loupe-btn { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.22); color:#fff; border-radius:8px; padding:.32rem .72rem; font-size:.8rem; cursor:pointer; display:flex; align-items:center; gap:5px; transition:background .2s, border-color .2s; white-space:nowrap; }
+.lb-loupe-btn:hover, .lb-loupe-btn.active { background:rgba(245,196,48,.18); border-color:rgba(245,196,48,.55); color:#F5C430; }
 .lb-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(242,201,76,.92); color:#0c2336; border:none; border-radius:50%; width:50px; height:50px; font-size:22px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .2s, transform .2s; z-index:10; user-select:none; }
 .lb-arrow:hover { background:#F5C518; transform:translateY(-50%) scale(1.1); }
 .lb-arrow.left  { left:-64px; }
@@ -1188,11 +1201,15 @@ select.co-input option { background:#0a1e2e; color:#fff; }
       <button class="lb-arrow left"  onclick="stepLB(-1)">&#8592;</button>
       <img id="lb-photo" src="" alt="" />
       <button class="lb-arrow right" onclick="stepLB(1)">&#8594;</button>
+      <div class="lb-zoom-ind"  id="lb-zoom-ind"></div>
+      <div class="lb-zoom-hint" id="lb-zoom-hint"></div>
+      <div id="lb-loupe"></div>
     </div>
     <div class="lb-upsell"   id="lb-upsell"></div>
     <div class="lb-btn-row">
       <button class="lb-select-btn" id="lb-select-btn" onclick="toggleSelectFromLB()">+ Add to Selection</button>
       <button class="lb-shop-btn" onclick="openQuickShop(cur)"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="lb-shop-label"> Shop</span></button>
+      <button class="lb-loupe-btn" id="lb-loupe-btn" onclick="toggleLBLoupe()">🔍 <span id="lb-loupe-label">Zoom</span></button>
     </div>
     <div class="lb-info"    id="lb-info"></div>
     <div class="lb-filename" id="lb-fn"></div>
@@ -3079,10 +3096,155 @@ function loadPhoto(path) {
   return Promise.resolve(src);
 }
 
+// ── Lightbox zoom ──────────────────────────────────────────────────────────
+
+const _lbZ = { scale: 1, tx: 0, ty: 0 };
+let _lbPanning = false, _lbPanX = 0, _lbPanY = 0;
+let _lbLoupeOn = false, _lbZoomInited = false;
+let _zoomIndTmr = null;
+const _isTouchDevice = () => ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+
+function _resetLBZoom() {
+  _lbZ.scale = 1; _lbZ.tx = 0; _lbZ.ty = 0;
+  const ph = document.getElementById('lb-photo');
+  if (ph) { ph.style.transform = ''; ph.classList.remove('lb-zoomed', 'lb-panning'); }
+  const ind = document.getElementById('lb-zoom-ind');
+  if (ind) ind.classList.remove('show');
+}
+
+function _applyLBZoom() {
+  const ph = document.getElementById('lb-photo');
+  if (!ph) return;
+  ph.style.transform = `scale(${_lbZ.scale}) translate(${_lbZ.tx}px,${_lbZ.ty}px)`;
+  ph.classList.toggle('lb-zoomed', _lbZ.scale > 1);
+  const ind = document.getElementById('lb-zoom-ind');
+  if (ind) {
+    ind.textContent = `${_lbZ.scale.toFixed(1)}×`;
+    ind.classList.add('show');
+    clearTimeout(_zoomIndTmr);
+    _zoomIndTmr = setTimeout(() => ind.classList.remove('show'), 1800);
+  }
+}
+
+function _clampLBPan() {
+  const ph = document.getElementById('lb-photo');
+  if (!ph || _lbZ.scale <= 1) return;
+  const maxX = ph.offsetWidth  * (_lbZ.scale - 1) / (2 * _lbZ.scale);
+  const maxY = ph.offsetHeight * (_lbZ.scale - 1) / (2 * _lbZ.scale);
+  _lbZ.tx = Math.max(-maxX, Math.min(maxX, _lbZ.tx));
+  _lbZ.ty = Math.max(-maxY, Math.min(maxY, _lbZ.ty));
+}
+
+// Desktop loupe — follows mouse over the image
+function _initDesktopLoupe() {
+  const ph    = document.getElementById('lb-photo');
+  const loupe = document.getElementById('lb-loupe');
+  if (!ph || !loupe) return;
+  const ZOOM = 2.8, SZ = 190;
+
+  function moveLoupe(e) {
+    if (!_lbLoupeOn) return;
+    const rect = ph.getBoundingClientRect();
+    const rx = Math.max(0, Math.min(1, (e.clientX - rect.left)  / rect.width));
+    const ry = Math.max(0, Math.min(1, (e.clientY - rect.top)   / rect.height));
+    // position loupe offset from cursor so it doesn't block what you're examining
+    let lx = e.clientX - rect.left + 18;
+    let ly = e.clientY - rect.top  - SZ / 2;
+    if (lx + SZ > rect.width)  lx = e.clientX - rect.left - SZ - 18;
+    loupe.style.left = Math.max(0, Math.min(rect.width  - SZ, lx)) + 'px';
+    loupe.style.top  = Math.max(0, Math.min(rect.height - SZ, ly)) + 'px';
+    const bgW = rect.width * ZOOM, bgH = rect.height * ZOOM;
+    loupe.style.backgroundImage    = `url("${ph.src}")`;
+    loupe.style.backgroundSize     = `${bgW}px ${bgH}px`;
+    loupe.style.backgroundPosition = `-${rx * bgW - SZ / 2}px -${ry * bgH - SZ / 2}px`;
+    loupe.style.display = 'block';
+  }
+
+  ph.addEventListener('mousemove', moveLoupe);
+  ph.addEventListener('mouseleave', () => { if (_lbLoupeOn) loupe.style.display = 'none'; });
+}
+
+// Mobile pinch-to-zoom + drag pan
+function _initMobilePinchZoom() {
+  const ph = document.getElementById('lb-photo');
+  if (!ph) return;
+  let _pinchDist = 0, _pinchScale = 1;
+  let _touchPanX = 0, _touchPanY = 0, _touching = false;
+
+  ph.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      _pinchDist  = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      _pinchScale = _lbZ.scale;
+    } else if (e.touches.length === 1 && _lbZ.scale > 1) {
+      _touching = true;
+      _touchPanX = e.touches[0].clientX;
+      _touchPanY = e.touches[0].clientY;
+    }
+  }, { passive: false });
+
+  ph.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      _lbZ.scale = Math.max(1, Math.min(5, _pinchScale * (dist / _pinchDist)));
+      if (_lbZ.scale === 1) { _lbZ.tx = 0; _lbZ.ty = 0; }
+      else _clampLBPan();
+      _applyLBZoom();
+    } else if (e.touches.length === 1 && _touching && _lbZ.scale > 1) {
+      e.preventDefault();
+      _lbZ.tx += (e.touches[0].clientX - _touchPanX) / _lbZ.scale;
+      _lbZ.ty += (e.touches[0].clientY - _touchPanY) / _lbZ.scale;
+      _touchPanX = e.touches[0].clientX;
+      _touchPanY = e.touches[0].clientY;
+      _clampLBPan(); _applyLBZoom();
+    }
+  }, { passive: false });
+
+  ph.addEventListener('touchend', function() { _touching = false; });
+
+  // Double-tap to reset
+  let _lastTap = 0;
+  ph.addEventListener('touchend', function(e) {
+    const now = Date.now();
+    if (now - _lastTap < 300) { _resetLBZoom(); }
+    _lastTap = now;
+  });
+}
+
+function toggleLBLoupe() {
+  const loupe = document.getElementById('lb-loupe');
+  const btn   = document.getElementById('lb-loupe-btn');
+  const label = document.getElementById('lb-loupe-label');
+  const hint  = document.getElementById('lb-zoom-hint');
+  _lbLoupeOn  = !_lbLoupeOn;
+  if (btn) btn.classList.toggle('active', _lbLoupeOn);
+  if (!_lbLoupeOn && loupe) loupe.style.display = 'none';
+  if (label) label.textContent = _lbLoupeOn ? 'Exit Zoom' : 'Zoom';
+  if (hint && _lbLoupeOn) {
+    hint.textContent = _isTouchDevice() ? 'Pinch to zoom · Drag to pan · Double-tap to reset' : 'Move cursor over photo · Click Exit Zoom to close';
+    hint.classList.add('show');
+    setTimeout(() => hint.classList.remove('show'), 3000);
+  }
+}
+
+function _ensureLBZoomInit() {
+  if (_lbZoomInited) return;
+  _lbZoomInited = true;
+  if (_isTouchDevice()) {
+    _initMobilePinchZoom();
+    // hide loupe button label on mobile — button still works to show hint
+    const label = document.getElementById('lb-loupe-label');
+    if (label) label.textContent = 'Zoom Help';
+  } else {
+    _initDesktopLoupe();
+  }
+}
+
 // ── Lightbox ──
-function openLB(i)   { cur = i; renderLB(); document.getElementById('lb').classList.add('open'); }
-function closeLB()   { document.getElementById('lb').classList.remove('open'); }
-function stepLB(dir) { cur = (cur + dir + allPhotos.length) % allPhotos.length; renderLB(); }
+function openLB(i)   { cur = i; _resetLBZoom(); renderLB(); document.getElementById('lb').classList.add('open'); _ensureLBZoomInit(); }
+function closeLB()   { _resetLBZoom(); _lbLoupeOn = false; const btn=document.getElementById('lb-loupe-btn'); if(btn) btn.classList.remove('active'); const loupe=document.getElementById('lb-loupe'); if(loupe) loupe.style.display='none'; document.getElementById('lb').classList.remove('open'); }
+function stepLB(dir) { _resetLBZoom(); cur = (cur + dir + allPhotos.length) % allPhotos.length; renderLB(); }
 
 async function renderLB() {
   const photo = allPhotos[cur];
