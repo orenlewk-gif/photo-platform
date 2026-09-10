@@ -577,8 +577,15 @@ let zipTiers = null;
   loadSidebar(); // fire and forget — sidebar populates in background
   const sp = new URLSearchParams(location.search);
   const od = sp.get('od'), ol = sp.get('ol'), of_ = sp.get('of');
+  const dateParam = sp.get('date');
   if (od && ol) {
     await openFolder(od, ol, of_ || '');
+  } else if (dateParam) {
+    // Wait for sidebar to populate so allFolders is ready, then open date overview
+    await loadSidebar();
+    treeExpanded['date:' + dateParam] = true;
+    renderTree();
+    openDateOverview(dateParam);
   } else {
     showUploadView();
   }

@@ -15,6 +15,10 @@ a{color:inherit;text-decoration:none}
 #layout{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}
 #sidebar{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow:hidden}
 #sidebar-nav{flex:1;overflow-y:auto;padding:.4rem 0}
+#date-quicknav{border-top:1px solid rgba(255,255,255,.07);padding:.4rem 0;flex-shrink:0;max-height:220px;overflow-y:auto}
+.date-qn-hdr{padding:.5rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
+.date-qn-item{display:block;padding:.38rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:.82rem;color:rgba(255,255,255,.45);text-decoration:none;cursor:pointer;transition:background .12s,color .12s;font-family:monospace}
+.date-qn-item:hover{background:rgba(255,255,255,.06);color:#F5C518}
 .nav-sec-label{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
 .nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}
 .nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
@@ -122,6 +126,10 @@ input[type="text"]:focus{border-color:#F5C518}
       <a href="/admin/activities" class="nav-link active-page">Activities</a>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem .45rem"></div>
       <a href="/admin/trash" class="nav-link">Trash</a>
+    </div>
+    <div id="date-quicknav">
+      <div class="date-qn-hdr">Dates</div>
+      <div id="date-qn-list"><div style="padding:.3rem .9rem;font-size:.75rem;color:rgba(255,255,255,.2)">Loading…</div></div>
     </div>
   </div>
 
@@ -411,6 +419,21 @@ function showToast(msg, type='show') {
 }
 
 loadData();
+
+// ── Date quick-nav ──
+(async () => {
+  try {
+    const res = await fetch('/api/admin/folders');
+    if (!res.ok) return;
+    const d = await res.json();
+    const dates = [...new Set((d.folders||[]).map(f=>f.date))].sort((a,b)=>b.localeCompare(a));
+    const el = document.getElementById('date-qn-list');
+    if (!dates.length) { el.innerHTML = '<div style="padding:.3rem .9rem;font-size:.75rem;color:rgba(255,255,255,.2)">No dates</div>'; return; }
+    el.innerHTML = dates.map(dt =>
+      `<a class="date-qn-item" href="/admin/dashboard?date=${encodeURIComponent(dt)}">${dt}</a>`
+    ).join('');
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>
