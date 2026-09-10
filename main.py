@@ -2266,8 +2266,8 @@ body{{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-hei
 #topbar a{{font-size:12px;color:rgba(255,255,255,.35);text-decoration:none;padding:.3rem .6rem;border-radius:5px}}
 #topbar a:hover{{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}}
 #layout{{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}}
-#sidebar{{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow:hidden}}
-#sidebar-tree{{flex:1;overflow-y:auto;padding:.4rem 0}}
+#sidebar{{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);overflow-y:auto}}
+#sidebar-tree{{padding:.4rem 0}}
 .st-date{{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;font-size:.79rem;font-weight:600;color:rgba(255,255,255,.5);user-select:none}}
 .st-date:hover{{background:rgba(255,255,255,.04);color:#fff}}
 .st-arr{{font-size:.55rem;transition:transform .15s;color:rgba(255,255,255,.22);flex-shrink:0}}
@@ -2501,7 +2501,7 @@ async function copyLink(orderId, e) {{
     var h='';
     for(var di=0;di<dates.length;di++){{
       var date=dates[di];
-      h+='<div class="st-date" onclick="this.classList.toggle(\\'st-open\\')"><span class="st-arr">&#9654;</span>'+date+'</div><div class="st-locs">';
+      h+='<div class="st-date" onclick="location.href=\\'/admin/dashboard?date=\\'+encodeURIComponent(date)"><span class="st-arr">&#9654;</span>'+date+'</div><div class="st-locs">';
       var locs=tree[date];
       var locKeys=Object.keys(locs);
       for(var li=0;li<locKeys.length;li++){{
