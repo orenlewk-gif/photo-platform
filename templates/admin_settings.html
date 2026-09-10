@@ -84,6 +84,74 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 .sub-heading{font-size:.78rem;font-weight:700;color:rgba(255,255,255,.4);text-transform:uppercase;
   letter-spacing:.07em;margin:1.1rem 0 .7rem}
 .sub-heading:first-child{margin-top:0}
+
+/* ── Subtabs ── */
+.subtabs{display:flex;gap:.35rem;border-bottom:1px solid rgba(255,255,255,.08);
+  margin-bottom:1.75rem;padding-bottom:0}
+.subtab{padding:.52rem 1.1rem;border-radius:7px 7px 0 0;font-size:.88rem;font-weight:500;
+  color:rgba(255,255,255,.45);cursor:pointer;border:none;background:none;
+  border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .15s,border-color .15s}
+.subtab:hover{color:rgba(255,255,255,.8)}
+.subtab.active{color:#F5C518;border-bottom-color:#F5C518}
+.tab-panel{display:none}.tab-panel.active{display:block}
+
+/* ── Text Presets ── */
+.preset-list{display:flex;flex-direction:column;gap:.65rem;margin-bottom:1.25rem}
+.preset-item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;padding:.65rem .9rem;display:flex;flex-direction:column;gap:.4rem}
+.preset-item-header{display:flex;align-items:center;gap:.6rem}
+.preset-name{font-weight:600;font-size:.88rem;color:#fff;flex:1}
+.preset-text-preview{font-size:.78rem;color:rgba(255,255,255,.38);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+.preset-actions{display:flex;gap:.45rem;flex-shrink:0}
+.btn-preset-edit,.btn-preset-del{background:none;border:1px solid rgba(255,255,255,.12);
+  border-radius:6px;padding:.22rem .6rem;font-size:.75rem;cursor:pointer}
+.btn-preset-edit{color:rgba(255,255,255,.55)}.btn-preset-edit:hover{color:#fff;border-color:rgba(255,255,255,.3)}
+.btn-preset-del{color:rgba(239,68,68,.55)}.btn-preset-del:hover{color:#ef4444;border-color:rgba(239,68,68,.4)}
+.preset-form{background:#0a1e2e;border:1px solid rgba(245,197,24,.2);border-radius:10px;
+  padding:1rem 1.1rem;margin-bottom:1.25rem}
+.preset-form h4{font-size:.82rem;font-weight:700;color:#F5C518;margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.06em}
+.preset-form textarea{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+  border-radius:7px;color:#fff;font-size:.85rem;line-height:1.5;padding:.5rem .75rem;
+  resize:vertical;min-height:70px;outline:none;font-family:inherit;box-sizing:border-box}
+.preset-form textarea:focus{border-color:rgba(245,196,48,.45)}
+.preset-form-row{display:flex;gap:.65rem;margin-top:.75rem;align-items:center}
+.preset-form-row .field-input{flex:1;margin:0}
+.btn-preset-save{background:#F5C518;color:#07151f;border:none;border-radius:8px;
+  padding:.52rem 1.3rem;font-size:.85rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.btn-preset-save:hover{background:#f0bc00}
+.btn-preset-cancel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  color:rgba(255,255,255,.6);border-radius:8px;padding:.52rem .9rem;font-size:.85rem;cursor:pointer}
+.btn-preset-cancel:hover{background:rgba(255,255,255,.1)}
+
+/* ── Bulk apply ── */
+.bulk-section{margin-top:2rem}
+.bulk-section h4{font-size:.82rem;font-weight:700;color:rgba(255,255,255,.55);
+  text-transform:uppercase;letter-spacing:.06em;margin-bottom:.75rem}
+.bulk-controls{display:flex;gap:.65rem;align-items:center;flex-wrap:wrap;margin-bottom:.85rem}
+.bulk-controls select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:.52rem .85rem;color:#fff;font-size:.85rem;outline:none;cursor:pointer;min-width:180px}
+.bulk-controls select:focus{border-color:#F5C518}
+.bulk-controls select option{background:#0a1e2e;color:#fff}
+.btn-bulk-apply{background:rgba(74,222,128,.15);border:1px solid rgba(74,222,128,.3);
+  color:#4ade80;border-radius:8px;padding:.52rem 1.1rem;font-size:.85rem;font-weight:600;cursor:pointer}
+.btn-bulk-apply:hover{background:rgba(74,222,128,.25)}
+.btn-bulk-apply:disabled{opacity:.4;cursor:not-allowed}
+#bulk-status{font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.25rem}
+.folder-checklist{max-height:320px;overflow-y:auto;border:1px solid rgba(255,255,255,.1);
+  border-radius:8px;background:rgba(0,0,0,.15)}
+.folder-check-item{display:flex;align-items:flex-start;gap:.65rem;padding:.55rem .85rem;
+  border-bottom:1px solid rgba(255,255,255,.05);cursor:pointer}
+.folder-check-item:last-child{border-bottom:none}
+.folder-check-item:hover{background:rgba(255,255,255,.03)}
+.folder-check-item input[type=checkbox]{margin-top:2px;accent-color:#F5C518;flex-shrink:0}
+.folder-check-label{display:flex;flex-direction:column;gap:.15rem}
+.folder-check-name{font-size:.85rem;color:rgba(255,255,255,.8)}
+.folder-check-meta{font-size:.73rem;color:rgba(255,255,255,.32)}
+.bulk-sel-row{display:flex;gap:.65rem;margin-bottom:.55rem}
+.btn-sel-all,.btn-sel-none{background:none;border:1px solid rgba(255,255,255,.12);
+  color:rgba(255,255,255,.45);border-radius:6px;padding:.22rem .6rem;font-size:.75rem;cursor:pointer}
+.btn-sel-all:hover,.btn-sel-none:hover{color:#fff;border-color:rgba(255,255,255,.3)}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
@@ -107,6 +175,14 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
   </div>
   <div id="main">
     <div class="page-title">Settings</div>
+
+    <div class="subtabs">
+      <button class="subtab active" onclick="switchTab('general',this)">General</button>
+      <button class="subtab" onclick="switchTab('presets',this)">Text Presets</button>
+    </div>
+
+    <!-- ── GENERAL TAB ── -->
+    <div id="tab-general" class="tab-panel active">
 
     <!-- BRANDING -->
     <div class="settings-section">
@@ -239,6 +315,62 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
       <button class="btn-save" onclick="saveSettings()">Save All Settings</button>
       <span id="save-status"></span>
     </div>
+
+    </div><!-- /tab-general -->
+
+    <!-- ── TEXT PRESETS TAB ── -->
+    <div id="tab-presets" class="tab-panel">
+      <div class="settings-section">
+        <div class="section-title">Text Presets</div>
+        <div class="section-desc">Create reusable notes to quickly fill in folder, location, or day description boxes in the studio. You can also bulk-apply a preset to multiple folders at once.</div>
+
+        <div id="preset-list" class="preset-list"></div>
+
+        <div id="preset-form" class="preset-form" style="display:none">
+          <h4 id="preset-form-heading">New Preset</h4>
+          <input class="field-input" id="preset-name" placeholder="Preset name (e.g. Summer Portraits Note)" style="margin-bottom:.65rem">
+          <textarea id="preset-text" placeholder="Enter the note text here…" rows="4"></textarea>
+          <div class="preset-form-row">
+            <button class="btn-preset-save" onclick="savePreset()">Save Preset</button>
+            <button class="btn-preset-cancel" onclick="cancelPresetForm()">Cancel</button>
+            <span id="preset-form-status" style="font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.5rem"></span>
+          </div>
+        </div>
+
+        <button class="btn-add" id="btn-new-preset" onclick="showPresetForm()">+ New Preset</button>
+      </div>
+
+      <!-- BULK APPLY -->
+      <div class="settings-section">
+        <div class="section-title">Bulk Apply to Folders</div>
+        <div class="section-desc">Choose a preset and select which folders should receive its text as their description. This will overwrite whatever is currently in those folders' description field.</div>
+
+        <div class="bulk-controls">
+          <select id="bulk-preset-sel">
+            <option value="">— choose a preset —</option>
+          </select>
+          <select id="bulk-level-sel" title="Which description level to apply to">
+            <option value="folder">Folder note</option>
+            <option value="location">Location note</option>
+            <option value="date">Day note</option>
+          </select>
+        </div>
+
+        <div id="bulk-preset-preview" style="font-size:.78rem;color:rgba(255,255,255,.3);margin-bottom:.85rem;font-style:italic"></div>
+
+        <div class="bulk-sel-row">
+          <button class="btn-sel-all" onclick="bulkSelAll(true)">Select All</button>
+          <button class="btn-sel-none" onclick="bulkSelAll(false)">Select None</button>
+        </div>
+        <div class="folder-checklist" id="folder-checklist"><div style="padding:1rem;color:rgba(255,255,255,.3);font-size:.82rem">Loading folders…</div></div>
+
+        <div class="save-row" style="margin-top:1rem">
+          <button class="btn-bulk-apply" id="btn-bulk-apply" onclick="applyBulkPreset()" disabled>Apply to Selected</button>
+          <span id="bulk-status"></span>
+        </div>
+      </div>
+    </div><!-- /tab-presets -->
+
   </div>
 </div>
 
@@ -404,6 +536,180 @@ function esc(s)       { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt
 function escAttr(s)   { return String(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 loadSettings();
+
+// ── Subtab switching ──
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.subtab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (name === 'presets') loadPresetsTab();
+}
+
+// ── Text Presets ──
+let _presets = [];
+let _editingId = null;
+let _allFolders = [];
+
+async function loadPresetsTab() {
+  await Promise.all([loadPresets(), loadFoldersForBulk()]);
+}
+
+async function loadPresets() {
+  const res = await fetch('/api/admin/text-presets');
+  if (!res.ok) return;
+  const d = await res.json();
+  _presets = d.presets || [];
+  renderPresets();
+  renderBulkPresetSelect();
+}
+
+function renderPresets() {
+  const el = document.getElementById('preset-list');
+  if (!_presets.length) {
+    el.innerHTML = '<div style="font-size:.82rem;color:rgba(255,255,255,.3);font-style:italic">No presets yet. Create one below.</div>';
+    return;
+  }
+  el.innerHTML = _presets.map(p => `
+    <div class="preset-item">
+      <div class="preset-item-header">
+        <span class="preset-name">${esc(p.name)}</span>
+        <div class="preset-actions">
+          <button class="btn-preset-edit" onclick="editPreset('${escAttr(p.id)}')">Edit</button>
+          <button class="btn-preset-del" onclick="deletePreset('${escAttr(p.id)}','${escAttr(p.name)}')">Delete</button>
+        </div>
+      </div>
+      <div class="preset-text-preview">${esc(p.text)}</div>
+    </div>`).join('');
+}
+
+function renderBulkPresetSelect() {
+  const sel = document.getElementById('bulk-preset-sel');
+  sel.innerHTML = '<option value="">— choose a preset —</option>' +
+    _presets.map(p => `<option value="${escAttr(p.id)}">${esc(p.name)}</option>`).join('');
+}
+
+function showPresetForm(preset) {
+  _editingId = preset ? preset.id : null;
+  document.getElementById('preset-form-heading').textContent = preset ? 'Edit Preset' : 'New Preset';
+  document.getElementById('preset-name').value = preset ? preset.name : '';
+  document.getElementById('preset-text').value = preset ? preset.text : '';
+  document.getElementById('preset-form-status').textContent = '';
+  document.getElementById('preset-form').style.display = 'block';
+  document.getElementById('btn-new-preset').style.display = 'none';
+  document.getElementById('preset-name').focus();
+}
+
+function cancelPresetForm() {
+  _editingId = null;
+  document.getElementById('preset-form').style.display = 'none';
+  document.getElementById('btn-new-preset').style.display = '';
+}
+
+async function savePreset() {
+  const name = document.getElementById('preset-name').value.trim();
+  const text = document.getElementById('preset-text').value.trim();
+  const status = document.getElementById('preset-form-status');
+  if (!name) { status.textContent = 'Name required'; return; }
+  status.textContent = 'Saving…';
+  const res = await fetch('/api/admin/text-preset', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({id: _editingId || '', name, text})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    _presets = d.presets || [];
+    renderPresets();
+    renderBulkPresetSelect();
+    cancelPresetForm();
+  } else {
+    status.textContent = 'Save failed';
+  }
+}
+
+function editPreset(id) {
+  const p = _presets.find(x => x.id === id);
+  if (p) showPresetForm(p);
+}
+
+async function deletePreset(id, name) {
+  if (!confirm(`Delete preset "${name}"?`)) return;
+  await fetch(`/api/admin/text-preset/${encodeURIComponent(id)}`, {method: 'DELETE'});
+  await loadPresets();
+}
+
+// ── Bulk apply ──
+async function loadFoldersForBulk() {
+  const res = await fetch('/api/admin/folders');
+  if (!res.ok) return;
+  const d = await res.json();
+  _allFolders = (d.folders || []).sort((a,b) => (b.date+b.location).localeCompare(a.date+a.location));
+  renderFolderChecklist();
+}
+
+function renderFolderChecklist() {
+  const el = document.getElementById('folder-checklist');
+  if (!_allFolders.length) {
+    el.innerHTML = '<div style="padding:1rem;color:rgba(255,255,255,.3);font-size:.82rem">No folders found</div>';
+    return;
+  }
+  el.innerHTML = _allFolders.map(f => {
+    const label = f.name ? `${f.name} — ${f.location} · ${f.date}` : `${f.location} · ${f.date}`;
+    const meta  = `${f.photo_count} photos`;
+    return `<label class="folder-check-item">
+      <input type="checkbox" class="folder-cb" data-fk="${escAttr(f.folder_key)}">
+      <span class="folder-check-label">
+        <span class="folder-check-name">${esc(f.name || f.location)}</span>
+        <span class="folder-check-meta">${esc(label.split('—')[1]?.trim()||'')} · ${meta}</span>
+      </span>
+    </label>`;
+  }).join('');
+}
+
+function bulkSelAll(on) {
+  document.querySelectorAll('.folder-cb').forEach(cb => cb.checked = on);
+}
+
+document.getElementById('bulk-preset-sel').addEventListener('change', function() {
+  const p = _presets.find(x => x.id === this.value);
+  const prev = document.getElementById('bulk-preset-preview');
+  prev.textContent = p ? `"${p.text.slice(0,120)}${p.text.length>120?'…':''}"` : '';
+  document.getElementById('btn-bulk-apply').disabled = !p;
+});
+
+async function applyBulkPreset() {
+  const sel = document.getElementById('bulk-preset-sel');
+  const p = _presets.find(x => x.id === sel.value);
+  if (!p) return;
+  const level   = document.getElementById('bulk-level-sel').value;
+  const checked = [...document.querySelectorAll('.folder-cb:checked')].map(cb => cb.dataset.fk);
+  if (!checked.length) { document.getElementById('bulk-status').textContent = 'Select at least one folder'; return; }
+
+  // Build folder_keys based on level
+  const folderKeys = checked.map(fk => {
+    const parts = fk.split('|');
+    if (level === 'date')     return parts[0] + '||';
+    if (level === 'location') return parts[0] + '|' + parts[1] + '|';
+    return fk; // folder level
+  });
+  const uniqueKeys = [...new Set(folderKeys)];
+
+  const status = document.getElementById('bulk-status');
+  status.textContent = 'Applying…';
+  const res = await fetch('/api/admin/text-preset/bulk-apply', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({text: p.text, folder_keys: uniqueKeys})
+  });
+  if (res.ok) {
+    const d = await res.json();
+    status.textContent = `Applied to ${d.updated} description${d.updated!==1?'s':''}`;
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } else {
+    status.textContent = 'Apply failed';
+  }
+}
 </script>
 </body>
 </html>

@@ -3530,6 +3530,73 @@ def _save_folder_meta(d):
 def _folder_key(date, location, last_name):
     return f"{date}|{location}|{last_name}"
 
+# ── Text Presets ──
+TEXT_PRESETS_KEY = "meta/text_presets.json"
+
+def _load_text_presets():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=TEXT_PRESETS_KEY)
+        return json.loads(obj["Body"].read())
+    except:
+        return []
+
+def _save_text_presets(presets):
+    s3.put_object(Bucket=R2_BUCKET, Key=TEXT_PRESETS_KEY,
+                  Body=json.dumps(presets).encode(), ContentType="application/json")
+
+@app.get("/api/admin/text-presets")
+async def get_text_presets(request: Request):
+    if not _admin_authed(request):
+        raise HTTPException(403)
+    return {"presets": _load_text_presets()}
+
+@app.post("/api/admin/text-preset")
+async def save_text_preset(request: Request):
+    if not _admin_authed(request):
+        raise HTTPException(403)
+    body = await request.json()
+    preset_id   = body.get("id") or ""
+    name        = (body.get("name") or "").strip()
+    text        = (body.get("text") or "").strip()
+    if not name:
+        raise HTTPException(400, "name required")
+    presets = _load_text_presets()
+    existing = next((p for p in presets if p.get("id") == preset_id), None)
+    if existing:
+        existing["name"] = name
+        existing["text"] = text
+    else:
+        import uuid
+        presets.append({"id": str(uuid.uuid4())[:8], "name": name, "text": text})
+    _save_text_presets(presets)
+    return {"ok": True, "presets": presets}
+
+@app.delete("/api/admin/text-preset/{preset_id}")
+async def delete_text_preset(preset_id: str, request: Request):
+    if not _admin_authed(request):
+        raise HTTPException(403)
+    presets = [p for p in _load_text_presets() if p.get("id") != preset_id]
+    _save_text_presets(presets)
+    return {"ok": True}
+
+@app.post("/api/admin/text-preset/bulk-apply")
+async def bulk_apply_text_preset(request: Request):
+    """Apply a preset's text as description to one or more folder keys."""
+    if not _admin_authed(request):
+        raise HTTPException(403)
+    body = await request.json()
+    text        = (body.get("text") or "").strip()
+    folder_keys = body.get("folder_keys") or []
+    if not folder_keys:
+        raise HTTPException(400, "folder_keys required")
+    fm = _load_folder_meta()
+    for fk in folder_keys:
+        if fk not in fm:
+            fm[fk] = {}
+        fm[fk]["description"] = text
+    _save_folder_meta(fm)
+    return {"ok": True, "updated": len(folder_keys)}
+
 @app.get("/admin/zip-pricing")
 def zip_pricing_page():
     return RedirectResponse("/admin/pricing#zip")
@@ -4455,9 +4522,12 @@ async def admin_folder_set_description(request: Request):
 
 @app.get("/api/folder/info")
 def api_folder_info(date: str = Query(None), location: str = Query(None), family: str = Query(None)):
-    if not date or not location or not family:
+    if not date:
         return {"description": ""}
-    fk = _folder_key(date, location.strip(), family.strip())
+    # date-only key ("date||"):   used for date-level admin note
+    # location-level key ("date|loc|"):  shown on sub-folder list view
+    # folder-level key ("date|loc|fam"): shown inside a specific folder
+    fk = _folder_key(date, (location or "").strip(), (family or "").strip())
     fm = _load_folder_meta()
     return {"description": fm.get(fk, {}).get("description", "")}
 

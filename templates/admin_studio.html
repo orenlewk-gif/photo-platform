@@ -101,6 +101,25 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #upload-action-btn:disabled{opacity:.45;cursor:not-allowed}
 #upload-action-btn:hover:not(:disabled){background:#f0bc00}
 
+/* ── Date overview view ── */
+#date-view{flex:1;overflow-y:auto;display:none;flex-direction:column}
+#date-view-header{padding:1.25rem 1.5rem .75rem;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
+#date-view-title{font-size:1.15rem;font-weight:700;color:#fff}
+#date-view-sub{font-size:.8rem;color:rgba(255,255,255,.35);margin-top:.25rem}
+#date-view-body{padding:1.25rem 1.5rem}
+#date-desc-row,#date-pricing-row{margin-bottom:1.2rem}
+#date-desc-row label,#date-pricing-row label{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35);display:inline-block;margin-bottom:.3rem}
+#date-description{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.85);font-size:.82rem;font-family:'DM Sans',sans-serif;line-height:1.5;padding:.45rem .65rem;resize:vertical;min-height:52px;outline:none;transition:border-color .2s;box-sizing:border-box}
+#date-description:focus{border-color:rgba(245,196,48,.45)}
+#date-description::placeholder{color:rgba(255,255,255,.2)}
+#date-desc-save-status,#date-pricing-status{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.25rem;min-height:.85rem}
+#date-group-size-select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#fff;font-size:.82rem;padding:.38rem .7rem;outline:none;cursor:pointer}
+#date-group-size-select:focus{border-color:#F5C518}
+#date-group-size-select option{background:#0c2336}
+#date-location-section{margin-top:1.5rem}
+#date-location-section-title{font-size:.78rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:.75rem}
+#date-location-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:1rem}
+
 /* ── Location overview view ── */
 #location-view{flex:1;overflow-y:auto;display:none;flex-direction:column}
 #location-view-header{padding:1.25rem 1.5rem .75rem;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
@@ -134,11 +153,21 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
   padding:.18rem .55rem;border-radius:100px;font-size:.7rem;font-weight:700;letter-spacing:.5px}
 #folder-actions-row{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
 #folder-description-row{margin-top:.65rem;display:none}
-#folder-description-row label{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35);display:block;margin-bottom:.3rem}
-#folder-description{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.85);font-size:.82rem;font-family:'DM Sans',sans-serif;line-height:1.5;padding:.45rem .65rem;resize:vertical;min-height:52px;outline:none;transition:border-color .2s}
-#folder-description:focus{border-color:rgba(245,196,48,.45)}
-#folder-description::placeholder{color:rgba(255,255,255,.2)}
-#desc-save-status{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.25rem;min-height:.85rem}
+#folder-description-row label,#loc-description-row label{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.35);display:inline-block;margin-bottom:.3rem}
+.desc-label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.3rem}
+.desc-label-row label{margin-bottom:0}
+.btn-use-preset{position:relative;background:none;border:1px solid rgba(255,255,255,.14);border-radius:6px;color:rgba(255,255,255,.4);font-size:.7rem;padding:.18rem .5rem;cursor:pointer;line-height:1.5;transition:color .15s,border-color .15s}
+.btn-use-preset:hover{color:#F5C518;border-color:rgba(245,196,48,.4)}
+.preset-dd{display:none;position:absolute;right:0;top:110%;background:#0f1e2d;border:1px solid rgba(255,255,255,.14);border-radius:8px;min-width:200px;z-index:400;box-shadow:0 6px 20px rgba(0,0,0,.5);padding:.3rem 0}
+.preset-dd.open{display:block}
+.preset-dd-item{padding:.42rem .8rem;font-size:.8rem;color:rgba(255,255,255,.7);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.preset-dd-item:hover{background:rgba(255,255,255,.06);color:#fff}
+.preset-dd-empty{padding:.5rem .8rem;font-size:.78rem;color:rgba(255,255,255,.3);font-style:italic}
+#folder-description,#loc-description{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:rgba(255,255,255,.85);font-size:.82rem;font-family:'DM Sans',sans-serif;line-height:1.5;padding:.45rem .65rem;resize:vertical;min-height:52px;outline:none;transition:border-color .2s}
+#folder-description:focus,#loc-description:focus{border-color:rgba(245,196,48,.45)}
+#folder-description::placeholder,#loc-description::placeholder{color:rgba(255,255,255,.2)}
+#desc-save-status,#loc-desc-save-status{font-size:.7rem;color:rgba(255,255,255,.3);margin-top:.25rem;min-height:.85rem}
+#loc-description-row{margin-top:.65rem;display:none}
 #folder-photo-count{font-size:.78rem;color:rgba(255,255,255,.38);margin-right:auto}
 .act-btn{border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);color:rgba(255,255,255,.75);
   border-radius:7px;padding:.34rem .8rem;font-size:.78rem;cursor:pointer;white-space:nowrap}
@@ -337,6 +366,35 @@ input[type=file]{display:none}
       </div>
     </div>
 
+    <!-- Date overview view -->
+    <div id="date-view">
+      <div id="date-view-header">
+        <div id="date-view-title"></div>
+        <div id="date-view-sub"></div>
+      </div>
+      <div id="date-view-body">
+        <div id="date-desc-row">
+          <div class="desc-label-row">
+            <label>Day Note (shown to customers browsing this day)</label>
+            <button class="btn-use-preset" onclick="openPresetDD(this,'date-description')">Use preset ▾<div class="preset-dd" id="pd-date"></div></button>
+          </div>
+          <textarea id="date-description" placeholder='e.g. "June 18 photos are now live! Contact us with any questions."' rows="2" oninput="onDateDescriptionChange()"></textarea>
+          <div id="date-desc-save-status"></div>
+        </div>
+        <div id="date-pricing-row" style="display:none">
+          <label>Set Group Size for All Folders This Day</label>
+          <select id="date-group-size-select" onchange="saveDateGroupSize()">
+            <option value="">— leave as-is —</option>
+          </select>
+          <div id="date-pricing-status"></div>
+        </div>
+        <div id="date-location-section">
+          <div id="date-location-section-title">Locations</div>
+          <div id="date-location-cards"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Location overview view -->
     <div id="location-view">
       <div id="location-view-header">
@@ -374,9 +432,20 @@ input[type=file]{display:none}
           <button class="act-btn danger" onclick="deleteCurrentFolder()">Delete Folder</button>
         </div>
         <div id="pricing-preview"></div>
+        <div id="loc-description-row">
+          <div class="desc-label-row">
+            <label>Location Note (shown when browsing all folders for this day/location)</label>
+            <button class="btn-use-preset" onclick="openPresetDD(this,'loc-description')">Use preset ▾<div class="preset-dd" id="pd-loc"></div></button>
+          </div>
+          <textarea id="loc-description" placeholder='e.g. "All Lone Peak Portrait photos from today are now live!" Leave blank to show nothing.' rows="2" oninput="onLocDescriptionChange()"></textarea>
+          <div id="loc-desc-save-status"></div>
+        </div>
         <div id="folder-description-row">
-          <label>Folder Info / Note (shown to customers)</label>
-          <textarea id="folder-description" placeholder='e.g. "Great shoot! Photos available through Dec 31. Contact us with any questions." Leave blank to show nothing.' rows="2" oninput="onDescriptionChange()"></textarea>
+          <div class="desc-label-row">
+            <label>Folder Note (shown inside this specific folder)</label>
+            <button class="btn-use-preset" onclick="openPresetDD(this,'folder-description')">Use preset ▾<div class="preset-dd" id="pd-folder"></div></button>
+          </div>
+          <textarea id="folder-description" placeholder='e.g. "Great shoot! Photos available through Dec 31." Leave blank to show nothing.' rows="2" oninput="onDescriptionChange()"></textarea>
           <div id="desc-save-status"></div>
         </div>
       </div>
@@ -607,7 +676,93 @@ function renderTree() {
 function toggleDate(date) {
   const dk = 'date:' + date;
   treeExpanded[dk] = !treeExpanded[dk];
+  currentFolder = null;
+  currentLocation = null;
   renderTree();
+  openDateOverview(date);
+}
+
+async function openDateOverview(date) {
+  setView('date');
+  document.getElementById('date-view-title').textContent = date;
+  const locs = tree[date] || {};
+  const locCount = Object.keys(locs).length;
+  document.getElementById('date-view-sub').textContent = `${locCount} location${locCount!==1?'s':''}`;
+
+  // Date-level description (folder_key = "date||")
+  const dateDescArea   = document.getElementById('date-description');
+  const dateDescStatus = document.getElementById('date-desc-save-status');
+  dateDescArea.dataset.folderKey = `${date}||`;
+  dateDescStatus.textContent = '';
+  fetch(`/api/folder/info?date=${encodeURIComponent(date)}&location=&family=`)
+    .then(r => r.json())
+    .then(info => { dateDescArea.value = info.description || ''; })
+    .catch(() => {});
+
+  // Pricing selector — only show when ZIP locations exist for this date
+  const datePricingSel = document.getElementById('date-group-size-select');
+  const datePricingRow = document.getElementById('date-pricing-row');
+  datePricingSel.dataset.date = date;
+  document.getElementById('date-pricing-status').textContent = '';
+  const allDateFolders = Object.values(locs).flat();
+  const hasZip = allDateFolders.some(f => ZIP_LOCS.has((f.location || '').trim().toLowerCase()));
+  if (hasZip) {
+    const tiers = await loadZipTiers();
+    datePricingSel.innerHTML = '<option value="">— leave as-is —</option>' +
+      tiers.map(t => `<option value="${t.people}">${t.people} ${t.people===1?'person':'people'}</option>`).join('');
+    datePricingRow.style.display = 'block';
+  } else {
+    datePricingRow.style.display = 'none';
+  }
+
+  // Location cards
+  const cards = document.getElementById('date-location-cards');
+  if (!locCount) {
+    cards.innerHTML = '<div class="loading-text">No locations</div>';
+    return;
+  }
+  cards.innerHTML = Object.entries(locs).map(([loc, subs]) => {
+    const totalPhotos = subs.reduce((a, x) => a + x.photo_count, 0);
+    const allDraft = subs.length > 0 && subs.every(f => f.draft_count === f.photo_count && f.photo_count > 0);
+    const anyDraft = subs.some(f => f.draft_count > 0);
+    const badge = allDraft
+      ? `<span class="badge-draft">DRAFT</span>`
+      : anyDraft ? `<span class="badge-mixed">MIXED</span>`
+      : `<span class="badge-live">LIVE</span>`;
+    const preview = subs.find(f => f.preview_url);
+    const img = preview?.preview_url
+      ? `<img class="loc-card-img" src="${preview.preview_url}" loading="lazy" alt="${esc(loc)}" onerror="this.style.display='none'">`
+      : `<div class="loc-card-img"></div>`;
+    return `<div class="loc-card" onclick="openLocationClick('${escAttr(date)}','${escAttr(loc)}')">
+      ${img}
+      <div class="loc-card-body">
+        <div class="loc-card-name">${esc(loc)}</div>
+        <div class="loc-card-meta">${totalPhotos} photo${totalPhotos!==1?'s':''} ${badge}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function saveDateGroupSize() {
+  const sel    = document.getElementById('date-group-size-select');
+  const gs     = sel.value;
+  const status = document.getElementById('date-pricing-status');
+  if (!gs) { status.textContent = ''; return; }
+  const date = sel.dataset.date;
+  status.textContent = 'Saving…';
+  const folders = allFolders.filter(f => f.date === date);
+  let ok = 0;
+  for (const f of folders) {
+    const r = await fetch('/api/zip-folder/set-group-size', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({folder_key: f.folder_key, group_size: +gs})
+    });
+    if (r.ok) ok++;
+  }
+  status.textContent = `Updated ${ok} folder${ok!==1?'s':''}`;
+  setTimeout(() => { status.textContent = ''; sel.value = ''; }, 3000);
+  await loadSidebar();
 }
 
 function openLocationClick(date, loc) {
@@ -705,7 +860,7 @@ async function loadFolderPhotos() {
     gsSel.style.display = 'none';
   }
 
-  // Description field
+  // Folder-level description
   const descRow  = document.getElementById('folder-description-row');
   const descArea = document.getElementById('folder-description');
   const descStatus = document.getElementById('desc-save-status');
@@ -713,6 +868,23 @@ async function loadFolderPhotos() {
   descArea.value = d.description || '';
   descArea.dataset.folderKey = d.folder_key;
   descStatus.textContent = '';
+
+  // Location-level description (keyed at date|location|"")
+  const locDescRow    = document.getElementById('loc-description-row');
+  const locDescArea   = document.getElementById('loc-description');
+  const locDescStatus = document.getElementById('loc-desc-save-status');
+  if (locDescRow && locDescArea) {
+    locDescRow.style.display = 'block';
+    // loc key = same as folder_key but with empty sub-folder
+    const parts = d.folder_key.split('|');
+    const locKey = parts.slice(0, 2).join('|') + '|';
+    locDescArea.dataset.folderKey = locKey;
+    // Fetch existing loc description
+    fetch(`/api/folder/info?date=${encodeURIComponent(parts[0])}&location=${encodeURIComponent(parts[1])}`)
+      .then(r => r.json()).then(info => { locDescArea.value = info.description || ''; })
+      .catch(() => {});
+    locDescStatus.textContent = '';
+  }
 
   renderPhotoGrid();
   updatePricingPreview();
@@ -752,8 +924,10 @@ function setColCount(v) {
 // ── View switcher ──
 function setView(view) {
   document.getElementById('upload-view').style.display    = view==='upload'   ? 'flex'  : 'none';
-  document.getElementById('location-view').style.display = view==='location' ? 'flex'  : 'none';
-  document.getElementById('folder-view').style.display   = view==='folder'   ? 'flex'  : 'none';
+  document.getElementById('date-view').style.display      = view==='date'     ? 'flex'  : 'none';
+  document.getElementById('location-view').style.display  = view==='location' ? 'flex'  : 'none';
+  document.getElementById('folder-view').style.display    = view==='folder'   ? 'flex'  : 'none';
+  if (view==='date')     document.getElementById('date-view').style.flexDirection     = 'column';
   if (view==='location') document.getElementById('location-view').style.flexDirection = 'column';
   if (view==='folder')   document.getElementById('folder-view').style.flexDirection   = 'column';
 }
@@ -954,6 +1128,87 @@ function onDescriptionChange() {
   status.textContent = '';
   clearTimeout(_descSaveTimer);
   _descSaveTimer = setTimeout(async () => {
+    const fk   = area.dataset.folderKey;
+    const desc = area.value.trim();
+    if (!fk) return;
+    status.textContent = 'Saving…';
+    const res = await fetch('/api/admin/folder/description', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({folder_key: fk, description: desc})
+    });
+    status.textContent = res.ok ? 'Saved' : 'Save failed';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  }, 800);
+}
+
+// ── Preset dropdown (Use preset ▾ button) ──
+let _studioPresets = [];
+async function _ensureStudioPresets() {
+  if (_studioPresets.length) return;
+  try {
+    const res = await fetch('/api/admin/text-presets');
+    if (res.ok) { const d = await res.json(); _studioPresets = d.presets || []; }
+  } catch(e) {}
+}
+async function openPresetDD(btn, textareaId) {
+  // Close any other open dropdowns
+  document.querySelectorAll('.preset-dd.open').forEach(d => { if (d !== btn.querySelector('.preset-dd')) d.classList.remove('open'); });
+  const dd = btn.querySelector('.preset-dd');
+  if (!dd) return;
+  if (dd.classList.contains('open')) { dd.classList.remove('open'); return; }
+  await _ensureStudioPresets();
+  if (!_studioPresets.length) {
+    dd.innerHTML = '<div class="preset-dd-empty">No presets — create them in Settings → Text Presets</div>';
+  } else {
+    dd.innerHTML = _studioPresets.map(p =>
+      `<div class="preset-dd-item" onclick="applyPresetToArea('${textareaId}','${escAttr(p.text)}')">${esc(p.name)}</div>`
+    ).join('');
+  }
+  dd.classList.add('open');
+  // Close on outside click
+  const close = (ev) => { if (!btn.contains(ev.target)) { dd.classList.remove('open'); document.removeEventListener('click', close, true); } };
+  setTimeout(() => document.addEventListener('click', close, true), 0);
+}
+function applyPresetToArea(textareaId, text) {
+  const area = document.getElementById(textareaId);
+  if (!area) return;
+  area.value = text;
+  // Trigger the relevant save debounce
+  if (textareaId === 'folder-description')  onDescriptionChange();
+  else if (textareaId === 'loc-description') onLocDescriptionChange();
+  else if (textareaId === 'date-description') onDateDescriptionChange();
+  document.querySelectorAll('.preset-dd.open').forEach(d => d.classList.remove('open'));
+}
+
+let _locDescSaveTimer = null;
+function onLocDescriptionChange() {
+  const area   = document.getElementById('loc-description');
+  const status = document.getElementById('loc-desc-save-status');
+  status.textContent = '';
+  clearTimeout(_locDescSaveTimer);
+  _locDescSaveTimer = setTimeout(async () => {
+    const fk   = area.dataset.folderKey;
+    const desc = area.value.trim();
+    if (!fk) return;
+    status.textContent = 'Saving…';
+    const res = await fetch('/api/admin/folder/description', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({folder_key: fk, description: desc})
+    });
+    status.textContent = res.ok ? 'Saved' : 'Save failed';
+    setTimeout(() => { status.textContent = ''; }, 2000);
+  }, 800);
+}
+
+let _dateDescSaveTimer = null;
+function onDateDescriptionChange() {
+  const area   = document.getElementById('date-description');
+  const status = document.getElementById('date-desc-save-status');
+  status.textContent = '';
+  clearTimeout(_dateDescSaveTimer);
+  _dateDescSaveTimer = setTimeout(async () => {
     const fk   = area.dataset.folderKey;
     const desc = area.value.trim();
     if (!fk) return;

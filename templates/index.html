@@ -748,7 +748,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .lb-zoom-ind { position:absolute; top:10px; left:10px; background:rgba(0,0,0,.62); color:#fff; font-size:.7rem; font-weight:600; letter-spacing:.04em; padding:3px 9px; border-radius:20px; pointer-events:none; opacity:0; transition:opacity .25s; z-index:20; }
 .lb-zoom-ind.show { opacity:1; }
 /* Hint text */
-.lb-zoom-hint { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.5); color:rgba(255,255,255,.55); font-size:.68rem; padding:3px 10px; border-radius:20px; pointer-events:none; white-space:nowrap; opacity:0; transition:opacity .4s; z-index:20; }
+.lb-zoom-hint { position:absolute; bottom:12px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.65); color:rgba(255,255,255,.82); font-size:.82rem; font-weight:500; padding:5px 14px; border-radius:20px; pointer-events:none; white-space:nowrap; opacity:0; transition:opacity .4s; z-index:20; }
 .lb-zoom-hint.show { opacity:1; }
 /* Mobile loupe */
 #lb-loupe { display:none; position:absolute; width:190px; height:190px; border-radius:14px; border:2px solid rgba(245,196,48,.7); box-shadow:0 6px 28px rgba(0,0,0,.7); background-repeat:no-repeat; pointer-events:none; z-index:30; overflow:hidden; }
@@ -1511,8 +1511,18 @@ async function showFamilies(date, location) {
   setBreadcrumb(crumbs, location);
   document.getElementById('ln-bar').style.display = '';
 
+  // Fetch location-level description (keyed at date|location|"")
+  let locationInfoHtml = '';
+  try {
+    const infoRes = await fetch(`/api/folder/info?date=${enc(date)}&location=${enc(location)}`);
+    const infoData = await infoRes.json();
+    if (infoData.description) {
+      locationInfoHtml = `<div class="folder-info-box">${escHtml(infoData.description)}</div>`;
+    }
+  } catch(e) {}
+
   const el = document.getElementById('view-families');
-  el.innerHTML = `<div class="grid">${data.items.map(f => {
+  el.innerHTML = `${locationInfoHtml}<div class="grid">${data.items.map(f => {
     const clickState = isPortrait
       ? `{view:"gallery",date:"${date}",location:"${escQ(location)}",family:"${escQ(f.name)}"}`
       : `{view:"gallery",date:"${date}",location:"${escQ(location)}",group:"${escQ(f.name)}"}`;
@@ -3140,15 +3150,20 @@ function _initDesktopLoupe() {
 
   function moveLoupe(e) {
     if (!_lbLoupeOn) return;
-    const rect = ph.getBoundingClientRect();
-    const rx = Math.max(0, Math.min(1, (e.clientX - rect.left)  / rect.width));
-    const ry = Math.max(0, Math.min(1, (e.clientY - rect.top)   / rect.height));
-    let lx = e.clientX - rect.left + 18;
-    let ly = e.clientY - rect.top  - SZ / 2;
-    if (lx + SZ > rect.width)  lx = e.clientX - rect.left - SZ - 18;
-    loupe.style.left = Math.max(0, Math.min(rect.width  - SZ, lx)) + 'px';
-    loupe.style.top  = Math.max(0, Math.min(rect.height - SZ, ly)) + 'px';
-    const bgW = rect.width * ZOOM, bgH = rect.height * ZOOM;
+    const imgRect  = ph.getBoundingClientRect();
+    const wrapRect = (loupe.offsetParent || ph.parentElement).getBoundingClientRect();
+    // rx/ry: cursor position within image (0–1), used for background
+    const rx = Math.max(0, Math.min(1, (e.clientX - imgRect.left)  / imgRect.width));
+    const ry = Math.max(0, Math.min(1, (e.clientY - imgRect.top)   / imgRect.height));
+    // lx/ly: cursor position within the containing block, used for loupe placement
+    const cx = e.clientX - wrapRect.left;
+    const cy = e.clientY - wrapRect.top;
+    let lx = cx + 18;
+    let ly = cy - SZ / 2;
+    if (lx + SZ > wrapRect.width) lx = cx - SZ - 18;
+    loupe.style.left = Math.max(0, Math.min(wrapRect.width  - SZ, lx)) + 'px';
+    loupe.style.top  = Math.max(0, Math.min(wrapRect.height - SZ, ly)) + 'px';
+    const bgW = imgRect.width * ZOOM, bgH = imgRect.height * ZOOM;
     loupe.style.backgroundImage    = `url("${ph.src}")`;
     loupe.style.backgroundSize     = `${bgW}px ${bgH}px`;
     loupe.style.backgroundPosition = `-${rx * bgW - SZ / 2}px -${ry * bgH - SZ / 2}px`;
@@ -3170,16 +3185,19 @@ function _initDesktopLoupe() {
 function _initMobilePinchZoom() {
   const ph = document.getElementById('lb-photo');
   if (!ph) return;
+  const MAX_ZOOM = 8;
   let _pinchDist = 0, _pinchScale = 1;
   let _touchPanX = 0, _touchPanY = 0, _touching = false;
+  let _wasPinching = false, _lastTap = 0;
 
   ph.addEventListener('touchstart', function(e) {
     if (e.touches.length === 2) {
       e.preventDefault();
-      _pinchDist  = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
-      _pinchScale = _lbZ.scale;
+      _wasPinching = true;
+      _pinchDist   = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      _pinchScale  = _lbZ.scale;
     } else if (e.touches.length === 1 && _lbZ.scale > 1) {
-      _touching = true;
+      _touching  = true;
       _touchPanX = e.touches[0].clientX;
       _touchPanY = e.touches[0].clientY;
     }
@@ -3189,7 +3207,7 @@ function _initMobilePinchZoom() {
     if (e.touches.length === 2) {
       e.preventDefault();
       const dist = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
-      _lbZ.scale = Math.max(1, Math.min(5, _pinchScale * (dist / _pinchDist)));
+      _lbZ.scale = Math.max(1, Math.min(MAX_ZOOM, _pinchScale * (dist / _pinchDist)));
       if (_lbZ.scale === 1) { _lbZ.tx = 0; _lbZ.ty = 0; }
       else _clampLBPan();
       _applyLBZoom();
@@ -3203,13 +3221,17 @@ function _initMobilePinchZoom() {
     }
   }, { passive: false });
 
-  ph.addEventListener('touchend', function() { _touching = false; });
-
-  // Double-tap to reset
-  let _lastTap = 0;
   ph.addEventListener('touchend', function(e) {
+    _touching = false;
+    // After a pinch, fingers lift in rapid succession — don't count as double-tap
+    if (_wasPinching) {
+      if (e.touches.length === 0) _wasPinching = false;
+      _lastTap = 0;
+      return;
+    }
+    // Double-tap to reset zoom
     const now = Date.now();
-    if (now - _lastTap < 300) { _resetLBZoom(); }
+    if (now - _lastTap < 300) _resetLBZoom();
     _lastTap = now;
   });
 }
