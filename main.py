@@ -4900,6 +4900,53 @@ def _delete_pkg_r2(token: str):
         print(f"_delete_pkg_r2: {e}")
 
 
+@app.post("/api/admin/packages/upload")
+async def api_create_package_upload(request: Request):
+    """Create a download package by uploading photos directly (not from the site gallery)."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    from fastapi import UploadFile, File, Form
+    form = await request.form()
+    title      = (form.get("title") or "").strip()
+    emails_raw = (form.get("emails") or "").strip()
+    expire_days = int(form.get("expire_days") or 30)
+    files = form.getlist("photos")
+
+    emails = [e.strip() for e in emails_raw.replace(",", "\n").split("\n") if e.strip()]
+    if not title or not emails or not files:
+        return JSONResponse(status_code=400, content={"error": "title, emails, and at least one photo required"})
+
+    token = str(uuid.uuid4()).replace("-", "")
+    now     = datetime.now(timezone.utc)
+    expires = (now + timedelta(days=expire_days)).isoformat()
+    expire_str = (now + timedelta(days=expire_days)).strftime("%B %d, %Y")
+
+    paths = []
+    for f in files:
+        if not hasattr(f, "filename") or not f.filename:
+            continue
+        safe_name = f.filename.replace("/", "_").replace("\\", "_")
+        r2_key = f"packages/uploads/{token}/{safe_name}"
+        data = await f.read()
+        s3.put_object(Bucket=R2_BUCKET, Key=r2_key, Body=data,
+                      ContentType=f.content_type or "image/jpeg")
+        paths.append(r2_key)
+
+    if not paths:
+        return JSONResponse(status_code=400, content={"error": "No valid photos received"})
+
+    pkg = {
+        "token": token, "title": title, "emails": emails,
+        "paths": paths, "created": now.isoformat(),
+        "expires": expires, "expire_days": expire_days,
+    }
+    _store_pkg(token, pkg)
+
+    download_url = f"{SITE_URL}/package/{token}"
+    _send_package_email(emails, title, download_url, len(paths), expire_str)
+    return {"token": token, "url": download_url}
+
+
 @app.post("/api/admin/packages")
 async def api_create_package(request: Request):
     if not _admin_authed(request):
