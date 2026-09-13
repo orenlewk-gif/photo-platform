@@ -434,6 +434,11 @@ input[type=file]{display:none}
           </select>
           <button class="act-btn primary" onclick="pushLive()">Push Live</button>
           <button class="act-btn warn" onclick="pullDraft()">Pull to Draft</button>
+          <span id="pose-live-wrap" style="display:none;align-items:center;gap:.4rem">
+            <span style="font-size:.75rem;color:rgba(255,255,255,.45)">Pose pricing:</span>
+            <button id="pose-live-btn" class="act-btn" onclick="togglePoseLive()" style="font-size:.75rem;padding:.25rem .65rem"></button>
+          </span>
+          <button class="act-btn" onclick="rebuildPoses()" id="rebuild-poses-btn" style="display:none;font-size:.75rem;padding:.25rem .65rem">↻ Rebuild Poses</button>
           <button class="act-btn" onclick="openAddPhotos()">+ Add Photos</button>
           <button class="act-btn" onclick="openMoveModal()">Move</button>
           <button class="act-btn" onclick="downloadFolder()">⬇ Download All</button>
@@ -902,9 +907,84 @@ async function loadFolderPhotos() {
   descArea.dataset.folderKey = d.folder_key;
   descStatus.textContent = '';
 
+  // Portrait pose live toggle
+  const poseLiveWrap = document.getElementById('pose-live-wrap');
+  const poseLiveBtn  = document.getElementById('pose-live-btn');
+  const rebuildBtn   = document.getElementById('rebuild-poses-btn');
+  if (folder) {
+    const pRes = await fetch(`/api/folder/poses?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}&family=${encodeURIComponent(folder)}`).then(r=>r.json()).catch(()=>null);
+    if (pRes && pRes.has_poses) {
+      poseLiveWrap.style.display = 'inline-flex';
+      rebuildBtn.style.display = 'inline-block';
+      updatePoseLiveBtn(pRes.poses_live);
+    } else {
+      poseLiveWrap.style.display = 'none';
+      rebuildBtn.style.display = 'none';
+    }
+  } else {
+    poseLiveWrap.style.display = 'none';
+    rebuildBtn.style.display = 'none';
+  }
 
   renderPhotoGrid();
   updatePricingPreview();
+}
+
+function updatePoseLiveBtn(isLive) {
+  const btn = document.getElementById('pose-live-btn');
+  if (!btn) return;
+  if (isLive) {
+    btn.textContent = '✓ Pose Pricing: Live';
+    btn.style.background = 'rgba(74,222,128,.15)';
+    btn.style.borderColor = 'rgba(74,222,128,.4)';
+    btn.style.color = '#4ade80';
+  } else {
+    btn.textContent = 'Pose Pricing: Preview Only';
+    btn.style.background = 'rgba(245,197,24,.08)';
+    btn.style.borderColor = 'rgba(245,197,24,.3)';
+    btn.style.color = '#F5C518';
+  }
+  btn.dataset.live = isLive ? '1' : '0';
+}
+
+async function togglePoseLive() {
+  if (!currentFolder) return;
+  const {date, location, folder} = currentFolder;
+  const btn    = document.getElementById('pose-live-btn');
+  const isLive = btn.dataset.live === '1';
+  const res    = await fetch('/api/admin/folder/poses-live', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date, location, family: folder, live: !isLive}),
+  });
+  if (res.ok) {
+    updatePoseLiveBtn(!isLive);
+    showToast(!isLive ? 'Pose pricing is now live for customers' : 'Pose pricing set to preview only');
+  } else {
+    showToast('Failed to update', 'err');
+  }
+}
+
+async function rebuildPoses() {
+  if (!currentFolder) return;
+  const {date, location, folder} = currentFolder;
+  const btn = document.getElementById('rebuild-poses-btn');
+  btn.textContent = 'Scanning…';
+  btn.disabled = true;
+  const res = await fetch('/api/admin/folder/rebuild-poses', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({date, location, folder}),
+  });
+  btn.textContent = '↻ Rebuild Poses';
+  btn.disabled = false;
+  if (res.ok) {
+    const d = await res.json();
+    showToast(`${d.poses_found} pose${d.poses_found !== 1 ? 's' : ''} found across ${d.photos_scanned} photos`);
+    await loadFolderPhotos();
+  } else {
+    showToast('Rebuild failed', 'err');
+  }
 }
 
 function renderPhotoGrid() {

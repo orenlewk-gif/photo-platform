@@ -101,10 +101,88 @@ except Exception as _cors_err:
 # HELPERS
 # ─────────────────────────────────────────
 
-# Locations that use last-name sub-folders (portrait style)
-PORTRAIT_LOCATIONS = {"lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip", "nature zip line", "nature zipline", "nature zip"}
+# Locations that use last-name sub-folders (portrait style) — base set, extended by R2 config
+_PORTRAIT_LOCATIONS_BASE = {"lone peak portraits", "explorer gondola", "ramcharger portraits", "adventure zip line", "adventure zip", "nature zip line", "nature zipline", "nature zip"}
+PORTRAIT_LOCATIONS = set(_PORTRAIT_LOCATIONS_BASE)  # live copy, refreshed from R2
+
 # Locations whose group/sub-folder names are searchable
 SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
+
+PORTRAIT_LOCATIONS_KEY = "meta/portrait_locations.json"
+_portrait_locs_cache: dict = {"data": None, "ts": 0.0}
+_PORTRAIT_LOCS_TTL = 60
+
+def _load_portrait_locations():
+    import time
+    global PORTRAIT_LOCATIONS
+    now = time.monotonic()
+    if _portrait_locs_cache["data"] is not None and now - _portrait_locs_cache["ts"] < _PORTRAIT_LOCS_TTL:
+        return _portrait_locs_cache["data"]
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=PORTRAIT_LOCATIONS_KEY)
+        extra = set(json.loads(obj["Body"].read()))
+    except Exception:
+        extra = set()
+    combined = _PORTRAIT_LOCATIONS_BASE | {loc.lower() for loc in extra}
+    PORTRAIT_LOCATIONS = combined
+    _portrait_locs_cache["data"] = sorted(combined)
+    _portrait_locs_cache["ts"] = now
+    return _portrait_locs_cache["data"]
+
+def _save_portrait_locations(locs: list):
+    s3.put_object(Bucket=R2_BUCKET, Key=PORTRAIT_LOCATIONS_KEY,
+                  Body=json.dumps(locs, indent=2).encode(), ContentType="application/json")
+    _portrait_locs_cache["data"] = None  # bust cache
+
+# ── XMP Color Label Reader ─────────────────────────────────────────────────────
+def read_xmp_color_label(jpeg_bytes: bytes) -> str:
+    """Extract Lightroom/macOS XMP color label from JPEG bytes (no external deps)."""
+    XMP_MARKER = b'http://ns.adobe.com/xap/1.0/\x00'
+    idx = jpeg_bytes.find(XMP_MARKER)
+    if idx == -1:
+        return ""
+    xmp_data = jpeg_bytes[idx + len(XMP_MARKER):]
+    m = re.search(rb'xmp:Label\s*=\s*"([^"]*)"', xmp_data)
+    if m:
+        return m.group(1).decode("utf-8", errors="replace").strip()
+    m = re.search(rb'<xmp:Label>\s*([^<]*?)\s*</xmp:Label>', xmp_data)
+    if m:
+        return m.group(1).decode("utf-8", errors="replace").strip()
+    return ""
+
+# ── Seasons ────────────────────────────────────────────────────────────────────
+SEASONS_KEY = "meta/seasons.json"
+_seasons_cache: dict = {"data": None, "ts": 0.0}
+_SEASONS_TTL = 60
+
+def _load_seasons():
+    import time
+    now = time.monotonic()
+    if _seasons_cache["data"] is not None and now - _seasons_cache["ts"] < _SEASONS_TTL:
+        return _seasons_cache["data"]
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=SEASONS_KEY)
+        d = json.loads(obj["Body"].read())
+    except Exception:
+        d = []
+    _seasons_cache["data"] = d
+    _seasons_cache["ts"] = now
+    return d
+
+def _save_seasons(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=SEASONS_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+    _seasons_cache["data"] = d
+    import time; _seasons_cache["ts"] = time.monotonic()
+
+def _get_season_for_date(date_str: str) -> dict | None:
+    """Return the season config for a given date string (YYYY-MM-DD), or None."""
+    for season in _load_seasons():
+        start = season.get("start", "")
+        end   = season.get("end", "")
+        if start <= date_str <= end:
+            return season
+    return None
 
 def clean_location(raw):
     cleaned = re.sub(r'^[\d\-_\s]+', '', raw)
@@ -287,6 +365,12 @@ threading.Thread(target=_load_data_bg, daemon=True).start()
 # Wait up to 8 s so the first request isn't served with empty data,
 # but don't block Railway's health check indefinitely.
 _data_ready.wait(timeout=8)
+
+# Pre-load portrait locations from R2 so PORTRAIT_LOCATIONS is current on startup
+try:
+    _load_portrait_locations()
+except Exception:
+    pass
 
 # ── Dimension cache ──────────────────────────────────────────────────────────
 _dim_cache: dict = {}
@@ -1195,7 +1279,9 @@ async def create_checkout(request: Request):
     try:
         body = await request.json()
 
-        digital_albums = body.get("digital_albums", [])
+        digital_albums   = body.get("digital_albums", [])
+        portrait_poses   = body.get("portrait_poses", [])    # [{pose_label, color, files, paths, family}]
+        portrait_singles = body.get("portrait_singles", [])  # [{filename, path, family}]
         # Fallback for legacy payloads
         digital_count = body.get("digital_count", sum(a.get("count", 0) for a in digital_albums))
         digital_price = body.get("digital_price", sum(a.get("price", 0) for a in digital_albums))
@@ -1268,6 +1354,55 @@ async def create_checkout(request: Request):
                 "total":      price_str,
                 "meta_data":  [{"key": "Photos", "value": f"{digital_count} digital photo{'s' if digital_count != 1 else ''}"}],
             })
+
+        # ── Portrait pose line items ──────────────────────────────────────────
+        if portrait_poses or portrait_singles:
+            _pp_total = _server_portrait_price(len(portrait_poses), len(portrait_singles))
+            pp_tiers  = _load_portrait_pricing().get("pose_tiers", _DEFAULT_PORTRAIT_PRICING["pose_tiers"])
+            pp_single = float(_load_portrait_pricing().get("single_photo", 40.0))
+            pose_price_each = float(pp_tiers[min(len(portrait_poses) - 1, len(pp_tiers) - 1)]) if portrait_poses else 0.0
+            for pose in portrait_poses:
+                _family   = pose.get("family", last_name or location)
+                _label    = pose.get("pose_label", "Pose")
+                _n_photos = len(pose.get("files", []))
+                _price_s  = str(round(pose_price_each, 2))
+                _paths_s  = "|".join(pose.get("paths", []))
+                line_items.append({
+                    "product_id": WC_DIGITAL_PRODUCT_ID,
+                    "quantity":   1,
+                    "name":       f"Portrait {_label} ({_n_photos} photo{'s' if _n_photos != 1 else ''}) — {_family}",
+                    "subtotal":   _price_s,
+                    "total":      _price_s,
+                    "meta_data":  [
+                        {"key": "Photos", "value": f"{_n_photos} digital photo{'s' if _n_photos != 1 else ''}"},
+                        {"key": "_photo_paths", "value": _paths_s},
+                    ],
+                })
+            for single in portrait_singles:
+                _family  = single.get("family", last_name or location)
+                _fname   = single.get("filename", "Photo")
+                _price_s = str(round(pp_single, 2))
+                _path    = single.get("path", "")
+                line_items.append({
+                    "product_id": WC_DIGITAL_PRODUCT_ID,
+                    "quantity":   1,
+                    "name":       f"Portrait Single Photo — {_family}",
+                    "subtotal":   _price_s,
+                    "total":      _price_s,
+                    "meta_data":  [
+                        {"key": "Photos", "value": _fname},
+                        {"key": "_photo_paths", "value": _path},
+                    ],
+                })
+            # Collect all portrait paths for delivery
+            all_portrait_paths = (
+                [p for pose in portrait_poses for p in pose.get("paths", [])] +
+                [s.get("path", "") for s in portrait_singles if s.get("path")]
+            )
+            if "_photo_paths" not in [m["key"] for m in (body.get("meta_data") or [])]:
+                body.setdefault("digital_paths", [])
+                body["digital_paths"].extend(all_portrait_paths)
+                filenames.extend([s.get("filename", "") for s in portrait_singles])
 
         for p in prints:
             size_idx    = int(p.get("size_idx", 0))
@@ -3527,6 +3662,56 @@ def _save_folder_meta(d):
     _folder_meta_cache["data"] = d
     import time; _folder_meta_cache["ts"] = time.monotonic()
 
+def _update_folder_poses(date: str, location: str, folder: str, r2_keys: list[str]):
+    """Read XMP color labels from uploaded R2 images and store pose groupings in folder_meta."""
+    if not r2_keys:
+        return
+
+    def fetch_label(key: str) -> tuple[str, str]:
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=key, Range="bytes=0-65535")
+            label = read_xmp_color_label(obj["Body"].read())
+            return (key, label)
+        except Exception:
+            return (key, "")
+
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        results = list(ex.map(lambda k: fetch_label(k), r2_keys))
+
+    # Build ordered pose groups — order by first appearance of each color
+    color_order: list[str] = []
+    color_files: dict[str, list[str]] = {}
+    for key, label in sorted(results, key=lambda x: x[0]):
+        filename = os.path.basename(key)
+        bucket   = label or ""
+        if bucket not in color_files:
+            color_order.append(bucket)
+            color_files[bucket] = []
+        color_files[bucket].append(filename)
+
+    # Only store pose data if at least one photo has a color label
+    labeled_colors = [c for c in color_order if c]
+    if not labeled_colors:
+        return
+
+    poses = []
+    pose_num = 1
+    for color in color_order:
+        files = color_files[color]
+        if color:
+            poses.append({"color": color, "label": f"Pose {pose_num}", "files": files})
+            pose_num += 1
+        else:
+            poses.append({"color": "", "label": "Unlabeled", "files": files})
+
+    fk = _folder_key(date, location, folder)
+    fm = _load_folder_meta()
+    if fk not in fm:
+        fm[fk] = {}
+    fm[fk]["poses"]      = poses
+    fm[fk].setdefault("poses_live", False)
+    _save_folder_meta(fm)
+
 def _folder_key(date, location, last_name):
     return f"{date}|{location}|{last_name}"
 
@@ -3841,6 +4026,8 @@ async def admin_upload_index(request: Request):
             added += 1
     s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                   Body=json.dumps(data).encode(), ContentType="application/json")
+    if is_portrait and folder and keys:
+        _update_folder_poses(date, location, folder, keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder}
 
 @app.post("/api/admin/reindex-folder")
@@ -3882,6 +4069,15 @@ async def admin_reindex_folder(request: Request):
     if added:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
+    if is_portrait and folder:
+        all_keys = [
+            obj["Key"]
+            for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=prefix)
+            for obj in page.get("Contents", [])
+            if obj["Key"].lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+        ]
+        if all_keys:
+            _update_folder_poses(date, location, folder, all_keys)
     return {"indexed": added, "prefix": prefix}
 
 @app.post("/api/admin/push-live")
@@ -4787,6 +4983,158 @@ async def api_save_print_pricing(request: Request):
     body = await request.json()
     _save_print_pricing(body)
     return {"status": "ok"}
+
+# ── PORTRAIT POSE PRICING ──────────────────────────────────────────────────────
+PORTRAIT_PRICING_KEY = "meta/portrait_pricing.json"
+_DEFAULT_PORTRAIT_PRICING = {
+    "single_photo": 40.0,
+    "pose_tiers": [65.0, 57.5, 50.0],
+}
+
+_portrait_pricing_cache: dict = {"data": None, "ts": 0.0}
+_PORTRAIT_PRICING_TTL = 30
+
+def _load_portrait_pricing():
+    import time
+    now = time.monotonic()
+    if _portrait_pricing_cache["data"] is not None and now - _portrait_pricing_cache["ts"] < _PORTRAIT_PRICING_TTL:
+        return _portrait_pricing_cache["data"]
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=PORTRAIT_PRICING_KEY)
+        d = json.loads(obj["Body"].read())
+    except Exception:
+        d = dict(_DEFAULT_PORTRAIT_PRICING)
+    _portrait_pricing_cache["data"] = d
+    _portrait_pricing_cache["ts"] = now
+    return d
+
+def _save_portrait_pricing(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=PORTRAIT_PRICING_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+    _portrait_pricing_cache["data"] = d
+    import time; _portrait_pricing_cache["ts"] = time.monotonic()
+
+def _server_portrait_price(full_poses: int, single_photos: int) -> float:
+    pp = _load_portrait_pricing()
+    tiers        = pp.get("pose_tiers", _DEFAULT_PORTRAIT_PRICING["pose_tiers"])
+    single_price = float(pp.get("single_photo", _DEFAULT_PORTRAIT_PRICING["single_photo"]))
+    pose_price   = 0.0
+    if full_poses > 0:
+        pose_price = float(tiers[min(full_poses - 1, len(tiers) - 1)])
+    return round(pose_price * full_poses + single_price * single_photos, 2)
+
+@app.get("/api/portrait-pricing")
+def api_portrait_pricing():
+    return _load_portrait_pricing()
+
+@app.get("/api/admin/portrait-locations")
+def api_get_portrait_locations(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    _load_portrait_locations()
+    return {"locations": sorted(PORTRAIT_LOCATIONS)}
+
+@app.post("/api/admin/portrait-locations")
+async def api_save_portrait_locations(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body  = await request.json()
+    locs  = [l.lower().strip() for l in body.get("locations", []) if l.strip()]
+    _save_portrait_locations(locs)
+    _load_portrait_locations()
+    return {"ok": True, "locations": sorted(PORTRAIT_LOCATIONS)}
+
+@app.post("/api/admin/portrait-pricing")
+async def api_save_portrait_pricing(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_portrait_pricing(body)
+    return {"status": "ok"}
+
+# ── SEASONS ─────────────────────────────────────────────────────────────────────
+@app.get("/api/seasons")
+def api_get_seasons():
+    return {"seasons": _load_seasons()}
+
+@app.post("/api/admin/seasons")
+async def api_save_seasons(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    seasons = body.get("seasons", [])
+    _save_seasons(seasons)
+    return {"ok": True, "seasons": seasons}
+
+# ── FOLDER POSES ────────────────────────────────────────────────────────────────
+@app.get("/api/folder/poses")
+def api_folder_poses(request: Request, date: str = Query(None),
+                     location: str = Query(None), family: str = Query(None)):
+    if not date or not location or not family:
+        return {"poses": [], "poses_live": False, "has_poses": False}
+    fk    = _folder_key(date, location.strip(), family.strip())
+    fm    = _load_folder_meta()
+    entry = fm.get(fk, {})
+    poses = entry.get("poses", [])
+    if not poses:
+        return {"poses": [], "poses_live": False, "has_poses": False}
+    poses_live = entry.get("poses_live", False)
+    is_admin   = _admin_authed(request)
+    if not poses_live and not is_admin:
+        return {"poses": [], "poses_live": False, "has_poses": False}
+    return {
+        "poses":        poses,
+        "poses_live":   poses_live,
+        "has_poses":    True,
+        "preview_only": not poses_live and is_admin,
+    }
+
+@app.post("/api/admin/folder/poses-live")
+async def api_toggle_poses_live(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    family   = body.get("family", "").strip()
+    live     = bool(body.get("live", False))
+    if not date or not location:
+        return JSONResponse(status_code=400, content={"error": "Missing fields"})
+    fk = _folder_key(date, location, family)
+    fm = _load_folder_meta()
+    if fk not in fm:
+        fm[fk] = {}
+    fm[fk]["poses_live"] = live
+    _save_folder_meta(fm)
+    return {"ok": True, "poses_live": live}
+
+@app.post("/api/admin/folder/rebuild-poses")
+async def api_rebuild_poses(request: Request):
+    """Re-read XMP labels for all photos in a portrait folder and rebuild pose groupings."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body     = await request.json()
+    date     = body.get("date", "")
+    location = body.get("location", "").strip()
+    folder   = body.get("folder", "").strip()
+    if not date or not location or not folder:
+        return JSONResponse(status_code=400, content={"error": "Missing fields"})
+    loc_slug    = location.lower().replace(" ", "-")
+    folder_slug = folder.lower().replace(" ", "-")
+    prefix      = f"images/{date}/{loc_slug}/{folder_slug}/"
+    all_keys = [
+        obj["Key"]
+        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=prefix)
+        for obj in page.get("Contents", [])
+        if obj["Key"].lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+    ]
+    if not all_keys:
+        return {"ok": False, "error": "No images found"}
+    _update_folder_poses(date, location, folder, all_keys)
+    fk    = _folder_key(date, location, folder)
+    fm    = _load_folder_meta()
+    poses = fm.get(fk, {}).get("poses", [])
+    return {"ok": True, "poses_found": len(poses), "photos_scanned": len(all_keys)}
 
 @app.get("/api/admin/pricing")
 def api_admin_pricing_get(request: Request):

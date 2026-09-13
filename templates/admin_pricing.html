@@ -125,6 +125,7 @@ input[type="text"].wide{width:175px}
     <a onclick="showSection('digital')" class="nav-link nav-sub active-sec" id="navsub-digital">Digital Tiers</a>
     <a onclick="showSection('combos')" class="nav-link nav-sub" id="navsub-combos">Bundle Deals</a>
     <a onclick="showSection('prints')" class="nav-link nav-sub" id="navsub-prints">Print &amp; Shipping</a>
+    <a onclick="showSection('portrait')" class="nav-link nav-sub" id="navsub-portrait">Portrait Poses</a>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
@@ -198,6 +199,56 @@ input[type="text"].wide{width:175px}
       </div>
     </div>
 
+    <!-- ── Portrait Pose Pricing ── -->
+    <div id="sec-portrait" class="section">
+      <h1>Portrait Pose Pricing</h1>
+      <p class="subtitle">Pricing for winter on-mountain portrait sessions with pose groupings. Applies when a folder has XMP color-label pose data.</p>
+      <div class="card">
+        <div class="field-row">
+          <label>Single photo price</label>
+          <span class="dollar">$</span>
+          <input type="number" id="pp-single" min="0" step="0.01" style="width:80px" value="40">
+          <span style="color:rgba(255,255,255,.4);font-size:.8rem">per individual photo (any pose)</span>
+        </div>
+        <div style="margin-top:1.2rem">
+          <label style="display:block;margin-bottom:.5rem;color:rgba(255,255,255,.6);font-size:.8rem;text-transform:uppercase;letter-spacing:1px">Full pose prices (per pose, based on number of poses purchased)</label>
+          <table style="width:auto">
+            <thead><tr><th>Poses purchased</th><th>Price per pose</th></tr></thead>
+            <tbody id="pp-tiers-body"></tbody>
+          </table>
+          <button class="btn btn-sm" style="margin-top:.6rem" onclick="addPoseTier()">+ Add tier</button>
+        </div>
+        <div style="margin-top:.8rem;padding:.6rem .8rem;background:rgba(245,197,24,.06);border:1px solid rgba(245,197,24,.18);border-radius:8px;font-size:.8rem;color:rgba(255,255,255,.55)">
+          Example: tiers [65, 57.50, 50] → 1 pose = $65, 2 poses = $57.50 each, 3+ poses = $50 each (last tier repeats for all higher counts).
+        </div>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePortraitPricing()">Save</button>
+        </div>
+      </div>
+
+      <!-- Portrait Locations -->
+      <h2 style="margin-top:2rem">Portrait Locations</h2>
+      <p class="subtitle">Locations that use last-name sub-folders and trigger pose detection. Built-in locations are always included — add new ones here without a code deploy.</p>
+      <div class="card">
+        <div id="portrait-locs-list"></div>
+        <button class="btn btn-sm" style="margin-top:.6rem" onclick="addPortraitLoc()">+ Add location</button>
+        <div class="btn-row" style="margin-top:.8rem">
+          <button class="btn btn-primary btn-sm" onclick="savePortraitLocs()">Save locations</button>
+        </div>
+      </div>
+
+      <!-- Seasons -->
+      <h2 style="margin-top:2rem">Seasons</h2>
+      <p class="subtitle">Map date ranges to seasons. Used to associate dates with a pricing mode (summer vs. winter). Customer-facing season browsing will be built in a later release.</p>
+      <div class="card">
+        <div id="seasons-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addSeason()">+ Add season</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="saveSeasons()">Save seasons</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /layout -->
 
@@ -205,9 +256,12 @@ input[type="text"].wide{width:175px}
 
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
-let pricingData = null;
-let zipData     = null;
-let printData   = null;
+let pricingData    = null;
+let zipData        = null;
+let printData      = null;
+let portraitPricingData = null;
+let seasonsData         = [];
+let portraitLocsData    = [];
 
 const isZipAct = n => n.includes('zip');
 
@@ -216,10 +270,16 @@ Promise.all([
   fetch('/api/admin/pricing').then(r=>r.json()),
   fetch('/api/zip-pricing').then(r=>r.json()),
   fetch('/api/print-pricing').then(r=>r.json()),
-]).then(([pd, zd, ppd]) => {
-  pricingData = pd;
-  zipData     = zd;
-  printData   = ppd;
+  fetch('/api/portrait-pricing').then(r=>r.json()),
+  fetch('/api/seasons').then(r=>r.json()),
+  fetch('/api/admin/portrait-locations').then(r=>r.json()),
+]).then(([pd, zd, ppd, portd, sesd, pld]) => {
+  pricingData         = pd;
+  zipData             = zd;
+  printData           = ppd;
+  portraitPricingData = portd;
+  seasonsData         = sesd.seasons || [];
+  portraitLocsData    = pld.locations || [];
   renderAll();
 }).catch(e => { console.error('Pricing load error:', e); showToast('Load error: '+e, 'err'); });
 
@@ -228,6 +288,9 @@ function renderAll() {
   renderZip();
   renderCombos();
   renderPrints();
+  renderPortraitPricing();
+  renderPortraitLocs();
+  renderSeasons();
 }
 
 // ── Section nav ───────────────────────────────────────────────────────────────
@@ -517,6 +580,151 @@ function slugId(s) { return String(s).replace(/[^a-zA-Z0-9]/g,'-'); }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 let _tt;
+// ── Portrait Pose Pricing ─────────────────────────────────────────────────────
+function renderPortraitPricing() {
+  if (!portraitPricingData) return;
+  document.getElementById('pp-single').value = portraitPricingData.single_photo ?? 40;
+  const tiers = portraitPricingData.pose_tiers || [65, 57.5, 50];
+  const tbody = document.getElementById('pp-tiers-body');
+  tbody.innerHTML = tiers.map((price, i) => {
+    const label = i === tiers.length - 1
+      ? `${i + 1}+ poses`
+      : `${i + 1} pose${i > 0 ? 's' : ''}`;
+    return `<tr>
+      <td style="color:rgba(255,255,255,.6)">${label}</td>
+      <td><span class="dollar">$</span><input type="number" class="pp-tier-input" value="${price}" min="0" step="0.01" style="width:80px" data-idx="${i}"></td>
+      <td><button class="btn btn-sm" style="padding:.2rem .5rem;font-size:.75rem" onclick="removePoseTier(${i})">✕</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function addPoseTier() {
+  if (!portraitPricingData) return;
+  const tiers = portraitPricingData.pose_tiers || [];
+  tiers.push(tiers.length ? tiers[tiers.length - 1] : 50);
+  portraitPricingData.pose_tiers = tiers;
+  renderPortraitPricing();
+}
+
+function removePoseTier(idx) {
+  if (!portraitPricingData) return;
+  const tiers = portraitPricingData.pose_tiers || [];
+  if (tiers.length <= 1) return;
+  tiers.splice(idx, 1);
+  portraitPricingData.pose_tiers = tiers;
+  renderPortraitPricing();
+}
+
+async function savePortraitPricing() {
+  const single = parseFloat(document.getElementById('pp-single').value) || 40;
+  const tierInputs = document.querySelectorAll('.pp-tier-input');
+  const tiers = Array.from(tierInputs).map(inp => parseFloat(inp.value) || 0);
+  const payload = { single_photo: single, pose_tiers: tiers };
+  const r = await fetch('/api/admin/portrait-pricing', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (r.ok) {
+    portraitPricingData = payload;
+    showToast('Portrait pricing saved');
+  } else {
+    showToast('Save failed', 'err');
+  }
+}
+
+// ── Portrait Locations ────────────────────────────────────────────────────────
+function renderPortraitLocs() {
+  const el = document.getElementById('portrait-locs-list');
+  if (!el) return;
+  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
+  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
+  const builtInHtml = BUILT_IN.map(l =>
+    `<div style="padding:.3rem 0;font-size:.83rem;color:rgba(255,255,255,.35)">${l} <span style="font-size:.7rem;opacity:.5">(built-in)</span></div>`
+  ).join('');
+  const customHtml = custom.map((l, i) =>
+    `<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.3rem">
+      <input type="text" value="${l}" style="flex:1" onchange="updatePortraitLoc(${i}, this.value)">
+      <button class="btn btn-sm" style="padding:.2rem .5rem" onclick="removePortraitLoc(${i})">✕</button>
+    </div>`
+  ).join('');
+  el.innerHTML = builtInHtml + (custom.length ? '<div style="margin:.6rem 0 .3rem;font-size:.75rem;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:1px">Custom locations</div>' + customHtml : '');
+  el._custom = custom;
+}
+
+function addPortraitLoc() {
+  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
+  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
+  custom.push('');
+  portraitLocsData = [...BUILT_IN.filter(l => portraitLocsData.includes(l)), ...custom];
+  renderPortraitLocs();
+}
+
+function updatePortraitLoc(i, val) {
+  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
+  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
+  custom[i] = val.toLowerCase().trim();
+  portraitLocsData = [...new Set([...BUILT_IN, ...custom.filter(Boolean)])];
+}
+
+function removePortraitLoc(i) {
+  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
+  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
+  custom.splice(i, 1);
+  portraitLocsData = [...new Set([...BUILT_IN, ...custom])];
+  renderPortraitLocs();
+}
+
+async function savePortraitLocs() {
+  const r = await fetch('/api/admin/portrait-locations', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({locations: portraitLocsData}),
+  });
+  if (r.ok) { const d = await r.json(); portraitLocsData = d.locations; showToast('Portrait locations saved'); }
+  else showToast('Save failed', 'err');
+}
+
+// ── Seasons ───────────────────────────────────────────────────────────────────
+function renderSeasons() {
+  const el = document.getElementById('seasons-list');
+  if (!seasonsData.length) {
+    el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No seasons yet.</div>';
+    return;
+  }
+  el.innerHTML = seasonsData.map((s, i) => `
+    <div style="display:grid;grid-template-columns:1fr 120px 120px 160px auto;gap:.5rem;align-items:center;margin-bottom:.5rem">
+      <input type="text" value="${s.name||''}" placeholder="Season name" oninput="seasonsData[${i}].name=this.value" style="min-width:0">
+      <input type="date" value="${s.start||''}" oninput="seasonsData[${i}].start=this.value">
+      <input type="date" value="${s.end||''}" oninput="seasonsData[${i}].end=this.value">
+      <select onchange="seasonsData[${i}].pricing_mode=this.value">
+        <option value="summer" ${s.pricing_mode==='summer'?'selected':''}>Summer pricing</option>
+        <option value="winter" ${s.pricing_mode==='winter'?'selected':''}>Winter (portrait poses)</option>
+      </select>
+      <button class="btn btn-sm" style="padding:.2rem .5rem" onclick="removeSeason(${i})">✕</button>
+    </div>`).join('');
+}
+
+function addSeason() {
+  seasonsData.push({ name: '', start: '', end: '', pricing_mode: 'summer' });
+  renderSeasons();
+}
+
+function removeSeason(i) {
+  seasonsData.splice(i, 1);
+  renderSeasons();
+}
+
+async function saveSeasons() {
+  const r = await fetch('/api/admin/seasons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seasons: seasonsData }),
+  });
+  if (r.ok) showToast('Seasons saved');
+  else showToast('Save failed', 'err');
+}
+
 function showToast(msg, type='show') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = type;

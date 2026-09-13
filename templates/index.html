@@ -789,6 +789,32 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .lb-info { margin-top:14px; text-align:center; color:rgba(255,255,255,.8); font-size:.9rem; line-height:1.7; }
 .lb-filename { color:rgba(255,255,255,.35); font-size:.74rem; margin-top:4px; }
 .lb-counter  { margin-top:10px; color:rgba(255,255,255,.28); font-size:.74rem; letter-spacing:1px; }
+/* ── Portrait Pose Gallery ── */
+.pose-preview-banner{background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.3);color:#F5C518;border-radius:8px;padding:.5rem 1rem;font-size:.78rem;font-weight:600;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.pose-section{margin-bottom:2rem}
+.pose-header{display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;padding:.6rem .8rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;flex-wrap:wrap}
+.pose-label{font-size:.95rem;font-weight:700;color:#e8eaf0;flex:1}
+.pose-count{font-size:.78rem;color:rgba(255,255,255,.4)}
+.pose-color-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.pose-buy-btn{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.4);color:#F5C518;font-size:.82rem;font-weight:700;border-radius:7px;padding:.32rem .9rem;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap}
+.pose-buy-btn:hover{background:rgba(245,197,24,.25);border-color:#F5C518}
+.pose-buy-btn.selected{background:rgba(245,197,24,.3);border-color:#F5C518;color:#fff}
+.pose-how-btn{background:none;border:none;color:rgba(255,255,255,.4);font-size:.75rem;cursor:pointer;padding:.2rem .4rem;border-radius:4px;text-decoration:underline;white-space:nowrap}
+.pose-how-btn:hover{color:rgba(255,255,255,.7)}
+.pose-price-tag{font-size:.88rem;color:#F5C518;font-weight:700;white-space:nowrap}
+.pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+/* Portrait pricing modal */
+.pp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99990;align-items:center;justify-content:center}
+.pp-modal-overlay.open{display:flex}
+.pp-modal{background:#0e2a3a;border:1px solid rgba(255,255,255,.12);border-radius:14px;max-width:360px;width:90%;padding:1.6rem;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.pp-modal h3{font-size:1.1rem;font-weight:700;margin:0 0 .3rem}
+.pp-modal .pp-sub{font-size:.8rem;color:rgba(255,255,255,.45);margin-bottom:1.2rem}
+.pp-tier-row{display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06)}
+.pp-tier-row:last-child{border-bottom:none}
+.pp-tier-label{font-size:.88rem;color:rgba(255,255,255,.7)}
+.pp-tier-price{font-size:.95rem;font-weight:700;color:#F5C518}
+.pp-modal-close{margin-top:1.2rem;width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:#e8eaf0;border-radius:8px;padding:.55rem;cursor:pointer;font-size:.9rem}
+.pp-modal-close:hover{background:rgba(255,255,255,.12)}
 .lb-upsell { margin-top:14px; text-align:center; max-width:500px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:12px; }
 .lb-upsell .upsell-upgrade { font-size:.84rem; color:rgba(255,255,255,.85); margin-bottom:9px; line-height:1.5; }
 .lb-upsell .upsell-perks { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
@@ -1188,6 +1214,19 @@ select.co-input option { background:#0a1e2e; color:#fff; }
       <button class="fp-close" onclick="closeFolderPhotosModal()">✕</button>
     </div>
     <div class="fp-grid" id="fp-grid"></div>
+  </div>
+</div>
+
+<!-- Portrait pricing explanation modal -->
+<div class="pp-modal-overlay" id="pp-modal-overlay" onclick="if(event.target===this)closePPModal()">
+  <div class="pp-modal">
+    <h3>How portrait pricing works</h3>
+    <p class="pp-sub">Select individual photos or save with a full-pose package.</p>
+    <div id="pp-modal-tiers"></div>
+    <div style="margin-top:1rem;padding:.65rem .8rem;background:rgba(255,255,255,.04);border-radius:8px;font-size:.78rem;color:rgba(255,255,255,.45);line-height:1.6">
+      Buy more full poses and the per-pose price drops automatically. Mix and match — add single photos from any pose at the single photo price.
+    </div>
+    <button class="pp-modal-close" onclick="closePPModal()">Got it</button>
   </div>
 </div>
 
@@ -1599,10 +1638,9 @@ async function showGallery(date, location, family, ln, group) {
 
   showView('gallery');
   setBreadcrumb(crumbs, title);
-  // Only show last name search for portrait/family galleries
   document.getElementById('ln-bar').style.display = (family || ln) ? '' : 'none';
 
-  // Fetch folder description (portrait + activity folders)
+  // Fetch folder description
   let folderInfoHtml = '';
   if (date && location && (family || group)) {
     try {
@@ -1614,7 +1652,24 @@ async function showGallery(date, location, family, ln, group) {
     } catch(e) {}
   }
 
+  // Check for portrait pose data
+  let poseData = null;
+  if (date && location && family && !ln) {
+    try {
+      const pRes2 = await fetch(`/api/folder/poses?date=${enc(date)}&location=${enc(location)}&family=${enc(family)}`);
+      const pd = await pRes2.json();
+      if (pd.has_poses) poseData = pd;
+    } catch(e) {}
+  }
+
   const el = document.getElementById('view-gallery');
+
+  if (poseData) {
+    renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, location, family);
+    updateCart();
+    return;
+  }
+
   el.innerHTML = `
     <div class="gallery-header">
       <span class="gallery-title">${title}</span>
@@ -1633,18 +1688,180 @@ async function showGallery(date, location, family, ln, group) {
 
   _jCols = 4;
   renderThumbs(photos);
-  // Re-highlight any photos that were already selected in this folder
   selectedPhotos.forEach(idx => {
     const card = document.querySelector(`.thumb-card[data-idx="${idx}"]`);
     if (card) card.classList.add('selected');
   });
-  // Always call updateCart so the cart bar hides if the new folder has no selections
   updateCart();
   el.querySelector('#size-slider').addEventListener('input', function() {
     const cols    = [6, 5, 4, 3][parseInt(this.value) - 1];
     const gallery = document.getElementById('gallery');
     if (gallery) justifyLayout(gallery, allPhotos, cols);
   });
+}
+
+// ── Portrait Pose Gallery ──────────────────────────────────────────────────────
+let _poseState = {};  // { [poseColor]: 'pose' | 'singles' (set of filenames) }
+let _poseData  = null;
+let _poseDate  = '', _poseLoc = '', _poseFam = '';
+let _portraitPricing = null;
+
+const POSE_COLOR_CSS = {
+  Red: '#e05252', Orange: '#e0854a', Yellow: '#d4b44a',
+  Green: '#4ade80', Blue: '#60a5fa', Purple: '#a78bfa', Gray: '#9ca3af',
+};
+
+async function loadPortraitPricing() {
+  if (_portraitPricing) return _portraitPricing;
+  try {
+    const r = await fetch('/api/portrait-pricing');
+    _portraitPricing = await r.json();
+  } catch(e) {
+    _portraitPricing = { single_photo: 40, pose_tiers: [65, 57.5, 50] };
+  }
+  return _portraitPricing;
+}
+
+function calcPosePrice(numFullPoses) {
+  const tiers = (_portraitPricing?.pose_tiers) || [65, 57.5, 50];
+  if (numFullPoses === 0) return 0;
+  return tiers[Math.min(numFullPoses - 1, tiers.length - 1)];
+}
+
+function calcPortraitTotal() {
+  const fullPoses = Object.values(_poseState).filter(v => v === 'pose').length;
+  const singles   = Object.values(_poseState).filter(v => v instanceof Set).reduce((s, set) => s + set.size, 0);
+  const singlePrice = _portraitPricing?.single_photo ?? 40;
+  const posePrice   = calcPosePrice(fullPoses);
+  return { fullPoses, singles, total: posePrice * fullPoses + singlePrice * singles, posePrice, singlePrice };
+}
+
+function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, loc, fam) {
+  _poseData  = poseData;
+  _poseState = {};
+  _poseDate  = date; _poseLoc = loc; _poseFam = fam;
+
+  const previewBanner = poseData.preview_only
+    ? `<div class="pose-preview-banner">⚠ Preview mode — pose pricing is visible to you (admin) only. Toggle "Live" in Admin Studio to publish.</div>`
+    : '';
+
+  el.innerHTML = `
+    <div class="gallery-header">
+      <span class="gallery-title">${title}</span>
+      <span class="results-count">${photos.length} photo${photos.length !== 1 ? 's' : ''}</span>
+    </div>
+    ${folderInfoHtml}
+    ${previewBanner}
+    <div id="pose-sections"></div>`;
+
+  loadPortraitPricing().then(() => renderPoseSections(photos));
+}
+
+function renderPoseSections(photos) {
+  const photoByFilename = {};
+  photos.forEach(p => { photoByFilename[p.filename || p.path.split('/').pop()] = p; });
+
+  const sections = document.getElementById('pose-sections');
+  if (!sections) return;
+
+  const fullPoseCount = Object.values(_poseState).filter(v => v === 'pose').length;
+
+  sections.innerHTML = _poseData.poses.map((pose, pi) => {
+    const color     = pose.color || '';
+    const label     = pose.label || `Pose ${pi + 1}`;
+    const files     = pose.files || [];
+    const posePhotos = files.map(f => photoByFilename[f]).filter(Boolean);
+    const dotColor  = POSE_COLOR_CSS[color] || '#9ca3af';
+    const isFullPose = _poseState[color] === 'pose';
+
+    const nextPoseCount = isFullPose ? fullPoseCount : fullPoseCount + 1;
+    const posePrice = calcPosePrice(nextPoseCount);
+    const priceTag  = isFullPose
+      ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)})</span>`
+      : `<span class="pose-price-tag">$${posePrice.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`;
+
+    const buyBtn = color
+      ? `<button class="pose-buy-btn ${isFullPose ? 'selected' : ''}"
+           onclick="togglePosePurchase('${color}', ${pi})">${isFullPose ? '✓ Pose added' : 'Buy this pose'}</button>`
+      : '';
+
+    const thumbsHtml = posePhotos.map((photo, idx) => {
+      const globalIdx = photos.findIndex(p => p.path === photo.path);
+      const src = imgCache[photo.path] || `/api/photo?path=${enc(photo.path)}&size=thumb&v=3`;
+      if (!imgCache[photo.path]) imgCache[photo.path] = src;
+      return `<div class="thumb-card" data-idx="${globalIdx}" data-path="${photo.path}"
+        onclick="openLB(${globalIdx})"
+        onmouseenter="showThumbHover(this,${globalIdx})"
+        onmouseleave="hideThumbHover(this)">
+        <img src="${src}" alt="${photo.filename || ''}" loading="lazy" />
+      </div>`;
+    }).join('');
+
+    return `<div class="pose-section" id="pose-sec-${pi}">
+      <div class="pose-header">
+        ${color ? `<span class="pose-color-dot" style="background:${dotColor}"></span>` : ''}
+        <span class="pose-label">${label}</span>
+        <span class="pose-count">${files.length} photo${files.length !== 1 ? 's' : ''}</span>
+        ${priceTag}
+        ${buyBtn}
+        <button class="pose-how-btn" onclick="openPPModal()">How pricing works?</button>
+      </div>
+      <div class="pose-gallery">${thumbsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
+function togglePosePurchase(color, poseIdx) {
+  if (_poseState[color] === 'pose') {
+    delete _poseState[color];
+  } else {
+    _poseState[color] = 'pose';
+  }
+  const photos = allPhotos;
+  renderPoseSections(photos);
+  updatePoseCart();
+}
+
+function updatePoseCart() {
+  const { fullPoses, singles, total, posePrice, singlePrice } = calcPortraitTotal();
+  const count = fullPoses + singles;
+  const cartBar = document.getElementById('cart-bar');
+  if (!cartBar) return;
+  if (count === 0) {
+    cartBar.classList.remove('visible');
+    return;
+  }
+  cartBar.classList.add('visible');
+  const parts = [];
+  if (fullPoses) parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''} @ $${posePrice.toFixed(2)}`);
+  if (singles)   parts.push(`${singles} single photo${singles !== 1 ? 's' : ''} @ $${singlePrice.toFixed(2)}`);
+  const totalEl  = document.getElementById('cart-total');
+  const countEl  = document.getElementById('cart-count');
+  if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
+  if (countEl) countEl.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+}
+
+function openPPModal() {
+  const pp  = _portraitPricing || { single_photo: 40, pose_tiers: [65, 57.5, 50] };
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const tiersHtml = tiers.map((price, i) => {
+    const label = i === tiers.length - 1 ? `${i + 1}+ poses` : `${i + 1} pose${i > 0 ? 's' : ''}`;
+    return `<div class="pp-tier-row">
+      <span class="pp-tier-label">${label} — <span style="color:rgba(255,255,255,.5);font-size:.8rem">$${price.toFixed(2)} per pose</span></span>
+      <span class="pp-tier-price">$${(price * (i + 1)).toFixed(2)} total</span>
+    </div>`;
+  }).join('');
+  document.getElementById('pp-modal-tiers').innerHTML = `
+    <div class="pp-tier-row">
+      <span class="pp-tier-label">Single photo (any pose)</span>
+      <span class="pp-tier-price">$${(pp.single_photo ?? 40).toFixed(2)}</span>
+    </div>
+    ${tiersHtml}`;
+  document.getElementById('pp-modal-overlay').classList.add('open');
+}
+
+function closePPModal() {
+  document.getElementById('pp-modal-overlay').classList.remove('open');
 }
 
 function buildPricingBox() {
@@ -2526,11 +2743,46 @@ function buildFrameOptions(currentFrameLabel, sizeIdx) {
 
 // ── Checkout ──
 function openCheckout() {
+  // Portrait pose mode
+  if (_poseData && _poseData.has_poses) {
+    const { fullPoses, singles, total } = calcPortraitTotal();
+    if (fullPoses === 0 && singles === 0 && printCart.length === 0 && frameCart.length === 0) return;
+    const posesToSend = [];
+    const singlesList = [];
+    (_poseData.poses || []).forEach(pose => {
+      const color = pose.color || '';
+      if (_poseState[color] === 'pose') {
+        posesToSend.push({
+          pose_label: pose.label,
+          color:      color,
+          files:      pose.files || [],
+          paths:      (pose.files || []).map(f => {
+            const p = allPhotos.find(ph => (ph.filename || ph.path.split('/').pop()) === f);
+            return p ? p.path : '';
+          }).filter(Boolean),
+          family: _poseFam,
+        });
+      }
+    });
+    localStorage.setItem('ci_checkout_cart', JSON.stringify({
+      portrait_poses:   posesToSend,
+      portrait_singles: singlesList,
+      date:             _poseDate,
+      location:         _poseLoc,
+      family:           _poseFam,
+      printCart:        printCart,
+      frameCart:        frameCart,
+      returnUrl:        window.location.href,
+      timestamp:        Date.now(),
+    }));
+    window.location.href = '/checkout';
+    return;
+  }
+
   const folderHasItems = Object.values(folderCarts).some(fc =>
     (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0);
   if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0 && !folderHasItems) return;
 
-  // Save cart state and navigate to checkout page
   saveCurrentFolder();
   localStorage.setItem('ci_checkout_cart', JSON.stringify({
     folderCarts:      folderCarts,

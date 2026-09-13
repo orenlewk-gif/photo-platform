@@ -538,7 +538,8 @@ window.addEventListener('DOMContentLoaded', () => {
     const raw = localStorage.getItem('ci_checkout_cart');
     if (!raw) { showEmpty(); return; }
     cartData = JSON.parse(raw);
-    if (!cartData || (!Object.keys(cartData.folderCarts || {}).length &&
+    const hasPortrait = cartData.portrait_poses?.length || cartData.portrait_singles?.length;
+    if (!cartData || (!hasPortrait && !Object.keys(cartData.folderCarts || {}).length &&
         !cartData.printCart?.length && !cartData.frameCart?.length)) {
       showEmpty(); return;
     }
@@ -563,6 +564,11 @@ window.addEventListener('DOMContentLoaded', () => {
   fetch('/api/pricing').then(r => r.json()).then(d => {
     if (d.combos) { globalCombos = d.combos; renderSummary(); }
   }).catch(() => {});
+  if (cartData.portrait_poses?.length || cartData.portrait_singles?.length) {
+    fetch('/api/portrait-pricing').then(r=>r.json()).then(pp => {
+      window._coPortraitPricing = pp; renderSummary();
+    }).catch(() => {});
+  }
 
   // Open summary on desktop
   document.getElementById('summary-inner').classList.add('open');
@@ -672,6 +678,35 @@ function renderSummary() {
   let digTotal   = 0;
   let printTotal = 0;
   let frameTotal = 0;
+
+  // ── Portrait pose items ───────────────────────────────────────────────────
+  const posePricing = window._coPortraitPricing || { single_photo: 40, pose_tiers: [65, 57.5, 50] };
+  const poseTiers   = posePricing.pose_tiers || [65, 57.5, 50];
+  const poses       = cartData.portrait_poses   || [];
+  const pSingles    = cartData.portrait_singles || [];
+  if (poses.length || pSingles.length) {
+    const posePrice = poses.length ? poseTiers[Math.min(poses.length - 1, poseTiers.length - 1)] : 0;
+    const singPrice = posePricing.single_photo ?? 40;
+    poses.forEach(pose => {
+      const n = pose.files?.length || 0;
+      const price = posePrice;
+      digTotal += price;
+      itemsHtml += `<div class="co-item">
+        <div class="co-item-name">Portrait ${pose.pose_label} (${n} photo${n !== 1 ? 's' : ''}) — ${pose.family || ''}
+        </div>
+        <div class="co-item-price">$${price.toFixed(2)}</div>
+      </div>`;
+    });
+    pSingles.forEach(s => {
+      digTotal += singPrice;
+      itemsHtml += `<div class="co-item">
+        <div class="co-item-name">Portrait Single Photo — ${s.family || ''}
+          <div class="co-item-sub">${s.filename || ''}</div>
+        </div>
+        <div class="co-item-price">$${singPrice.toFixed(2)}</div>
+      </div>`;
+    });
+  }
 
   // ── Pre-calculate combo adjusted prices ──────────────────────────────────
   const comboAdjPrices = calcComboAdjPrices(fc);
@@ -892,9 +927,9 @@ async function placeOrder() {
       : calcPriceFor(n, f.pricing);
   });
 
-  const loc      = allDigital[0]?.location || prints[0]?.location || '';
-  const date     = allDigital[0]?.date     || prints[0]?.date     || '';
-  const lastName = allDigital[0]?.last_name || '';
+  const loc      = cartData.location || allDigital[0]?.location || prints[0]?.location || '';
+  const date     = cartData.date     || allDigital[0]?.date     || prints[0]?.date     || '';
+  const lastName = cartData.family   || allDigital[0]?.last_name || '';
 
   // Coupon discount — calculated on combo-adjusted subtotal
   const subtotal    = digPrice + prints.reduce((s,p) => s+(p.price||0)+(p.framePrice||0), 0)
@@ -925,6 +960,8 @@ async function placeOrder() {
   });
 
   const payload = {
+    portrait_poses:    cartData.portrait_poses   || [],
+    portrait_singles:  cartData.portrait_singles || [],
     digital_albums:    digitalAlbums,
     digital_filenames: allDigital.map(p => p.filename),
     digital_paths:     allDigital.map(p => p.path),
