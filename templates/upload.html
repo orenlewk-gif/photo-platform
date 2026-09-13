@@ -69,12 +69,7 @@ select option{background:#0a1e2e}
   <input type="date" id="dateInput">
   <label>Location</label>
   <select id="locationInput">
-    <option value="">Select location…</option>
-    <option>Lone Peak Portraits</option>
-    <option>Explorer Gondola</option>
-    <option>Ramcharger Portraits</option>
-    <option>Mountain Biking</option>
-    <option>Adventure Zip Line</option>
+    <option value="">Loading locations…</option>
   </select>
   <label>Family / Group Name <span style="color:rgba(255,255,255,.35);font-size:.75rem">(last name or group — shows on download card)</span></label>
   <input type="text" id="folderInput" placeholder="e.g. Smith or Morning Group">
@@ -115,6 +110,26 @@ let selectedFiles = [];
 let cancelled = false;
 
 // Restore session
+async function loadLocationList() {
+  try {
+    const d = await fetch('/api/upload/locations').then(r => r.json());
+    const sel = document.getElementById('locationInput');
+    const prev = localStorage.getItem('ci_last_location') || (photographer && photographer.default_location) || '';
+    sel.innerHTML = '<option value="">Select location…</option>';
+    if (d.portrait && d.portrait.length) {
+      const g = document.createElement('optgroup'); g.label = 'Portrait Sessions';
+      d.portrait.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l.replace(/\b\w/g, c => c.toUpperCase()); g.appendChild(o); });
+      sel.appendChild(g);
+    }
+    if (d.activities && d.activities.length) {
+      const g = document.createElement('optgroup'); g.label = 'Activities';
+      d.activities.forEach(l => { const o = document.createElement('option'); o.value = l; o.textContent = l.replace(/\b\w/g, c => c.toUpperCase()); g.appendChild(o); });
+      sel.appendChild(g);
+    }
+    if (prev) sel.value = prev;
+  } catch(e) {}
+}
+
 window.addEventListener('load', () => {
   const saved = localStorage.getItem('ci_photographer');
   if (saved) {
@@ -124,9 +139,7 @@ window.addEventListener('load', () => {
     } catch(e) {}
   }
   document.getElementById('dateInput').value = TODAY;
-  // Restore last location
-  const lastLoc = localStorage.getItem('ci_last_location');
-  if (lastLoc) document.getElementById('locationInput').value = lastLoc;
+  loadLocationList();
 });
 
 document.getElementById('pinInput').addEventListener('keydown', e => {

@@ -325,13 +325,6 @@ input[type=file]{display:none}
             <label>Location</label>
             <input id="upload-location" list="loc-list" placeholder="e.g. Adventure Zip" autocomplete="off">
             <datalist id="loc-list">
-              <option value="Adventure Zip">
-              <option value="Nature Zip">
-              <option value="Dirt Days">
-              <option value="Mountain Biking">
-              <option value="Lone Peak Portraits">
-              <option value="Explorer Gondola">
-              <option value="Ramcharger Portraits">
             </datalist>
           </div>
         </div>
@@ -557,7 +550,7 @@ input[type=file]{display:none}
 <script>
 const CONCURRENCY = 10;
 const ZIP_LOCS      = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip","nature zip line","nature zipline"]);
-const PORTRAIT_LOCS = new Set(["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip"]);
+let PORTRAIT_LOCS = new Set(["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip"]);
 
 // ── State ──
 let allFolders = [];
@@ -573,10 +566,24 @@ let uploadFolders = [];
 let looseFiles = [];
 let zipTiers = null;
 
+async function loadUploadLocations() {
+  try {
+    const d = await fetch('/api/upload/locations').then(r => r.json());
+    if (d.portrait) PORTRAIT_LOCS = new Set(d.portrait.map(l => l.toLowerCase()));
+    const dl = document.getElementById('loc-list');
+    if (dl) {
+      dl.innerHTML = '';
+      (d.portrait || []).forEach(l => { const o = document.createElement('option'); o.value = l.replace(/\b\w/g, c => c.toUpperCase()); dl.appendChild(o); });
+      (d.activities || []).forEach(l => { const o = document.createElement('option'); o.value = l.replace(/\b\w/g, c => c.toUpperCase()); dl.appendChild(o); });
+    }
+  } catch(e) {}
+}
+
 // ── Init ──
 (async function() {
   document.getElementById('upload-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('upload-location').addEventListener('input', () => { renderDetectedFolders(); updateUploadBtn(); });
+  loadUploadLocations();
   setupDropZone();
   setupInlineEdit();
   loadSidebar(); // fire and forget — sidebar populates in background

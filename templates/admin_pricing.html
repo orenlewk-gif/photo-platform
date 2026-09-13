@@ -126,6 +126,7 @@ input[type="text"].wide{width:175px}
     <a onclick="showSection('combos')" class="nav-link nav-sub" id="navsub-combos">Bundle Deals</a>
     <a onclick="showSection('prints')" class="nav-link nav-sub" id="navsub-prints">Print &amp; Shipping</a>
     <a onclick="showSection('portrait')" class="nav-link nav-sub" id="navsub-portrait">Portrait Poses</a>
+    <a onclick="showSection('seasons')" class="nav-link nav-sub" id="navsub-seasons">Seasons</a>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
@@ -228,7 +229,7 @@ input[type="text"].wide{width:175px}
 
       <!-- Portrait Locations -->
       <h2 style="margin-top:2rem">Portrait Locations</h2>
-      <p class="subtitle">Locations that use last-name sub-folders and trigger pose detection. Built-in locations are always included — add new ones here without a code deploy.</p>
+      <p class="subtitle">Locations that use last-name sub-folders and trigger pose detection. Add, edit, or remove any location — changes take effect immediately with no code deploy.</p>
       <div class="card">
         <div id="portrait-locs-list"></div>
         <button class="btn btn-sm" style="margin-top:.6rem" onclick="addPortraitLoc()">+ Add location</button>
@@ -236,10 +237,12 @@ input[type="text"].wide{width:175px}
           <button class="btn btn-primary btn-sm" onclick="savePortraitLocs()">Save locations</button>
         </div>
       </div>
+    </div>
 
-      <!-- Seasons -->
-      <h2 style="margin-top:2rem">Seasons</h2>
-      <p class="subtitle">Map date ranges to seasons. Used to associate dates with a pricing mode (summer vs. winter). Customer-facing season browsing will be built in a later release.</p>
+    <!-- ── Seasons ── -->
+    <div id="sec-seasons" class="section">
+      <h1>Seasons</h1>
+      <p class="subtitle">Map date ranges to seasons to set the pricing mode (summer vs. winter) for all content on those dates.</p>
       <div class="card">
         <div id="seasons-list"></div>
         <button class="btn btn-sm" style="margin-top:.8rem" onclick="addSeason()">+ Add season</button>
@@ -637,41 +640,29 @@ async function savePortraitPricing() {
 function renderPortraitLocs() {
   const el = document.getElementById('portrait-locs-list');
   if (!el) return;
-  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
-  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
-  const builtInHtml = BUILT_IN.map(l =>
-    `<div style="padding:.3rem 0;font-size:.83rem;color:rgba(255,255,255,.35)">${l} <span style="font-size:.7rem;opacity:.5">(built-in)</span></div>`
-  ).join('');
-  const customHtml = custom.map((l, i) =>
+  if (!portraitLocsData.length) {
+    el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No locations yet.</div>';
+    return;
+  }
+  el.innerHTML = portraitLocsData.map((l, i) =>
     `<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.3rem">
       <input type="text" value="${l}" style="flex:1" onchange="updatePortraitLoc(${i}, this.value)">
       <button class="btn btn-sm" style="padding:.2rem .5rem" onclick="removePortraitLoc(${i})">✕</button>
     </div>`
   ).join('');
-  el.innerHTML = builtInHtml + (custom.length ? '<div style="margin:.6rem 0 .3rem;font-size:.75rem;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:1px">Custom locations</div>' + customHtml : '');
-  el._custom = custom;
 }
 
 function addPortraitLoc() {
-  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
-  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
-  custom.push('');
-  portraitLocsData = [...BUILT_IN.filter(l => portraitLocsData.includes(l)), ...custom];
+  portraitLocsData = [...portraitLocsData, ''];
   renderPortraitLocs();
 }
 
 function updatePortraitLoc(i, val) {
-  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
-  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
-  custom[i] = val.toLowerCase().trim();
-  portraitLocsData = [...new Set([...BUILT_IN, ...custom.filter(Boolean)])];
+  portraitLocsData[i] = val.toLowerCase().trim();
 }
 
 function removePortraitLoc(i) {
-  const BUILT_IN = ["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip","nature zip line","nature zipline","nature zip"];
-  const custom = portraitLocsData.filter(l => !BUILT_IN.includes(l));
-  custom.splice(i, 1);
-  portraitLocsData = [...new Set([...BUILT_IN, ...custom])];
+  portraitLocsData.splice(i, 1);
   renderPortraitLocs();
 }
 

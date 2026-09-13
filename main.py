@@ -120,18 +120,23 @@ def _load_portrait_locations():
         return _portrait_locs_cache["data"]
     try:
         obj = s3.get_object(Bucket=R2_BUCKET, Key=PORTRAIT_LOCATIONS_KEY)
-        extra = set(json.loads(obj["Body"].read()))
+        locs = [l.lower().strip() for l in json.loads(obj["Body"].read()) if str(l).strip()]
     except Exception:
-        extra = set()
-    combined = _PORTRAIT_LOCATIONS_BASE | {loc.lower() for loc in extra}
-    PORTRAIT_LOCATIONS = combined
-    _portrait_locs_cache["data"] = sorted(combined)
+        locs = []
+    if locs:
+        PORTRAIT_LOCATIONS = set(locs)
+    else:
+        # No file yet — seed from base set and persist so admin can edit
+        PORTRAIT_LOCATIONS = set(_PORTRAIT_LOCATIONS_BASE)
+        _save_portrait_locations(sorted(PORTRAIT_LOCATIONS))
+    _portrait_locs_cache["data"] = sorted(PORTRAIT_LOCATIONS)
     _portrait_locs_cache["ts"] = now
     return _portrait_locs_cache["data"]
 
 def _save_portrait_locations(locs: list):
     s3.put_object(Bucket=R2_BUCKET, Key=PORTRAIT_LOCATIONS_KEY,
                   Body=json.dumps(locs, indent=2).encode(), ContentType="application/json")
+    _portrait_locs_cache["data"] = None  # invalidate so next load re-reads from R2
     _portrait_locs_cache["data"] = None  # bust cache
 
 # ── XMP Color Label Reader ─────────────────────────────────────────────────────
@@ -3007,6 +3012,18 @@ def get_all_clock_records(request: Request):
     return {"records": records, "photographers": photographers}
 
 # ── Upload ──
+@app.get("/api/upload/locations")
+def api_upload_locations():
+    """Public list of locations available in the upload tool — portrait + activities."""
+    _load_portrait_locations()
+    pricing = _load_pricing()
+    activity_names = sorted(pricing.get("activities", {}).keys(), key=str.lower)
+    portrait_names = sorted(PORTRAIT_LOCATIONS, key=str.lower)
+    return {
+        "portrait": portrait_names,
+        "activities": activity_names,
+    }
+
 @app.post("/api/upload/presign")
 async def upload_presign(request: Request):
     body = await request.json()
