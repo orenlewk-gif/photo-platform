@@ -1680,14 +1680,21 @@ async function startUpload() {
       if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({folder_key:`${date}|${location}|${folder}`,group_size:gs})}).catch(()=>{});
     }
-    const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder})}).catch(()=>null);
-    if (lr?.ok) { const ld=await lr.json(); totalLive+=ld.pushed||0; }
+    const isPortraitUpload = PORTRAIT_LOCS.has(location.trim().toLowerCase());
+    if (!isPortraitUpload) {
+      const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({date,location,folder})}).catch(()=>null);
+      if (lr?.ok) { const ld=await lr.json(); totalLive+=ld.pushed||0; }
+    }
   }
   const succeeded = done - failed;
+  const isPortraitUpload = PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
   if (failed) {
     label.textContent = `Done — ${succeeded} uploaded, ${failed} failed`;
     showToast(`${succeeded} uploaded, ${failed} failed — try uploading the failed ones again`,'error');
+  } else if (isPortraitUpload) {
+    label.textContent = `Done — ${succeeded} photos ready (draft)`;
+    showToast(`${succeeded} photos uploaded — review poses then Push Live`);
   } else {
     label.textContent = `Done — ${totalLive} photos live`;
     showToast(`${done} photos uploaded and live`);
