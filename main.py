@@ -3730,6 +3730,27 @@ def _update_folder_poses(date: str, location: str, folder: str, r2_keys: list[st
     fm[fk].setdefault("poses_live", False)
     _save_folder_meta(fm)
 
+def _write_folder_poses_from_ui(date: str, location: str, folder: str, poses: list):
+    """Write pose groupings from UI selection directly to folder_meta, bypassing XMP detection."""
+    formatted = []
+    for i, p in enumerate(poses):
+        files = [os.path.basename(f) if '/' in f else f for f in p.get("files", [])]
+        if files:
+            formatted.append({
+                "color": p.get("color", ""),
+                "label": p.get("label", f"Pose {i+1}"),
+                "files": files,
+            })
+    if not formatted:
+        return
+    fk = _folder_key(date, location, folder)
+    fm = _load_folder_meta()
+    if fk not in fm:
+        fm[fk] = {}
+    fm[fk]["poses"] = formatted
+    fm[fk].setdefault("poses_live", False)
+    _save_folder_meta(fm)
+
 def _folder_key(date, location, last_name):
     return f"{date}|{location}|{last_name}"
 
@@ -4023,6 +4044,7 @@ async def admin_upload_index(request: Request):
     location = body.get("location", "").strip()
     folder   = body.get("folder", "").strip()
     keys     = body.get("keys", [])
+    poses    = body.get("poses", None)  # from UI pose assignment; None means use XMP detection
     if not date or not location or not keys:
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
@@ -4045,7 +4067,10 @@ async def admin_upload_index(request: Request):
     s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                   Body=json.dumps(data).encode(), ContentType="application/json")
     if is_portrait and folder and keys:
-        _update_folder_poses(date, location, folder, keys)
+        if poses is not None:
+            _write_folder_poses_from_ui(date, location, folder, poses)
+        else:
+            _update_folder_poses(date, location, folder, keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder}
 
 @app.post("/api/admin/reindex-folder")

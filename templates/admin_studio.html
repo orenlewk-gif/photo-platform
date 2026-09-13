@@ -101,6 +101,32 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #upload-action-btn:disabled{opacity:.45;cursor:not-allowed}
 #upload-action-btn:hover:not(:disabled){background:#f0bc00}
 
+/* ── Pose Assignment Panel ── */
+#pose-assign-panel{margin-bottom:.85rem}
+.pose-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem}
+.pose-header-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.38)}
+.pose-header-meta{font-size:.72rem;color:rgba(255,255,255,.3)}
+.pose-toolbar{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.55rem}
+.pose-tbtn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:6px;color:rgba(255,255,255,.75);font-size:.76rem;padding:.28rem .65rem;cursor:pointer;font-family:inherit;white-space:nowrap}
+.pose-tbtn:hover:not(:disabled){background:rgba(255,255,255,.13)}
+.pose-tbtn:disabled{opacity:.4;cursor:not-allowed}
+.pose-tbtn.primary{background:#F5C518;color:#07151f;border-color:transparent;font-weight:700}
+.pose-tbtn.primary:hover:not(:disabled){background:#f0bc00}
+.pose-legend{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem;min-height:1.2rem}
+.pose-pill{display:inline-flex;align-items:center;gap:.3rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:100px;padding:.18rem .5rem .18rem .32rem;font-size:.7rem;cursor:pointer}
+.pose-pill:hover{background:rgba(255,255,255,.1)}
+.pose-pill .pp-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.pose-pill .pp-label{color:rgba(255,255,255,.8)}
+.pose-pill .pp-count{color:rgba(255,255,255,.35)}
+.pose-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:5px;max-height:370px;overflow-y:auto;padding-right:2px}
+.pose-thumb{position:relative;aspect-ratio:3/2;border-radius:5px;overflow:hidden;cursor:pointer;user-select:none;border:2.5px solid transparent;transition:border-color .12s,opacity .12s}
+.pose-thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;border-radius:3px}
+.pose-thumb.pt-selected{border-color:#fff}
+.pose-thumb .pt-badge{position:absolute;top:3px;right:3px;width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(0,0,0,.5);display:none}
+.pose-thumb.pt-assigned .pt-badge{display:block}
+.pose-thumb .pt-num{position:absolute;bottom:2px;left:4px;font-size:.52rem;color:rgba(255,255,255,.55);text-shadow:0 1px 2px rgba(0,0,0,.8);line-height:1}
+.pose-empty-hint{font-size:.76rem;color:rgba(255,255,255,.28);text-align:center;padding:.75rem 0}
+
 /* ── Date overview view ── */
 #date-view{flex:1;overflow-y:auto;display:none;flex-direction:column}
 #date-view-header{padding:1.25rem 1.5rem .75rem;border-bottom:1px solid rgba(255,255,255,.06);flex-shrink:0}
@@ -350,6 +376,8 @@ input[type=file]{display:none}
 
         <div id="detected-folders"></div>
 
+        <div id="pose-assign-panel" style="display:none"></div>
+
         <div id="upload-progress">
           <div class="prog-bar-wrap"><div class="prog-bar-fill" id="prog-fill"></div></div>
           <div class="prog-label" id="prog-label">Uploading…</div>
@@ -565,6 +593,15 @@ let colCount = 4;
 let uploadFolders = [];
 let looseFiles = [];
 let zipTiers = null;
+
+// ── Pose assignment state ──
+const POSE_COLORS = ['#e53e3e','#ecc94b','#48bb78','#4299e1','#ed8936','#9f7aea','#718096'];
+let poseFiles = [];        // sorted File[] in pose mode
+let poseObjURLs = [];      // blob URLs parallel to poseFiles
+let poseSelection = new Set(); // indices currently selected
+let poseGroups = [];       // [{color, label, indices: Set}]
+let poseLastClick = -1;    // for shift-click range
+function _isPoseMode() { return poseFiles.length > 0; }
 
 async function loadUploadLocations() {
   try {
@@ -1537,12 +1574,27 @@ function handleFolderInput(files) {
   for (const [name, fls] of Object.entries(map)) {
     if (!uploadFolders.find(f => f.name === name)) uploadFolders.push({name, files: fls});
   }
-  renderDetectedFolders(); updateUploadBtn();
+  if (_currentLocationIsPortrait()) {
+    const allFiles = uploadFolders.flatMap(f => f.files);
+    initPoseAssign(allFiles);
+    updateUploadBtn();
+  } else {
+    clearPoseState();
+    document.getElementById('detected-folders').style.display = '';
+    renderDetectedFolders(); updateUploadBtn();
+  }
 }
 function handleFileInput(files) {
   uploadFolders = [];
   looseFiles = [...files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name));
-  renderDetectedFolders(); updateUploadBtn();
+  if (_currentLocationIsPortrait()) {
+    initPoseAssign(looseFiles);
+    updateUploadBtn();
+  } else {
+    clearPoseState();
+    document.getElementById('detected-folders').style.display = '';
+    renderDetectedFolders(); updateUploadBtn();
+  }
 }
 
 async function handleDrop(e) {
@@ -1558,7 +1610,15 @@ async function handleDrop(e) {
   } else {
     for (const fe of files) { const f=await new Promise(r=>fe.file(r)); if(/\.(jpg|jpeg|png)$/i.test(f.name)) looseFiles.push(f); }
   }
-  renderDetectedFolders(); updateUploadBtn();
+  if (_currentLocationIsPortrait()) {
+    const allFiles = [...uploadFolders.flatMap(f=>f.files), ...looseFiles];
+    initPoseAssign(allFiles);
+    updateUploadBtn();
+  } else {
+    clearPoseState();
+    document.getElementById('detected-folders').style.display = '';
+    renderDetectedFolders(); updateUploadBtn();
+  }
 }
 
 async function readAllEntries(reader) {
@@ -1583,6 +1643,166 @@ function getUploadGroupSize(i) {
   const sel = document.querySelector(`.det-gs[data-idx="${i}"]`);
   return sel ? sel.value : '';
 }
+// ── Pose assignment functions ──
+function _currentLocationIsPortrait() {
+  return PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
+}
+
+function clearPoseState() {
+  poseObjURLs.forEach(u => URL.revokeObjectURL(u));
+  poseFiles = []; poseObjURLs = []; poseSelection = new Set(); poseGroups = []; poseLastClick = -1;
+  const panel = document.getElementById('pose-assign-panel');
+  panel.style.display = 'none';
+  panel.innerHTML = '';
+}
+
+function initPoseAssign(files) {
+  clearPoseState();
+  const imgs = [...files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name));
+  if (!imgs.length) return;
+  // Sort numerically by filename
+  imgs.sort((a,b) => {
+    const na = a.name.replace(/\D+/g,''), nb = b.name.replace(/\D+/g,'');
+    if (na && nb) return parseInt(na) - parseInt(nb);
+    return a.name.localeCompare(b.name);
+  });
+  poseFiles = imgs;
+  poseObjURLs = imgs.map(f => URL.createObjectURL(f));
+  document.getElementById('detected-folders').style.display = 'none';
+  document.getElementById('folder-name-field').style.display = 'block';
+  document.getElementById('pose-assign-panel').style.display = 'block';
+  renderPosePanel();
+}
+
+function renderPosePanel() {
+  const panel = document.getElementById('pose-assign-panel');
+  const total = poseFiles.length;
+  const assigned = new Set(poseGroups.flatMap(g => [...g.indices]));
+  const unassigned = total - assigned.size;
+  const sel = poseSelection.size;
+
+  // Legend HTML
+  let legendHtml = '';
+  poseGroups.forEach((g, gi) => {
+    legendHtml += `<span class="pose-pill" onclick="activatePosePill(${gi})" title="Click to add selection to this pose">
+      <span class="pp-dot" style="background:${esc(g.color)}"></span>
+      <span class="pp-label">${esc(g.label)}</span>
+      <span class="pp-count">(${g.indices.size})</span>
+    </span>`;
+  });
+  if (unassigned > 0) legendHtml += `<span class="pose-pill" style="cursor:default;opacity:.6">
+    <span class="pp-dot" style="background:rgba(255,255,255,.2)"></span>
+    <span class="pp-label">Unassigned</span>
+    <span class="pp-count">(${unassigned})</span>
+  </span>`;
+
+  // Thumbnails HTML
+  let thumbsHtml = '';
+  for (let i = 0; i < poseFiles.length; i++) {
+    const f = poseFiles[i];
+    const isSel = poseSelection.has(i);
+    const grpIdx = poseGroups.findIndex(g => g.indices.has(i));
+    const color = grpIdx >= 0 ? POSE_COLORS[grpIdx % POSE_COLORS.length] : '';
+    thumbsHtml += `<div class="pose-thumb${isSel?' pt-selected':''}${grpIdx>=0?' pt-assigned':''}"
+      data-idx="${i}" onclick="poseThumbClick(event,${i})">
+      <img src="${esc(poseObjURLs[i])}" loading="lazy" alt="${esc(f.name)}">
+      <div class="pt-badge" style="${color?'background:'+color:''}"></div>
+      <div class="pt-num">${i+1}</div>
+    </div>`;
+  }
+
+  panel.innerHTML = `
+    <div class="pose-header-row">
+      <span class="pose-header-title">Pose Assignment</span>
+      <span class="pose-header-meta">${total} photos${sel?' · '+sel+' selected':''}</span>
+    </div>
+    <div class="pose-toolbar">
+      <button class="pose-tbtn primary" onclick="assignToNewPose()" ${sel===0?'disabled':''}>+ New Pose</button>
+      <button class="pose-tbtn" onclick="poseSelectAll()">Select All</button>
+      <button class="pose-tbtn" onclick="poseSelectUnassigned()">Unassigned</button>
+      <button class="pose-tbtn" onclick="poseClearSelection()">Clear</button>
+      ${poseGroups.length ? `<button class="pose-tbtn" onclick="clearPoseGroups()" style="margin-left:auto;color:rgba(255,80,80,.7)">Reset Poses</button>` : ''}
+    </div>
+    <div class="pose-legend">${legendHtml||'<span class="pose-empty-hint">Select photos and click + New Pose to begin</span>'}</div>
+    <div class="pose-grid">${thumbsHtml}</div>
+  `;
+}
+
+function poseThumbClick(e, idx) {
+  e.preventDefault();
+  if (e.shiftKey && poseLastClick >= 0) {
+    // Range select
+    const lo = Math.min(poseLastClick, idx), hi = Math.max(poseLastClick, idx);
+    if (!e.metaKey && !e.ctrlKey) poseSelection = new Set();
+    for (let i = lo; i <= hi; i++) poseSelection.add(i);
+  } else if (e.metaKey || e.ctrlKey) {
+    // Toggle individual
+    if (poseSelection.has(idx)) poseSelection.delete(idx);
+    else poseSelection.add(idx);
+  } else {
+    // Single click — if already the only one selected, deselect
+    if (poseSelection.size === 1 && poseSelection.has(idx)) {
+      poseSelection.clear();
+    } else {
+      poseSelection = new Set([idx]);
+    }
+  }
+  poseLastClick = idx;
+  renderPosePanel();
+}
+
+function poseSelectAll() { poseSelection = new Set(poseFiles.map((_,i)=>i)); renderPosePanel(); }
+function poseClearSelection() { poseSelection = new Set(); poseLastClick = -1; renderPosePanel(); }
+function poseSelectUnassigned() {
+  const assigned = new Set(poseGroups.flatMap(g=>[...g.indices]));
+  poseSelection = new Set([...Array(poseFiles.length).keys()].filter(i=>!assigned.has(i)));
+  renderPosePanel();
+}
+
+function assignToNewPose() {
+  if (!poseSelection.size) return;
+  const color = POSE_COLORS[poseGroups.length % POSE_COLORS.length];
+  const label = `Pose ${poseGroups.length + 1}`;
+  // Remove selected from any existing pose
+  poseGroups.forEach(g => poseSelection.forEach(i => g.indices.delete(i)));
+  poseGroups.push({ color, label, indices: new Set(poseSelection) });
+  poseSelection = new Set();
+  poseLastClick = -1;
+  renderPosePanel();
+  updateUploadBtn();
+}
+
+function activatePosePill(gi) {
+  if (!poseSelection.size) return;
+  // Remove selected from any existing pose
+  poseGroups.forEach(g => poseSelection.forEach(i => g.indices.delete(i)));
+  poseSelection.forEach(i => poseGroups[gi].indices.add(i));
+  // Clean up empty poses
+  poseGroups = poseGroups.filter(g => g.indices.size > 0);
+  // Re-number labels
+  poseGroups.forEach((g, i) => g.label = `Pose ${i+1}`);
+  poseSelection = new Set();
+  poseLastClick = -1;
+  renderPosePanel();
+  updateUploadBtn();
+}
+
+function clearPoseGroups() {
+  poseGroups = [];
+  poseSelection = new Set();
+  poseLastClick = -1;
+  renderPosePanel();
+  updateUploadBtn();
+}
+
+function getPoseGroupsForUpload() {
+  return poseGroups.map(g => ({
+    color: g.color,
+    label: g.label,
+    files: [...g.indices].sort((a,b)=>a-b).map(i => poseFiles[i].name)
+  }));
+}
+
 async function renderDetectedFolders() {
   const el = document.getElementById('detected-folders');
   const fnField = document.getElementById('folder-name-field');
@@ -1609,6 +1829,11 @@ async function renderDetectedFolders() {
 }
 function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); }
 function updateUploadBtn() {
+  if (_isPoseMode()) {
+    // Portrait pose mode: need at least 1 pose group with files
+    document.getElementById('upload-action-btn').disabled = poseGroups.length === 0;
+    return;
+  }
   const hasFiles = uploadFolders.length || looseFiles.length;
   let valid = !!hasFiles;
   if (hasFiles && _isZipUpload() && uploadFolders.length) {
@@ -1624,6 +1849,59 @@ async function startUpload() {
   const date=document.getElementById('upload-date').value;
   const location=document.getElementById('upload-location').value.trim();
   if (!date||!location) { showToast('Enter date and location','error'); return; }
+
+  // ── Portrait pose-mode upload ──
+  if (_isPoseMode()) {
+    const folder=document.getElementById('upload-folder-name').value.trim();
+    if (!folder) { showToast('Enter family last name','error'); return; }
+    if (!poseGroups.length) { showToast('Assign at least one pose first','error'); return; }
+    const files=poseFiles;
+    const totalFiles=files.length;
+    if (!totalFiles) { showToast('No photos to upload','error'); return; }
+    _uploadActive=true; window.addEventListener('beforeunload',_beforeUnloadGuard);
+    const btn=document.getElementById('upload-action-btn'); btn.disabled=true;
+    const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
+    const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
+    let done=0, failed=0;
+    const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
+    setProgress();
+    const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
+    if (!pr.ok) { showToast('Presign failed','error'); _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard); btn.disabled=false; progWrap.style.display='none'; return; }
+    const {urls}=await pr.json();
+    const allItems=urls.map((u,i)=>({...u,file:files[i]}));
+    async function poseputOne(it) {
+      for (let attempt=0;attempt<2&&!it.ok;attempt++) {
+        try { const res=await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}}); if(res.ok) it.ok=true; } catch(e) {}
+      }
+      done++; if(!it.ok) failed++; setProgress();
+    }
+    for (let i=0;i<allItems.length;i+=CONCURRENCY) await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>poseputOne(it)));
+    const keys=allItems.filter(it=>it.ok).map(it=>it.key);
+    const poses=getPoseGroupsForUpload();
+    await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,keys,poses})});
+    const succeeded=done-failed;
+    if (failed) {
+      label.textContent=`Done — ${succeeded} uploaded, ${failed} failed`;
+      showToast(`${succeeded} uploaded, ${failed} failed`,'error');
+    } else {
+      label.textContent=`Done — ${succeeded} photos, ${poses.length} poses saved`;
+      showToast(`${succeeded} photos uploaded — ${poses.length} poses saved, review then Push Live`);
+    }
+    _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard);
+    await loadSidebar();
+    const capturedFolder=folder;
+    clearPoseState();
+    document.getElementById('detected-folders').style.display='';
+    uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
+    btn.disabled=false;
+    setTimeout(()=>openFolder(date,location,capturedFolder),400);
+    setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
+    return;
+  }
+
+  // ── Standard (non-portrait) upload ──
   let batches = uploadFolders.length
     ? [...uploadFolders.map(f=>({folder:f.name,files:f.files})), ...(looseFiles.length?[{folder:'',files:looseFiles}]:[]) ]
     : [{folder:document.getElementById('upload-folder-name').value.trim(), files:looseFiles}];
@@ -1655,9 +1933,7 @@ async function startUpload() {
     const {urls}=await pr.json();
     urls.forEach((u,i)=>allItems.push({...u,folder,file:files[i]}));
   }
-  // Upload everything in one continuous pool of CONCURRENCY at a time, across all folders.
-  // A non-2xx PUT response doesn't throw in fetch(), so it must be checked explicitly —
-  // otherwise a failed upload still gets indexed as if the photo were really there.
+  // A non-2xx PUT response doesn't throw in fetch(), so it must be checked explicitly
   async function putOne(it) {
     for (let attempt=0; attempt<2 && !it.ok; attempt++) {
       try {
