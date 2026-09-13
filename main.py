@@ -142,17 +142,18 @@ def _save_portrait_locations(locs: list):
 # ── XMP Color Label Reader ─────────────────────────────────────────────────────
 def read_xmp_color_label(jpeg_bytes: bytes) -> str:
     """Extract Lightroom/macOS XMP color label from JPEG bytes (no external deps)."""
-    XMP_MARKER = b'http://ns.adobe.com/xap/1.0/\x00'
-    idx = jpeg_bytes.find(XMP_MARKER)
-    if idx == -1:
-        return ""
-    xmp_data = jpeg_bytes[idx + len(XMP_MARKER):]
-    m = re.search(rb'xmp:Label\s*=\s*"([^"]*)"', xmp_data)
-    if m:
-        return m.group(1).decode("utf-8", errors="replace").strip()
-    m = re.search(rb'<xmp:Label>\s*([^<]*?)\s*</xmp:Label>', xmp_data)
-    if m:
-        return m.group(1).decode("utf-8", errors="replace").strip()
+    # Try both null-terminated and space-terminated XMP namespace markers
+    for marker in (b'http://ns.adobe.com/xap/1.0/\x00', b'http://ns.adobe.com/xap/1.0/ '):
+        idx = jpeg_bytes.find(marker)
+        if idx == -1:
+            continue
+        xmp_data = jpeg_bytes[idx + len(marker):]
+        m = re.search(rb'xmp:Label\s*=\s*"([^"]*)"', xmp_data)
+        if m:
+            return m.group(1).decode("utf-8", errors="replace").strip()
+        m = re.search(rb'<xmp:Label>\s*([^<]*?)\s*</xmp:Label>', xmp_data)
+        if m:
+            return m.group(1).decode("utf-8", errors="replace").strip()
     return ""
 
 # ── Seasons ────────────────────────────────────────────────────────────────────
@@ -3686,7 +3687,7 @@ def _update_folder_poses(date: str, location: str, folder: str, r2_keys: list[st
 
     def fetch_label(key: str) -> tuple[str, str]:
         try:
-            obj = s3.get_object(Bucket=R2_BUCKET, Key=key, Range="bytes=0-65535")
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=key, Range="bytes=0-262143")
             label = read_xmp_color_label(obj["Body"].read())
             return (key, label)
         except Exception:

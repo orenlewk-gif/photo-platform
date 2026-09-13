@@ -920,10 +920,14 @@ async function loadFolderPhotos() {
   const rebuildBtn   = document.getElementById('rebuild-poses-btn');
   if (folder) {
     const pRes = await fetch(`/api/folder/poses?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}&family=${encodeURIComponent(folder)}`).then(r=>r.json()).catch(()=>null);
+    const isPortraitFolder = PORTRAIT_LOCS.has(location.trim().toLowerCase());
     if (pRes && pRes.has_poses) {
       poseLiveWrap.style.display = 'inline-flex';
       rebuildBtn.style.display = 'inline-block';
       updatePoseLiveBtn(pRes.poses_live);
+    } else if (isPortraitFolder) {
+      poseLiveWrap.style.display = 'none';
+      rebuildBtn.style.display = 'inline-block';
     } else {
       poseLiveWrap.style.display = 'none';
       rebuildBtn.style.display = 'none';
