@@ -803,6 +803,12 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pose-how-btn:hover{color:rgba(255,255,255,.7)}
 .pose-price-tag{font-size:.88rem;color:#F5C518;font-weight:700;white-space:nowrap}
 .pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+/* Pose gallery select button — pill with "Select" label */
+.pose-gallery .select-check{width:auto;height:auto;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
+.pose-gallery .select-check::after{content:"Select"}
+.pose-gallery .thumb-card.selected .select-check::after{content:"✓"}
+/* Hide individual select circles when the whole pose is purchased */
+.pose-gallery.pose-full-selected .thumb-card .select-check{visibility:hidden}
 /* Portrait intro */
 .pose-intro{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.96rem;color:rgba(255,255,255,.7);line-height:1.65}
 .pose-intro strong{color:rgba(255,255,255,.85)}
@@ -976,8 +982,8 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   <div class="cart-upsell" id="cart-upsell-text"></div>
   <div class="cart-actions">
     <button class="btn-ghost btn-secondary" id="cart-select-all-btn" onclick="toggleSelectAll()">Select All</button>
-    <button class="btn-ghost btn-secondary" onclick="openCartView()">View Cart</button>
-    <button class="btn-ghost" onclick="clearCart()">Clear</button>
+    <button class="btn-ghost btn-secondary" id="cart-view-btn" onclick="openCartView()">View Cart</button>
+    <button class="btn-ghost" id="cart-clear-btn" onclick="clearCart()">Clear</button>
     <button class="btn-checkout" onclick="openCheckout()">Checkout →</button>
   </div>
 </div>
@@ -995,6 +1001,22 @@ select.co-input option { background:#0a1e2e; color:#fff; }
       <button class="btn-ghost" onclick="closeCartView()">Continue Shopping</button>
       <button class="btn-ghost btn-secondary" onclick="clearCart(); closeCartView()">Remove All</button>
       <button class="btn" onclick="closeCartView(); openCheckout()">Checkout →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Portrait Cart View -->
+<div class="cartview-overlay" id="pose-cartview-overlay">
+  <div class="cartview-modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem">
+      <h3>Portrait Selections</h3>
+      <button class="qs-close" onclick="closePoseCartView()">✕</button>
+    </div>
+    <div id="pose-cartview-body"></div>
+    <div class="cartview-actions">
+      <button class="btn-ghost" onclick="closePoseCartView()">Continue Browsing</button>
+      <button class="btn-ghost btn-secondary" onclick="clearPoseCart(); closePoseCartView()">Remove All</button>
+      <button class="btn" onclick="closePoseCartView(); openCheckout()">Checkout →</button>
     </div>
   </div>
 </div>
@@ -1777,7 +1799,7 @@ function _poseHeaderHTML(pose, pi, fullPoseCount) {
   const perPose   = calcPosePrice(posesWithoutThis + 1);
   const nextMarginal = calcTotalCost(fullPoseCount + 1) - calcTotalCost(fullPoseCount);
   const priceTag  = isFullPose
-    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose) · <span style="color:rgba(255,255,255,.55);font-weight:500">+$${nextMarginal.toFixed(2)} for another</span></span>`
+    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose) · <span style="color:#F5C518;font-weight:500">+$${nextMarginal.toFixed(2)} for another</span></span>`
     : posesWithoutThis === 0
       ? `<span class="pose-price-tag">$${marginal.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`
       : `<span class="pose-price-tag">+$${marginal.toFixed(2)} more · $${perPose.toFixed(2)}/pose</span>`;
@@ -1841,7 +1863,7 @@ function renderPoseSections(photos) {
       card.dataset.poseColor = color;
       card.innerHTML = `
         <div class="card-btn-row">
-          <div class="select-check" data-idx="${globalIdx}">✓</div>
+          <div class="select-check" data-idx="${globalIdx}"></div>
         </div>
         <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
         <div class="watermark"></div>
@@ -1882,6 +1904,8 @@ function togglePosePurchase(color, poseIdx) {
   document.querySelectorAll(`#pose-gallery-${poseIdx} .thumb-card`).forEach(c => {
     c.classList.toggle('selected', isNowSelected);
   });
+  const galleryEl = document.getElementById(`pose-gallery-${poseIdx}`);
+  if (galleryEl) galleryEl.classList.toggle('pose-full-selected', isNowSelected);
   updatePoseHeaders();
   updatePoseCart();
 }
@@ -1918,6 +1942,13 @@ function updatePoseCart() {
   if (singles)   parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
   document.getElementById('cart-count-text').textContent = parts.join(' + ');
   document.getElementById('cart-price-text').textContent = `$${total.toFixed(2)}`;
+  // Portrait mode: adjust cart bar buttons
+  const saBtn  = document.getElementById('cart-select-all-btn');
+  const viewBtn = document.getElementById('cart-view-btn');
+  const clearBtn = document.getElementById('cart-clear-btn');
+  if (saBtn)   saBtn.hidden = true;
+  if (viewBtn) viewBtn.onclick = openPoseCartView;
+  if (clearBtn) clearBtn.onclick = clearPoseCart;
 }
 
 function openPPModal() {
@@ -1941,6 +1972,59 @@ function openPPModal() {
 
 function closePPModal() {
   document.getElementById('pp-modal-overlay').classList.remove('open');
+}
+
+function openPoseCartView() {
+  renderPoseCartView();
+  document.getElementById('pose-cartview-overlay').classList.add('open');
+}
+function closePoseCartView() {
+  document.getElementById('pose-cartview-overlay').classList.remove('open');
+}
+function clearPoseCart() {
+  _poseState = {};
+  document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
+  document.querySelectorAll('.pose-gallery.pose-full-selected').forEach(g => g.classList.remove('pose-full-selected'));
+  updatePoseHeaders();
+  updatePoseCart();
+}
+function renderPoseCartView() {
+  const body = document.getElementById('pose-cartview-body');
+  if (!body || !_poseData) return;
+  const { fullPoses, singles, total, posePrice, singlePrice } = calcPortraitTotal();
+  let html = '';
+  // Full poses
+  (_poseData.poses || []).forEach((pose, pi) => {
+    const color = pose.color || '';
+    if (_poseState[color] !== 'pose') return;
+    const count = (pose.files || []).length;
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div>
+        <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`}</div>
+        <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${count} photo${count !== 1 ? 's' : ''} · Full pose digital download</div>
+      </div>
+      <div style="font-weight:700;color:#F5C518">$${posePrice.toFixed(2)}</div>
+    </div>`;
+  });
+  // Singles
+  (_poseData.poses || []).forEach((pose, pi) => {
+    const color = pose.color || '';
+    if (!(_poseState[color] instanceof Set)) return;
+    const set = _poseState[color];
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div>
+        <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`} — individual photos</div>
+        <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${set.size} photo${set.size !== 1 ? 's' : ''} · Digital download</div>
+      </div>
+      <div style="font-weight:700;color:#F5C518">$${(singlePrice * set.size).toFixed(2)}</div>
+    </div>`;
+  });
+  if (!html) { body.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:1rem 0">No poses selected yet.</p>'; return; }
+  html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.8rem 0 0">
+    <div style="font-weight:700">Total</div>
+    <div style="font-size:1.1rem;font-weight:700;color:#F5C518">$${total.toFixed(2)}</div>
+  </div>`;
+  body.innerHTML = html;
 }
 
 function buildPricingBox() {
@@ -2497,10 +2581,15 @@ function updateCart() {
   document.getElementById('cart-price-text').textContent = `$${total}`;
   const saBtn = document.getElementById('cart-select-all-btn');
   if (saBtn) {
+    saBtn.hidden = false;
     const limit = getMaxSelectionLimit();
     const max = limit ? Math.min(limit, allPhotos.length) : allPhotos.length;
     saBtn.textContent = selectedPhotos.size >= max ? 'Deselect All' : 'Select All';
   }
+  const viewBtn = document.getElementById('cart-view-btn');
+  if (viewBtn) viewBtn.onclick = openCartView;
+  const clearBtn = document.getElementById('cart-clear-btn');
+  if (clearBtn) clearBtn.onclick = clearCart;
   // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
   const upgradeMsg = count > 0 ? getUpsellMsg(count) : '';
   // Print upsell — only show when digital selected but no prints yet
@@ -2540,6 +2629,7 @@ function updateCart() {
 
 // ── Cart View ──
 function openCartView() {
+  if (_poseData) { openPoseCartView(); return; }
   renderCartView();
   document.getElementById('cartview-overlay').classList.add('open');
   // Async: fetch pricing for any non-current folder that isn't already cached
