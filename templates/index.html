@@ -975,7 +975,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   </div>
   <div class="cart-upsell" id="cart-upsell-text"></div>
   <div class="cart-actions">
-    <button class="btn-ghost btn-secondary" onclick="selectAllPhotos()">Select All</button>
+    <button class="btn-ghost btn-secondary" id="cart-select-all-btn" onclick="toggleSelectAll()">Select All</button>
     <button class="btn-ghost btn-secondary" onclick="openCartView()">View Cart</button>
     <button class="btn-ghost" onclick="clearCart()">Clear</button>
     <button class="btn-checkout" onclick="openCheckout()">Checkout →</button>
@@ -1984,6 +1984,10 @@ window.addEventListener('resize', () => {
 });
 
 function renderThumbs(photos) {
+  // Clear portrait state when switching to a regular gallery so stale
+  // _poseData doesn't hijack openCheckout / openCartView
+  _poseData  = null;
+  _poseState = {};
   const gallery = document.getElementById('gallery');
   if (!gallery) return;
   gallery.innerHTML = '';
@@ -2066,6 +2070,20 @@ function toggleSelect(i) {
   }
   const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
   if (card) card.classList.toggle('selected', selectedPhotos.has(i));
+  updateCart();
+}
+
+function toggleSelectAll() {
+  const limit = getMaxSelectionLimit();
+  const max = limit ? Math.min(limit, allPhotos.length) : allPhotos.length;
+  const allSelected = selectedPhotos.size >= max;
+  if (allSelected) {
+    selectedPhotos.clear();
+    document.querySelectorAll('.thumb-card').forEach(c => c.classList.remove('selected'));
+  } else {
+    allPhotos.forEach((_, i) => { if (i < max) selectedPhotos.add(i); });
+    document.querySelectorAll('.thumb-card').forEach((c, i) => { if (i < max) c.classList.add('selected'); });
+  }
   updateCart();
 }
 
@@ -2477,6 +2495,12 @@ function updateCart() {
     : `${totalPhotoCount} photo${totalPhotoCount!==1?'s':''} in cart`;
   document.getElementById('cart-count-text').textContent = countText;
   document.getElementById('cart-price-text').textContent = `$${total}`;
+  const saBtn = document.getElementById('cart-select-all-btn');
+  if (saBtn) {
+    const limit = getMaxSelectionLimit();
+    const max = limit ? Math.min(limit, allPhotos.length) : allPhotos.length;
+    saBtn.textContent = selectedPhotos.size >= max ? 'Deselect All' : 'Select All';
+  }
   // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
   const upgradeMsg = count > 0 ? getUpsellMsg(count) : '';
   // Print upsell — only show when digital selected but no prints yet
