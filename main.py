@@ -1186,6 +1186,8 @@ WC_SECRET                = os.getenv("WC_CONSUMER_SECRET", "")
 SQUARE_APP_ID            = os.getenv("SQUARE_APP_ID", "")
 SQUARE_ACCESS_TOKEN      = os.getenv("SQUARE_ACCESS_TOKEN", "")
 SQUARE_LOCATION_ID       = os.getenv("SQUARE_LOCATION_ID", "")
+POS_PASSCODE             = os.getenv("POS_PASSCODE", "")
+POS_SALE_PIN             = os.getenv("POS_SALE_PIN", "")
 WC_DIGITAL_PRODUCT_ID   = 1152
 WC_PRINT_PRODUCT_ID     = 1156
 WC_FRAME_PARENT_ID      = 1034
@@ -1641,8 +1643,7 @@ async def pos_checkout(request: Request):
         body = await request.json()
 
         pin  = body.get("pin", "").strip()
-        photog = _auth_photographer(pin)
-        if not photog:
+        if POS_SALE_PIN and pin != POS_SALE_PIN:
             return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
 
         customer_email  = body.get("email", "").strip()
@@ -1687,8 +1688,8 @@ async def pos_checkout(request: Request):
             "created":           now.isoformat(),
             "source":            "pos",
             "photographer_pin":  pin,
-            "photographer_name": photog.get("name", ""),
-            "photographer_id":   photog.get("id", ""),
+            "photographer_name": "Associate",
+            "photographer_id":   "",
             "name":              customer_name,
             "email":             customer_email,
             "location":          location,
@@ -3914,6 +3915,26 @@ def upload_page():
 @app.get("/clockin", response_class=HTMLResponse)
 def clockin_page():
     return HTMLResponse(open("templates/clockin.html").read())
+
+@app.post("/api/pos-unlock")
+async def api_pos_unlock(request: Request):
+    body = await request.json()
+    code = body.get("passcode", "").strip()
+    if not POS_PASSCODE:
+        return {"ok": True}
+    if code == POS_PASSCODE:
+        return {"ok": True}
+    return JSONResponse(status_code=401, content={"ok": False, "error": "Incorrect passcode"})
+
+@app.post("/api/pos-pin")
+async def api_pos_pin(request: Request):
+    body = await request.json()
+    pin = body.get("pin", "").strip()
+    if not POS_SALE_PIN:
+        return {"ok": True}
+    if pin == POS_SALE_PIN:
+        return {"ok": True}
+    return JSONResponse(status_code=401, content={"ok": False, "error": "Incorrect PIN"})
 
 @app.get("/pos", response_class=HTMLResponse)
 def pos_page():

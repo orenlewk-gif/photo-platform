@@ -46,6 +46,24 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem 1.25rem}
 .scroll-body.tight{padding:.75rem 1rem}
 
+/* ── Passcode / PIN shared layout ── */
+#s-passcode,#s-pin{align-items:center;justify-content:center;gap:0;background:var(--bg)}
+.pc-input-wrap{
+  display:flex;gap:.65rem;justify-content:center;margin-bottom:2.5rem;
+  min-height:36px;align-items:center;flex-wrap:wrap;max-width:320px;
+}
+.pc-dot{
+  width:14px;height:14px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.25);background:transparent;transition:all .15s;flex-shrink:0;
+}
+.pc-dot.filled{background:var(--accent);border-color:var(--accent)}
+.pc-dot.error{background:var(--danger);border-color:var(--danger)}
+.pc-unlock-btn{
+  width:100%;max-width:320px;background:var(--accent);color:#0a1929;
+  font-size:1rem;font-weight:700;border:none;border-radius:var(--radius);
+  padding:.9rem;cursor:pointer;margin-top:.5rem;
+}
+.pc-unlock-btn:active{background:var(--accent2)}
 /* ── PIN Screen ── */
 #s-pin{align-items:center;justify-content:center;gap:0;background:var(--bg)}
 .pin-logo{text-align:center;margin-bottom:2.5rem}
@@ -245,12 +263,39 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <body>
 <div id="app">
 
-<!-- ══ PIN LOGIN ══ -->
-<div class="screen" id="s-pin">
-  <div style="padding:2.5rem 2rem 0;display:flex;flex-direction:column;align-items:center">
+<!-- ══ PASSCODE UNLOCK ══ -->
+<div class="screen hidden" id="s-passcode">
+  <div style="padding:2.5rem 2rem 0;display:flex;flex-direction:column;align-items:center;width:100%">
     <div class="pin-logo">
       <div class="pin-logo-mark">Crystal <span>Images</span></div>
       <div class="pin-logo-sub">Point of Sale</div>
+    </div>
+    <div class="pin-error" id="pc-error"></div>
+    <div class="pc-input-wrap" id="pc-dots"></div>
+    <div class="numpad" id="pc-numpad">
+      <button class="num-btn" onclick="pcKey('1')">1</button>
+      <button class="num-btn" onclick="pcKey('2')">2</button>
+      <button class="num-btn" onclick="pcKey('3')">3</button>
+      <button class="num-btn" onclick="pcKey('4')">4</button>
+      <button class="num-btn" onclick="pcKey('5')">5</button>
+      <button class="num-btn" onclick="pcKey('6')">6</button>
+      <button class="num-btn" onclick="pcKey('7')">7</button>
+      <button class="num-btn" onclick="pcKey('8')">8</button>
+      <button class="num-btn" onclick="pcKey('9')">9</button>
+      <div class="num-btn empty"></div>
+      <button class="num-btn" onclick="pcKey('0')">0</button>
+      <button class="num-btn del" onclick="pcDel()">⌫</button>
+    </div>
+    <button class="pc-unlock-btn" onclick="submitPasscode()">Unlock →</button>
+  </div>
+</div>
+
+<!-- ══ PIN LOGIN ══ -->
+<div class="screen hidden" id="s-pin">
+  <div style="padding:2.5rem 2rem 0;display:flex;flex-direction:column;align-items:center">
+    <div class="pin-logo">
+      <div class="pin-logo-mark">Crystal <span>Images</span></div>
+      <div class="pin-logo-sub">Enter PIN to start sale</div>
     </div>
     <div class="pin-error" id="pin-error"></div>
     <div class="pin-dots" id="pin-dots">
@@ -280,10 +325,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div class="screen hidden" id="s-dates">
   <div class="hdr">
     <div>
-      <div class="hdr-title" id="dates-photog">Associate</div>
+      <div class="hdr-title">Crystal Images POS</div>
       <div class="hdr-sub">Select a date</div>
     </div>
-    <button class="back-btn" onclick="logout()" style="margin-left:auto" title="Logout">↩</button>
+    <button class="back-btn" onclick="logout()" style="margin-left:auto" title="Lock">↩</button>
   </div>
   <div class="scroll-body" id="dates-body">
     <div class="empty"><div class="empty-icon">📅</div>Loading dates…</div>
@@ -408,20 +453,25 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script>
 // ─── State ───────────────────────────────────────────────────────────────────
 const S = {
-  photographer: null,
   pin: '',
+  _savedPin: '',
   date: null,
   location: null,
-  folderType: null,   // 'portrait' | 'group' | null
-  folderName: null,   // last_name or group name
+  folderType: null,
+  folderName: null,
   photos: [],
   selected: new Set(),
   pricing: null,
   coupon: null,
   name: '',
   email: '',
-  pendingOrder: null, // saved before Square redirect
+  pendingOrder: null,
 };
+
+// passcode state (separate from sale PIN)
+let _pc = '';
+const PC_UNLOCK_KEY = 'ci_pos_unlocked';
+const PC_UNLOCK_TTL = 12 * 60 * 60 * 1000; // 12 hours
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
@@ -452,7 +502,7 @@ async function api(url){
 }
 
 // ─── Screen navigation ───────────────────────────────────────────────────────
-const SCREEN_ORDER = ['s-pin','s-dates','s-locations','s-folders','s-photos','s-checkout','s-confirm'];
+const SCREEN_ORDER = ['s-passcode','s-pin','s-dates','s-locations','s-folders','s-photos','s-checkout','s-confirm'];
 let _cur = 's-pin';
 
 function showScreen(id){
@@ -483,6 +533,66 @@ function goBack(target){
   _cur = target;
 }
 
+// ─── Passcode unlock ─────────────────────────────────────────────────────────
+function isUnlocked(){
+  try {
+    const ts = parseInt(localStorage.getItem(PC_UNLOCK_KEY) || '0', 10);
+    return ts && (Date.now() - ts < PC_UNLOCK_TTL);
+  } catch(e){ return false; }
+}
+
+function setUnlocked(){
+  try { localStorage.setItem(PC_UNLOCK_KEY, String(Date.now())); } catch(e){}
+}
+
+function pcKey(d){
+  if(_pc.length >= 8) return;
+  _pc += d;
+  renderPcDots();
+}
+
+function pcDel(){
+  _pc = _pc.slice(0,-1);
+  $('pc-error').textContent = '';
+  renderPcDots(false);
+}
+
+function renderPcDots(error=false){
+  const len = Math.max(_pc.length, 1);
+  let html = '';
+  for(let i=0;i<len;i++){
+    const cls = i < _pc.length ? (error ? 'error' : 'filled') : '';
+    html += `<div class="pc-dot ${cls}"></div>`;
+  }
+  $('pc-dots').innerHTML = html;
+}
+
+async function submitPasscode(){
+  if(!_pc) return;
+  setLoading(true);
+  try {
+    const res = await fetch('/api/pos-unlock',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({passcode: _pc})
+    });
+    setLoading(false);
+    if(!res.ok){ throw new Error('bad'); }
+    setUnlocked();
+    _pc = '';
+    renderPcDots();
+    showScreen('s-pin');
+  } catch(e){
+    setLoading(false);
+    $('pc-error').textContent = 'Incorrect passcode — try again';
+    renderPcDots(true);
+    setTimeout(()=>{
+      _pc = '';
+      renderPcDots();
+      $('pc-error').textContent = '';
+    }, 1000);
+  }
+}
+
 // ─── PIN ─────────────────────────────────────────────────────────────────────
 function pinKey(d){
   if(S.pin.length >= 4) return;
@@ -508,16 +618,13 @@ function updatePinDots(error=false){
 async function submitPin(){
   setLoading(true);
   try {
-    const res = await fetch('/api/photographer/auth',{
+    const res = await fetch('/api/pos-pin',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({pin: S.pin})
     });
     if(!res.ok){ throw new Error('Invalid PIN'); }
-    const data = await res.json();
-    S.photographer = data.photographer;
-    S._savedPin = S.pin;  // keep for pos-checkout after Square redirect
+    S._savedPin = S.pin;
     try { localStorage.setItem('ci_pos_pin', S.pin); } catch(e){}
-    $('dates-photog').textContent = S.photographer.name || 'Associate';
     setLoading(false);
     loadDates();
     showScreen('s-dates');
@@ -534,7 +641,7 @@ async function submitPin(){
 }
 
 function logout(){
-  S.photographer = null; S.pin = '';
+  S.pin = ''; S._savedPin = '';
   updatePinDots();
   showScreen('s-pin');
 }
@@ -997,18 +1104,20 @@ function newSale(){
   S.coupon = null;
   S.pendingOrder = null;
   S.name = ''; S.email = '';
-  loadDates();
-  showScreen('s-dates');
+  S.pin = ''; S._savedPin = '';
+  updatePinDots();
+  showScreen('s-pin');
 }
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', ()=>{
-  // Restore PIN from localStorage if available (after Square redirect)
   try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
-  // If Square redirected back, handle it
+  // Square redirect takes priority — app was already unlocked when it left
   if(checkSquareReturn()) return;
-  // Otherwise start at PIN screen
-  showScreen('s-pin');
+  // Render initial passcode dots (1 empty dot placeholder)
+  renderPcDots();
+  // Show passcode screen or PIN screen depending on session unlock state
+  showScreen(isUnlocked() ? 's-pin' : 's-passcode');
 });
 </script>
 </body>
