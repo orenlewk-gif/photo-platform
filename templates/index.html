@@ -229,6 +229,9 @@ input[type="range"]::-webkit-slider-thumb {
   font-size:13px; font-weight:bold; color:#fff;
   transition:background 0.15s, border-color 0.15s; cursor:pointer;
 }
+.pose-gallery .select-check {
+  width:auto; border-radius:13px; padding:0 8px; gap:3px;
+}
 .thumb-card.selected .select-check { background:#F5C518; border-color:#F5C518; color:#0c2336; }
 .thumb-card.selected {
   border-color:#F5C518;
@@ -805,7 +808,8 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
 /* Portrait intro */
 .pose-intro{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.96rem;color:rgba(255,255,255,.7);line-height:1.65}
-.pose-savings-hint{font-size:.78rem;color:#4ade80;background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.2);border-radius:6px;padding:.28rem .7rem;white-space:nowrap}
+.pose-sel-label{font-size:10px;font-weight:600;letter-spacing:.04em;color:rgba(255,255,255,.85);pointer-events:none;text-transform:uppercase}
+.thumb-card.selected .pose-sel-label{color:#0c2336}
 .pose-intro strong{color:rgba(255,255,255,.85)}
 /* Portrait pricing modal */
 .pp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99990;align-items:center;justify-content:center}
@@ -1731,6 +1735,10 @@ function calcPosePrice(numFullPoses) {
   if (numFullPoses === 0) return 0;
   return tiers[Math.min(numFullPoses - 1, tiers.length - 1)];
 }
+function calcTotalCost(n) {
+  if (n <= 0) return 0;
+  return calcPosePrice(n) * n;
+}
 
 function calcPortraitTotal() {
   const fullPoses = Object.values(_poseState).filter(v => v === 'pose').length;
@@ -1764,6 +1772,37 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
   loadPortraitPricing().then(() => renderPoseSections(photos));
 }
 
+function _poseHeaderHTML(pose, pi, fullPoseCount) {
+  const color  = pose.color || '';
+  const label  = pose.label || `Pose ${pi + 1}`;
+  const files  = pose.files || [];
+  const isFullPose = _poseState[color] === 'pose';
+  const posesWithoutThis = isFullPose ? fullPoseCount - 1 : fullPoseCount;
+  const marginal  = calcTotalCost(posesWithoutThis + 1) - calcTotalCost(posesWithoutThis);
+  const perPose   = calcPosePrice(posesWithoutThis + 1);
+  const priceTag  = isFullPose
+    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose)</span>`
+    : posesWithoutThis === 0
+      ? `<span class="pose-price-tag">$${marginal.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`
+      : `<span class="pose-price-tag">+$${marginal.toFixed(2)} more · $${perPose.toFixed(2)}/pose</span>`;
+  const buyBtn = color
+    ? `<button class="pose-buy-btn ${isFullPose ? 'selected' : ''}"
+         onclick="togglePosePurchase('${escA(color)}',${pi})">${isFullPose ? '✓ Pose added' : 'Buy this pose'}</button>`
+    : '';
+  return `<span class="pose-label">${label}</span>
+    <span class="pose-count">${files.length} photo${files.length !== 1 ? 's' : ''}</span>
+    ${priceTag}${buyBtn}
+    <button class="pose-how-btn" onclick="openPPModal()">How pricing works?</button>`;
+}
+
+function updatePoseHeaders() {
+  const fullPoseCount = Object.values(_poseState).filter(v => v === 'pose').length;
+  (_poseData?.poses || []).forEach((pose, pi) => {
+    const hdr = document.getElementById(`pose-header-${pi}`);
+    if (hdr) hdr.innerHTML = _poseHeaderHTML(pose, pi, fullPoseCount);
+  });
+}
+
 function renderPoseSections(photos) {
   const photoByFilename = {};
   photos.forEach(p => { photoByFilename[p.filename || p.path.split('/').pop()] = p; });
@@ -1776,57 +1815,37 @@ function renderPoseSections(photos) {
 
   _poseData.poses.forEach((pose, pi) => {
     const color      = pose.color || '';
-    const label      = pose.label || `Pose ${pi + 1}`;
     const files      = pose.files || [];
     const posePhotos = files.map(f => photoByFilename[f]).filter(Boolean);
-    const dotColor   = color.startsWith('#') ? color : (POSE_COLOR_CSS[color] || '#9ca3af');
     const isFullPose = _poseState[color] === 'pose';
     const singleSet  = (_poseState[color] instanceof Set) ? _poseState[color] : null;
-
-    const nextPoseCount = isFullPose ? fullPoseCount : fullPoseCount + 1;
-    const posePrice = calcPosePrice(nextPoseCount);
-    const priceTag  = isFullPose
-      ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)})</span>`
-      : `<span class="pose-price-tag">$${posePrice.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`;
-    const buyBtn = color
-      ? `<button class="pose-buy-btn ${isFullPose ? 'selected' : ''}"
-           onclick="togglePosePurchase('${color}',${pi})">${isFullPose ? '✓ Pose added' : 'Buy this pose'}</button>`
-      : '';
-
-    // Build section
-    // Savings hint: shown after a pose is added, tells user the next pose is cheaper
-    const nextTierPrice = isFullPose ? calcPosePrice(fullPoseCount + 1) : null;
-    const currentPosePrice = calcPosePrice(fullPoseCount);
-    const savingsHint = (isFullPose && nextTierPrice !== null && nextTierPrice < currentPosePrice)
-      ? `<span class="pose-savings-hint">+ Add another pose for only $${nextTierPrice.toFixed(2)}</span>`
-      : '';
 
     const section = document.createElement('div');
     section.className = 'pose-section';
     section.id = `pose-sec-${pi}`;
-    section.innerHTML = `
-      <div class="pose-header">
-        <span class="pose-label">${label}</span>
-        <span class="pose-count">${files.length} photo${files.length !== 1 ? 's' : ''}</span>
-        ${priceTag}
-        ${savingsHint}
-        ${buyBtn}
-        <button class="pose-how-btn" onclick="openPPModal()">How pricing works?</button>
-      </div>
-      <div class="pose-gallery" id="pose-gallery-${pi}"></div>`;
+    const hdr = document.createElement('div');
+    hdr.className = 'pose-header';
+    hdr.id = `pose-header-${pi}`;
+    hdr.innerHTML = _poseHeaderHTML(pose, pi, fullPoseCount);
+    section.appendChild(hdr);
+
+    const galleryEl = document.createElement('div');
+    galleryEl.className = 'pose-gallery';
+    galleryEl.id = `pose-gallery-${pi}`;
+    section.appendChild(galleryEl);
     sections.appendChild(section);
 
-    // Build cards using same structure as renderThumbs
-    const galleryEl = section.querySelector('.pose-gallery');
+    // Build cards — same structure as renderThumbs
     posePhotos.forEach(photo => {
       const globalIdx = photos.findIndex(p => p.path === photo.path);
       const isSingleSel = singleSet ? singleSet.has(globalIdx) : false;
       const card = document.createElement('div');
       card.className = 'thumb-card' + (isFullPose || isSingleSel ? ' selected' : '');
       card.dataset.idx = globalIdx;
+      card.dataset.poseColor = color;
       card.innerHTML = `
         <div class="card-btn-row">
-          <div class="select-check" data-idx="${globalIdx}">✓</div>
+          <div class="select-check" data-idx="${globalIdx}">✓<span class="pose-sel-label">Select</span></div>
         </div>
         <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
         <div class="watermark"></div>
@@ -1843,6 +1862,11 @@ function renderPoseSections(photos) {
       });
       card.addEventListener('click', () => openLB(globalIdx));
 
+      // Detect portrait orientation — same as renderThumbs
+      card.querySelector('img').addEventListener('load', function() {
+        if (this.naturalHeight > this.naturalWidth) card.classList.add('portrait');
+      }, { once: true });
+
       galleryEl.appendChild(card);
     });
     lazyLoad(galleryEl);
@@ -1855,7 +1879,11 @@ function togglePosePurchase(color, poseIdx) {
   } else {
     _poseState[color] = 'pose';
   }
-  renderPoseSections(allPhotos);
+  const isNowSelected = _poseState[color] === 'pose';
+  document.querySelectorAll(`#pose-gallery-${poseIdx} .thumb-card`).forEach(c => {
+    c.classList.toggle('selected', isNowSelected);
+  });
+  updatePoseHeaders();
   updatePoseCart();
 }
 
@@ -1868,16 +1896,18 @@ function togglePoseSingle(globalIdx, color) {
   } else {
     _poseState[color].add(globalIdx);
   }
-  renderPoseSections(allPhotos);
+  const isSel = (_poseState[color] instanceof Set) && _poseState[color].has(globalIdx);
+  const card = document.querySelector(`.thumb-card[data-idx="${globalIdx}"]`);
+  if (card) card.classList.toggle('selected', isSel);
   updatePoseCart();
 }
 
 function updatePoseCart() {
-  const { fullPoses, singles, total, posePrice, singlePrice } = calcPortraitTotal();
+  const { fullPoses, singles, total } = calcPortraitTotal();
   const count = fullPoses + singles;
   const cartBar = document.getElementById('cart-bar');
   if (!cartBar) return;
-  if (count === 0 && printCart.length === 0) {
+  if (count === 0) {
     cartBar.classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
     return;
@@ -1885,12 +1915,10 @@ function updatePoseCart() {
   cartBar.classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
   const parts = [];
-  if (fullPoses) parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''} @ $${posePrice.toFixed(2)}`);
-  if (singles)   parts.push(`${singles} photo${singles !== 1 ? 's' : ''} @ $${singlePrice.toFixed(2)}`);
-  const totalEl = document.getElementById('cart-total');
-  const countEl = document.getElementById('cart-count');
-  if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
-  if (countEl) countEl.textContent = parts.join(' + ') || `${count} item${count !== 1 ? 's' : ''}`;
+  if (fullPoses) parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''}`);
+  if (singles)   parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
+  document.getElementById('cart-count-text').textContent = parts.join(' + ');
+  document.getElementById('cart-price-text').textContent = `$${total.toFixed(2)}`;
 }
 
 function openPPModal() {
