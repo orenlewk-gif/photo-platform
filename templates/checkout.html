@@ -761,9 +761,14 @@ function renderSummary() {
 
   let discountAmt = 0;
   if (appliedCoupon) {
+    const at = appliedCoupon.applies_to || 'all';
+    const discountBase = at === 'digital' || at === 'portraits' ? digTotal
+                       : at === 'prints'  ? printTotal
+                       : at === 'frames'  ? frameTotal
+                       : subtotal; // 'all' or free_shipping
     discountAmt = appliedCoupon.discount_type === 'percent'
-      ? Math.round(subtotal * (appliedCoupon.amount / 100) * 100) / 100
-      : Math.min(appliedCoupon.amount, subtotal);
+      ? Math.round(discountBase * (appliedCoupon.amount / 100) * 100) / 100
+      : Math.min(appliedCoupon.amount, discountBase);
     discountAmt = Math.round(discountAmt * 100) / 100;
   }
 
@@ -932,13 +937,19 @@ async function placeOrder() {
   const lastName = cartData.family   || allDigital[0]?.last_name || '';
 
   // Coupon discount — calculated on combo-adjusted subtotal
-  const subtotal    = digPrice + prints.reduce((s,p) => s+(p.price||0)+(p.framePrice||0), 0)
-                    + frames.reduce((s,f) => s+(f.price||0)*(f.quantity||1), 0);
+  const printTotal2 = prints.reduce((s,p) => s+(p.price||0), 0);
+  const frameTotal2 = prints.reduce((s,p) => s+(p.framePrice||0), 0) + frames.reduce((s,f) => s+(f.price||0)*(f.quantity||1), 0);
+  const subtotal    = digPrice + printTotal2 + frameTotal2;
   let discountAmt   = 0;
   if (appliedCoupon) {
+    const at2 = appliedCoupon.applies_to || 'all';
+    const discountBase2 = at2 === 'digital' || at2 === 'portraits' ? digPrice
+                        : at2 === 'prints'  ? printTotal2
+                        : at2 === 'frames'  ? frameTotal2
+                        : subtotal;
     discountAmt = appliedCoupon.discount_type === 'percent'
-      ? Math.round(subtotal * (appliedCoupon.amount / 100) * 100) / 100
-      : Math.min(appliedCoupon.amount, subtotal);
+      ? Math.round(discountBase2 * (appliedCoupon.amount / 100) * 100) / 100
+      : Math.min(appliedCoupon.amount, discountBase2);
     discountAmt = Math.round(discountAmt * 100) / 100;
   }
 
