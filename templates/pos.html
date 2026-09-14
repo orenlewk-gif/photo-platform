@@ -58,10 +58,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 }
 .pc-dot.filled{background:var(--accent);border-color:var(--accent)}
 .pc-dot.error{background:var(--danger);border-color:var(--danger)}
+.pc-text-input{
+  width:100%;max-width:320px;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);padding:.9rem 1rem;font-size:1rem;
+  outline:none;margin-bottom:.75rem;letter-spacing:.05em;
+}
+.pc-text-input:focus{border-color:var(--accent)}
 .pc-unlock-btn{
   width:100%;max-width:320px;background:var(--accent);color:#0a1929;
   font-size:1rem;font-weight:700;border:none;border-radius:var(--radius);
-  padding:.9rem;cursor:pointer;margin-top:.5rem;
+  padding:.9rem;cursor:pointer;
 }
 .pc-unlock-btn:active{background:var(--accent2)}
 /* ── PIN Screen ── */
@@ -271,21 +277,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div class="pin-logo-sub">Point of Sale</div>
     </div>
     <div class="pin-error" id="pc-error"></div>
-    <div class="pc-input-wrap" id="pc-dots"></div>
-    <div class="numpad" id="pc-numpad">
-      <button class="num-btn" onclick="pcKey('1')">1</button>
-      <button class="num-btn" onclick="pcKey('2')">2</button>
-      <button class="num-btn" onclick="pcKey('3')">3</button>
-      <button class="num-btn" onclick="pcKey('4')">4</button>
-      <button class="num-btn" onclick="pcKey('5')">5</button>
-      <button class="num-btn" onclick="pcKey('6')">6</button>
-      <button class="num-btn" onclick="pcKey('7')">7</button>
-      <button class="num-btn" onclick="pcKey('8')">8</button>
-      <button class="num-btn" onclick="pcKey('9')">9</button>
-      <div class="num-btn empty"></div>
-      <button class="num-btn" onclick="pcKey('0')">0</button>
-      <button class="num-btn del" onclick="pcDel()">⌫</button>
-    </div>
+    <input class="pc-text-input" id="pc-input" type="password" placeholder="Enter passcode"
+           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
+           onkeydown="if(event.key==='Enter')submitPasscode()">
     <button class="pc-unlock-btn" onclick="submitPasscode()">Unlock →</button>
   </div>
 </div>
@@ -325,7 +319,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <div class="screen hidden" id="s-dates">
   <div class="hdr">
     <div>
-      <div class="hdr-title">Crystal Images POS</div>
+      <div class="hdr-title" id="dates-photog">Associate</div>
       <div class="hdr-sub">Select a date</div>
     </div>
     <button class="back-btn" onclick="logout()" style="margin-left:auto" title="Lock">↩</button>
@@ -453,6 +447,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <script>
 // ─── State ───────────────────────────────────────────────────────────────────
 const S = {
+  photographer: null,
   pin: '',
   _savedPin: '',
   date: null,
@@ -468,10 +463,8 @@ const S = {
   pendingOrder: null,
 };
 
-// passcode state (separate from sale PIN)
-let _pc = '';
 const PC_UNLOCK_KEY = 'ci_pos_unlocked';
-const PC_UNLOCK_TTL = 12 * 60 * 60 * 1000; // 12 hours
+const PC_UNLOCK_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
@@ -545,51 +538,25 @@ function setUnlocked(){
   try { localStorage.setItem(PC_UNLOCK_KEY, String(Date.now())); } catch(e){}
 }
 
-function pcKey(d){
-  if(_pc.length >= 8) return;
-  _pc += d;
-  renderPcDots();
-}
-
-function pcDel(){
-  _pc = _pc.slice(0,-1);
-  $('pc-error').textContent = '';
-  renderPcDots(false);
-}
-
-function renderPcDots(error=false){
-  const len = Math.max(_pc.length, 1);
-  let html = '';
-  for(let i=0;i<len;i++){
-    const cls = i < _pc.length ? (error ? 'error' : 'filled') : '';
-    html += `<div class="pc-dot ${cls}"></div>`;
-  }
-  $('pc-dots').innerHTML = html;
-}
-
 async function submitPasscode(){
-  if(!_pc) return;
+  const val = $('pc-input').value.trim();
+  if(!val) return;
   setLoading(true);
   try {
     const res = await fetch('/api/pos-unlock',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({passcode: _pc})
+      body: JSON.stringify({passcode: val})
     });
     setLoading(false);
     if(!res.ok){ throw new Error('bad'); }
     setUnlocked();
-    _pc = '';
-    renderPcDots();
+    $('pc-input').value = '';
     showScreen('s-pin');
   } catch(e){
     setLoading(false);
     $('pc-error').textContent = 'Incorrect passcode — try again';
-    renderPcDots(true);
-    setTimeout(()=>{
-      _pc = '';
-      renderPcDots();
-      $('pc-error').textContent = '';
-    }, 1000);
+    $('pc-input').value = '';
+    setTimeout(()=>{ $('pc-error').textContent = ''; }, 2000);
   }
 }
 
@@ -618,13 +585,16 @@ function updatePinDots(error=false){
 async function submitPin(){
   setLoading(true);
   try {
-    const res = await fetch('/api/pos-pin',{
+    const res = await fetch('/api/photographer/auth',{
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({pin: S.pin})
     });
     if(!res.ok){ throw new Error('Invalid PIN'); }
+    const data = await res.json();
+    S.photographer = data.photographer;
     S._savedPin = S.pin;
     try { localStorage.setItem('ci_pos_pin', S.pin); } catch(e){}
+    $('dates-photog').textContent = S.photographer.name || 'Associate';
     setLoading(false);
     loadDates();
     showScreen('s-dates');
@@ -641,7 +611,7 @@ async function submitPin(){
 }
 
 function logout(){
-  S.pin = ''; S._savedPin = '';
+  S.photographer = null; S.pin = ''; S._savedPin = '';
   updatePinDots();
   showScreen('s-pin');
 }
@@ -1100,6 +1070,7 @@ function showConfirmation(data){
 }
 
 function newSale(){
+  S.photographer = null;
   S.selected = new Set();
   S.coupon = null;
   S.pendingOrder = null;
@@ -1114,8 +1085,6 @@ window.addEventListener('DOMContentLoaded', ()=>{
   try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
   // Square redirect takes priority — app was already unlocked when it left
   if(checkSquareReturn()) return;
-  // Render initial passcode dots (1 empty dot placeholder)
-  renderPcDots();
   // Show passcode screen or PIN screen depending on session unlock state
   showScreen(isUnlocked() ? 's-pin' : 's-passcode');
 });
