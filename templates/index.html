@@ -2516,7 +2516,6 @@ function updateCart() {
 
 // ── Cart View ──
 function openCartView() {
-  if (_poseData && _poseData.has_poses) { openCheckout(); return; }
   renderCartView();
   document.getElementById('cartview-overlay').classList.add('open');
   // Async: fetch pricing for any non-current folder that isn't already cached
