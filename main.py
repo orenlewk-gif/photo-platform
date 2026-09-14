@@ -1332,6 +1332,18 @@ def validate_coupon(code: str = Query(""), email: str = Query("")):
     if not c.get("active", True):
         return JSONResponse(status_code=400, content={"valid": False, "error": "This code is no longer active"})
 
+    # Start date check
+    start_date = c.get("start_date")
+    if start_date:
+        try:
+            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            if not start_dt.tzinfo:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) < start_dt:
+                return JSONResponse(status_code=400, content={"valid": False, "error": "This code is not yet active"})
+        except Exception:
+            pass
+
     # Expiry check
     expires = c.get("expires")
     if expires:
@@ -3750,6 +3762,7 @@ async def api_create_discount_code(request: Request):
         "usage_limit":           body.get("usage_limit") or None,
         "usage_limit_per_user":  body.get("usage_limit_per_user") or None,
         "expires":               body.get("expires") or None,
+        "start_date":            body.get("start_date") or None,
         "active":                True,
         "usage_count":           0,
         "total_saved":           0.0,
@@ -3785,7 +3798,7 @@ async def api_update_discount_code(cid: str, request: Request):
     codes = _load_discount_codes()
     WC_SYNC_FIELDS = {"description","source","type","amount","free_shipping",
                       "applies_to","min_order","min_qty","usage_limit",
-                      "usage_limit_per_user","expires","active"}
+                      "usage_limit_per_user","expires","start_date","active"}
     for c in codes:
         if c.get("id") == cid:
             changed_wc = any(f in body for f in WC_SYNC_FIELDS)

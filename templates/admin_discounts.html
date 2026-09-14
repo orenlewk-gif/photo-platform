@@ -306,7 +306,7 @@ select option{background:#0a1e2e;color:#fff}
           </div>
           <div class="field">
             <label>Min. Item Quantity</label>
-            <input type="number" id="f-min-qty" min="0" step="1" placeholder="0">
+            <input type="number" id="f-min-qty" min="1" step="1" placeholder="1" value="1">
             <div class="hint">Customer must have at least this many items</div>
           </div>
         </div>
@@ -323,9 +323,15 @@ select option{background:#0a1e2e;color:#fff}
             <label>Uses Per Customer</label>
             <input type="number" id="f-usage-per-user" min="1" placeholder="Unlimited">
           </div>
-          <div class="field span2">
+          <div class="field">
+            <label>Start Date</label>
+            <input type="date" id="f-start-date">
+            <div class="hint">Code inactive before this date</div>
+          </div>
+          <div class="field">
             <label>Expiry Date</label>
             <input type="date" id="f-expires">
+            <div class="hint">Code inactive after this date</div>
           </div>
         </div>
       </div>
@@ -548,9 +554,10 @@ function openCreatePanel() {
   document.getElementById('f-free-shipping').checked = false;
   document.getElementById('f-applies-to').value = 'all';
   document.getElementById('f-min-order').value = '';
-  document.getElementById('f-min-qty').value = '';
+  document.getElementById('f-min-qty').value = '1';
   document.getElementById('f-usage-limit').value = '';
   document.getElementById('f-usage-per-user').value = '';
+  document.getElementById('f-start-date').value = '';
   document.getElementById('f-expires').value = '';
   document.getElementById('btn-save').textContent = 'Create Code';
   document.getElementById('btn-delete').style.display = 'none';
@@ -574,9 +581,10 @@ function openEdit(id) {
   document.getElementById('f-free-shipping').checked = !!c.free_shipping;
   document.getElementById('f-applies-to').value = c.applies_to || 'all';
   document.getElementById('f-min-order').value = c.min_order || '';
-  document.getElementById('f-min-qty').value = c.min_qty || '';
+  document.getElementById('f-min-qty').value = c.min_qty || '1';
   document.getElementById('f-usage-limit').value = c.usage_limit || '';
   document.getElementById('f-usage-per-user').value = c.usage_limit_per_user || '';
+  document.getElementById('f-start-date').value = c.start_date ? c.start_date.substring(0,10) : '';
   document.getElementById('f-expires').value = c.expires ? c.expires.substring(0,10) : '';
   document.getElementById('btn-save').textContent = 'Save Changes';
   document.getElementById('btn-delete').style.display = '';
@@ -688,9 +696,10 @@ async function saveCode() {
     free_shipping:        document.getElementById('f-free-shipping').checked,
     applies_to:           document.getElementById('f-applies-to').value,
     min_order:            parseFloat(document.getElementById('f-min-order').value) || 0,
-    min_qty:              parseInt(document.getElementById('f-min-qty').value) || 0,
+    min_qty:              parseInt(document.getElementById('f-min-qty').value) || 1,
     usage_limit:          parseInt(document.getElementById('f-usage-limit').value) || null,
     usage_limit_per_user: parseInt(document.getElementById('f-usage-per-user').value) || null,
+    start_date:           document.getElementById('f-start-date').value || null,
     expires:              document.getElementById('f-expires').value || null,
   };
 
