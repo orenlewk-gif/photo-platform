@@ -803,10 +803,6 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pose-how-btn:hover{color:rgba(255,255,255,.7)}
 .pose-price-tag{font-size:.88rem;color:#F5C518;font-weight:700;white-space:nowrap}
 .pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
-/* Pose gallery select button — pill with "Select" label */
-.pose-gallery .select-check{width:auto;height:auto;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
-.pose-gallery .select-check::after{content:"Select"}
-.pose-gallery .thumb-card.selected .select-check::after{content:"✓"}
 /* Hide individual select circles when the whole pose is purchased */
 .pose-gallery.pose-full-selected .thumb-card .select-check{visibility:hidden}
 /* Portrait intro */
@@ -1782,7 +1778,7 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
     ${folderInfoHtml}
     ${previewBanner}
     <div class="pose-intro">
-      Our portrait photos are sold by the pose. Below you will see sets of poses. A pose is considered a group of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose in either digital or print format. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click <strong>+ Select</strong> to add a single photo. <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
+      Our portrait photos are sold by the pose. Below you will see sets of poses. A pose is considered a group of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose in either digital or print format. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click the circle to add a single photo. <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
     </div>
     <div id="pose-sections"></div>`;
 
@@ -1863,7 +1859,7 @@ function renderPoseSections(photos) {
       card.dataset.poseColor = color;
       card.innerHTML = `
         <div class="card-btn-row">
-          <div class="select-check" data-idx="${globalIdx}"></div>
+          <div class="select-check" data-idx="${globalIdx}">✓</div>
         </div>
         <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
         <div class="watermark"></div>
