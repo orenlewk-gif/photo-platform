@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Discount Codes — Crystal Images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color:#fff}
+#topbar{height:46px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem}
+#topbar h1{color:#F5C518;font-size:1rem;font-weight:700;margin-right:auto}
+#topbar a{color:rgba(255,255,255,.45);font-size:.82rem;text-decoration:none}
+#topbar a:hover{color:#fff}
+#layout{display:flex;height:calc(100vh - 46px)}
+#sidebar{width:220px;flex-shrink:0;background:#0a1e2e;border-right:1px solid rgba(255,255,255,.07);overflow-y:auto}
+#sidebar-nav{padding:.6rem .5rem}
+.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .1rem;
+  font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}
+.nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
+.nav-link.active-page{background:rgba(245,197,24,.08);color:#F5C518}
+.nav-sep{border-top:1px solid rgba(255,255,255,.07);margin:.4rem .5rem}
+#main{flex:1;overflow-y:auto;padding:1.5rem 2rem}
+
+/* Header row */
+.page-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.75rem}
+.page-title{font-size:1.25rem;font-weight:700;color:#F5C518}
+.btn-primary{background:#F5C518;color:#07151f;border:none;border-radius:8px;
+  padding:.5rem 1.2rem;font-size:.85rem;font-weight:700;cursor:pointer;transition:opacity .15s}
+.btn-primary:hover{opacity:.85}
+.btn-secondary{background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:.48rem 1rem;font-size:.82rem;cursor:pointer;transition:background .15s}
+.btn-secondary:hover{background:rgba(255,255,255,.12)}
+.btn-danger{background:rgba(220,50,50,.12);color:#e87070;border:1px solid rgba(220,50,50,.25);
+  border-radius:8px;padding:.42rem .85rem;font-size:.78rem;cursor:pointer;transition:background .15s}
+.btn-danger:hover{background:rgba(220,50,50,.22)}
+
+/* Stats bar */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin-bottom:1.75rem}
+.stat-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1rem 1.2rem}
+.stat-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.35);margin-bottom:.35rem}
+.stat-val{font-size:1.5rem;font-weight:700;color:#fff}
+.stat-val.yellow{color:#F5C518}
+
+/* Filters */
+.filter-row{display:flex;gap:.65rem;margin-bottom:1.1rem;flex-wrap:wrap;align-items:center}
+.filter-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:20px;
+  padding:.32rem .85rem;font-size:.78rem;color:rgba(255,255,255,.55);cursor:pointer;transition:all .15s}
+.filter-btn.active{background:rgba(245,197,24,.1);border-color:rgba(245,197,24,.35);color:#F5C518}
+.search-wrap{margin-left:auto}
+.search-input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;
+  padding:.42rem .85rem;color:#fff;font-size:.82rem;outline:none;width:200px}
+.search-input:focus{border-color:rgba(245,197,24,.4)}
+.search-input::placeholder{color:rgba(255,255,255,.25)}
+
+/* Code table */
+.codes-table{width:100%;border-collapse:collapse}
+.codes-table th{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;
+  color:rgba(255,255,255,.3);padding:.55rem .75rem;text-align:left;border-bottom:1px solid rgba(255,255,255,.07)}
+.codes-table td{padding:.7rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);
+  font-size:.83rem;color:rgba(255,255,255,.8);vertical-align:middle}
+.codes-table tr:hover td{background:rgba(255,255,255,.025);cursor:pointer}
+.code-pill{font-family:monospace;font-size:.85rem;font-weight:700;color:#F5C518;
+  background:rgba(245,197,24,.1);border-radius:5px;padding:.2rem .5rem;letter-spacing:.05em}
+.badge{display:inline-flex;align-items:center;border-radius:20px;padding:.18rem .6rem;
+  font-size:.7rem;font-weight:600;letter-spacing:.04em}
+.badge-active{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
+.badge-inactive{background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1)}
+.badge-expired{background:rgba(220,50,50,.1);color:#e87070;border:1px solid rgba(220,50,50,.2)}
+.type-label{font-size:.72rem;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.06em}
+.amount-big{font-weight:700;color:#fff}
+.uses-bar-wrap{width:80px;height:5px;background:rgba(255,255,255,.08);border-radius:3px;display:inline-block;vertical-align:middle;margin-left:.4rem}
+.uses-bar-fill{height:100%;background:#F5C518;border-radius:3px;transition:width .3s}
+td.mono{font-family:monospace;font-size:.8rem}
+td.dim{color:rgba(255,255,255,.35)}
+td.saved{color:#4ade80;font-weight:600}
+
+/* Slide-in panel */
+#panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;opacity:0;transition:opacity .2s}
+#panel-overlay.open{display:block;opacity:1}
+#side-panel{position:fixed;top:0;right:-520px;width:520px;height:100vh;background:#0a1e2e;
+  border-left:1px solid rgba(255,255,255,.1);z-index:101;transition:right .25s;overflow-y:auto;display:flex;flex-direction:column}
+#side-panel.open{right:0}
+#panel-header{padding:1.2rem 1.5rem;border-bottom:1px solid rgba(255,255,255,.07);
+  display:flex;align-items:center;gap:.75rem;flex-shrink:0}
+#panel-header h2{font-size:1rem;font-weight:700;flex:1;color:#F5C518}
+.panel-close{background:none;border:none;color:rgba(255,255,255,.4);font-size:1.25rem;cursor:pointer;line-height:1}
+.panel-close:hover{color:#fff}
+#panel-body{padding:1.5rem;flex:1;overflow-y:auto}
+
+/* Form fields */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+.form-grid.full{grid-template-columns:1fr}
+.field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.85rem}
+.field.span2{grid-column:1/-1}
+label{font-size:.72rem;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em}
+input,select,textarea{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:.55rem .85rem;color:#fff;font-size:.87rem;outline:none;width:100%;
+  transition:border-color .15s;font-family:inherit}
+input:focus,select:focus,textarea:focus{border-color:#F5C518}
+input::placeholder,textarea::placeholder{color:rgba(255,255,255,.25)}
+select option{background:#0a1e2e;color:#fff}
+.hint{font-size:.7rem;color:rgba(255,255,255,.28);line-height:1.5}
+.checkbox-row{display:flex;align-items:center;gap:.6rem;padding:.45rem 0}
+.checkbox-row input[type=checkbox]{width:auto;accent-color:#F5C518}
+.checkbox-row span{font-size:.85rem;color:rgba(255,255,255,.7)}
+.form-section{margin-bottom:1.4rem}
+.form-section-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:rgba(255,255,255,.25);margin-bottom:.85rem;padding-bottom:.4rem;border-bottom:1px solid rgba(255,255,255,.06)}
+.form-actions{display:flex;gap:.65rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.07);margin-top:1.2rem}
+
+/* Code detail section */
+#panel-detail{display:none}
+#panel-detail .detail-code{font-family:monospace;font-size:1.6rem;font-weight:700;color:#F5C518;
+  margin-bottom:.25rem;letter-spacing:.08em}
+#panel-detail .detail-meta{font-size:.78rem;color:rgba(255,255,255,.4);margin-bottom:1.2rem;line-height:1.7}
+.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;margin-bottom:1.2rem}
+.ds-card{background:rgba(255,255,255,.04);border-radius:8px;padding:.75rem 1rem;border:1px solid rgba(255,255,255,.06)}
+.ds-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.3);margin-bottom:.25rem}
+.ds-val{font-size:1.15rem;font-weight:700;color:#fff}
+.ds-val.green{color:#4ade80}
+.section-hdr{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;
+  color:rgba(255,255,255,.25);margin:.85rem 0 .5rem}
+.uses-list{display:flex;flex-direction:column;gap:.35rem}
+.use-row{background:rgba(255,255,255,.04);border-radius:7px;padding:.6rem .85rem;
+  display:flex;align-items:center;gap:.75rem;font-size:.78rem}
+.use-date{color:rgba(255,255,255,.4);width:80px;flex-shrink:0}
+.use-email{flex:1;color:rgba(255,255,255,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.use-saved{color:#4ade80;font-weight:700;flex-shrink:0}
+.use-source{font-size:.65rem;padding:.15rem .45rem;border-radius:10px;flex-shrink:0}
+.use-source.pos{background:rgba(245,197,24,.12);color:#F5C518}
+.use-source.web{background:rgba(100,160,255,.12);color:#88b4ff}
+.empty-uses{text-align:center;padding:2rem;color:rgba(255,255,255,.25);font-size:.82rem}
+.detail-rules{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.65rem}
+.rule-tag{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;
+  padding:.22rem .65rem;font-size:.72rem;color:rgba(255,255,255,.55)}
+
+/* Toast */
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%) translateY(20px);
+  background:#1a2e40;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:.7rem 1.5rem;
+  font-size:.85rem;color:#fff;z-index:200;opacity:0;transition:all .25s;pointer-events:none}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.success{border-color:rgba(74,222,128,.3);color:#4ade80}
+#toast.error{border-color:rgba(220,50,50,.3);color:#e87070}
+
+.empty-state{text-align:center;padding:4rem 2rem;color:rgba(255,255,255,.25)}
+.empty-state svg{opacity:.15;margin-bottom:1rem}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>Crystal Images</h1>
+  <a href="/admin/dashboard">Dashboard</a>
+  <a href="/admin/orders">Orders</a>
+  <a href="/admin/discount-codes">Codes</a>
+  <a href="/admin/pricing">Pricing</a>
+  <a href="/admin/photographers">Photographers</a>
+  <a href="/admin/settings">Settings</a>
+  <a href="/admin?logout=1">Log out</a>
+</div>
+<div id="layout">
+  <div id="sidebar">
+    <div id="sidebar-nav">
+      <a href="/admin/dashboard" class="nav-link">Dashboard</a>
+      <a href="/admin/pricing" class="nav-link">Pricing</a>
+      <a href="/admin/photographers" class="nav-link">Photographers</a>
+      <a href="/admin/orders" class="nav-link">Orders</a>
+      <a href="/admin/links" class="nav-link">Links</a>
+      <a href="/admin/settings" class="nav-link">Settings</a>
+      <a href="/admin/activities" class="nav-link">Activities</a>
+      <div class="nav-sep"></div>
+      <a href="/admin/discount-codes" class="nav-link active-page">Discount Codes</a>
+      <a href="/admin/trash" class="nav-link">Trash</a>
+    </div>
+  </div>
+  <div id="main">
+    <div class="page-header">
+      <div class="page-title">Discount Codes</div>
+      <button class="btn-secondary" onclick="openGeneratePanel()">Auto-Generate</button>
+      <button class="btn-primary" onclick="openCreatePanel()">+ New Code</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="stats-row">
+      <div class="stat-card"><div class="stat-label">Total Codes</div><div class="stat-val" id="stat-total">—</div></div>
+      <div class="stat-card"><div class="stat-label">Active</div><div class="stat-val yellow" id="stat-active">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Uses</div><div class="stat-val" id="stat-uses">—</div></div>
+      <div class="stat-card"><div class="stat-label">Total Saved</div><div class="stat-val" id="stat-saved">—</div></div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-row">
+      <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
+      <button class="filter-btn" onclick="setFilter('active',this)">Active</button>
+      <button class="filter-btn" onclick="setFilter('inactive',this)">Inactive</button>
+      <button class="filter-btn" onclick="setFilter('expired',this)">Expired</button>
+      <button class="filter-btn" onclick="setFilter('promo',this)">Promo</button>
+      <button class="filter-btn" onclick="setFilter('receipt',this)">Receipt</button>
+      <button class="filter-btn" onclick="setFilter('review',this)">Review</button>
+      <button class="filter-btn" onclick="setFilter('referral',this)">Referral</button>
+      <div class="search-wrap">
+        <input type="text" class="search-input" id="search-input" placeholder="Search codes…" oninput="renderTable()">
+      </div>
+    </div>
+
+    <!-- Table -->
+    <table class="codes-table" id="codes-table">
+      <thead>
+        <tr>
+          <th>Code</th>
+          <th>Discount</th>
+          <th>Rules</th>
+          <th>Source</th>
+          <th>Uses</th>
+          <th>Saved</th>
+          <th>Expires</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="codes-tbody"></tbody>
+    </table>
+    <div id="empty-state" class="empty-state" style="display:none">
+      <div style="font-size:2.5rem;margin-bottom:.75rem">🏷️</div>
+      <div style="font-size:.95rem;margin-bottom:.35rem">No discount codes yet</div>
+      <div style="font-size:.8rem">Create your first code to get started</div>
+    </div>
+  </div>
+</div>
+
+<!-- Side panel -->
+<div id="panel-overlay" onclick="closePanel()"></div>
+<div id="side-panel">
+  <div id="panel-header">
+    <h2 id="panel-title">New Code</h2>
+    <button class="panel-close" onclick="closePanel()">×</button>
+  </div>
+  <div id="panel-body">
+
+    <!-- CREATE / EDIT FORM -->
+    <div id="panel-form">
+      <input type="hidden" id="f-id">
+      <div class="form-section">
+        <div class="form-section-title">Code</div>
+        <div class="form-grid">
+          <div class="field span2">
+            <label>Code</label>
+            <input type="text" id="f-code" placeholder="e.g. SUMMER25 — leave blank to auto-generate" style="text-transform:uppercase">
+            <div class="hint">Letters and numbers only. Leave blank to auto-generate.</div>
+          </div>
+          <div class="field span2">
+            <label>Description (internal note)</label>
+            <input type="text" id="f-description" placeholder="e.g. Summer promo — all digital 25% off">
+          </div>
+          <div class="field">
+            <label>Source / Type</label>
+            <select id="f-source">
+              <option value="promo">Promo / Holiday</option>
+              <option value="receipt">Receipt (follow-up)</option>
+              <option value="review">Review Reward</option>
+              <option value="referral">Referral / Affiliate</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">Discount</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Discount Type</label>
+            <select id="f-type" onchange="onTypeChange()">
+              <option value="percent">Percent off (%)</option>
+              <option value="fixed">Fixed amount off ($)</option>
+              <option value="free_shipping">Free shipping only</option>
+            </select>
+          </div>
+          <div class="field" id="amount-field">
+            <label id="amount-label">Amount (%)</label>
+            <input type="number" id="f-amount" min="0" step="0.01" placeholder="25">
+          </div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="f-free-shipping">
+          <span>Also include free shipping</span>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">Eligibility Rules</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Applies To</label>
+            <select id="f-applies-to">
+              <option value="all">All items</option>
+              <option value="digital">Digital downloads only</option>
+              <option value="prints">Prints only</option>
+              <option value="portraits">Portrait poses only</option>
+              <option value="frames">Frames only</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Min. Order Value ($)</label>
+            <input type="number" id="f-min-order" min="0" step="0.01" placeholder="0">
+            <div class="hint">Order subtotal must be at least this much</div>
+          </div>
+          <div class="field">
+            <label>Min. Item Quantity</label>
+            <input type="number" id="f-min-qty" min="0" step="1" placeholder="0">
+            <div class="hint">Customer must have at least this many items</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-title">Limits & Expiry</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Total Usage Limit</label>
+            <input type="number" id="f-usage-limit" min="1" placeholder="Unlimited">
+          </div>
+          <div class="field">
+            <label>Uses Per Customer</label>
+            <input type="number" id="f-usage-per-user" min="1" placeholder="Unlimited">
+          </div>
+          <div class="field span2">
+            <label>Expiry Date</label>
+            <input type="date" id="f-expires">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="btn-primary" id="btn-save" onclick="saveCode()">Create Code</button>
+        <button class="btn-secondary" onclick="closePanel()">Cancel</button>
+        <button class="btn-danger" id="btn-delete" style="display:none;margin-left:auto" onclick="deleteCode()">Delete</button>
+      </div>
+    </div>
+
+    <!-- AUTO-GENERATE FORM -->
+    <div id="panel-generate" style="display:none">
+      <div class="form-section">
+        <div class="form-section-title">Auto-Generate Codes</div>
+        <div class="form-grid">
+          <div class="field span2">
+            <label>Prefix</label>
+            <input type="text" id="g-prefix" placeholder="e.g. REVIEW, RECEIPT, PROMO" style="text-transform:uppercase">
+            <div class="hint">Generated codes will look like: REVIEW-XK4M2P</div>
+          </div>
+          <div class="field">
+            <label>How Many Codes</label>
+            <input type="number" id="g-count" value="1" min="1" max="100">
+          </div>
+          <div class="field">
+            <label>Discount Type</label>
+            <select id="g-type" onchange="onGenTypeChange()">
+              <option value="percent">Percent off (%)</option>
+              <option value="fixed">Fixed amount ($)</option>
+              <option value="free_shipping">Free shipping</option>
+            </select>
+          </div>
+          <div class="field" id="g-amount-field">
+            <label id="g-amount-label">Amount (%)</label>
+            <input type="number" id="g-amount" min="0" step="0.01" placeholder="25">
+          </div>
+          <div class="field">
+            <label>Source</label>
+            <select id="g-source">
+              <option value="promo">Promo</option>
+              <option value="receipt">Receipt</option>
+              <option value="review">Review Reward</option>
+              <option value="referral">Referral</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Uses Per Code</label>
+            <input type="number" id="g-usage-limit" min="1" placeholder="1">
+          </div>
+          <div class="field span2">
+            <label>Expiry Date</label>
+            <input type="date" id="g-expires">
+          </div>
+          <div class="field span2">
+            <label>Description</label>
+            <input type="text" id="g-description" placeholder="Internal note for these codes">
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn-primary" onclick="generateCodes()">Generate Codes</button>
+        <button class="btn-secondary" onclick="closePanel()">Cancel</button>
+      </div>
+      <div id="g-result" style="display:none;margin-top:1.2rem">
+        <div class="form-section-title">Generated Codes</div>
+        <div id="g-result-list" style="display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem"></div>
+      </div>
+    </div>
+
+    <!-- DETAIL VIEW -->
+    <div id="panel-detail">
+      <div class="detail-code" id="d-code">—</div>
+      <div class="detail-meta" id="d-meta">—</div>
+      <div class="detail-stats">
+        <div class="ds-card"><div class="ds-label">Times Used</div><div class="ds-val" id="d-uses">0</div></div>
+        <div class="ds-card"><div class="ds-label">Total Saved</div><div class="ds-val green" id="d-saved">$0</div></div>
+        <div class="ds-card"><div class="ds-label">Avg. Saved</div><div class="ds-val" id="d-avg">$0</div></div>
+      </div>
+      <div class="detail-rules" id="d-rules"></div>
+      <div style="display:flex;gap:.6rem;margin-bottom:1.2rem">
+        <button class="btn-secondary" onclick="editFromDetail()">Edit</button>
+        <button class="btn-secondary" id="d-toggle-btn" onclick="toggleActive()">Deactivate</button>
+        <button class="btn-secondary" onclick="generateFromTemplate()">Generate Child Code</button>
+        <button class="btn-secondary" id="d-wc-sync-btn" onclick="resyncToWC()" title="Re-sync this code to WooCommerce">↻ WC Sync</button>
+        <button class="btn-danger" style="margin-left:auto" onclick="deleteCode()">Delete</button>
+      </div>
+      <div class="section-hdr">Usage History</div>
+      <div class="uses-list" id="d-uses-list"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let allCodes = [];
+let activeFilter = 'all';
+let currentCode = null;
+let panelMode = 'create'; // create | edit | detail | generate
+
+async function load() {
+  const r = await fetch('/api/admin/discount-codes');
+  const d = await r.json();
+  allCodes = d.codes || [];
+  updateStats();
+  renderTable();
+}
+
+function updateStats() {
+  const now = new Date();
+  const active = allCodes.filter(c => c.active && (!c.expires || new Date(c.expires) > now));
+  const totalUses = allCodes.reduce((s,c) => s + (c.usage_count||0), 0);
+  const totalSaved = allCodes.reduce((s,c) => s + (c.total_saved||0), 0);
+  document.getElementById('stat-total').textContent = allCodes.length;
+  document.getElementById('stat-active').textContent = active.length;
+  document.getElementById('stat-uses').textContent = totalUses;
+  document.getElementById('stat-saved').textContent = '$' + totalSaved.toFixed(2);
+}
+
+function codeStatus(c) {
+  const now = new Date();
+  if (c.expires && new Date(c.expires) < now) return 'expired';
+  return c.active ? 'active' : 'inactive';
+}
+
+function setFilter(f, el) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderTable();
+}
+
+function renderTable() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  const tbody = document.getElementById('codes-tbody');
+  const now = new Date();
+
+  let rows = allCodes.filter(c => {
+    const status = codeStatus(c);
+    if (activeFilter === 'active' && status !== 'active') return false;
+    if (activeFilter === 'inactive' && status !== 'inactive') return false;
+    if (activeFilter === 'expired' && status !== 'expired') return false;
+    if (['promo','receipt','review','referral'].includes(activeFilter) && c.source !== activeFilter) return false;
+    if (q && !c.code.toLowerCase().includes(q) && !(c.description||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  document.getElementById('empty-state').style.display = rows.length ? 'none' : 'block';
+  document.getElementById('codes-table').style.display = rows.length ? '' : 'none';
+
+  tbody.innerHTML = rows.map(c => {
+    const status = codeStatus(c);
+    const badgeCls = status === 'active' ? 'badge-active' : status === 'expired' ? 'badge-expired' : 'badge-inactive';
+    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+
+    const discount = c.type === 'free_shipping' ? 'Free Shipping'
+      : c.type === 'percent' ? `${c.amount}% off`
+      : `$${(c.amount||0).toFixed(2)} off`;
+    const typeLabel = c.type === 'percent' ? 'Percent' : c.type === 'fixed' ? 'Fixed' : 'Shipping';
+
+    const rules = [];
+    if (c.applies_to && c.applies_to !== 'all') rules.push(c.applies_to);
+    if (c.min_order > 0) rules.push(`min $${c.min_order}`);
+    if (c.min_qty > 0) rules.push(`min ${c.min_qty} items`);
+    if (c.free_shipping && c.type !== 'free_shipping') rules.push('+ free ship');
+    const rulesHtml = rules.length ? rules.map(r => `<span class="rule-tag">${r}</span>`).join(' ') : '<span style="color:rgba(255,255,255,.3);font-size:.72rem">No restrictions</span>';
+
+    const limit = c.usage_limit ? c.usage_limit : null;
+    const usePct = limit ? Math.min(100, ((c.usage_count||0)/limit)*100) : 0;
+    const usesHtml = `${c.usage_count||0}${limit ? `/${limit}<div class="uses-bar-wrap"><div class="uses-bar-fill" style="width:${usePct}%"></div></div>` : ''}`;
+
+    const expiresStr = c.expires ? new Date(c.expires).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+
+    const sourceLabels = {promo:'Promo',receipt:'Receipt',review:'Review',referral:'Referral'};
+    const sourceLabel = sourceLabels[c.source] || c.source || '—';
+
+    return `<tr onclick="openDetail('${c.id}')">
+      <td><span class="code-pill">${c.code}</span></td>
+      <td><span class="amount-big">${discount}</span>${c.free_shipping && c.type !== 'free_shipping' ? '<br><span class="type-label">+ Free Ship</span>' : ''}</td>
+      <td>${rulesHtml}</td>
+      <td class="dim">${sourceLabel}</td>
+      <td>${usesHtml}</td>
+      <td class="saved">$${(c.total_saved||0).toFixed(2)}</td>
+      <td class="dim">${expiresStr}</td>
+      <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
+      <td onclick="event.stopPropagation()">
+        <button class="btn-secondary" style="padding:.28rem .65rem;font-size:.72rem" onclick="openEdit('${c.id}')">Edit</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openPanel() {
+  document.getElementById('panel-overlay').classList.add('open');
+  document.getElementById('side-panel').classList.add('open');
+}
+function closePanel() {
+  document.getElementById('panel-overlay').classList.remove('open');
+  document.getElementById('side-panel').classList.remove('open');
+  currentCode = null;
+}
+
+function showPanelSection(section) {
+  document.getElementById('panel-form').style.display = section === 'form' ? 'block' : 'none';
+  document.getElementById('panel-generate').style.display = section === 'generate' ? 'block' : 'none';
+  document.getElementById('panel-detail').style.display = section === 'detail' ? 'block' : 'none';
+}
+
+function openCreatePanel() {
+  panelMode = 'create';
+  document.getElementById('panel-title').textContent = 'New Code';
+  document.getElementById('f-id').value = '';
+  document.getElementById('f-code').value = '';
+  document.getElementById('f-description').value = '';
+  document.getElementById('f-source').value = 'promo';
+  document.getElementById('f-type').value = 'percent';
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-free-shipping').checked = false;
+  document.getElementById('f-applies-to').value = 'all';
+  document.getElementById('f-min-order').value = '';
+  document.getElementById('f-min-qty').value = '';
+  document.getElementById('f-usage-limit').value = '';
+  document.getElementById('f-usage-per-user').value = '';
+  document.getElementById('f-expires').value = '';
+  document.getElementById('btn-save').textContent = 'Create Code';
+  document.getElementById('btn-delete').style.display = 'none';
+  onTypeChange();
+  showPanelSection('form');
+  openPanel();
+}
+
+function openEdit(id) {
+  const c = allCodes.find(x => x.id === id);
+  if (!c) return;
+  currentCode = c;
+  panelMode = 'edit';
+  document.getElementById('panel-title').textContent = 'Edit Code';
+  document.getElementById('f-id').value = c.id;
+  document.getElementById('f-code').value = c.code;
+  document.getElementById('f-description').value = c.description || '';
+  document.getElementById('f-source').value = c.source || 'promo';
+  document.getElementById('f-type').value = c.type || 'percent';
+  document.getElementById('f-amount').value = c.amount || '';
+  document.getElementById('f-free-shipping').checked = !!c.free_shipping;
+  document.getElementById('f-applies-to').value = c.applies_to || 'all';
+  document.getElementById('f-min-order').value = c.min_order || '';
+  document.getElementById('f-min-qty').value = c.min_qty || '';
+  document.getElementById('f-usage-limit').value = c.usage_limit || '';
+  document.getElementById('f-usage-per-user').value = c.usage_limit_per_user || '';
+  document.getElementById('f-expires').value = c.expires ? c.expires.substring(0,10) : '';
+  document.getElementById('btn-save').textContent = 'Save Changes';
+  document.getElementById('btn-delete').style.display = '';
+  onTypeChange();
+  showPanelSection('form');
+  openPanel();
+}
+
+function editFromDetail() {
+  if (currentCode) openEdit(currentCode.id);
+}
+
+function openDetail(id) {
+  const c = allCodes.find(x => x.id === id);
+  if (!c) return;
+  currentCode = c;
+  panelMode = 'detail';
+  document.getElementById('panel-title').textContent = 'Code Detail';
+  document.getElementById('d-code').textContent = c.code;
+
+  const now = new Date();
+  const status = codeStatus(c);
+  const discount = c.type === 'free_shipping' ? 'Free Shipping'
+    : c.type === 'percent' ? `${c.amount}% off`
+    : `$${(c.amount||0).toFixed(2)} off`;
+  const expiresStr = c.expires ? 'Expires ' + new Date(c.expires).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'No expiry';
+  const createdStr = c.created ? 'Created ' + new Date(c.created).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
+  const statusStr = status.charAt(0).toUpperCase() + status.slice(1);
+  const wcSync = c.wc_id
+    ? `<span style="color:#4ade80;font-size:.72rem">✓ WooCommerce synced</span>`
+    : c.wc_sync_error
+      ? `<span style="color:#e87070;font-size:.72rem" title="${c.wc_sync_error}">⚠ WC sync failed — click Sync</span>`
+      : `<span style="color:rgba(255,255,255,.3);font-size:.72rem">WC not synced</span>`;
+  document.getElementById('d-meta').innerHTML = `${discount} · ${statusStr} · ${expiresStr}${createdStr ? ' · ' + createdStr : ''}<br>${wcSync}${c.description ? '<br><em style="font-style:italic;color:rgba(255,255,255,.45)">' + c.description + '</em>' : ''}`;
+
+  document.getElementById('d-uses').textContent = c.usage_count || 0;
+  document.getElementById('d-saved').textContent = '$' + (c.total_saved||0).toFixed(2);
+  const avg = c.usage_count ? (c.total_saved||0) / c.usage_count : 0;
+  document.getElementById('d-avg').textContent = '$' + avg.toFixed(2);
+
+  const rules = [];
+  if (c.applies_to && c.applies_to !== 'all') rules.push(`Applies to: ${c.applies_to}`);
+  if (c.min_order > 0) rules.push(`Min. order $${c.min_order}`);
+  if (c.min_qty > 0) rules.push(`Min. ${c.min_qty} items`);
+  if (c.free_shipping && c.type !== 'free_shipping') rules.push('Includes free shipping');
+  if (c.usage_limit) rules.push(`Limit: ${c.usage_count||0}/${c.usage_limit} uses`);
+  if (c.usage_limit_per_user) rules.push(`${c.usage_limit_per_user} use${c.usage_limit_per_user>1?'s':''} per customer`);
+  document.getElementById('d-rules').innerHTML = rules.map(r => `<span class="rule-tag">${r}</span>`).join('') || '<span style="font-size:.75rem;color:rgba(255,255,255,.3)">No special restrictions</span>';
+
+  const toggleBtn = document.getElementById('d-toggle-btn');
+  toggleBtn.textContent = c.active ? 'Deactivate' : 'Activate';
+
+  const uses = (c.recent_uses || []).slice().reverse();
+  const usesList = document.getElementById('d-uses-list');
+  if (!uses.length) {
+    usesList.innerHTML = '<div class="empty-uses">No uses recorded yet</div>';
+  } else {
+    usesList.innerHTML = uses.map(u => `
+      <div class="use-row">
+        <span class="use-date">${u.date||'—'}</span>
+        <span class="use-email">${u.email||'—'}</span>
+        <span class="use-saved">-$${(u.amount_saved||0).toFixed(2)}</span>
+        <span class="use-source ${u.source||'web'}">${(u.source||'web').toUpperCase()}</span>
+      </div>`).join('');
+  }
+
+  showPanelSection('detail');
+  openPanel();
+}
+
+function openGeneratePanel() {
+  panelMode = 'generate';
+  document.getElementById('panel-title').textContent = 'Auto-Generate Codes';
+  document.getElementById('g-result').style.display = 'none';
+  document.getElementById('g-result-list').innerHTML = '';
+  onGenTypeChange();
+  showPanelSection('generate');
+  openPanel();
+}
+
+function onTypeChange() {
+  const t = document.getElementById('f-type').value;
+  const af = document.getElementById('amount-field');
+  const al = document.getElementById('amount-label');
+  af.style.display = t === 'free_shipping' ? 'none' : '';
+  al.textContent = t === 'percent' ? 'Amount (%)' : 'Amount ($)';
+}
+
+function onGenTypeChange() {
+  const t = document.getElementById('g-type').value;
+  const af = document.getElementById('g-amount-field');
+  const al = document.getElementById('g-amount-label');
+  af.style.display = t === 'free_shipping' ? 'none' : '';
+  al.textContent = t === 'percent' ? 'Amount (%)' : 'Amount ($)';
+}
+
+async function saveCode() {
+  const isEdit = panelMode === 'edit';
+  const id = document.getElementById('f-id').value;
+  const codeVal = document.getElementById('f-code').value.trim().toUpperCase();
+
+  const payload = {
+    code:                 codeVal || undefined,
+    auto_generate:        !codeVal,
+    description:          document.getElementById('f-description').value.trim(),
+    source:               document.getElementById('f-source').value,
+    type:                 document.getElementById('f-type').value,
+    amount:               parseFloat(document.getElementById('f-amount').value) || 0,
+    free_shipping:        document.getElementById('f-free-shipping').checked,
+    applies_to:           document.getElementById('f-applies-to').value,
+    min_order:            parseFloat(document.getElementById('f-min-order').value) || 0,
+    min_qty:              parseInt(document.getElementById('f-min-qty').value) || 0,
+    usage_limit:          parseInt(document.getElementById('f-usage-limit').value) || null,
+    usage_limit_per_user: parseInt(document.getElementById('f-usage-per-user').value) || null,
+    expires:              document.getElementById('f-expires').value || null,
+  };
+
+  const url = isEdit ? `/api/admin/discount-codes/${id}` : '/api/admin/discount-codes';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  const r = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error || 'Error saving code', 'error'); return; }
+
+  showToast(isEdit ? 'Code updated' : `Code created: ${d.code?.code || ''}`, 'success');
+  closePanel();
+  await load();
+}
+
+async function deleteCode() {
+  if (!currentCode) return;
+  if (!confirm(`Delete code "${currentCode.code}"? This cannot be undone.`)) return;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}`, {method:'DELETE'});
+  if (!r.ok) { showToast('Error deleting code', 'error'); return; }
+  showToast('Code deleted', 'success');
+  closePanel();
+  await load();
+}
+
+async function toggleActive() {
+  if (!currentCode) return;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({active: !currentCode.active})
+  });
+  if (!r.ok) { showToast('Error updating code', 'error'); return; }
+  const d = await r.json();
+  showToast(d.code.active ? 'Code activated' : 'Code deactivated', 'success');
+  closePanel();
+  await load();
+}
+
+async function generateCodes() {
+  const count = parseInt(document.getElementById('g-count').value) || 1;
+  const prefix = document.getElementById('g-prefix').value.trim().toUpperCase();
+  const type = document.getElementById('g-type').value;
+  const amount = parseFloat(document.getElementById('g-amount').value) || 0;
+  const source = document.getElementById('g-source').value;
+  const usageLimit = parseInt(document.getElementById('g-usage-limit').value) || null;
+  const expires = document.getElementById('g-expires').value || null;
+  const description = document.getElementById('g-description').value.trim();
+
+  const generated = [];
+  for (let i = 0; i < Math.min(count, 100); i++) {
+    const payload = {
+      auto_generate: true, prefix, type, amount, source, description,
+      usage_limit: usageLimit, expires,
+      free_shipping: type === 'free_shipping',
+    };
+    const r = await fetch('/api/admin/discount-codes', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await r.json();
+    if (r.ok && d.code) generated.push(d.code.code);
+  }
+
+  const resultList = document.getElementById('g-result-list');
+  resultList.innerHTML = generated.map(c =>
+    `<div style="font-family:monospace;font-size:.9rem;color:#F5C518;background:rgba(245,197,24,.08);border-radius:6px;padding:.4rem .75rem;">${c}</div>`
+  ).join('');
+  document.getElementById('g-result').style.display = '';
+  showToast(`${generated.length} code${generated.length!==1?'s':''} generated`, 'success');
+  await load();
+}
+
+async function generateFromTemplate() {
+  if (!currentCode) return;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}/generate`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({})
+  });
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error || 'Error generating code', 'error'); return; }
+  showToast(`Generated: ${d.code.code}`, 'success');
+  closePanel();
+  await load();
+}
+
+async function resyncToWC() {
+  if (!currentCode) return;
+  const btn = document.getElementById('d-wc-sync-btn');
+  btn.textContent = '↻ Syncing…'; btn.disabled = true;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}/wc-sync`, {method:'POST'});
+  const d = await r.json();
+  btn.textContent = '↻ WC Sync'; btn.disabled = false;
+  if (r.ok && d.wc_id) {
+    showToast('Synced to WooCommerce ✓', 'success');
+    currentCode.wc_id = d.wc_id;
+    delete currentCode.wc_sync_error;
+    await load();
+  } else {
+    showToast(d.error || 'Sync failed', 'error');
+  }
+}
+
+function showToast(msg, type='') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `show ${type}`;
+  setTimeout(() => t.className = '', 2500);
+}
+
+load();
+</script>
+</body>
+</html>

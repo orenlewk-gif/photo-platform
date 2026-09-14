@@ -1182,6 +1182,10 @@ def reload_index(token: str = Query("")):
 WC_BASE                  = "https://bigskyphotos.com/wp-json/wc/v3"
 WC_KEY                   = os.getenv("WC_CONSUMER_KEY", "")
 WC_SECRET                = os.getenv("WC_CONSUMER_SECRET", "")
+
+SQUARE_APP_ID            = os.getenv("SQUARE_APP_ID", "")
+SQUARE_ACCESS_TOKEN      = os.getenv("SQUARE_ACCESS_TOKEN", "")
+SQUARE_LOCATION_ID       = os.getenv("SQUARE_LOCATION_ID", "")
 WC_DIGITAL_PRODUCT_ID   = 1152
 WC_PRINT_PRODUCT_ID     = 1156
 WC_FRAME_PARENT_ID      = 1034
@@ -1244,39 +1248,124 @@ def get_frame_photos():
     return {"photos": result}
 
 
+def _wc_coupon_payload(code_obj: dict) -> dict:
+    """Build the WooCommerce coupon creation/update payload from our code object."""
+    ctype = code_obj.get("type", "percent")
+    applies_to = code_obj.get("applies_to", "all")
+
+    if ctype == "free_shipping":
+        wc_type, wc_amount = "percent", "0"
+    elif ctype == "fixed":
+        wc_type, wc_amount = "fixed_cart", str(code_obj.get("amount", 0))
+    else:
+        wc_type, wc_amount = "percent", str(code_obj.get("amount", 0))
+
+    product_ids = []
+    if applies_to == "digital" or applies_to == "portraits":
+        product_ids = [WC_DIGITAL_PRODUCT_ID]
+    elif applies_to == "prints":
+        product_ids = [WC_PRINT_PRODUCT_ID]
+    elif applies_to == "frames":
+        product_ids = [WC_FRAME_PARENT_ID]
+
+    payload = {
+        "code":                 code_obj["code"].lower(),
+        "discount_type":        wc_type,
+        "amount":               wc_amount,
+        "description":          code_obj.get("description", ""),
+        "free_shipping":        bool(code_obj.get("free_shipping", False) or ctype == "free_shipping"),
+        "minimum_amount":       str(code_obj.get("min_order") or 0),
+        "product_ids":          product_ids,
+        "usage_limit":          int(code_obj["usage_limit"]) if code_obj.get("usage_limit") else 0,
+        "usage_limit_per_user": int(code_obj["usage_limit_per_user"]) if code_obj.get("usage_limit_per_user") else 0,
+        "individual_use":       False,
+    }
+    if not code_obj.get("active", True):
+        # Deactivated codes: set expires to yesterday so WC rejects them
+        payload["date_expires"] = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+    elif code_obj.get("expires"):
+        payload["date_expires"] = code_obj["expires"]
+
+    return payload
+
+def _wc_sync_coupon(code_obj: dict) -> dict:
+    """Create or update a coupon in WooCommerce. Returns {"wc_id": int} or {"error": str}."""
+    if not WC_KEY or not WC_SECRET:
+        return {"error": "WooCommerce credentials not configured"}
+    payload = _wc_coupon_payload(code_obj)
+    wc_id = code_obj.get("wc_id")
+    try:
+        if wc_id:
+            r = http_requests.put(f"{WC_BASE}/coupons/{wc_id}", json=payload,
+                                  auth=(WC_KEY, WC_SECRET), timeout=10)
+        else:
+            r = http_requests.post(f"{WC_BASE}/coupons", json=payload,
+                                   auth=(WC_KEY, WC_SECRET), timeout=10)
+        if r.ok:
+            return {"wc_id": r.json().get("id")}
+        return {"error": r.text[:200]}
+    except Exception as e:
+        return {"error": str(e)}
+
+def _wc_delete_coupon(wc_id: int):
+    """Permanently delete a coupon from WooCommerce."""
+    if not WC_KEY or not WC_SECRET or not wc_id:
+        return
+    try:
+        http_requests.delete(f"{WC_BASE}/coupons/{wc_id}", params={"force": True},
+                             auth=(WC_KEY, WC_SECRET), timeout=10)
+    except Exception:
+        pass
+
+
 @app.get("/api/validate-coupon")
-def validate_coupon(code: str = Query("")):
-    if not code.strip():
+def validate_coupon(code: str = Query(""), email: str = Query("")):
+    """Validate a discount code against our own code store."""
+    code_clean = code.strip().upper()
+    if not code_clean:
         return JSONResponse(status_code=400, content={"valid": False, "error": "No code provided"})
-    resp = http_requests.get(
-        f"{WC_BASE}/coupons",
-        params={"code": code.strip(), "per_page": 1},
-        auth=(WC_KEY, WC_SECRET),
-        timeout=10
-    )
-    if not resp.ok:
-        return JSONResponse(status_code=502, content={"valid": False, "error": "Could not reach store"})
-    coupons = resp.json()
-    if not coupons:
+
+    codes = _load_discount_codes()
+    c = next((x for x in codes if x.get("code","").upper() == code_clean), None)
+    if not c:
         return JSONResponse(status_code=404, content={"valid": False, "error": "Invalid coupon code"})
-    coupon = coupons[0]
-    # Check expiry
-    expiry = coupon.get("date_expires")
-    if expiry:
-        exp_dt = datetime.fromisoformat(expiry.replace("Z", "+00:00"))
-        if datetime.now(timezone.utc) > exp_dt:
-            return JSONResponse(status_code=400, content={"valid": False, "error": "This coupon has expired"})
-    # Check usage limit
-    usage_limit = coupon.get("usage_limit")
-    if usage_limit:
-        if int(coupon.get("usage_count", 0)) >= int(usage_limit):
-            return JSONResponse(status_code=400, content={"valid": False, "error": "Coupon usage limit reached"})
+    if not c.get("active", True):
+        return JSONResponse(status_code=400, content={"valid": False, "error": "This code is no longer active"})
+
+    # Expiry check
+    expires = c.get("expires")
+    if expires:
+        try:
+            exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+            if not exp_dt.tzinfo:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > exp_dt:
+                return JSONResponse(status_code=400, content={"valid": False, "error": "This code has expired"})
+        except Exception:
+            pass
+
+    # Usage limit check
+    limit = c.get("usage_limit")
+    if limit and int(c.get("usage_count", 0)) >= int(limit):
+        return JSONResponse(status_code=400, content={"valid": False, "error": "This code has reached its usage limit"})
+
+    # Per-customer limit check
+    per_user = c.get("usage_limit_per_user")
+    if per_user and email:
+        user_uses = sum(1 for u in c.get("uses", []) if u.get("email","").lower() == email.lower())
+        if user_uses >= int(per_user):
+            return JSONResponse(status_code=400, content={"valid": False, "error": "You have already used this code"})
+
     return {
-        "valid":         True,
-        "code":          coupon.get("code", code).lower(),
-        "discount_type": coupon.get("discount_type", "percent"),
-        "amount":        float(coupon.get("amount", 0)),
-        "description":   coupon.get("description", ""),
+        "valid":          True,
+        "code":           c["code"].lower(),
+        "discount_type":  c.get("type", "percent"),
+        "amount":         float(c.get("amount", 0)),
+        "description":    c.get("description", ""),
+        "free_shipping":  c.get("free_shipping", False),
+        "min_order":      float(c.get("min_order", 0)),
+        "min_qty":        int(c.get("min_qty", 0)),
+        "applies_to":     c.get("applies_to", "all"),
     }
 
 
@@ -1477,12 +1566,9 @@ async def create_checkout(request: Request):
                 max_rate = max(PRINT_SHIP[int(p.get("size_idx", 0))] for p in unframed)
                 fee_lines.append({"name": "Shipping", "total": str(max_rate)})
 
-        # ── Coupon discount as negative fee line ─────────────────────────────
-        if coupon_code and coupon_discount > 0:
-            fee_lines.append({
-                "name":  f"Coupon ({coupon_code.upper()})",
-                "total": str(-round(coupon_discount, 2)),
-            })
+        # ── Coupon: use native WooCommerce coupon_lines so it shows as a proper
+        # discount in the checkout page and order receipt (not a fee line).
+        wc_coupon_lines = [{"code": coupon_code}] if coupon_code else []
 
         # (Combo pricing is handled above by adjusting per-album line item prices)
 
@@ -1493,6 +1579,9 @@ async def create_checkout(request: Request):
             {"key": "_photo_files",    "value": ", ".join(filenames)},
             {"key": "_photo_paths",    "value": "|".join(paths)},
         ]
+        if coupon_code:
+            meta.append({"key": "_coupon_code",     "value": coupon_code})
+            meta.append({"key": "_coupon_discount", "value": str(coupon_discount)})
 
         customer_email = body.get("email", "")
         billing_data   = body.get("billing", {})
@@ -1505,11 +1594,12 @@ async def create_checkout(request: Request):
             billing_data = {"email": customer_email}
 
         order_data = {
-            "status":     "pending",
-            "line_items": line_items,
-            "fee_lines":  fee_lines,
-            "meta_data":  meta,
-            "billing":    billing_data,
+            "status":        "pending",
+            "line_items":    line_items,
+            "fee_lines":     fee_lines,
+            "coupon_lines":  wc_coupon_lines,
+            "meta_data":     meta,
+            "billing":       billing_data,
             "shipping":   shipping_data,
         }
         resp = http_requests.post(
@@ -1527,6 +1617,99 @@ async def create_checkout(request: Request):
         pay_url = (f"https://bigskyphotos.com/checkout/order-pay/{order['id']}/"
                    f"?pay_for_order=true&key={order['order_key']}")
         return {"checkout_url": pay_url}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@app.post("/api/pos-checkout")
+async def pos_checkout(request: Request):
+    """Record a completed in-person (Square) sale and deliver the download link."""
+    try:
+        body = await request.json()
+
+        pin  = body.get("pin", "").strip()
+        photog = _auth_photographer(pin)
+        if not photog:
+            return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+
+        customer_email  = body.get("email", "").strip()
+        customer_name   = body.get("name", "").strip()
+        photo_paths     = body.get("photo_paths", [])   # list of R2 keys
+        filenames       = body.get("filenames", [])
+        location        = body.get("location", "")
+        date            = body.get("date", "")
+        total           = float(body.get("total", 0))
+        coupon_code     = body.get("coupon_code", "").strip().lower()
+        coupon_discount = float(body.get("coupon_discount", 0))
+        square_id       = body.get("square_payment_id", "")
+        expire_days_req = int(body.get("expire_days", DOWNLOAD_EXPIRE_DAYS))
+
+        if not customer_email:
+            return JSONResponse(status_code=400, content={"error": "Customer email required"})
+        if not photo_paths:
+            return JSONResponse(status_code=400, content={"error": "No photo paths provided"})
+
+        now     = datetime.now(timezone.utc)
+        token   = str(uuid.uuid4()).replace("-", "")
+        expires = (now + timedelta(days=expire_days_req)).isoformat()
+
+        title = f"Your Photos — {location or date or now.strftime('%B %d, %Y')}"
+
+        pkg = {
+            "token":       token,
+            "title":       title,
+            "emails":      [customer_email],
+            "paths":       photo_paths,
+            "created":     now.isoformat(),
+            "expires":     expires,
+            "expire_days": expire_days_req,
+            "source":      "pos",
+        }
+        _store_pkg(token, pkg)
+
+        order_id = f"pos-{token[:8]}"
+        order_record = {
+            "id":                order_id,
+            "date":              now.strftime("%Y-%m-%d"),
+            "created":           now.isoformat(),
+            "source":            "pos",
+            "photographer_pin":  pin,
+            "photographer_name": photog.get("name", ""),
+            "photographer_id":   photog.get("id", ""),
+            "name":              customer_name,
+            "email":             customer_email,
+            "location":          location,
+            "photo_date":        date,
+            "photo_paths":       "|".join(photo_paths),
+            "filenames":         ", ".join(filenames),
+            "total":             total,
+            "coupon_code":       coupon_code,
+            "coupon_discount":   coupon_discount,
+            "square_payment_id": square_id,
+            "package_token":     token,
+        }
+        _store_pos_order(order_record)
+
+        if coupon_code and coupon_discount > 0:
+            _record_coupon_use(coupon_code.upper(), {
+                "date":         now.strftime("%Y-%m-%d"),
+                "order_id":     order_id,
+                "email":        customer_email,
+                "amount_saved": coupon_discount,
+                "order_total":  total,
+                "source":       "pos",
+            })
+
+        download_url = f"{SITE_URL}/package/{token}"
+        expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
+        _send_package_email([customer_email], title, download_url, len(photo_paths), expire_str)
+
+        return {
+            "order_id":     order_id,
+            "token":        token,
+            "download_url": download_url,
+        }
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -1614,6 +1797,22 @@ async def wc_webhook(request: Request):
         "date":       date,
         "expires":    expires,
     })
+
+    # Record coupon usage from our own meta store
+    wc_coupon = meta.get("_coupon_code", "")
+    wc_coupon_discount = float(meta.get("_coupon_discount", 0) or 0)
+    if wc_coupon and wc_coupon_discount > 0:
+        try:
+            _record_coupon_use(wc_coupon.upper(), {
+                "date":         datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "order_id":     str(order_id),
+                "email":        customer_email,
+                "amount_saved": wc_coupon_discount,
+                "order_total":  float(order.get("total", 0)),
+                "source":       "web",
+            })
+        except Exception:
+            pass
 
     download_url = f"{SITE_URL}/download/{token}"
 
@@ -2013,7 +2212,7 @@ def _order_row(order) -> dict:
     line_items   = order.get("line_items", [])
     what_ordered = ", ".join(li.get("name","") for li in line_items)
     coupon_lines = order.get("coupon_lines", [])
-    coupon_code  = ", ".join(c.get("code","") for c in coupon_lines) if coupon_lines else ""
+    coupon_code  = ", ".join(c.get("code","") for c in coupon_lines) if coupon_lines else meta.get("_coupon_code", "")
     return {
         "order_id":    order.get("id"),
         "date":        order.get("date_created","")[:10],
@@ -2056,6 +2255,61 @@ def _fetch_wc_orders_all(after: str = None, before: str = None, max_pages: int =
         except Exception:
             break
     return all_orders
+
+
+# ── POS order storage ─────────────────────────────────────────────────────────
+
+def _store_pos_order(record: dict):
+    key = f"pos_orders/{record['date']}_{record['id']}.json"
+    s3.put_object(Bucket=R2_BUCKET, Key=key,
+                  Body=json.dumps(record).encode(), ContentType="application/json")
+
+def _fetch_pos_orders(after: str = None, before: str = None) -> list:
+    orders = []
+    try:
+        paginator = s3.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="pos_orders/"):
+            for obj in page.get("Contents", []):
+                try:
+                    data = s3.get_object(Bucket=R2_BUCKET, Key=obj["Key"])
+                    orders.append(json.loads(data["Body"].read()))
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    if after or before:
+        a, b = (after or "")[:10], (before or "")[:10]
+        orders = [o for o in orders
+                  if (not a or o.get("date","") >= a)
+                  and (not b or o.get("date","") <= b)]
+    return sorted(orders, key=lambda o: o.get("created",""), reverse=True)
+
+def _pos_order_row(o: dict) -> dict:
+    total    = float(o.get("total", 0))
+    discount = float(o.get("coupon_discount", 0))
+    name     = o.get("name", "")
+    parts    = name.split(None, 1) if name else ["", ""]
+    return {
+        "order_id":    o.get("id"),
+        "date":        o.get("date", o.get("created","")[:10]),
+        "first":       parts[0],
+        "last":        parts[1] if len(parts) > 1 else "",
+        "email":       o.get("email",""),
+        "what":        f"In-Person — {o.get('location','')}",
+        "filenames":   o.get("filenames",""),
+        "location":    o.get("location",""),
+        "photo_date":  o.get("photo_date",""),
+        "total":       total,
+        "discount":    discount,
+        "stripe_fee":  0,
+        "net":         round(total - discount, 2),
+        "shipping":    0,
+        "ship_addr":   "",
+        "coupon_code": o.get("coupon_code",""),
+        "photo_paths": o.get("photo_paths",""),
+        "source":      "pos",
+        "photographer": o.get("photographer_name",""),
+    }
 
 
 @app.get("/admin/reports", response_class=HTMLResponse)
@@ -2530,6 +2784,7 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
     <a href="/admin/settings" class="nav-link">Settings</a>
     <div id="sidebar-tree"></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
+      <a href="/admin/discount-codes" class="nav-link">Discount Codes</a>
       <a href="/admin/trash" class="nav-link">Trash</a>
     </div>
   </div>
@@ -2869,6 +3124,27 @@ def _load_clock_records():  return _r2_json_load("meta/clock_records.json", [])
 def _save_clock_records(d): _r2_json_save("meta/clock_records.json", d)
 def _load_trash_meta():     return _r2_json_load("meta/trash_meta.json", [])
 def _save_trash_meta(d):    _r2_json_save("meta/trash_meta.json", d)
+def _load_discount_codes(): return _r2_json_load("meta/discount_codes.json", [])
+def _save_discount_codes(d):_r2_json_save("meta/discount_codes.json", d)
+
+def _record_coupon_use(code_upper: str, use: dict):
+    """Thread-unsafe append — fine for low-volume photo platform."""
+    codes = _load_discount_codes()
+    for c in codes:
+        if c.get("code","").upper() == code_upper:
+            c["usage_count"] = int(c.get("usage_count", 0)) + 1
+            c["total_saved"] = round(float(c.get("total_saved", 0)) + float(use.get("amount_saved", 0)), 2)
+            uses = c.get("uses", [])
+            uses.append(use)
+            c["uses"] = uses[-500:]   # cap history at 500 entries
+            break
+    _save_discount_codes(codes)
+
+import random, string as _string
+def _generate_code(prefix: str = "", length: int = 6) -> str:
+    chars = _string.ascii_uppercase + _string.digits
+    suffix = "".join(random.choices(chars, k=length))
+    return f"{prefix.upper()}{suffix}" if prefix else suffix
 
 def _auth_photographer(pin: str):
     for p in _load_photographers():
@@ -3416,6 +3692,195 @@ def photographer_commission(request: Request,
             "clock_records": shifts,
         })
     return {"commission": result, "date_from": date_from, "date_to": date_to}
+
+
+# ─────────────────────────────────────────
+# DISCOUNT CODE ADMIN API
+# ─────────────────────────────────────────
+
+@app.get("/api/admin/discount-codes")
+def api_list_discount_codes(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    codes = _load_discount_codes()
+    # Return codes without the full uses history (use /api/admin/discount-codes/{id} for that)
+    summary = []
+    for c in codes:
+        s = {k: v for k, v in c.items() if k != "uses"}
+        s["recent_uses"] = c.get("uses", [])[-5:]
+        summary.append(s)
+    return {"codes": summary}
+
+@app.post("/api/admin/discount-codes")
+async def api_create_discount_code(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+
+    auto = body.get("auto_generate", False)
+    prefix = body.get("prefix", "").strip().upper()
+    if auto:
+        code = _generate_code(prefix=prefix)
+    else:
+        code = body.get("code", "").strip().upper()
+
+    if not code:
+        return JSONResponse(status_code=400, content={"error": "Code is required"})
+
+    codes = _load_discount_codes()
+    if any(c.get("code","").upper() == code for c in codes):
+        return JSONResponse(status_code=400, content={"error": f"Code '{code}' already exists"})
+
+    ctype = body.get("type", "percent")
+    if ctype not in ("percent", "fixed", "free_shipping"):
+        return JSONResponse(status_code=400, content={"error": "type must be percent, fixed, or free_shipping"})
+
+    new_code = {
+        "id":                    str(uuid.uuid4())[:8],
+        "code":                  code,
+        "created":               datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "description":           body.get("description", "").strip(),
+        "source":                body.get("source", "promo"),  # promo | receipt | review | referral
+        "type":                  ctype,
+        "amount":                float(body.get("amount", 0)),
+        "free_shipping":         bool(body.get("free_shipping", False)),
+        "applies_to":            body.get("applies_to", "all"),  # all | digital | prints | portraits | frames
+        "min_order":             float(body.get("min_order", 0)),
+        "min_qty":               int(body.get("min_qty", 0)),
+        "usage_limit":           body.get("usage_limit") or None,
+        "usage_limit_per_user":  body.get("usage_limit_per_user") or None,
+        "expires":               body.get("expires") or None,
+        "active":                True,
+        "usage_count":           0,
+        "total_saved":           0.0,
+        "uses":                  [],
+    }
+
+    # Sync to WooCommerce so native coupon_lines work in checkout
+    wc_result = _wc_sync_coupon(new_code)
+    if "wc_id" in wc_result:
+        new_code["wc_id"] = wc_result["wc_id"]
+    else:
+        new_code["wc_sync_error"] = wc_result.get("error", "")
+
+    codes.append(new_code)
+    _save_discount_codes(codes)
+    return {"code": {k: v for k, v in new_code.items() if k != "uses"}}
+
+@app.get("/api/admin/discount-codes/{cid}")
+def api_get_discount_code(cid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    codes = _load_discount_codes()
+    c = next((x for x in codes if x.get("id") == cid), None)
+    if not c:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    return {"code": c}
+
+@app.put("/api/admin/discount-codes/{cid}")
+async def api_update_discount_code(cid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    codes = _load_discount_codes()
+    WC_SYNC_FIELDS = {"description","source","type","amount","free_shipping",
+                      "applies_to","min_order","min_qty","usage_limit",
+                      "usage_limit_per_user","expires","active"}
+    for c in codes:
+        if c.get("id") == cid:
+            changed_wc = any(f in body for f in WC_SYNC_FIELDS)
+            for field in WC_SYNC_FIELDS:
+                if field in body:
+                    c[field] = body[field]
+            if changed_wc:
+                wc_result = _wc_sync_coupon(c)
+                if "wc_id" in wc_result:
+                    c["wc_id"] = wc_result["wc_id"]
+                    c.pop("wc_sync_error", None)
+                else:
+                    c["wc_sync_error"] = wc_result.get("error", "")
+            _save_discount_codes(codes)
+            return {"code": {k: v for k, v in c.items() if k != "uses"}}
+    return JSONResponse(status_code=404, content={"error": "Not found"})
+
+@app.delete("/api/admin/discount-codes/{cid}")
+async def api_delete_discount_code(cid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    all_codes = _load_discount_codes()
+    to_delete = next((c for c in all_codes if c.get("id") == cid), None)
+    if to_delete and to_delete.get("wc_id"):
+        _wc_delete_coupon(to_delete["wc_id"])
+    codes = [c for c in all_codes if c.get("id") != cid]
+    _save_discount_codes(codes)
+    return {"deleted": True}
+
+@app.post("/api/admin/discount-codes/{cid}/wc-sync")
+async def api_wc_sync_code(cid: str, request: Request):
+    """Manually push a code to WooCommerce (or re-sync if it previously failed)."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    codes = _load_discount_codes()
+    c = next((x for x in codes if x.get("id") == cid), None)
+    if not c:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    result = _wc_sync_coupon(c)
+    if "wc_id" in result:
+        c["wc_id"] = result["wc_id"]
+        c.pop("wc_sync_error", None)
+        _save_discount_codes(codes)
+        return {"wc_id": result["wc_id"]}
+    c["wc_sync_error"] = result.get("error", "")
+    _save_discount_codes(codes)
+    return JSONResponse(status_code=502, content={"error": result.get("error", "WC sync failed")})
+
+
+@app.post("/api/admin/discount-codes/{cid}/generate")
+async def api_generate_child_code(cid: str, request: Request):
+    """Generate a new unique one-off code using an existing code as a template."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    codes = _load_discount_codes()
+    template = next((c for c in codes if c.get("id") == cid), None)
+    if not template:
+        return JSONResponse(status_code=404, content={"error": "Template code not found"})
+
+    prefix = body.get("prefix", template.get("code", "")).rstrip("-") + "-"
+    new_code_str = _generate_code(prefix=prefix, length=6)
+    while any(c.get("code","").upper() == new_code_str for c in codes):
+        new_code_str = _generate_code(prefix=prefix, length=6)
+
+    new_code = {k: v for k, v in template.items() if k not in ("id","code","usage_count","total_saved","uses")}
+    new_code.update({
+        "id":            str(uuid.uuid4())[:8],
+        "code":          new_code_str,
+        "created":       datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+        "template_id":   cid,
+        "usage_count":   0,
+        "total_saved":   0.0,
+        "uses":          [],
+        "expires":       body.get("expires") or template.get("expires"),
+        "usage_limit":   body.get("usage_limit") or template.get("usage_limit"),
+        "description":   body.get("description") or template.get("description",""),
+    })
+    wc_result = _wc_sync_coupon(new_code)
+    if "wc_id" in wc_result:
+        new_code["wc_id"] = wc_result["wc_id"]
+    else:
+        new_code["wc_sync_error"] = wc_result.get("error", "")
+
+    codes.append(new_code)
+    _save_discount_codes(codes)
+    return {"code": {k: v for k, v in new_code.items() if k != "uses"}}
+
+
+@app.get("/admin/discount-codes", response_class=HTMLResponse)
+def admin_discount_codes_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/discount-codes")
+    return HTMLResponse(open("templates/admin_discounts.html").read())
+
 
 # ─────────────────────────────────────────
 # FRONTEND
