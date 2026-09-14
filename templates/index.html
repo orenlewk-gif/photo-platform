@@ -803,14 +803,9 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pose-how-btn:hover{color:rgba(255,255,255,.7)}
 .pose-price-tag{font-size:.88rem;color:#F5C518;font-weight:700;white-space:nowrap}
 .pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
-.pose-gallery .thumb-card{aspect-ratio:3/2}
-.pose-gallery .thumb-card img{height:100%;object-fit:cover}
-.pose-single-sel{position:absolute;bottom:6px;left:6px;z-index:6;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.35);color:#fff;font-size:.68rem;font-weight:600;border-radius:5px;padding:.2rem .5rem;opacity:0;transition:opacity .12s;pointer-events:all;cursor:pointer}
-.pose-single-sel.active{background:rgba(245,197,24,.85);border-color:#F5C518;color:#07151f;opacity:1}
-.thumb-card:hover .pose-single-sel{opacity:1}
-@media(hover:none)and(pointer:coarse){.pose-single-sel{opacity:1}}
 /* Portrait intro */
-.pose-intro{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:.9rem 1.1rem;margin-bottom:1.25rem;font-size:.82rem;color:rgba(255,255,255,.6);line-height:1.6}
+.pose-intro{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.96rem;color:rgba(255,255,255,.7);line-height:1.65}
+.pose-savings-hint{font-size:.78rem;color:#4ade80;background:rgba(74,222,128,.07);border:1px solid rgba(74,222,128,.2);border-radius:6px;padding:.28rem .7rem;white-space:nowrap}
 .pose-intro strong{color:rgba(255,255,255,.85)}
 /* Portrait pricing modal */
 .pp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99990;align-items:center;justify-content:center}
@@ -1762,9 +1757,7 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
     ${folderInfoHtml}
     ${previewBanner}
     <div class="pose-intro">
-      Your photos are organized by pose — each section shows every photo taken at that angle or spot.
-      Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click <strong>+ Select</strong> to add a single photo.
-      Buying more poses lowers the per-pose price automatically. <button style="background:none;border:none;color:#F5C518;font-size:.82rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
+      Our portrait photos are sold by the pose. Below you will see a set of poses. A pose is considered a set of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose as well. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click <strong>+ Select</strong> to add a single photo. <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
     </div>
     <div id="pose-sections"></div>`;
 
@@ -1778,55 +1771,82 @@ function renderPoseSections(photos) {
   const sections = document.getElementById('pose-sections');
   if (!sections) return;
 
+  sections.innerHTML = '';
   const fullPoseCount = Object.values(_poseState).filter(v => v === 'pose').length;
 
-  sections.innerHTML = _poseData.poses.map((pose, pi) => {
-    const color     = pose.color || '';
-    const label     = pose.label || `Pose ${pi + 1}`;
-    const files     = pose.files || [];
+  _poseData.poses.forEach((pose, pi) => {
+    const color      = pose.color || '';
+    const label      = pose.label || `Pose ${pi + 1}`;
+    const files      = pose.files || [];
     const posePhotos = files.map(f => photoByFilename[f]).filter(Boolean);
-    const dotColor  = color.startsWith('#') ? color : (POSE_COLOR_CSS[color] || '#9ca3af');
+    const dotColor   = color.startsWith('#') ? color : (POSE_COLOR_CSS[color] || '#9ca3af');
     const isFullPose = _poseState[color] === 'pose';
+    const singleSet  = (_poseState[color] instanceof Set) ? _poseState[color] : null;
 
     const nextPoseCount = isFullPose ? fullPoseCount : fullPoseCount + 1;
     const posePrice = calcPosePrice(nextPoseCount);
     const priceTag  = isFullPose
       ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)})</span>`
       : `<span class="pose-price-tag">$${posePrice.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`;
-
     const buyBtn = color
       ? `<button class="pose-buy-btn ${isFullPose ? 'selected' : ''}"
-           onclick="togglePosePurchase('${color}', ${pi})">${isFullPose ? '✓ Pose added' : 'Buy this pose'}</button>`
+           onclick="togglePosePurchase('${color}',${pi})">${isFullPose ? '✓ Pose added' : 'Buy this pose'}</button>`
       : '';
 
-    const thumbsHtml = posePhotos.map((photo, idx) => {
-      const globalIdx = photos.findIndex(p => p.path === photo.path);
-      const src = imgCache[photo.path] || `/api/photo?path=${enc(photo.path)}&size=thumb&v=3`;
-      if (!imgCache[photo.path]) imgCache[photo.path] = src;
-      const singleSet = (_poseState[color] instanceof Set) ? _poseState[color] : null;
-      const isSingleSelected = singleSet && singleSet.has(globalIdx);
-      const selLabel = isSingleSelected ? '✓ Selected' : '+ Select';
-      return `<div class="thumb-card" data-idx="${globalIdx}" data-path="${photo.path}"
-        onclick="openLB(${globalIdx})"
-        onmouseenter="showThumbHover(this,${globalIdx})"
-        onmouseleave="hideThumbHover(this)">
-        <img src="${src}" alt="${photo.filename || ''}" loading="lazy" />
-        <span class="pose-single-sel${isSingleSelected?' active':''}" onclick="event.stopPropagation();togglePoseSingle(${globalIdx},'${color}')">${selLabel}</span>
-      </div>`;
-    }).join('');
+    // Build section
+    // Savings hint: shown after a pose is added, tells user the next pose is cheaper
+    const nextTierPrice = isFullPose ? calcPosePrice(fullPoseCount + 1) : null;
+    const currentPosePrice = calcPosePrice(fullPoseCount);
+    const savingsHint = (isFullPose && nextTierPrice !== null && nextTierPrice < currentPosePrice)
+      ? `<span class="pose-savings-hint">+ Add another pose for only $${nextTierPrice.toFixed(2)}</span>`
+      : '';
 
-    return `<div class="pose-section" id="pose-sec-${pi}">
+    const section = document.createElement('div');
+    section.className = 'pose-section';
+    section.id = `pose-sec-${pi}`;
+    section.innerHTML = `
       <div class="pose-header">
-        ${color ? `<span class="pose-color-dot" style="background:${dotColor}"></span>` : ''}
         <span class="pose-label">${label}</span>
         <span class="pose-count">${files.length} photo${files.length !== 1 ? 's' : ''}</span>
         ${priceTag}
+        ${savingsHint}
         ${buyBtn}
         <button class="pose-how-btn" onclick="openPPModal()">How pricing works?</button>
       </div>
-      <div class="pose-gallery">${thumbsHtml}</div>
-    </div>`;
-  }).join('');
+      <div class="pose-gallery" id="pose-gallery-${pi}"></div>`;
+    sections.appendChild(section);
+
+    // Build cards using same structure as renderThumbs
+    const galleryEl = section.querySelector('.pose-gallery');
+    posePhotos.forEach(photo => {
+      const globalIdx = photos.findIndex(p => p.path === photo.path);
+      const isSingleSel = singleSet ? singleSet.has(globalIdx) : false;
+      const card = document.createElement('div');
+      card.className = 'thumb-card' + (isFullPose || isSingleSel ? ' selected' : '');
+      card.dataset.idx = globalIdx;
+      card.innerHTML = `
+        <div class="card-btn-row">
+          <div class="select-check" data-idx="${globalIdx}">✓</div>
+        </div>
+        <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
+        <div class="watermark"></div>
+        <button class="card-shop-btn" data-idx="${globalIdx}"><svg class="cart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="cart-label"> Shop</span></button>
+        <div class="card-fname">${photo.filename || ''}</div>`;
+
+      card.querySelector('.select-check').addEventListener('click', e => {
+        e.stopPropagation();
+        togglePoseSingle(globalIdx, color);
+      });
+      card.querySelector('.card-shop-btn').addEventListener('click', e => {
+        e.stopPropagation();
+        openQuickShop(globalIdx);
+      });
+      card.addEventListener('click', () => openLB(globalIdx));
+
+      galleryEl.appendChild(card);
+    });
+    lazyLoad(galleryEl);
+  });
 }
 
 function togglePosePurchase(color, poseIdx) {
@@ -1857,18 +1877,20 @@ function updatePoseCart() {
   const count = fullPoses + singles;
   const cartBar = document.getElementById('cart-bar');
   if (!cartBar) return;
-  if (count === 0) {
-    cartBar.classList.remove('visible');
+  if (count === 0 && printCart.length === 0) {
+    cartBar.classList.remove('show');
+    document.getElementById('main-container').style.paddingBottom = '';
     return;
   }
-  cartBar.classList.add('visible');
+  cartBar.classList.add('show');
+  document.getElementById('main-container').style.paddingBottom = '80px';
   const parts = [];
   if (fullPoses) parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''} @ $${posePrice.toFixed(2)}`);
-  if (singles)   parts.push(`${singles} single photo${singles !== 1 ? 's' : ''} @ $${singlePrice.toFixed(2)}`);
-  const totalEl  = document.getElementById('cart-total');
-  const countEl  = document.getElementById('cart-count');
+  if (singles)   parts.push(`${singles} photo${singles !== 1 ? 's' : ''} @ $${singlePrice.toFixed(2)}`);
+  const totalEl = document.getElementById('cart-total');
+  const countEl = document.getElementById('cart-count');
   if (totalEl) totalEl.textContent = `$${total.toFixed(2)}`;
-  if (countEl) countEl.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+  if (countEl) countEl.textContent = parts.join(' + ') || `${count} item${count !== 1 ? 's' : ''}`;
 }
 
 function openPPModal() {
@@ -2791,6 +2813,11 @@ function openCheckout() {
             return p ? p.path : '';
           }).filter(Boolean),
           family: _poseFam,
+        });
+      } else if (_poseState[color] instanceof Set) {
+        _poseState[color].forEach(globalIdx => {
+          const photo = allPhotos[globalIdx];
+          if (photo) singlesList.push({ path: photo.path, pose_label: pose.label, color, family: _poseFam });
         });
       }
     });

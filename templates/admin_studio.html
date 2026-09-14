@@ -1671,17 +1671,17 @@ function initPoseAssign(files) {
   document.getElementById('detected-folders').style.display = 'none';
   document.getElementById('folder-name-field').style.display = 'block';
   document.getElementById('pose-assign-panel').style.display = 'block';
-  renderPosePanel();
+  renderPosePanel(true);
 }
 
-function renderPosePanel() {
+function renderPosePanel(fullRebuild) {
   const panel = document.getElementById('pose-assign-panel');
   const total = poseFiles.length;
   const assigned = new Set(poseGroups.flatMap(g => [...g.indices]));
   const unassigned = total - assigned.size;
   const sel = poseSelection.size;
 
-  // Legend HTML
+  // Build legend + toolbar HTML (lightweight, no imgs)
   let legendHtml = '';
   poseGroups.forEach((g, gi) => {
     legendHtml += `<span class="pose-pill" onclick="activatePosePill(${gi})" title="Click to add selection to this pose">
@@ -1696,36 +1696,69 @@ function renderPosePanel() {
     <span class="pp-count">(${unassigned})</span>
   </span>`;
 
-  // Thumbnails HTML
-  let thumbsHtml = '';
-  for (let i = 0; i < poseFiles.length; i++) {
-    const f = poseFiles[i];
+  // First render: build the full panel structure including img elements
+  if (fullRebuild || !panel.querySelector('.pose-grid')) {
+    let thumbsHtml = '';
+    for (let i = 0; i < poseFiles.length; i++) {
+      const f = poseFiles[i];
+      const isSel = poseSelection.has(i);
+      const grpIdx = poseGroups.findIndex(g => g.indices.has(i));
+      const color = grpIdx >= 0 ? POSE_COLORS[grpIdx % POSE_COLORS.length] : '';
+      thumbsHtml += `<div class="pose-thumb${isSel?' pt-selected':''}${grpIdx>=0?' pt-assigned':''}"
+        data-idx="${i}" onclick="poseThumbClick(event,${i})">
+        <img src="${esc(poseObjURLs[i])}" loading="lazy" alt="${esc(f.name)}">
+        <div class="pt-badge" style="${color?'background:'+color:''}"></div>
+        <div class="pt-num">${i+1}</div>
+      </div>`;
+    }
+    panel.innerHTML = `
+      <div class="pose-header-row">
+        <span class="pose-header-title">Pose Assignment</span>
+        <span class="pose-header-meta" id="pose-meta">${total} photos${sel?' · '+sel+' selected':''}</span>
+      </div>
+      <div class="pose-toolbar" id="pose-toolbar">
+        <button class="pose-tbtn primary" id="pose-btn-new" onclick="assignToNewPose()" ${sel===0?'disabled':''}>+ New Pose</button>
+        <button class="pose-tbtn" onclick="poseSelectAll()">Select All</button>
+        <button class="pose-tbtn" onclick="poseSelectUnassigned()">Unassigned</button>
+        <button class="pose-tbtn" onclick="poseClearSelection()">Clear</button>
+        ${poseGroups.length ? `<button class="pose-tbtn" id="pose-btn-reset" onclick="clearPoseGroups()" style="margin-left:auto;color:rgba(255,80,80,.7)">Reset Poses</button>` : '<span id="pose-btn-reset" style="display:none"></span>'}
+      </div>
+      <div class="pose-legend" id="pose-legend">${legendHtml||'<span class="pose-empty-hint">Select photos and click + New Pose to begin</span>'}</div>
+      <div class="pose-grid">${thumbsHtml}</div>
+    `;
+    return;
+  }
+
+  // Fast update: only toggle CSS classes on existing thumb elements, update text nodes
+  const metaEl = panel.querySelector('#pose-meta');
+  if (metaEl) metaEl.textContent = `${total} photos${sel?' · '+sel+' selected':''}`;
+
+  const newBtn = panel.querySelector('#pose-btn-new');
+  if (newBtn) newBtn.disabled = sel === 0;
+
+  const resetBtn = panel.querySelector('#pose-btn-reset');
+  if (resetBtn) {
+    if (poseGroups.length) {
+      resetBtn.style.display = '';
+      resetBtn.style.marginLeft = 'auto';
+    } else {
+      resetBtn.style.display = 'none';
+    }
+  }
+
+  const legendEl = panel.querySelector('#pose-legend');
+  if (legendEl) legendEl.innerHTML = legendHtml || '<span class="pose-empty-hint">Select photos and click + New Pose to begin</span>';
+
+  panel.querySelectorAll('.pose-thumb').forEach(el => {
+    const i = parseInt(el.dataset.idx, 10);
     const isSel = poseSelection.has(i);
     const grpIdx = poseGroups.findIndex(g => g.indices.has(i));
     const color = grpIdx >= 0 ? POSE_COLORS[grpIdx % POSE_COLORS.length] : '';
-    thumbsHtml += `<div class="pose-thumb${isSel?' pt-selected':''}${grpIdx>=0?' pt-assigned':''}"
-      data-idx="${i}" onclick="poseThumbClick(event,${i})">
-      <img src="${esc(poseObjURLs[i])}" loading="lazy" alt="${esc(f.name)}">
-      <div class="pt-badge" style="${color?'background:'+color:''}"></div>
-      <div class="pt-num">${i+1}</div>
-    </div>`;
-  }
-
-  panel.innerHTML = `
-    <div class="pose-header-row">
-      <span class="pose-header-title">Pose Assignment</span>
-      <span class="pose-header-meta">${total} photos${sel?' · '+sel+' selected':''}</span>
-    </div>
-    <div class="pose-toolbar">
-      <button class="pose-tbtn primary" onclick="assignToNewPose()" ${sel===0?'disabled':''}>+ New Pose</button>
-      <button class="pose-tbtn" onclick="poseSelectAll()">Select All</button>
-      <button class="pose-tbtn" onclick="poseSelectUnassigned()">Unassigned</button>
-      <button class="pose-tbtn" onclick="poseClearSelection()">Clear</button>
-      ${poseGroups.length ? `<button class="pose-tbtn" onclick="clearPoseGroups()" style="margin-left:auto;color:rgba(255,80,80,.7)">Reset Poses</button>` : ''}
-    </div>
-    <div class="pose-legend">${legendHtml||'<span class="pose-empty-hint">Select photos and click + New Pose to begin</span>'}</div>
-    <div class="pose-grid">${thumbsHtml}</div>
-  `;
+    el.classList.toggle('pt-selected', isSel);
+    el.classList.toggle('pt-assigned', grpIdx >= 0);
+    const badge = el.querySelector('.pt-badge');
+    if (badge) badge.style.background = color || '';
+  });
 }
 
 function poseThumbClick(e, idx) {
