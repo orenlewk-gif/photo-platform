@@ -802,7 +802,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pose-how-btn{background:none;border:none;color:rgba(255,255,255,.4);font-size:.75rem;cursor:pointer;padding:.2rem .4rem;border-radius:4px;text-decoration:underline;white-space:nowrap}
 .pose-how-btn:hover{color:rgba(255,255,255,.7)}
 .pose-price-tag{font-size:.88rem;color:#F5C518;font-weight:700;white-space:nowrap}
-.pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
 /* Pose gallery select button — pill with "Select" label */
 .pose-gallery .select-check{width:auto;height:auto;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;letter-spacing:.03em;white-space:nowrap}
 .pose-gallery .select-check::after{content:"Select"}
@@ -1799,7 +1799,7 @@ function _poseHeaderHTML(pose, pi, fullPoseCount) {
   const perPose   = calcPosePrice(posesWithoutThis + 1);
   const nextMarginal = calcTotalCost(fullPoseCount + 1) - calcTotalCost(fullPoseCount);
   const priceTag  = isFullPose
-    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose) · <span style="color:#F5C518;font-weight:500">+$${nextMarginal.toFixed(2)} for another</span></span>`
+    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose) <span style="color:#F5C518;font-weight:500">+$${nextMarginal.toFixed(2)} for another</span></span>`
     : posesWithoutThis === 0
       ? `<span class="pose-price-tag">$${marginal.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`
       : `<span class="pose-price-tag">+$${marginal.toFixed(2)} more · $${perPose.toFixed(2)}/pose</span>`;
@@ -1942,6 +1942,7 @@ function updatePoseCart() {
   if (singles)   parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
   document.getElementById('cart-count-text').textContent = parts.join(' + ');
   document.getElementById('cart-price-text').textContent = `$${total.toFixed(2)}`;
+  updateHeaderCartBtn();
   // Portrait mode: adjust cart bar buttons
   const saBtn  = document.getElementById('cart-select-all-btn');
   const viewBtn = document.getElementById('cart-view-btn');
@@ -1986,44 +1987,75 @@ function clearPoseCart() {
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.querySelectorAll('.pose-gallery.pose-full-selected').forEach(g => g.classList.remove('pose-full-selected'));
   updatePoseHeaders();
-  updatePoseCart();
+  updatePoseCart(); // also resets cart bar + header count
 }
 function renderPoseCartView() {
   const body = document.getElementById('pose-cartview-body');
   if (!body || !_poseData) return;
   const { fullPoses, singles, total, posePrice, singlePrice } = calcPortraitTotal();
+
+  // Build filename → photo map for thumbnail lookup
+  const photoByFilename = {};
+  allPhotos.forEach(p => { photoByFilename[p.filename || p.path.split('/').pop()] = p; });
+
+  const thumbRow = (photos) => {
+    const SHOW = 5;
+    const shown = photos.slice(0, SHOW);
+    const rest  = photos.length - SHOW;
+    let t = '<div class="cartview-photo-grid" style="margin:.5rem 0 .75rem">';
+    shown.forEach(p => {
+      const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+      t += `<div class="cartview-thumb"><img src="${src}" alt="" /></div>`;
+    });
+    if (rest > 0) t += `<div class="cv-more-badge">+${rest}</div>`;
+    t += '</div>';
+    return t;
+  };
+
   let html = '';
+
   // Full poses
   (_poseData.poses || []).forEach((pose, pi) => {
     const color = pose.color || '';
     if (_poseState[color] !== 'pose') return;
-    const count = (pose.files || []).length;
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
-      <div>
-        <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`}</div>
-        <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${count} photo${count !== 1 ? 's' : ''} · Full pose digital download</div>
+    const posePhotos = (pose.files || []).map(f => photoByFilename[f]).filter(Boolean);
+    const count = posePhotos.length || (pose.files || []).length;
+    html += `<div style="padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`}</div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${count} photo${count !== 1 ? 's' : ''} · Full pose digital download</div>
+        </div>
+        <div style="font-weight:700;color:#F5C518">$${posePrice.toFixed(2)}</div>
       </div>
-      <div style="font-weight:700;color:#F5C518">$${posePrice.toFixed(2)}</div>
+      ${posePhotos.length ? thumbRow(posePhotos) : ''}
     </div>`;
   });
+
   // Singles
   (_poseData.poses || []).forEach((pose, pi) => {
     const color = pose.color || '';
     if (!(_poseState[color] instanceof Set)) return;
     const set = _poseState[color];
-    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
-      <div>
-        <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`} — individual photos</div>
-        <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${set.size} photo${set.size !== 1 ? 's' : ''} · Digital download</div>
+    const singlePhotos = [...set].map(idx => allPhotos[idx]).filter(Boolean);
+    html += `<div style="padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`} — individual</div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${set.size} photo${set.size !== 1 ? 's' : ''} · Digital download</div>
+        </div>
+        <div style="font-weight:700;color:#F5C518">$${(singlePrice * set.size).toFixed(2)}</div>
       </div>
-      <div style="font-weight:700;color:#F5C518">$${(singlePrice * set.size).toFixed(2)}</div>
+      ${singlePhotos.length ? thumbRow(singlePhotos) : ''}
     </div>`;
   });
+
   if (!html) { body.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:1rem 0">No poses selected yet.</p>'; return; }
   html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.8rem 0 0">
     <div style="font-weight:700">Total</div>
     <div style="font-size:1.1rem;font-weight:700;color:#F5C518">$${total.toFixed(2)}</div>
-  </div>`;
+  </div>
+  <div style="font-size:.75rem;color:rgba(255,255,255,.35);text-align:right;margin-top:3px">Taxes are calculated at the next step</div>`;
   body.innerHTML = html;
 }
 
@@ -2519,6 +2551,13 @@ function recalcPrintPrices() {
 }
 
 function updateHeaderCartBtn() {
+  if (_poseData) {
+    // Portrait mode: count poses + singles
+    const { fullPoses, singles } = calcPortraitTotal();
+    const cnt = document.getElementById('header-cart-count');
+    if (cnt) cnt.textContent = fullPoses + singles;
+    return;
+  }
   // Current folder (live) + all other saved folders + frames
   let total = selectedPhotos.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
   Object.entries(folderCarts).forEach(([key, fc]) => {
