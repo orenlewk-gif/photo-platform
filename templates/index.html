@@ -814,6 +814,11 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pp-modal{background:#0e2a3a;border:1px solid rgba(255,255,255,.12);border-radius:14px;max-width:360px;width:90%;padding:1.6rem;box-shadow:0 20px 60px rgba(0,0,0,.6)}
 .pp-modal h3{font-size:1.1rem;font-weight:700;margin:0 0 .3rem}
 .pp-modal .pp-sub{font-size:.8rem;color:rgba(255,255,255,.45);margin-bottom:1.2rem}
+/* Select all poses button */
+.pose-select-all-row{display:flex;justify-content:flex-end;margin-bottom:1rem}
+.pose-select-all-btn{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.4);color:#F5C518;font-size:.88rem;font-weight:700;border-radius:8px;padding:.45rem 1.1rem;cursor:pointer;transition:background .15s,border-color .15s;white-space:nowrap}
+.pose-select-all-btn:hover{background:rgba(245,197,24,.25);border-color:#F5C518}
+.pose-select-all-btn.selected{background:rgba(245,197,24,.3);border-color:#F5C518;color:#fff}
 .pp-tier-row{display:flex;justify-content:space-between;align-items:center;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06)}
 .pp-tier-row:last-child{border-bottom:none}
 .pp-tier-label{font-size:.88rem;color:rgba(255,255,255,.7)}
@@ -1780,6 +1785,9 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
     <div class="pose-intro">
       Our portrait photos are sold by the pose. Below you will see sets of poses. A pose is considered a group of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose in either digital or print format. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click the circle to add a single photo. <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
     </div>
+    <div class="pose-select-all-row">
+      <button class="pose-select-all-btn" id="pose-select-all-btn" onclick="toggleAllPoses()">Buy All Poses</button>
+    </div>
     <div id="pose-sections"></div>`;
 
   loadPortraitPricing().then(() => renderPoseSections(photos));
@@ -1815,6 +1823,34 @@ function updatePoseHeaders() {
     const hdr = document.getElementById(`pose-header-${pi}`);
     if (hdr) hdr.innerHTML = _poseHeaderHTML(pose, pi, fullPoseCount);
   });
+  updateAllPosesBtn();
+}
+
+function updateAllPosesBtn() {
+  const btn = document.getElementById('pose-select-all-btn');
+  if (!btn || !_poseData) return;
+  const poses = _poseData.poses || [];
+  const allSelected = poses.length > 0 && poses.every(p => _poseState[p.color || ''] === 'pose');
+  const total = calcTotalCost(poses.length);
+  btn.textContent = allSelected
+    ? `✓ All Poses Added · Remove`
+    : `Buy All ${poses.length} Poses — $${total.toFixed(2)}`;
+  btn.classList.toggle('selected', allSelected);
+}
+
+function toggleAllPoses() {
+  const poses = _poseData?.poses || [];
+  const allSelected = poses.length > 0 && poses.every(p => _poseState[p.color || ''] === 'pose');
+  poses.forEach((pose, pi) => {
+    const color = pose.color || '';
+    if (allSelected) { delete _poseState[color]; } else { _poseState[color] = 'pose'; }
+    const isNow = !allSelected;
+    document.querySelectorAll(`#pose-gallery-${pi} .thumb-card`).forEach(c => c.classList.toggle('selected', isNow));
+    const galleryEl = document.getElementById(`pose-gallery-${pi}`);
+    if (galleryEl) galleryEl.classList.toggle('pose-full-selected', isNow);
+  });
+  updatePoseHeaders();
+  updatePoseCart();
 }
 
 function renderPoseSections(photos) {
@@ -1888,6 +1924,7 @@ function renderPoseSections(photos) {
   // Load all pose gallery images in one observer pass so each lazyLoad call
   // doesn't disconnect the previous gallery's images
   lazyLoad(sections);
+  updateAllPosesBtn();
 }
 
 function togglePosePurchase(color, poseIdx) {
