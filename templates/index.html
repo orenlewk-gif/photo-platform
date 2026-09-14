@@ -229,9 +229,6 @@ input[type="range"]::-webkit-slider-thumb {
   font-size:13px; font-weight:bold; color:#fff;
   transition:background 0.15s, border-color 0.15s; cursor:pointer;
 }
-.pose-gallery .select-check {
-  width:auto; border-radius:13px; padding:0 8px; gap:3px;
-}
 .thumb-card.selected .select-check { background:#F5C518; border-color:#F5C518; color:#0c2336; }
 .thumb-card.selected {
   border-color:#F5C518;
@@ -808,8 +805,6 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .pose-gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
 /* Portrait intro */
 .pose-intro{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.96rem;color:rgba(255,255,255,.7);line-height:1.65}
-.pose-sel-label{font-size:10px;font-weight:600;letter-spacing:.04em;color:rgba(255,255,255,.85);pointer-events:none;text-transform:uppercase}
-.thumb-card.selected .pose-sel-label{color:#0c2336}
 .pose-intro strong{color:rgba(255,255,255,.85)}
 /* Portrait pricing modal */
 .pp-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99990;align-items:center;justify-content:center}
@@ -1780,8 +1775,9 @@ function _poseHeaderHTML(pose, pi, fullPoseCount) {
   const posesWithoutThis = isFullPose ? fullPoseCount - 1 : fullPoseCount;
   const marginal  = calcTotalCost(posesWithoutThis + 1) - calcTotalCost(posesWithoutThis);
   const perPose   = calcPosePrice(posesWithoutThis + 1);
+  const nextMarginal = calcTotalCost(fullPoseCount + 1) - calcTotalCost(fullPoseCount);
   const priceTag  = isFullPose
-    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose)</span>`
+    ? `<span class="pose-price-tag">✓ Added ($${calcPosePrice(fullPoseCount).toFixed(2)}/pose) · <span style="color:rgba(255,255,255,.55);font-weight:500">+$${nextMarginal.toFixed(2)} for another</span></span>`
     : posesWithoutThis === 0
       ? `<span class="pose-price-tag">$${marginal.toFixed(2)} for all ${files.length} photo${files.length !== 1 ? 's' : ''}</span>`
       : `<span class="pose-price-tag">+$${marginal.toFixed(2)} more · $${perPose.toFixed(2)}/pose</span>`;
@@ -1845,7 +1841,7 @@ function renderPoseSections(photos) {
       card.dataset.poseColor = color;
       card.innerHTML = `
         <div class="card-btn-row">
-          <div class="select-check" data-idx="${globalIdx}">✓<span class="pose-sel-label">Select</span></div>
+          <div class="select-check" data-idx="${globalIdx}">✓</div>
         </div>
         <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
         <div class="watermark"></div>
@@ -1869,8 +1865,11 @@ function renderPoseSections(photos) {
 
       galleryEl.appendChild(card);
     });
-    lazyLoad(galleryEl);
   });
+
+  // Load all pose gallery images in one observer pass so each lazyLoad call
+  // doesn't disconnect the previous gallery's images
+  lazyLoad(sections);
 }
 
 function togglePosePurchase(color, poseIdx) {
@@ -2517,6 +2516,7 @@ function updateCart() {
 
 // ── Cart View ──
 function openCartView() {
+  if (_poseData && _poseData.has_poses) { openCheckout(); return; }
   renderCartView();
   document.getElementById('cartview-overlay').classList.add('open');
   // Async: fetch pricing for any non-current folder that isn't already cached
