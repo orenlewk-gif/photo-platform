@@ -1989,6 +1989,31 @@ function clearPoseCart() {
   updatePoseHeaders();
   updatePoseCart(); // also resets cart bar + header count
 }
+function _fpOpenPosePhotos(label, photos) {
+  document.getElementById('fp-title').textContent = `${label} — ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
+  document.getElementById('fp-grid').innerHTML = photos.map(p => {
+    const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+    return `<img src="${src}" alt="${p.filename || ''}" loading="lazy" />`;
+  }).join('');
+  document.getElementById('fp-overlay').classList.add('open');
+}
+function openPosePhotosModalByIdx(pi) {
+  if (!_poseData) return;
+  const pose = _poseData.poses[pi];
+  if (!pose) return;
+  const byName = {};
+  allPhotos.forEach(p => { byName[p.filename || p.path.split('/').pop()] = p; });
+  _fpOpenPosePhotos(pose.label || `Pose ${pi + 1}`, (pose.files || []).map(f => byName[f]).filter(Boolean));
+}
+function openPosePhotosModalBySingles(pi) {
+  if (!_poseData) return;
+  const pose = _poseData.poses[pi];
+  if (!pose) return;
+  const set = _poseState[pose.color || ''];
+  if (!(set instanceof Set)) return;
+  _fpOpenPosePhotos(`${pose.label || `Pose ${pi + 1}`} — individual`, [...set].map(i => allPhotos[i]).filter(Boolean));
+}
+
 function renderPoseCartView() {
   const body = document.getElementById('pose-cartview-body');
   if (!body || !_poseData) return;
@@ -1998,16 +2023,17 @@ function renderPoseCartView() {
   const photoByFilename = {};
   allPhotos.forEach(p => { photoByFilename[p.filename || p.path.split('/').pop()] = p; });
 
-  const thumbRow = (photos) => {
+  const thumbRow = (photos, clickFn) => {
     const SHOW = 5;
     const shown = photos.slice(0, SHOW);
     const rest  = photos.length - SHOW;
-    let t = '<div class="cartview-photo-grid" style="margin:.5rem 0 .75rem">';
+    const gridClick = rest > 0 ? `onclick="${clickFn}" style="margin:.5rem 0 .75rem;cursor:pointer"` : `style="margin:.5rem 0 .75rem"`;
+    let t = `<div class="cartview-photo-grid" ${gridClick}>`;
     shown.forEach(p => {
       const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
       t += `<div class="cartview-thumb"><img src="${src}" alt="" /></div>`;
     });
-    if (rest > 0) t += `<div class="cv-more-badge">+${rest}</div>`;
+    if (rest > 0) t += `<div class="cv-more-badge" onclick="${clickFn}">+${rest}</div>`;
     t += '</div>';
     return t;
   };
@@ -2028,7 +2054,7 @@ function renderPoseCartView() {
         </div>
         <div style="font-weight:700;color:#F5C518">$${posePrice.toFixed(2)}</div>
       </div>
-      ${posePhotos.length ? thumbRow(posePhotos) : ''}
+      ${posePhotos.length ? thumbRow(posePhotos, `openPosePhotosModalByIdx(${pi})`) : ''}
     </div>`;
   });
 
@@ -2046,7 +2072,7 @@ function renderPoseCartView() {
         </div>
         <div style="font-weight:700;color:#F5C518">$${(singlePrice * set.size).toFixed(2)}</div>
       </div>
-      ${singlePhotos.length ? thumbRow(singlePhotos) : ''}
+      ${singlePhotos.length ? thumbRow(singlePhotos, `openPosePhotosModalBySingles(${pi})`) : ''}
     </div>`;
   });
 
