@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CI POS">
+<link rel="manifest" href="/pos/manifest.json">
+<title>Crystal Images POS</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+:root{
+  --bg:#07192a;--surface:#0f2540;--surface2:#162e4a;
+  --border:rgba(255,255,255,.1);--accent:#F5C518;--accent2:#d4a900;
+  --text:#e4ecf4;--muted:#7a9ab5;--danger:#e05252;--success:#4ccd8a;
+  --radius:14px;--font:-apple-system,'SF Pro Display',sans-serif;
+}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+#app{position:relative;width:100%;height:100%;overflow:hidden}
+
+/* ── Screens ── */
+.screen{
+  position:absolute;inset:0;display:flex;flex-direction:column;
+  overflow:hidden;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;
+}
+.screen.hidden{transform:translateX(100%);opacity:0;pointer-events:none}
+.screen.slide-left{transform:translateX(-30%);opacity:0;pointer-events:none}
+
+/* ── Header bar ── */
+.hdr{
+  display:flex;align-items:center;gap:.75rem;padding:env(safe-area-inset-top,12px) 1.25rem 12px;
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;
+  padding-top:max(env(safe-area-inset-top,0px),16px);
+}
+.hdr-title{flex:1;font-size:1rem;font-weight:600}
+.hdr-sub{font-size:.78rem;color:var(--muted)}
+.back-btn{
+  width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.07);
+  border:none;color:var(--text);font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+.back-btn:active{background:rgba(255,255,255,.14)}
+
+/* ── Scrollable body ── */
+.scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem 1.25rem}
+.scroll-body.tight{padding:.75rem 1rem}
+
+/* ── PIN Screen ── */
+#s-pin{align-items:center;justify-content:center;gap:0;background:var(--bg)}
+.pin-logo{text-align:center;margin-bottom:2.5rem}
+.pin-logo-mark{font-size:2rem;font-weight:700;letter-spacing:.06em;color:#fff}
+.pin-logo-mark span{color:var(--accent)}
+.pin-logo-sub{font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:.35rem}
+.pin-dots{display:flex;gap:1rem;justify-content:center;margin-bottom:2.5rem}
+.pin-dot{
+  width:16px;height:16px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.25);background:transparent;
+  transition:all .15s;
+}
+.pin-dot.filled{background:var(--accent);border-color:var(--accent)}
+.pin-dot.error{background:var(--danger);border-color:var(--danger)}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;width:100%;max-width:320px}
+.num-btn{
+  height:72px;border-radius:var(--radius);background:var(--surface);
+  border:1px solid var(--border);color:var(--text);font-size:1.5rem;font-weight:500;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .1s;user-select:none;
+}
+.num-btn:active{background:var(--surface2)}
+.num-btn.del{font-size:1.1rem;color:var(--muted)}
+.num-btn.empty{background:transparent;border:none;pointer-events:none}
+.pin-error{color:var(--danger);font-size:.85rem;text-align:center;margin-bottom:1rem;min-height:1.2em}
+
+/* ── Date cards ── */
+.date-card{
+  display:flex;align-items:center;gap:1rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.9rem 1rem;margin-bottom:.75rem;cursor:pointer;transition:background .15s;
+}
+.date-card:active{background:var(--surface2)}
+.date-thumbs{display:grid;grid-template-columns:1fr 1fr;gap:3px;width:68px;height:68px;flex-shrink:0;border-radius:8px;overflow:hidden}
+.date-thumbs img{width:100%;height:100%;object-fit:cover}
+.date-info{flex:1}
+.date-label{font-size:1.05rem;font-weight:600}
+.date-meta{font-size:.8rem;color:var(--muted);margin-top:.2rem}
+.date-arrow{color:var(--muted);font-size:1.1rem}
+
+/* ── Location / folder grid ── */
+.loc-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.loc-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;cursor:pointer;transition:background .15s;
+}
+.loc-card:active{background:var(--surface2)}
+.loc-thumb{width:100%;aspect-ratio:4/3;position:relative;background:#0a1929;overflow:hidden}
+.loc-thumb img{width:100%;height:100%;object-fit:cover}
+.loc-thumb-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;width:100%;height:100%}
+.loc-thumb-grid img{width:100%;height:100%;object-fit:cover}
+.loc-name{padding:.65rem .75rem;font-size:.9rem;font-weight:600}
+
+/* ── Folder list ── */
+.folder-item{
+  display:flex;align-items:center;gap:1rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.9rem 1rem;margin-bottom:.65rem;cursor:pointer;transition:background .15s;
+}
+.folder-item:active{background:var(--surface2)}
+.folder-thumb{width:56px;height:56px;border-radius:8px;overflow:hidden;flex-shrink:0;background:#0a1929}
+.folder-thumb img{width:100%;height:100%;object-fit:cover}
+.folder-name{flex:1;font-size:1rem;font-weight:500}
+.folder-arrow{color:var(--muted)}
+
+/* ── Photo gallery ── */
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
+.photo-cell{position:relative;aspect-ratio:1;overflow:hidden;background:#0a1929;cursor:pointer}
+.photo-cell img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .2s}
+.photo-cell img[data-src]{opacity:0}
+.photo-cell.selected::after{
+  content:'✓';position:absolute;inset:0;
+  background:rgba(245,197,24,.35);color:#fff;font-size:1.5rem;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+}
+.photo-cell.selected img{filter:brightness(.75)}
+.photo-sel-ring{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:transparent}
+.photo-cell.selected .photo-sel-ring{background:var(--accent);border-color:var(--accent)}
+
+/* ── Photo bottom bar ── */
+#photo-bar{
+  position:absolute;bottom:0;left:0;right:0;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding:.85rem 1.25rem max(env(safe-area-inset-bottom,0px),12px);
+  display:flex;align-items:center;gap:.75rem;
+  transform:translateY(100%);transition:transform .25s;
+  z-index:10;
+}
+#photo-bar.visible{transform:translateY(0)}
+.bar-info{flex:1}
+.bar-count{font-size:.85rem;color:var(--muted)}
+.bar-price{font-size:1.25rem;font-weight:700;color:var(--accent)}
+.bar-tier{font-size:.75rem;color:var(--muted)}
+.bar-btn{
+  background:var(--accent);color:#0a1929;font-size:.95rem;font-weight:700;
+  border:none;border-radius:10px;padding:.75rem 1.25rem;cursor:pointer;
+  white-space:nowrap;flex-shrink:0;
+}
+.bar-btn:active{background:var(--accent2)}
+
+/* ── Gallery select-all strip ── */
+.gallery-actions{
+  display:flex;gap:.5rem;padding:.75rem 1rem;
+  background:var(--bg);flex-shrink:0;
+}
+.ga-btn{
+  font-size:.8rem;padding:.45rem .9rem;border-radius:20px;
+  border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;
+}
+.ga-btn:active{background:var(--surface2)}
+.ga-count{margin-left:auto;font-size:.8rem;color:var(--muted);align-self:center}
+
+/* ── Checkout screen ── */
+.checkout-section{margin-bottom:1.25rem}
+.section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem}
+.thumb-strip{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
+.thumb-strip img{width:60px;height:60px;object-fit:cover;border-radius:8px;flex-shrink:0}
+.price-rows{background:var(--surface);border-radius:var(--radius);overflow:hidden}
+.price-row{display:flex;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.95rem}
+.price-row:last-child{border-bottom:none}
+.price-row.total{font-weight:700;font-size:1.05rem}
+.price-row.discount{color:var(--success)}
+.coupon-row{display:flex;gap:.5rem;margin-bottom:.5rem}
+.coupon-input{
+  flex:1;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);padding:.75rem 1rem;font-size:.95rem;outline:none;
+  text-transform:uppercase;
+}
+.coupon-input:focus{border-color:var(--accent)}
+.coupon-btn{
+  background:var(--surface2);color:var(--text);border:1px solid var(--border);
+  border-radius:10px;padding:.75rem 1rem;font-size:.9rem;cursor:pointer;white-space:nowrap;
+}
+.coupon-btn:active{background:rgba(255,255,255,.12)}
+.coupon-status{font-size:.8rem;min-height:1.2em;padding-left:.25rem}
+.coupon-status.ok{color:var(--success)}
+.coupon-status.err{color:var(--danger)}
+.field-label{font-size:.8rem;color:var(--muted);margin-bottom:.35rem;display:block}
+.text-input{
+  width:100%;background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;color:var(--text);padding:.85rem 1rem;font-size:1rem;
+  outline:none;margin-bottom:.75rem;
+}
+.text-input:focus{border-color:var(--accent)}
+.charge-btn{
+  width:100%;background:var(--accent);color:#0a1929;font-size:1.1rem;font-weight:700;
+  border:none;border-radius:var(--radius);padding:1.1rem;cursor:pointer;margin-top:.25rem;
+}
+.charge-btn:active{background:var(--accent2)}
+.charge-btn:disabled{background:#4a4a2a;color:#888;cursor:not-allowed}
+.comp-btn{
+  width:100%;background:transparent;color:var(--muted);font-size:.85rem;
+  border:none;padding:.75rem;cursor:pointer;margin-top:.25rem;
+}
+
+/* ── Confirm screen ── */
+#s-confirm{align-items:center;justify-content:center;padding:2rem;text-align:center;gap:0}
+.confirm-icon{font-size:4rem;margin-bottom:1.25rem}
+.confirm-title{font-size:1.5rem;font-weight:700;margin-bottom:.5rem}
+.confirm-sub{color:var(--muted);margin-bottom:.5rem;font-size:.9rem}
+.confirm-email{color:var(--accent);font-size:.95rem;margin-bottom:2rem;font-weight:500}
+.confirm-link-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1rem;margin-bottom:1.5rem;width:100%;max-width:400px;word-break:break-all;
+  font-size:.8rem;color:var(--muted);text-align:left;
+}
+.confirm-link-box a{color:var(--accent);text-decoration:none}
+.new-sale-btn{
+  background:var(--accent);color:#0a1929;font-size:1rem;font-weight:700;
+  border:none;border-radius:var(--radius);padding:.9rem 2.5rem;cursor:pointer;
+}
+
+/* ── Toast ── */
+#toast{
+  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 80px);left:50%;
+  transform:translateX(-50%) translateY(20px);background:rgba(30,50,70,.97);
+  color:var(--text);padding:.7rem 1.25rem;border-radius:10px;font-size:.88rem;
+  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;
+  white-space:nowrap;z-index:999;border:1px solid var(--border);
+}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ── Loading overlay ── */
+#loading{
+  position:fixed;inset:0;background:rgba(7,25,42,.8);display:flex;align-items:center;
+  justify-content:center;z-index:998;opacity:0;transition:opacity .2s;pointer-events:none;
+}
+#loading.show{opacity:1;pointer-events:all}
+.spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Empty state ── */
+.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
+.empty-icon{font-size:2.5rem;margin-bottom:.75rem}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══ PIN LOGIN ══ -->
+<div class="screen" id="s-pin">
+  <div style="padding:2.5rem 2rem 0;display:flex;flex-direction:column;align-items:center">
+    <div class="pin-logo">
+      <div class="pin-logo-mark">Crystal <span>Images</span></div>
+      <div class="pin-logo-sub">Point of Sale</div>
+    </div>
+    <div class="pin-error" id="pin-error"></div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+    </div>
+    <div class="numpad" id="numpad">
+      <button class="num-btn" onclick="pinKey('1')">1</button>
+      <button class="num-btn" onclick="pinKey('2')">2</button>
+      <button class="num-btn" onclick="pinKey('3')">3</button>
+      <button class="num-btn" onclick="pinKey('4')">4</button>
+      <button class="num-btn" onclick="pinKey('5')">5</button>
+      <button class="num-btn" onclick="pinKey('6')">6</button>
+      <button class="num-btn" onclick="pinKey('7')">7</button>
+      <button class="num-btn" onclick="pinKey('8')">8</button>
+      <button class="num-btn" onclick="pinKey('9')">9</button>
+      <div class="num-btn empty"></div>
+      <button class="num-btn" onclick="pinKey('0')">0</button>
+      <button class="num-btn del" onclick="pinDel()">⌫</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DATE SELECTION ══ -->
+<div class="screen hidden" id="s-dates">
+  <div class="hdr">
+    <div>
+      <div class="hdr-title" id="dates-photog">Associate</div>
+      <div class="hdr-sub">Select a date</div>
+    </div>
+    <button class="back-btn" onclick="logout()" style="margin-left:auto" title="Logout">↩</button>
+  </div>
+  <div class="scroll-body" id="dates-body">
+    <div class="empty"><div class="empty-icon">📅</div>Loading dates…</div>
+  </div>
+</div>
+
+<!-- ══ LOCATION SELECTION ══ -->
+<div class="screen hidden" id="s-locations">
+  <div class="hdr">
+    <button class="back-btn" onclick="goBack('s-dates')">‹</button>
+    <div>
+      <div class="hdr-title" id="loc-date-label">Locations</div>
+      <div class="hdr-sub">Select a location</div>
+    </div>
+  </div>
+  <div class="scroll-body tight" id="locations-body">
+    <div class="empty"><div class="empty-icon">📍</div>Loading…</div>
+  </div>
+</div>
+
+<!-- ══ SUBFOLDER SELECTION ══ -->
+<div class="screen hidden" id="s-folders">
+  <div class="hdr">
+    <button class="back-btn" onclick="goBack('s-locations')">‹</button>
+    <div>
+      <div class="hdr-title" id="folder-location-label">Folders</div>
+      <div class="hdr-sub" id="folder-sub-label">Select a folder</div>
+    </div>
+  </div>
+  <div class="scroll-body" id="folders-body">
+    <div class="empty"><div class="empty-icon">📁</div>Loading…</div>
+  </div>
+</div>
+
+<!-- ══ PHOTO GALLERY ══ -->
+<div class="screen hidden" id="s-photos">
+  <div class="hdr">
+    <button class="back-btn" id="photos-back-btn" onclick="photosGoBack()">‹</button>
+    <div style="flex:1;min-width:0">
+      <div class="hdr-title" id="photos-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Photos</div>
+      <div class="hdr-sub" id="photos-sub"></div>
+    </div>
+  </div>
+  <div class="gallery-actions">
+    <button class="ga-btn" onclick="selectAll()">Select All</button>
+    <button class="ga-btn" onclick="clearSelection()">Clear</button>
+    <span class="ga-count" id="ga-count"></span>
+  </div>
+  <div class="scroll-body tight" id="photos-body" style="padding-bottom:90px">
+    <div class="photo-grid" id="photo-grid"></div>
+  </div>
+  <div id="photo-bar">
+    <div class="bar-info">
+      <div class="bar-count" id="bar-count">0 selected</div>
+      <div class="bar-price" id="bar-price">$0.00</div>
+      <div class="bar-tier" id="bar-tier"></div>
+    </div>
+    <button class="bar-btn" onclick="goToCheckout()">Checkout →</button>
+  </div>
+</div>
+
+<!-- ══ CHECKOUT ══ -->
+<div class="screen hidden" id="s-checkout">
+  <div class="hdr">
+    <button class="back-btn" onclick="goBack('s-photos')">‹</button>
+    <div class="hdr-title">Checkout</div>
+  </div>
+  <div class="scroll-body" id="checkout-body">
+
+    <div class="checkout-section">
+      <div class="section-label">Selected Photos</div>
+      <div class="thumb-strip" id="checkout-thumbs"></div>
+    </div>
+
+    <div class="checkout-section">
+      <div class="section-label">Pricing</div>
+      <div class="price-rows" id="price-rows"></div>
+    </div>
+
+    <div class="checkout-section">
+      <div class="section-label">Discount Code</div>
+      <div class="coupon-row">
+        <input class="coupon-input" id="coupon-input" placeholder="Enter code" maxlength="20"
+               oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')applyCoupon()">
+        <button class="coupon-btn" onclick="applyCoupon()">Apply</button>
+      </div>
+      <div class="coupon-status" id="coupon-status"></div>
+    </div>
+
+    <div class="checkout-section">
+      <div class="section-label">Customer Info</div>
+      <label class="field-label">Name</label>
+      <input class="text-input" id="cust-name" placeholder="First Last" type="text" autocomplete="name">
+      <label class="field-label">Email <span style="color:var(--danger)">*</span></label>
+      <input class="text-input" id="cust-email" placeholder="customer@email.com" type="email" autocomplete="email">
+    </div>
+
+    <button class="charge-btn" id="charge-btn" onclick="launchSquare()">Charge with Square</button>
+    <button class="comp-btn" onclick="chargeComp()">Mark as Complimentary (no charge)</button>
+
+  </div>
+</div>
+
+<!-- ══ CONFIRMATION ══ -->
+<div class="screen hidden" id="s-confirm">
+  <div class="confirm-icon" id="confirm-icon">✅</div>
+  <div class="confirm-title" id="confirm-title">Payment Complete!</div>
+  <div class="confirm-sub" id="confirm-sub">Download link sent to</div>
+  <div class="confirm-email" id="confirm-email"></div>
+  <div class="confirm-link-box" id="confirm-link-box" style="display:none">
+    <div style="font-size:.7rem;margin-bottom:.35rem;color:var(--muted)">AirDrop this link:</div>
+    <a id="confirm-link" href="#" target="_blank"></a>
+  </div>
+  <button class="new-sale-btn" onclick="newSale()">New Sale</button>
+</div>
+
+</div><!-- #app -->
+
+<div id="toast"></div>
+<div id="loading"><div class="spinner"></div></div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const S = {
+  photographer: null,
+  pin: '',
+  date: null,
+  location: null,
+  folderType: null,   // 'portrait' | 'group' | null
+  folderName: null,   // last_name or group name
+  photos: [],
+  selected: new Set(),
+  pricing: null,
+  coupon: null,
+  name: '',
+  email: '',
+  pendingOrder: null, // saved before Square redirect
+};
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+function $(id){ return document.getElementById(id); }
+
+function showToast(msg, dur=2500){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), dur);
+}
+
+function setLoading(on){
+  $('loading').classList.toggle('show', on);
+}
+
+function fmtMoney(n){ return '$'+Number(n).toFixed(2); }
+
+function fmtDate(d){
+  if(!d) return '';
+  const parts = d.split('-');
+  if(parts.length !== 3) return d;
+  const dt = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
+  return dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+}
+
+async function api(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ─── Screen navigation ───────────────────────────────────────────────────────
+const SCREEN_ORDER = ['s-pin','s-dates','s-locations','s-folders','s-photos','s-checkout','s-confirm'];
+let _cur = 's-pin';
+
+function showScreen(id){
+  const prev = _cur;
+  _cur = id;
+  document.querySelectorAll('.screen').forEach(el => {
+    if(el.id === id){
+      el.classList.remove('hidden','slide-left');
+    } else if(el.id === prev) {
+      const goingForward = SCREEN_ORDER.indexOf(id) > SCREEN_ORDER.indexOf(prev);
+      el.classList.remove('hidden');
+      el.classList.toggle('slide-left', goingForward);
+      el.classList.toggle('hidden', !goingForward);
+      if(goingForward) setTimeout(()=>el.classList.add('hidden'),310);
+    } else {
+      el.classList.add('hidden');
+      el.classList.remove('slide-left');
+    }
+  });
+}
+
+function goBack(target){
+  const el = $(target);
+  if(!el) return;
+  const cur = $(_cur);
+  cur.classList.add('hidden'); cur.classList.remove('slide-left');
+  el.classList.remove('hidden','slide-left');
+  _cur = target;
+}
+
+// ─── PIN ─────────────────────────────────────────────────────────────────────
+function pinKey(d){
+  if(S.pin.length >= 4) return;
+  S.pin += d;
+  updatePinDots();
+  if(S.pin.length === 4) setTimeout(submitPin, 80);
+}
+
+function pinDel(){
+  S.pin = S.pin.slice(0,-1);
+  $('pin-error').textContent = '';
+  updatePinDots(false);
+}
+
+function updatePinDots(error=false){
+  for(let i=0;i<4;i++){
+    const dot = $('pd'+i);
+    dot.classList.toggle('filled', i < S.pin.length && !error);
+    dot.classList.toggle('error', error && i < S.pin.length);
+  }
+}
+
+async function submitPin(){
+  setLoading(true);
+  try {
+    const res = await fetch('/api/photographer/auth',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({pin: S.pin})
+    });
+    if(!res.ok){ throw new Error('Invalid PIN'); }
+    const data = await res.json();
+    S.photographer = data.photographer;
+    S._savedPin = S.pin;  // keep for pos-checkout after Square redirect
+    try { localStorage.setItem('ci_pos_pin', S.pin); } catch(e){}
+    $('dates-photog').textContent = S.photographer.name || 'Associate';
+    setLoading(false);
+    loadDates();
+    showScreen('s-dates');
+  } catch(e){
+    setLoading(false);
+    $('pin-error').textContent = 'Incorrect PIN — try again';
+    updatePinDots(true);
+    setTimeout(()=>{
+      S.pin='';
+      updatePinDots(false);
+      $('pin-error').textContent='';
+    },900);
+  }
+}
+
+function logout(){
+  S.photographer = null; S.pin = '';
+  updatePinDots();
+  showScreen('s-pin');
+}
+
+// ─── Dates ───────────────────────────────────────────────────────────────────
+async function loadDates(){
+  try {
+    const body = $('dates-body');
+    body.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+    const {days} = await api('/api/days');
+    if(!days.length){
+      body.innerHTML='<div class="empty"><div class="empty-icon">📅</div>No photos yet.</div>';
+      return;
+    }
+    body.innerHTML = days.map(d=>`
+      <div class="date-card" onclick="selectDate('${d.date}')">
+        <div class="date-thumbs">
+          ${(d.previews||[]).slice(0,4).map(p=>`<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy">`).join('')}
+        </div>
+        <div class="date-info">
+          <div class="date-label">${fmtDate(d.date)}</div>
+          <div class="date-meta">${d.gallery_count} galler${d.gallery_count===1?'y':'ies'} · ${d.folder_count} location${d.folder_count===1?'':'s'}</div>
+        </div>
+        <div class="date-arrow">›</div>
+      </div>
+    `).join('');
+  } catch(e){ showToast('Error loading dates'); }
+}
+
+function selectDate(date){
+  S.date = date;
+  $('loc-date-label').textContent = fmtDate(date);
+  loadLocations(date);
+  showScreen('s-locations');
+}
+
+// ─── Locations ───────────────────────────────────────────────────────────────
+async function loadLocations(date){
+  const body = $('locations-body');
+  body.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
+  try {
+    const {locations} = await api(`/api/locations?date=${encodeURIComponent(date)}`);
+    if(!locations.length){
+      body.innerHTML='<div class="empty"><div class="empty-icon">📍</div>No locations found.</div>';
+      return;
+    }
+    body.innerHTML = `<div class="loc-grid">${
+      locations.map(loc=>`
+        <div class="loc-card" onclick="selectLocation('${encodeURIComponent(loc.name)}')">
+          <div class="loc-thumb">
+            <div class="loc-thumb-grid">
+              ${(loc.previews||[]).slice(0,4).map(p=>`<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy">`).join('')}
+            </div>
+          </div>
+          <div class="loc-name">${loc.name}</div>
+        </div>
+      `).join('')
+    }</div>`;
+  } catch(e){ showToast('Error loading locations'); }
+}
+
+async function selectLocation(locEncoded){
+  const loc = decodeURIComponent(locEncoded);
+  S.location = loc;
+  S.folderType = null; S.folderName = null;
+
+  setLoading(true);
+  try {
+    const data = await api(`/api/subfolders?date=${encodeURIComponent(S.date)}&location=${encodeURIComponent(loc)}`);
+    setLoading(false);
+    if(data.has_items){
+      $('folder-location-label').textContent = loc;
+      $('folder-sub-label').textContent = data.type === 'portrait' ? 'Select a family' : 'Select a group';
+      S.folderType = data.type;
+      renderFolders(data.items, data.type);
+      showScreen('s-folders');
+    } else {
+      await loadPhotos();
+      showScreen('s-photos');
+    }
+  } catch(e){
+    setLoading(false); showToast('Error');
+  }
+}
+
+// ─── Folders ─────────────────────────────────────────────────────────────────
+function renderFolders(items, type){
+  const body = $('folders-body');
+  body.innerHTML = items.map(f=>`
+    <div class="folder-item" onclick="selectFolder('${encodeURIComponent(f.name)}')">
+      <div class="folder-thumb">
+        ${f.previews && f.previews[0] ? `<img src="/api/photo?path=${encodeURIComponent(f.previews[0])}&size=thumb" loading="lazy">` : ''}
+      </div>
+      <div class="folder-name">${f.name}</div>
+      <div class="folder-arrow">›</div>
+    </div>
+  `).join('');
+}
+
+async function selectFolder(nameEncoded){
+  S.folderName = decodeURIComponent(nameEncoded);
+  setLoading(true);
+  try {
+    await loadPhotos();
+    setLoading(false);
+    showScreen('s-photos');
+  } catch(e){ setLoading(false); showToast('Error loading photos'); }
+}
+
+// ─── Photos ───────────────────────────────────────────────────────────────────
+async function loadPhotos(){
+  S.selected = new Set();
+  let url = `/api/browse?date=${encodeURIComponent(S.date)}&location=${encodeURIComponent(S.location)}`;
+  if(S.folderName){
+    if(S.folderType === 'portrait') url += `&family=${encodeURIComponent(S.folderName)}`;
+    else url += `&group=${encodeURIComponent(S.folderName)}`;
+  }
+  const data = await api(url);
+  S.photos = data.photos || [];
+
+  // Also load pricing
+  let purl = `/api/pricing?date=${encodeURIComponent(S.date)}&location=${encodeURIComponent(S.location)}`;
+  if(S.folderName) purl += `&family=${encodeURIComponent(S.folderName)}`;
+  try { S.pricing = await api(purl); } catch(e){ S.pricing = {tiers:[],combos:[]}; }
+
+  // Set header
+  const title = S.folderName || S.location;
+  $('photos-title').textContent = title;
+  $('photos-sub').textContent = `${S.photos.length} photo${S.photos.length===1?'':'s'} · ${fmtDate(S.date)}`;
+
+  renderPhotoGrid();
+  updatePhotoBar();
+}
+
+function renderPhotoGrid(){
+  const grid = $('photo-grid');
+  grid.innerHTML = S.photos.map((p,i)=>`
+    <div class="photo-cell" id="pc-${i}" onclick="togglePhoto(${i})">
+      <img data-src="/api/photo?path=${encodeURIComponent(p.path)}&size=thumb" alt="">
+      <div class="photo-sel-ring"></div>
+    </div>
+  `).join('');
+
+  // Lazy load via IntersectionObserver
+  const obs = new IntersectionObserver((entries)=>{
+    entries.forEach(e=>{
+      if(e.isIntersecting){
+        const img = e.target.querySelector('img[data-src]');
+        if(img){ img.src=img.dataset.src; img.removeAttribute('data-src'); img.onload=()=>img.style.opacity=1; obs.unobserve(e.target); }
+      }
+    });
+  },{rootMargin:'200px'});
+  grid.querySelectorAll('.photo-cell').forEach(c=>obs.observe(c));
+
+  $('ga-count').textContent = `${S.photos.length} photos`;
+}
+
+function togglePhoto(i){
+  const path = S.photos[i].path;
+  if(S.selected.has(path)) S.selected.delete(path);
+  else S.selected.add(path);
+  const cell = $('pc-'+i);
+  cell.classList.toggle('selected', S.selected.has(path));
+  updatePhotoBar();
+}
+
+function selectAll(){
+  S.photos.forEach(p=>S.selected.add(p.path));
+  document.querySelectorAll('.photo-cell').forEach((c,i)=>c.classList.add('selected'));
+  updatePhotoBar();
+}
+
+function clearSelection(){
+  S.selected = new Set();
+  document.querySelectorAll('.photo-cell').forEach(c=>c.classList.remove('selected'));
+  updatePhotoBar();
+}
+
+function photosGoBack(){
+  if(S.folderName) goBack('s-folders');
+  else goBack('s-locations');
+}
+
+function calcPrice(count){
+  const tiers = (S.pricing && S.pricing.tiers) ? S.pricing.tiers : [];
+  if(!tiers.length) return {price:0, label:''};
+  const all = tiers.find(t=>t.count==='all');
+  if(all && count >= S.photos.length) return {price:all.price, label:all.label};
+  const num = tiers.filter(t=>typeof t.count==='number').sort((a,b)=>b.count-a.count);
+  for(const t of num){ if(count>=t.count) return {price:t.price, label:t.label}; }
+  // Below first tier - use lowest tier price if any selected
+  if(count>0 && num.length) return {price:num[num.length-1].price, label:num[num.length-1].label};
+  return {price:0, label:''};
+}
+
+function updatePhotoBar(){
+  const count = S.selected.size;
+  const bar = $('photo-bar');
+  $('bar-count').textContent = `${count} photo${count===1?'':'s'} selected`;
+  const {price,label} = calcPrice(count);
+  $('bar-price').textContent = fmtMoney(price);
+  $('bar-tier').textContent = label;
+  bar.classList.toggle('visible', count > 0);
+}
+
+function goToCheckout(){
+  if(S.selected.size===0){ showToast('Select at least one photo'); return; }
+  S.coupon = null;
+  $('coupon-input').value = '';
+  $('coupon-status').textContent = '';
+  $('coupon-status').className = 'coupon-status';
+  $('cust-name').value = S.name;
+  $('cust-email').value = S.email;
+  renderCheckout();
+  showScreen('s-checkout');
+}
+
+// ─── Checkout ────────────────────────────────────────────────────────────────
+function renderCheckout(){
+  // Thumb strip
+  const strip = $('checkout-thumbs');
+  const paths = [...S.selected];
+  strip.innerHTML = paths.slice(0,20).map(p=>
+    `<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy">`
+  ).join('') + (paths.length>20?`<div style="display:flex;align-items:center;padding:0 .5rem;color:var(--muted);font-size:.85rem">+${paths.length-20}</div>`:'');
+
+  // Price rows
+  const {price,label} = calcPrice(S.selected.size);
+  const discount = S.coupon ? calcDiscount(price, S.coupon) : 0;
+  const total = Math.max(0, price - discount);
+
+  let rows = `
+    <div class="price-row"><span>${label||S.selected.size+' photo'+(S.selected.size===1?'':'s')}</span><span>${fmtMoney(price)}</span></div>
+  `;
+  if(discount>0){
+    rows += `<div class="price-row discount"><span>Coupon (${S.coupon.code.toUpperCase()})</span><span>-${fmtMoney(discount)}</span></div>`;
+  }
+  rows += `<div class="price-row total"><span>Total</span><span>${fmtMoney(total)}</span></div>`;
+  $('price-rows').innerHTML = rows;
+
+  // Charge button label
+  $('charge-btn').textContent = `Charge ${fmtMoney(total)} with Square`;
+  $('charge-btn').disabled = total <= 0 && !S.coupon;
+}
+
+function calcDiscount(price, coupon){
+  if(!coupon||!coupon.valid) return 0;
+  if(coupon.discount_type==='percent') return Math.round(price * (coupon.amount/100) * 100)/100;
+  if(coupon.discount_type==='fixed') return Math.min(coupon.amount, price);
+  return 0;
+}
+
+async function applyCoupon(){
+  const code = $('coupon-input').value.trim();
+  if(!code){ showToast('Enter a code first'); return; }
+  const email = $('cust-email').value.trim();
+  const status = $('coupon-status');
+  status.textContent = 'Checking…'; status.className='coupon-status';
+  try {
+    const res = await fetch(`/api/validate-coupon?code=${encodeURIComponent(code)}&email=${encodeURIComponent(email)}`);
+    const data = await res.json();
+    if(data.valid){
+      S.coupon = data;
+      status.textContent = '✓ ' + (data.description || `${data.amount}${data.discount_type==='percent'?'%':' USD'} off`);
+      status.className = 'coupon-status ok';
+    } else {
+      S.coupon = null;
+      status.textContent = data.error || 'Invalid code';
+      status.className = 'coupon-status err';
+    }
+  } catch(e){
+    status.textContent = 'Could not validate'; status.className='coupon-status err';
+  }
+  renderCheckout();
+}
+
+// ─── Square ──────────────────────────────────────────────────────────────────
+function buildReceiptNotes(){
+  const count = S.selected.size;
+  let note = `Crystal Images — ${count} photo${count===1?'':'s'}`;
+  if(S.location) note += ` · ${S.location}`;
+  if(S.date) note += ` (${S.date})`;
+  if(S.coupon && S.coupon.valid){
+    const disc = calcDiscount(calcPrice(count).price, S.coupon);
+    note += ` · Code: ${S.coupon.code.toUpperCase()} (-${fmtMoney(disc)})`;
+  }
+  return note;
+}
+
+function launchSquare(){
+  const name = $('cust-name').value.trim();
+  const email = $('cust-email').value.trim();
+  if(!email){ showToast('Customer email is required'); $('cust-email').focus(); return; }
+  S.name = name; S.email = email;
+
+  const {price} = calcPrice(S.selected.size);
+  const discount = S.coupon ? calcDiscount(price, S.coupon) : 0;
+  const total = Math.max(0, price - discount);
+
+  const txId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
+  const callbackUrl = window.location.origin + '/pos?sq=1&txid=' + txId;
+
+  // Save pending state to localStorage so we can restore after Square redirects back
+  S.pendingOrder = {
+    txId, name, email,
+    photo_paths: [...S.selected],
+    filenames: [...S.selected].map(p=>p.split('/').pop()),
+    date: S.date, location: S.location,
+    total, coupon_code: S.coupon ? S.coupon.code : '',
+    coupon_discount: discount,
+    pricing_label: calcPrice(S.selected.size).label,
+    pin: S.photographer ? S.photographer.pin_for_pos || S._pin : '',
+  };
+  // Store pin separately (we kept it for pos-checkout)
+  S.pendingOrder.pin = S._savedPin || '';
+
+  try { localStorage.setItem('ci_pos_pending', JSON.stringify(S.pendingOrder)); } catch(e){}
+
+  const payload = {
+    amount_money: { amount: Math.round(total * 100), currency_code: 'USD' },
+    callback_url: callbackUrl,
+    client_transaction_id: txId,
+    notes: buildReceiptNotes(),
+    options: {
+      supported_tender_types: ['CARD','CASH','OTHER'],
+      skip_receipt_screen: false,
+    }
+  };
+  const encoded = btoa(JSON.stringify(payload));
+  window.location.href = `square-commerce-v1://payment/create?data=${encoded}`;
+}
+
+async function chargeComp(){
+  const name = $('cust-name').value.trim();
+  const email = $('cust-email').value.trim();
+  if(!email){ showToast('Customer email is required'); $('cust-email').focus(); return; }
+  S.name = name; S.email = email;
+  setLoading(true);
+  try {
+    await completeCheckout('COMP');
+  } catch(e){ setLoading(false); showToast('Error: '+e.message); }
+}
+
+// ─── Post-Square return ───────────────────────────────────────────────────────
+function checkSquareReturn(){
+  const params = new URLSearchParams(window.location.search);
+  if(!params.has('sq')) return false;
+
+  // Clear URL params so refresh doesn't re-trigger
+  window.history.replaceState({}, '', '/pos');
+
+  // Try to decode Square's data param
+  const rawData = params.get('data');
+  let status = params.get('status') || 'ok';
+  let squareTransactionId = params.get('txid') || '';
+
+  if(rawData){
+    try {
+      const r = JSON.parse(atob(rawData));
+      status = r.status || status;
+      squareTransactionId = r.transaction_id || squareTransactionId || r.payment_id || '';
+    } catch(e){}
+  }
+
+  if(status === 'cancel'){
+    showToast('Payment cancelled');
+    restoreStateAndShow('s-checkout');
+    return true;
+  }
+  if(status === 'error'){
+    showToast('Payment error — try again');
+    restoreStateAndShow('s-checkout');
+    return true;
+  }
+
+  // Success
+  restoreStateAndComplete(squareTransactionId);
+  return true;
+}
+
+function restoreStateAndShow(screen){
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null');
+    if(saved){ restoreFromSaved(saved); }
+  } catch(e){}
+  showScreen(screen);
+}
+
+async function restoreStateAndComplete(txId){
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null');
+    if(!saved){ showToast('Session data lost — contact manager'); showScreen('s-dates'); return; }
+    restoreFromSaved(saved);
+    await completeCheckout(txId);
+  } catch(e){
+    showToast('Error completing order: '+e.message);
+    showScreen('s-dates');
+  }
+}
+
+function restoreFromSaved(saved){
+  S.pendingOrder = saved;
+  S.date = saved.date;
+  S.location = saved.location;
+  S.email = saved.email;
+  S.name = saved.name;
+  if(saved.coupon_code) S.coupon = {valid:true, code:saved.coupon_code, amount:saved.coupon_discount};
+}
+
+async function completeCheckout(squareTransactionId){
+  setLoading(true);
+  try {
+    const o = S.pendingOrder || {};
+    const payload = {
+      pin:              S._savedPin || o.pin || '',
+      email:            S.email || o.email,
+      name:             S.name || o.name,
+      photo_paths:      o.photo_paths || [...S.selected],
+      filenames:        o.filenames || [...S.selected].map(p=>p.split('/').pop()),
+      date:             S.date || o.date,
+      location:         S.location || o.location,
+      total:            o.total !== undefined ? o.total : 0,
+      coupon_code:      o.coupon_code || '',
+      coupon_discount:  o.coupon_discount || 0,
+      square_payment_id: squareTransactionId || '',
+    };
+
+    const res = await fetch('/api/pos-checkout',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    setLoading(false);
+
+    if(!res.ok) throw new Error(data.error || 'Checkout failed');
+
+    localStorage.removeItem('ci_pos_pending');
+    showConfirmation(data);
+  } catch(e){
+    setLoading(false);
+    throw e;
+  }
+}
+
+function showConfirmation(data){
+  const email = S.email || (S.pendingOrder && S.pendingOrder.email) || '';
+  $('confirm-email').textContent = email;
+  if(data.download_url){
+    $('confirm-link').textContent = data.download_url;
+    $('confirm-link').href = data.download_url;
+    $('confirm-link-box').style.display = 'block';
+  } else {
+    $('confirm-link-box').style.display = 'none';
+  }
+  showScreen('s-confirm');
+}
+
+function newSale(){
+  S.selected = new Set();
+  S.coupon = null;
+  S.pendingOrder = null;
+  S.name = ''; S.email = '';
+  loadDates();
+  showScreen('s-dates');
+}
+
+// ─── Init ────────────────────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', ()=>{
+  // Restore PIN from localStorage if available (after Square redirect)
+  try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
+  // If Square redirected back, handle it
+  if(checkSquareReturn()) return;
+  // Otherwise start at PIN screen
+  showScreen('s-pin');
+});
+</script>
+</body>
+</html>

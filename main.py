@@ -3902,6 +3902,22 @@ def upload_page():
 def clockin_page():
     return HTMLResponse(open("templates/clockin.html").read())
 
+@app.get("/pos", response_class=HTMLResponse)
+def pos_page():
+    return HTMLResponse(open("templates/pos.html").read())
+
+@app.get("/pos/manifest.json")
+def pos_manifest():
+    return JSONResponse({
+        "name": "Crystal Images POS",
+        "short_name": "CI POS",
+        "start_url": "/pos",
+        "display": "standalone",
+        "background_color": "#07192a",
+        "theme_color": "#07192a",
+        "icons": []
+    })
+
 # ── Upload downloads ──
 @app.get("/api/uploads")
 def list_uploads(request: Request):
