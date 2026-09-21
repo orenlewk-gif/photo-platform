@@ -433,21 +433,38 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── Category Nav (right panel top) ── */
-.cat-nav{
-  display:grid;grid-template-columns:1fr 1fr;
-  border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface);
+/* ── Category tile home screen (left panel) ── */
+#cat-home{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:.85rem}
+.cat-home-grid{
+  display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;
+  height:100%;align-content:start;
 }
-.cat-btn{
-  background:var(--surface);border:none;border-right:1px solid var(--border);border-bottom:1px solid var(--border);
-  color:var(--muted);font-family:var(--font);font-size:.7rem;font-weight:600;
-  padding:.55rem .4rem;cursor:pointer;text-align:center;line-height:1.2;touch-action:manipulation;
-  transition:background .1s,color .1s;
+.cat-tile{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.5rem .75rem;cursor:pointer;text-align:center;
+  display:flex;align-items:center;justify-content:center;
+  min-height:90px;touch-action:manipulation;
+  transition:border-color .12s,background .12s;
+  font-size:.88rem;font-weight:600;color:var(--text);line-height:1.3;
+  -webkit-user-select:none;user-select:none;
 }
-.cat-btn:nth-child(even){border-right:none}
-.cat-btn:nth-last-child(-n+2){border-bottom:none}
-.cat-btn:active{background:var(--surface2)}
-.cat-btn.active{background:var(--surface2);color:var(--accent)}
+.cat-tile:active{background:var(--surface2);border-color:var(--accent)}
+.cat-tile.active{border-color:var(--accent);color:var(--accent);background:rgba(245,196,48,.05)}
+
+/* ── Category content area (left panel, replaces home) ── */
+#cat-content{display:none;flex-direction:column;flex:1;overflow:hidden}
+#cat-content.open{display:flex}
+.cat-content-bar{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.55rem 1rem;border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;
+}
+.cat-back-btn{
+  background:none;border:none;color:var(--accent);
+  font-size:.82rem;font-weight:600;cursor:pointer;font-family:var(--font);
+  padding:.25rem .35rem;touch-action:manipulation;white-space:nowrap;
+}
+.cat-content-title{font-size:.82rem;font-weight:600;flex:1;color:var(--text)}
 
 /* ── Cart customer bar ── */
 .cart-customer-bar{
@@ -572,7 +589,29 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
     <!-- Content panel -->
     <div class="content-panel">
-      <div class="content-scroll" id="content-scroll">
+
+      <!-- Category tile home screen -->
+      <div id="cat-home">
+        <div class="cat-home-grid">
+          <div class="cat-tile active" data-tab="action-photos" onclick="openCategory('action-photos','Action Photos')">Action Photos</div>
+          <div class="cat-tile" data-tab="portraits" onclick="openCategory('portraits','Portraits')">Portraits</div>
+          <div class="cat-tile" data-tab="base-area" onclick="openCategory('base-area','Base Area')">Base Area</div>
+          <div class="cat-tile" data-tab="private" onclick="openCategory('private','Private Session')">Private Session</div>
+          <div class="cat-tile" data-tab="prints" onclick="openCategory('prints','Prints')">Prints</div>
+          <div class="cat-tile" data-tab="frames" onclick="openCategory('frames','Frames')">Frames</div>
+          <div class="cat-tile" data-tab="mats" onclick="openCategory('mats','Mats')">Mats</div>
+          <div class="cat-tile" data-tab="shipping" onclick="openCategory('shipping','Shipping')">Shipping</div>
+          <div class="cat-tile" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</div>
+        </div>
+      </div>
+
+      <!-- Category content (shown when a tile is tapped) -->
+      <div id="cat-content">
+        <div class="cat-content-bar">
+          <button class="cat-back-btn" onclick="showCatHome()">&#8592; Menu</button>
+          <span class="cat-content-title" id="cat-content-title"></span>
+        </div>
+        <div class="content-scroll" id="content-scroll">
 
         <!-- Action Photos tab -->
         <div id="tab-action-photos" class="tab-panel active">
@@ -720,6 +759,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         </div>
 
       </div><!-- /content-scroll -->
+      </div><!-- /cat-content -->
     </div><!-- /content-panel -->
 
     <!-- Cart panel -->
@@ -729,18 +769,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       <div class="cart-customer-bar" id="cart-customer-bar" onclick="openCustomerModal()">
         <span class="cart-customer-icon">&#9998;</span>
         <span class="cart-customer-label" id="cart-customer-label">Add Customer</span>
-      </div>
-
-      <!-- Category navigation -->
-      <div class="cat-nav">
-        <button class="cat-btn active" data-tab="action-photos" onclick="switchTab('action-photos')">Action Photos</button>
-        <button class="cat-btn" data-tab="portraits" onclick="switchTab('portraits')">Portraits</button>
-        <button class="cat-btn" data-tab="base-area" onclick="switchTab('base-area')">Base Area</button>
-        <button class="cat-btn" data-tab="private" onclick="switchTab('private')">Private Session</button>
-        <button class="cat-btn" data-tab="prints" onclick="switchTab('prints')">Prints</button>
-        <button class="cat-btn" data-tab="frames" onclick="switchTab('frames')">Frames</button>
-        <button class="cat-btn" data-tab="mats" onclick="switchTab('mats')">Mats</button>
-        <button class="cat-btn" data-tab="shipping" onclick="switchTab('shipping')">Shipping</button>
       </div>
 
       <!-- Cart section -->
@@ -791,7 +819,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
   <!-- Bottom utility bar -->
   <div class="bottom-bar">
-    <button class="bottom-btn" data-tab="recent" onclick="switchTab('recent')">Recent Sales</button>
+    <button class="bottom-btn" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</button>
     <button class="bottom-btn" onclick="lockPOS()">Lock</button>
   </div>
 
@@ -1044,16 +1072,40 @@ function pinError(){
   setTimeout(()=>{ _pinBuf=''; updatePinDots(); $('pin-error').textContent=''; }, 900);
 }
 
-// ─── Tab switching ────────────────────────────────────────────────────────────
-function switchTab(tab){
-  // Update all category buttons (cat-nav and bottom-bar)
-  document.querySelectorAll('.cat-btn, .bottom-btn').forEach(b => {
+// ─── Category tile navigation ─────────────────────────────────────────────────
+function openCategory(tab, title){
+  // Show content area, hide home tiles
+  $('cat-home').style.display = 'none';
+  const cc = $('cat-content');
+  cc.classList.add('open');
+  $('cat-content-title').textContent = title || tab;
+
+  // Update tile active state
+  document.querySelectorAll('.cat-tile').forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === tab);
+  });
+  // Update bottom bar
+  document.querySelectorAll('.bottom-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
+
+  switchTab(tab);
+}
+
+function showCatHome(){
+  $('cat-home').style.display = '';
+  $('cat-content').classList.remove('open');
+  // Clear bottom bar active
+  document.querySelectorAll('.bottom-btn').forEach(b => b.classList.remove('active'));
+}
+
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(tab){
   document.querySelectorAll('.tab-panel').forEach(p => {
     p.classList.toggle('active', p.id === 'tab-' + tab);
   });
-  $('content-scroll').scrollTop = 0;
+  const cs = $('content-scroll');
+  if(cs) cs.scrollTop = 0;
 
   // Lazy-load tab data
   if(tab === 'prints' && !S.printSizes) loadPrintSizes();
@@ -2048,8 +2100,8 @@ function newSale(){
   S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), loading:false };
   S.poses = 0; S.singles = 0; S.privatePeople = 1;
   renderCart();
-  switchTab('action-photos');
-  showToast('Cart cleared');
+  showCatHome();
+  showToast('Cart cleared — ready for new sale');
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -2066,7 +2118,9 @@ function initMainPOS(){
   loadProducts();
   renderCart();
   updateCartCustomerBar();
-  adjustPrivatePeople(0); // set price display
+  adjustPrivatePeople(0);
+  // Start on category home (not inside any tab)
+  showCatHome();
 }
 
 // Apply theme colors from admin settings
