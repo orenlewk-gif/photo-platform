@@ -1641,17 +1641,35 @@ async def pos_checkout(request: Request):
     try:
         body = await request.json()
 
-        pin  = body.get("pin", "").strip()
+        pin = body.get("pin", "").strip()
         photog = _auth_photographer(pin)
         if not photog:
             return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
 
         customer_email  = body.get("email", "").strip()
         customer_name   = body.get("name", "").strip()
-        photo_paths     = body.get("photo_paths", [])   # list of R2 keys
-        filenames       = body.get("filenames", [])
-        location        = body.get("location", "")
-        date            = body.get("date", "")
+        customer_phone  = body.get("phone", "").strip()
+        customer_addr   = body.get("address", "").strip()
+
+        # Multi-item cart support
+        items = body.get("items", [])
+
+        # Collect photo_paths from action_photos items; fall back to legacy fields
+        photo_paths, filenames, location, photo_date = [], [], "", ""
+        for item in items:
+            if item.get("category") == "action_photos":
+                photo_paths.extend(item.get("photo_paths", []))
+                filenames.extend(item.get("filenames", []))
+                if not location:
+                    location = item.get("location", "")
+                if not photo_date:
+                    photo_date = item.get("date", "")
+        if not photo_paths:
+            photo_paths  = body.get("photo_paths", [])
+            filenames    = body.get("filenames", [])
+            location     = body.get("location", "")
+            photo_date   = body.get("date", "")
+
         total           = float(body.get("total", 0))
         coupon_code     = body.get("coupon_code", "").strip().lower()
         coupon_discount = float(body.get("coupon_discount", 0))
@@ -1660,26 +1678,26 @@ async def pos_checkout(request: Request):
 
         if not customer_email:
             return JSONResponse(status_code=400, content={"error": "Customer email required"})
-        if not photo_paths:
-            return JSONResponse(status_code=400, content={"error": "No photo paths provided"})
 
-        now     = datetime.now(timezone.utc)
-        token   = str(uuid.uuid4()).replace("-", "")
-        expires = (now + timedelta(days=expire_days_req)).isoformat()
+        now   = datetime.now(timezone.utc)
+        token = str(uuid.uuid4()).replace("-", "")
 
-        title = f"Your Photos — {location or date or now.strftime('%B %d, %Y')}"
-
-        pkg = {
-            "token":       token,
-            "title":       title,
-            "emails":      [customer_email],
-            "paths":       photo_paths,
-            "created":     now.isoformat(),
-            "expires":     expires,
-            "expire_days": expire_days_req,
-            "source":      "pos",
-        }
-        _store_pkg(token, pkg)
+        if photo_paths:
+            expires = (now + timedelta(days=expire_days_req)).isoformat()
+            title   = f"Your Photos — {location or photo_date or now.strftime('%B %d, %Y')}"
+            pkg = {
+                "token":       token,
+                "title":       title,
+                "emails":      [customer_email],
+                "paths":       photo_paths,
+                "created":     now.isoformat(),
+                "expires":     expires,
+                "expire_days": expire_days_req,
+                "source":      "pos",
+            }
+            _store_pkg(token, pkg)
+        else:
+            title = "In-Person Sale"
 
         order_id = f"pos-{token[:8]}"
         order_record = {
@@ -1692,15 +1710,18 @@ async def pos_checkout(request: Request):
             "photographer_id":   photog.get("id", ""),
             "name":              customer_name,
             "email":             customer_email,
+            "phone":             customer_phone,
+            "address":           customer_addr,
             "location":          location,
-            "photo_date":        date,
+            "photo_date":        photo_date,
             "photo_paths":       "|".join(photo_paths),
             "filenames":         ", ".join(filenames),
             "total":             total,
             "coupon_code":       coupon_code,
             "coupon_discount":   coupon_discount,
             "square_payment_id": square_id,
-            "package_token":     token,
+            "package_token":     token if photo_paths else "",
+            "items":             items,
         }
         _store_pos_order(order_record)
 
@@ -1714,18 +1735,77 @@ async def pos_checkout(request: Request):
                 "source":       "pos",
             })
 
-        download_url = f"{SITE_URL}/package/{token}"
-        expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
-        _send_package_email([customer_email], title, download_url, len(photo_paths), expire_str)
+        result = {"order_id": order_id}
+        if photo_paths:
+            download_url = f"{SITE_URL}/package/{token}"
+            expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
+            _send_package_email([customer_email], title, download_url, len(photo_paths), expire_str)
+            result["token"]        = token
+            result["download_url"] = download_url
 
-        return {
-            "order_id":     order_id,
-            "token":        token,
-            "download_url": download_url,
-        }
+        return result
 
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+# ── POS PRODUCTS (Base Area, Mats custom items) ────────────────────────────────
+POS_PRODUCTS_KEY = "meta/pos_products.json"
+
+def _load_pos_products():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=POS_PRODUCTS_KEY)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return {"base_area": [], "mats": []}
+
+def _save_pos_products(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=POS_PRODUCTS_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+
+@app.get("/api/pos-products")
+def api_pos_products():
+    return _load_pos_products()
+
+@app.post("/api/admin/pos-products")
+async def api_save_pos_products(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_pos_products(body)
+    return {"ok": True}
+
+@app.get("/api/pos-recent-sales")
+async def api_pos_recent_sales(limit: int = Query(50)):
+    orders = _fetch_pos_orders()
+    return {"orders": orders[:limit]}
+
+@app.post("/api/pos-resend")
+async def api_pos_resend(request: Request):
+    body = await request.json()
+    pin = body.get("pin", "").strip()
+    if not _auth_photographer(pin):
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    token = body.get("token", "").strip()
+    if not token:
+        return JSONResponse(status_code=400, content={"error": "Missing token"})
+    try:
+        data = s3.get_object(Bucket=R2_BUCKET, Key=f"packages/{token}.json")
+        pkg = json.loads(data["Body"].read())
+    except Exception:
+        return JSONResponse(status_code=404, content={"error": "Order not found"})
+    download_url = f"{SITE_URL}/package/{token}"
+    title = pkg.get("title", "Your Photos")
+    emails = pkg.get("emails", [])
+    n_photos = len(pkg.get("paths", []))
+    expires_iso = pkg.get("expires", "")
+    try:
+        exp_dt = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
+        expire_str = exp_dt.strftime("%B %d, %Y")
+    except Exception:
+        expire_str = "30 days"
+    _send_package_email(emails, title, download_url, n_photos, expire_str)
+    return {"ok": True, "sent_to": emails}
 
 
 # ─────────────────────────────────────────

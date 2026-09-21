@@ -11,76 +11,49 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --bg:#07192a;--surface:#0f2540;--surface2:#162e4a;
+  --bg:#07192a;--surface:#0f2540;--surface2:#162e4a;--surface3:#1e3a5a;
   --border:rgba(255,255,255,.1);--accent:#F5C518;--accent2:#d4a900;
   --text:#e4ecf4;--muted:#7a9ab5;--danger:#e05252;--success:#4ccd8a;
-  --radius:14px;--font:-apple-system,'SF Pro Display',sans-serif;
+  --radius:12px;--font:-apple-system,'SF Pro Display',sans-serif;
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
 #app{position:relative;width:100%;height:100%;overflow:hidden}
 
 /* ── Screens ── */
-.screen{
-  position:absolute;inset:0;display:flex;flex-direction:column;
-  overflow:hidden;transition:transform .3s cubic-bezier(.4,0,.2,1),opacity .3s;
-}
-.screen.hidden{transform:translateX(100%);opacity:0;pointer-events:none}
-.screen.slide-left{transform:translateX(-30%);opacity:0;pointer-events:none}
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden}
+.screen.hidden{display:none}
 
-/* ── Header bar ── */
-.hdr{
-  display:flex;align-items:center;gap:.75rem;padding:env(safe-area-inset-top,12px) 1.25rem 12px;
-  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0;
-  padding-top:max(env(safe-area-inset-top,0px),16px);
+/* ── Auth Screens (passcode / pin) ── */
+#s-passcode,#s-pin{
+  align-items:center;justify-content:center;background:var(--bg);padding:2rem 1.5rem;
+  padding-top:max(env(safe-area-inset-top,0px),2rem);
 }
-.hdr-title{flex:1;font-size:1rem;font-weight:600}
-.hdr-sub{font-size:.78rem;color:var(--muted)}
-.back-btn{
-  width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.07);
-  border:none;color:var(--text);font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
-  flex-shrink:0;
-}
-.back-btn:active{background:rgba(255,255,255,.14)}
+.auth-logo{text-align:center;margin-bottom:3rem}
+.auth-logo-mark{font-size:1.8rem;font-weight:700;letter-spacing:.06em;color:#fff}
+.auth-logo-mark span{color:var(--accent)}
+.auth-logo-sub{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-top:.4rem}
 
-/* ── Scrollable body ── */
-.scroll-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1rem 1.25rem}
-.scroll-body.tight{padding:.75rem 1rem}
-
-/* ── Passcode / PIN shared layout ── */
-#s-passcode,#s-pin{align-items:center;justify-content:center;gap:0;background:var(--bg)}
-.pc-input-wrap{
-  display:flex;gap:.65rem;justify-content:center;margin-bottom:2.5rem;
-  min-height:36px;align-items:center;flex-wrap:wrap;max-width:320px;
-}
-.pc-dot{
-  width:14px;height:14px;border-radius:50%;
-  border:2px solid rgba(255,255,255,.25);background:transparent;transition:all .15s;flex-shrink:0;
-}
-.pc-dot.filled{background:var(--accent);border-color:var(--accent)}
-.pc-dot.error{background:var(--danger);border-color:var(--danger)}
+/* Passcode */
+.pc-label{font-size:.85rem;color:var(--muted);margin-bottom:1rem;text-align:center}
 .pc-text-input{
   width:100%;max-width:320px;background:var(--surface);border:1px solid var(--border);
   border-radius:10px;color:var(--text);padding:.9rem 1rem;font-size:1rem;
   outline:none;margin-bottom:.75rem;letter-spacing:.05em;
 }
 .pc-text-input:focus{border-color:var(--accent)}
-.pc-unlock-btn{
+.pc-btn{
   width:100%;max-width:320px;background:var(--accent);color:#0a1929;
   font-size:1rem;font-weight:700;border:none;border-radius:var(--radius);
   padding:.9rem;cursor:pointer;
 }
-.pc-unlock-btn:active{background:var(--accent2)}
-/* ── PIN Screen ── */
-#s-pin{align-items:center;justify-content:center;gap:0;background:var(--bg)}
-.pin-logo{text-align:center;margin-bottom:2.5rem}
-.pin-logo-mark{font-size:2rem;font-weight:700;letter-spacing:.06em;color:#fff}
-.pin-logo-mark span{color:var(--accent)}
-.pin-logo-sub{font-size:.78rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:.35rem}
+.pc-btn:active{background:var(--accent2)}
+.pc-error{color:var(--danger);font-size:.82rem;text-align:center;margin-top:.6rem;min-height:1.2em}
+
+/* PIN numpad */
 .pin-dots{display:flex;gap:1rem;justify-content:center;margin-bottom:2.5rem}
 .pin-dot{
   width:16px;height:16px;border-radius:50%;
-  border:2px solid rgba(255,255,255,.25);background:transparent;
-  transition:all .15s;
+  border:2px solid rgba(255,255,255,.25);background:transparent;transition:all .15s;
 }
 .pin-dot.filled{background:var(--accent);border-color:var(--accent)}
 .pin-dot.error{background:var(--danger);border-color:var(--danger)}
@@ -89,444 +62,801 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   height:72px;border-radius:var(--radius);background:var(--surface);
   border:1px solid var(--border);color:var(--text);font-size:1.5rem;font-weight:500;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:background .1s;user-select:none;
+  transition:background .12s;user-select:none;
 }
 .num-btn:active{background:var(--surface2)}
 .num-btn.del{font-size:1.1rem;color:var(--muted)}
 .num-btn.empty{background:transparent;border:none;pointer-events:none}
-.pin-error{color:var(--danger);font-size:.85rem;text-align:center;margin-bottom:1rem;min-height:1.2em}
+.pin-error{color:var(--danger);font-size:.85rem;text-align:center;margin-bottom:.8rem;min-height:1.2em}
 
-/* ── Date cards ── */
-.date-card{
-  display:flex;align-items:center;gap:1rem;
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  padding:.9rem 1rem;margin-bottom:.75rem;cursor:pointer;transition:background .15s;
-}
-.date-card:active{background:var(--surface2)}
-.date-thumbs{display:grid;grid-template-columns:1fr 1fr;gap:3px;width:68px;height:68px;flex-shrink:0;border-radius:8px;overflow:hidden}
-.date-thumbs img{width:100%;height:100%;object-fit:cover}
-.date-info{flex:1}
-.date-label{font-size:1.05rem;font-weight:600}
-.date-meta{font-size:.8rem;color:var(--muted);margin-top:.2rem}
-.date-arrow{color:var(--muted);font-size:1.1rem}
-
-/* ── Location / folder grid ── */
-.loc-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
-.loc-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  overflow:hidden;cursor:pointer;transition:background .15s;
-}
-.loc-card:active{background:var(--surface2)}
-.loc-thumb{width:100%;aspect-ratio:4/3;position:relative;background:#0a1929;overflow:hidden}
-.loc-thumb img{width:100%;height:100%;object-fit:cover}
-.loc-thumb-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;width:100%;height:100%}
-.loc-thumb-grid img{width:100%;height:100%;object-fit:cover}
-.loc-name{padding:.65rem .75rem;font-size:.9rem;font-weight:600}
-
-/* ── Folder list ── */
-.folder-item{
-  display:flex;align-items:center;gap:1rem;
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  padding:.9rem 1rem;margin-bottom:.65rem;cursor:pointer;transition:background .15s;
-}
-.folder-item:active{background:var(--surface2)}
-.folder-thumb{width:56px;height:56px;border-radius:8px;overflow:hidden;flex-shrink:0;background:#0a1929}
-.folder-thumb img{width:100%;height:100%;object-fit:cover}
-.folder-name{flex:1;font-size:1rem;font-weight:500}
-.folder-arrow{color:var(--muted)}
-
-/* ── Photo gallery ── */
-.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px}
-.photo-cell{position:relative;aspect-ratio:1;overflow:hidden;background:#0a1929;cursor:pointer}
-.photo-cell img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .2s}
-.photo-cell img[data-src]{opacity:0}
-.photo-cell.selected::after{
-  content:'✓';position:absolute;inset:0;
-  background:rgba(245,197,24,.35);color:#fff;font-size:1.5rem;font-weight:700;
-  display:flex;align-items:center;justify-content:center;
-}
-.photo-cell.selected img{filter:brightness(.75)}
-.photo-sel-ring{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:transparent}
-.photo-cell.selected .photo-sel-ring{background:var(--accent);border-color:var(--accent)}
-
-/* ── Photo bottom bar ── */
-#photo-bar{
-  position:absolute;bottom:0;left:0;right:0;
-  background:var(--surface);border-top:1px solid var(--border);
-  padding:.85rem 1.25rem max(env(safe-area-inset-bottom,0px),12px);
+/* ── Main POS Layout ── */
+#s-main{background:var(--bg)}
+.pos-header{
   display:flex;align-items:center;gap:.75rem;
-  transform:translateY(100%);transition:transform .25s;
-  z-index:10;
+  padding:0 1.25rem;
+  padding-top:max(env(safe-area-inset-top,0px),10px);
+  height:calc(52px + max(env(safe-area-inset-top,0px),0px));
+  background:var(--surface);border-bottom:1px solid var(--border);
+  flex-shrink:0;
 }
-#photo-bar.visible{transform:translateY(0)}
-.bar-info{flex:1}
-.bar-count{font-size:.85rem;color:var(--muted)}
-.bar-price{font-size:1.25rem;font-weight:700;color:var(--accent)}
-.bar-tier{font-size:.75rem;color:var(--muted)}
-.bar-btn{
-  background:var(--accent);color:#0a1929;font-size:.95rem;font-weight:700;
-  border:none;border-radius:10px;padding:.75rem 1.25rem;cursor:pointer;
-  white-space:nowrap;flex-shrink:0;
+.pos-brand{font-size:.9rem;font-weight:700;letter-spacing:.04em;color:var(--accent);white-space:nowrap}
+.pos-photog{flex:1;font-size:.78rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 .5rem}
+.pos-new-btn{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  font-size:.75rem;padding:.4rem .75rem;border-radius:8px;cursor:pointer;white-space:nowrap;
 }
-.bar-btn:active{background:var(--accent2)}
+.pos-new-btn:active{background:var(--surface2);color:var(--text)}
 
-/* ── Gallery select-all strip ── */
-.gallery-actions{
-  display:flex;gap:.5rem;padding:.75rem 1rem;
-  background:var(--bg);flex-shrink:0;
+/* ── Split Body ── */
+.pos-body{
+  flex:1;display:flex;overflow:hidden;min-height:0;
 }
-.ga-btn{
-  font-size:.8rem;padding:.45rem .9rem;border-radius:20px;
-  border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;
+.content-panel{
+  flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden;
+  border-right:1px solid var(--border);
 }
-.ga-btn:active{background:var(--surface2)}
-.ga-count{margin-left:auto;font-size:.8rem;color:var(--muted);align-self:center}
+.content-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.cart-panel{
+  width:38%;max-width:360px;min-width:240px;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:var(--surface);
+}
+.cart-header{
+  padding:.75rem 1rem .5rem;font-size:.72rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.cart-items-list{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:.5rem 0}
+.cart-empty{padding:2rem 1rem;text-align:center;color:var(--muted);font-size:.85rem}
+.cart-item{
+  display:flex;align-items:flex-start;gap:.5rem;
+  padding:.5rem 1rem;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.cart-item-info{flex:1;min-width:0}
+.cart-item-label{font-size:.82rem;font-weight:500;line-height:1.3}
+.cart-item-detail{font-size:.72rem;color:var(--muted);margin-top:.1rem}
+.cart-item-price{font-size:.82rem;font-weight:600;color:var(--accent);white-space:nowrap}
+.cart-item-remove{
+  background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;
+  padding:0 .2rem;line-height:1;flex-shrink:0;
+}
+.cart-item-remove:active{color:var(--danger)}
 
-/* ── Checkout screen ── */
-.checkout-section{margin-bottom:1.25rem}
-.section-label{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:.6rem}
-.thumb-strip{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px}
-.thumb-strip img{width:60px;height:60px;object-fit:cover;border-radius:8px;flex-shrink:0}
-.price-rows{background:var(--surface);border-radius:var(--radius);overflow:hidden}
-.price-row{display:flex;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--border);font-size:.95rem}
-.price-row:last-child{border-bottom:none}
-.price-row.total{font-weight:700;font-size:1.05rem}
-.price-row.discount{color:var(--success)}
-.coupon-row{display:flex;gap:.5rem;margin-bottom:.5rem}
+.cart-footer{
+  flex-shrink:0;padding:.75rem 1rem;border-top:1px solid var(--border);
+  background:var(--surface);
+}
+.coupon-row{display:flex;gap:.4rem;margin-bottom:.6rem}
 .coupon-input{
-  flex:1;background:var(--surface);border:1px solid var(--border);
-  border-radius:10px;color:var(--text);padding:.75rem 1rem;font-size:.95rem;outline:none;
-  text-transform:uppercase;
+  flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:.45rem .7rem;font-size:.8rem;outline:none;
 }
 .coupon-input:focus{border-color:var(--accent)}
-.coupon-btn{
-  background:var(--surface2);color:var(--text);border:1px solid var(--border);
-  border-radius:10px;padding:.75rem 1rem;font-size:.9rem;cursor:pointer;white-space:nowrap;
+.coupon-apply-btn{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:.45rem .8rem;font-size:.78rem;cursor:pointer;white-space:nowrap;
 }
-.coupon-btn:active{background:rgba(255,255,255,.12)}
-.coupon-status{font-size:.8rem;min-height:1.2em;padding-left:.25rem}
-.coupon-status.ok{color:var(--success)}
-.coupon-status.err{color:var(--danger)}
-.field-label{font-size:.8rem;color:var(--muted);margin-bottom:.35rem;display:block}
-.text-input{
-  width:100%;background:var(--surface);border:1px solid var(--border);
-  border-radius:10px;color:var(--text);padding:.85rem 1rem;font-size:1rem;
-  outline:none;margin-bottom:.75rem;
+.coupon-apply-btn:active{background:var(--surface3)}
+.coupon-tag{
+  display:inline-flex;align-items:center;gap:.35rem;background:rgba(76,205,138,.12);
+  border:1px solid rgba(76,205,138,.25);border-radius:6px;
+  padding:.2rem .6rem;font-size:.72rem;color:var(--success);margin-bottom:.6rem;
 }
-.text-input:focus{border-color:var(--accent)}
-.charge-btn{
-  width:100%;background:var(--accent);color:#0a1929;font-size:1.1rem;font-weight:700;
-  border:none;border-radius:var(--radius);padding:1.1rem;cursor:pointer;margin-top:.25rem;
+.coupon-remove{background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:0}
+.total-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem}
+.total-label{font-size:.82rem;color:var(--muted)}
+.total-amount{font-size:1.3rem;font-weight:700;color:var(--accent)}
+.discount-row{display:flex;justify-content:space-between;font-size:.78rem;color:var(--success);margin-bottom:.4rem}
+.cart-action-btns{display:flex;flex-direction:column;gap:.5rem}
+.btn-customer{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:var(--radius);padding:.65rem;font-size:.85rem;cursor:pointer;text-align:center;
 }
-.charge-btn:active{background:var(--accent2)}
-.charge-btn:disabled{background:#4a4a2a;color:#888;cursor:not-allowed}
-.comp-btn{
-  width:100%;background:transparent;color:var(--muted);font-size:.85rem;
-  border:none;padding:.75rem;cursor:pointer;margin-top:.25rem;
+.btn-customer:active{background:var(--surface3)}
+.btn-checkout{
+  background:var(--accent);color:#0a1929;border:none;
+  border-radius:var(--radius);padding:.75rem;font-size:.95rem;font-weight:700;
+  cursor:pointer;text-align:center;
 }
+.btn-checkout:active{background:var(--accent2)}
+.btn-checkout:disabled{opacity:.4;cursor:not-allowed}
+.btn-comp{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  border-radius:var(--radius);padding:.5rem;font-size:.78rem;cursor:pointer;text-align:center;
+}
+.btn-comp:active{background:var(--surface2)}
 
-/* ── Confirm screen ── */
-#s-confirm{align-items:center;justify-content:center;padding:2rem;text-align:center;gap:0}
-.confirm-icon{font-size:4rem;margin-bottom:1.25rem}
-.confirm-title{font-size:1.5rem;font-weight:700;margin-bottom:.5rem}
-.confirm-sub{color:var(--muted);margin-bottom:.5rem;font-size:.9rem}
-.confirm-email{color:var(--accent);font-size:.95rem;margin-bottom:2rem;font-weight:500}
-.confirm-link-box{
+/* ── Tab Bar ── */
+.tab-bar{
+  flex-shrink:0;display:flex;overflow-x:auto;scrollbar-width:none;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding-bottom:max(env(safe-area-inset-bottom,0px),4px);
+  position:relative;z-index:50;
+}
+.tab-bar::-webkit-scrollbar{display:none}
+.tab-btn{
+  flex-shrink:0;padding:0 .9rem;height:52px;border:none;background:transparent;
+  color:var(--muted);font-size:.72rem;font-weight:500;cursor:pointer;
+  white-space:nowrap;border-top:2px solid transparent;
+  transition:color .12s,border-color .12s;
+}
+.tab-btn:active{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-top-color:var(--accent)}
+
+/* ── Tab Content Panels ── */
+.tab-panel{display:none;height:100%}
+.tab-panel.active{display:block;height:100%}
+.panel-pad{padding:1rem 1.25rem}
+
+/* ── Section titles ── */
+.section-title{font-size:.72rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:.75rem}
+
+/* ── Product grid ── */
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.65rem;margin-bottom:1rem}
+.product-card{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  padding:1rem;margin-bottom:1.5rem;width:100%;max-width:400px;word-break:break-all;
-  font-size:.8rem;color:var(--muted);text-align:left;
+  padding:.85rem .85rem .7rem;cursor:pointer;transition:border-color .12s,background .12s;
 }
-.confirm-link-box a{color:var(--accent);text-decoration:none}
-.new-sale-btn{
-  background:var(--accent);color:#0a1929;font-size:1rem;font-weight:700;
-  border:none;border-radius:var(--radius);padding:.9rem 2.5rem;cursor:pointer;
+.product-card:active{background:var(--surface2);border-color:var(--accent)}
+.product-card-name{font-size:.85rem;font-weight:600;margin-bottom:.25rem;line-height:1.2}
+.product-card-price{font-size:.95rem;font-weight:700;color:var(--accent)}
+.product-card-desc{font-size:.72rem;color:var(--muted);margin-top:.2rem;line-height:1.3}
+
+/* ── Stepper ── */
+.stepper{display:inline-flex;align-items:center;gap:.75rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.3rem .5rem}
+.step-btn{
+  width:32px;height:32px;border-radius:8px;background:var(--surface2);border:none;
+  color:var(--text);font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
 }
+.step-btn:active{background:var(--surface3)}
+.step-val{font-size:1.1rem;font-weight:600;min-width:2ch;text-align:center}
+
+/* ── Portrait tab ── */
+.portrait-calc{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem}
+.portrait-row{display:flex;align-items:center;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid var(--border)}
+.portrait-row:last-child{border-bottom:none}
+.portrait-row-label{font-size:.85rem;font-weight:500}
+.portrait-row-sub{font-size:.72rem;color:var(--muted);margin-top:.1rem}
+.portrait-price-preview{
+  margin-top:.85rem;padding:.75rem;background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.2);
+  border-radius:8px;display:flex;justify-content:space-between;align-items:center;
+}
+.portrait-price-label{font-size:.8rem;color:var(--muted)}
+.portrait-price-val{font-size:1.3rem;font-weight:700;color:var(--accent)}
+.btn-add{
+  width:100%;margin-top:.85rem;background:var(--accent);color:#0a1929;border:none;
+  border-radius:var(--radius);padding:.75rem;font-size:.9rem;font-weight:700;cursor:pointer;
+}
+.btn-add:active{background:var(--accent2)}
+
+/* ── Prints tab ── */
+.print-toggle-row{display:flex;align-items:center;gap:.6rem;margin-bottom:1rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.6rem .85rem}
+.toggle-switch{position:relative;width:42px;height:24px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0;position:absolute}
+.toggle-track{
+  position:absolute;inset:0;background:var(--surface2);border-radius:12px;cursor:pointer;transition:background .2s;
+}
+.toggle-track::before{
+  content:'';position:absolute;width:18px;height:18px;border-radius:50%;
+  background:#fff;top:3px;left:3px;transition:transform .2s;
+}
+.toggle-switch input:checked + .toggle-track{background:var(--accent)}
+.toggle-switch input:checked + .toggle-track::before{transform:translateX(18px)}
+.toggle-label{font-size:.82rem;font-weight:500}
+.print-size-list{display:flex;flex-direction:column;gap:.5rem}
+.print-size-row{
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.6rem .85rem;
+}
+.print-size-name{font-size:.85rem;font-weight:600;min-width:60px}
+.print-size-price{font-size:.85rem;color:var(--accent);font-weight:600;min-width:52px;text-align:right}
+.print-add-btn{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:.35rem .75rem;font-size:.78rem;cursor:pointer;white-space:nowrap;
+}
+.print-add-btn:active{background:var(--surface3)}
+
+/* ── Frames tab ── */
+.frame-size-section{margin-bottom:1rem}
+.frame-size-title{font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.5rem;padding-bottom:.3rem;border-bottom:1px solid var(--border)}
+.frame-orient-row{display:flex;gap:.5rem}
+.frame-option-btn{
+  flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.65rem .5rem;cursor:pointer;text-align:center;
+}
+.frame-option-btn:active{background:var(--surface2);border-color:var(--accent)}
+.frame-option-name{font-size:.78rem;font-weight:500}
+.frame-option-price{font-size:.88rem;font-weight:700;color:var(--accent);margin-top:.1rem}
+
+/* ── Private Sessions ── */
+.private-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem}
+.private-card-name{font-size:.95rem;font-weight:700;margin-bottom:.25rem}
+.private-card-desc{font-size:.78rem;color:var(--muted);line-height:1.4;margin-bottom:.85rem}
+.private-people-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
+.private-price-line{font-size:.78rem;color:var(--muted);text-align:center;margin-bottom:.5rem}
+
+/* ── Action Photos ── */
+.ap-search-row{display:flex;gap:.5rem;margin-bottom:.85rem}
+.ap-search-input{
+  flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  color:var(--text);padding:.7rem 1rem;font-size:.9rem;outline:none;
+}
+.ap-search-input:focus{border-color:var(--accent)}
+.ap-search-btn{
+  background:var(--accent);color:#0a1929;border:none;border-radius:var(--radius);
+  padding:.7rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;white-space:nowrap;
+}
+.ap-search-btn:active{background:var(--accent2)}
+.ap-result-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.65rem 1rem;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);margin-bottom:.5rem;cursor:pointer;
+}
+.ap-result-item:active{background:var(--surface2)}
+.ap-result-name{font-size:.9rem;font-weight:600}
+.ap-result-meta{font-size:.75rem;color:var(--muted);margin-top:.15rem}
+.ap-result-arrow{color:var(--muted);font-size:1rem}
+.ap-breadcrumb{
+  display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--muted);
+  margin-bottom:.75rem;
+}
+.ap-breadcrumb-btn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:.78rem;padding:0}
+.ap-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:.4rem}
+.ap-photo-item{position:relative;aspect-ratio:1;cursor:pointer;border-radius:8px;overflow:hidden}
+.ap-photo-img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s}
+.ap-photo-overlay{
+  position:absolute;inset:0;background:rgba(245,197,24,.35);display:none;
+  align-items:center;justify-content:center;border-radius:8px;
+  border:2.5px solid var(--accent);
+}
+.ap-photo-item.selected .ap-photo-overlay{display:flex}
+.ap-photo-item.selected .ap-photo-img{opacity:.7}
+.ap-check{width:22px;height:22px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700;color:#0a1929}
+.ap-add-bar{
+  position:sticky;bottom:0;background:var(--bg);border-top:1px solid var(--border);
+  padding:.75rem 1.25rem;display:flex;align-items:center;justify-content:space-between;
+}
+.ap-sel-count{font-size:.82rem;color:var(--muted)}
+.ap-add-btn{
+  background:var(--accent);color:#0a1929;border:none;border-radius:var(--radius);
+  padding:.6rem 1.25rem;font-size:.85rem;font-weight:700;cursor:pointer;
+}
+.ap-add-btn:disabled{opacity:.4;cursor:not-allowed}
+.ap-add-btn:active:not(:disabled){background:var(--accent2)}
+.ap-loading{padding:2rem;text-align:center;color:var(--muted);font-size:.85rem}
+
+/* ── Recent Sales ── */
+.sale-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.85rem 1rem;margin-bottom:.65rem;
+}
+.sale-card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:.4rem}
+.sale-customer{font-size:.9rem;font-weight:600}
+.sale-amount{font-size:.9rem;font-weight:700;color:var(--accent)}
+.sale-meta{font-size:.75rem;color:var(--muted);margin-bottom:.6rem;line-height:1.5}
+.sale-actions{display:flex;gap:.5rem}
+.sale-resend-btn{
+  background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:.35rem .75rem;font-size:.75rem;cursor:pointer;
+}
+.sale-resend-btn:active{background:var(--surface3)}
+.sale-no-dl{font-size:.72rem;color:var(--muted)}
+
+/* ── Shipping tab ── */
+.shipping-info{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:.85rem}
+.shipping-info-label{font-size:.72rem;color:var(--muted);margin-bottom:.35rem}
+.shipping-info-val{font-size:.9rem;font-weight:500}
+.shipping-notice{font-size:.78rem;color:var(--muted);padding:.75rem;background:var(--surface2);border-radius:8px;line-height:1.5}
+
+/* ── Customer Modal ── */
+.modal-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.modal-overlay.hidden{display:none}
+.modal-sheet{
+  width:100%;max-width:600px;max-height:90vh;background:var(--surface);
+  border-radius:20px 20px 0 0;overflow:hidden;display:flex;flex-direction:column;
+  padding-bottom:max(env(safe-area-inset-bottom,0px),1rem);
+}
+.modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:.75rem auto .5rem}
+.modal-title{font-size:1rem;font-weight:700;padding:.5rem 1.25rem .75rem;border-bottom:1px solid var(--border)}
+.modal-body{flex:1;overflow-y:auto;padding:1.25rem}
+.field-label{font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:.35rem}
+.field-input{
+  width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+  color:var(--text);padding:.75rem 1rem;font-size:.95rem;outline:none;margin-bottom:1rem;
+}
+.field-input:focus{border-color:var(--accent)}
+.field-row{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.field-group{margin-bottom:0}
+.addr-section{border-top:1px solid var(--border);margin-top:.25rem;padding-top:1rem}
+.addr-section-label{font-size:.78rem;color:var(--muted);margin-bottom:.85rem}
+.modal-footer{padding:.75rem 1.25rem 0;display:flex;gap:.6rem}
+.modal-cancel{flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.75rem;font-size:.9rem;cursor:pointer}
+.modal-save{flex:2;background:var(--accent);color:#0a1929;border:none;border-radius:var(--radius);padding:.75rem;font-size:.9rem;font-weight:700;cursor:pointer}
+.modal-save:active{background:var(--accent2)}
+
+/* ── PIN Resend modal ── */
+.pin-resend-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;
+  display:flex;align-items:center;justify-content:center;padding:1.5rem;
+}
+.pin-resend-overlay.hidden{display:none}
+.pin-resend-box{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.5rem;width:100%;max-width:320px;
+}
+.pin-resend-title{font-size:.9rem;font-weight:700;margin-bottom:.25rem}
+.pin-resend-sub{font-size:.78rem;color:var(--muted);margin-bottom:1rem}
+.pin-resend-dots{display:flex;gap:.75rem;justify-content:center;margin-bottom:1.25rem}
+
+/* ── Confirmation ── */
+#s-confirm{background:var(--bg);align-items:center;justify-content:center;padding:2rem 1.5rem;text-align:center}
+.confirm-check{font-size:3rem;margin-bottom:1rem}
+.confirm-title{font-size:1.4rem;font-weight:700;margin-bottom:.5rem}
+.confirm-sub{font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:.5rem}
+.confirm-email{color:var(--accent);font-weight:500}
+.confirm-link-box{
+  margin:1.25rem 0;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:.85rem 1rem;word-break:break-all;
+}
+.confirm-link{color:var(--accent);font-size:.8rem;text-decoration:none}
+.confirm-link:active{opacity:.7}
+.confirm-new-btn{
+  width:100%;max-width:320px;background:var(--accent);color:#0a1929;border:none;
+  border-radius:var(--radius);padding:.9rem;font-size:1rem;font-weight:700;cursor:pointer;
+  margin-top:1.5rem;
+}
+.confirm-new-btn:active{background:var(--accent2)}
 
 /* ── Toast ── */
-#toast{
-  position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 80px);left:50%;
-  transform:translateX(-50%) translateY(20px);background:rgba(30,50,70,.97);
-  color:var(--text);padding:.7rem 1.25rem;border-radius:10px;font-size:.88rem;
-  opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;
-  white-space:nowrap;z-index:999;border:1px solid var(--border);
+.toast{
+  position:fixed;bottom:calc(72px + max(env(safe-area-inset-bottom,0px),4px) + .75rem);
+  left:50%;transform:translateX(-50%);
+  background:#1a2f45;border:1px solid var(--border);color:var(--text);
+  font-size:.85rem;padding:.6rem 1.25rem;border-radius:24px;
+  z-index:500;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;
+  max-width:90vw;overflow:hidden;text-overflow:ellipsis;
 }
-#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.show{opacity:1}
 
 /* ── Loading overlay ── */
-#loading{
-  position:fixed;inset:0;background:rgba(7,25,42,.8);display:flex;align-items:center;
-  justify-content:center;z-index:998;opacity:0;transition:opacity .2s;pointer-events:none;
+.loading-overlay{
+  position:fixed;inset:0;background:rgba(7,25,42,.8);z-index:400;
+  display:flex;align-items:center;justify-content:center;
 }
-#loading.show{opacity:1;pointer-events:all}
-.spinner{width:36px;height:36px;border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
+.loading-overlay.hidden{display:none}
+.loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* ── Empty state ── */
-.empty{text-align:center;padding:3rem 1rem;color:var(--muted)}
-.empty-icon{font-size:2.5rem;margin-bottom:.75rem}
+/* ── Utility ── */
+.hidden{display:none!important}
 </style>
 </head>
 <body>
 <div id="app">
 
-<!-- ══ PASSCODE UNLOCK ══ -->
-<div class="screen hidden" id="s-passcode">
-  <div style="padding:2.5rem 2rem 0;display:flex;flex-direction:column;align-items:center;width:100%">
-    <div class="pin-logo">
-      <div class="pin-logo-mark">Crystal <span>Images</span></div>
-      <div class="pin-logo-sub">Point of Sale</div>
-    </div>
-    <div class="pin-error" id="pc-error"></div>
-    <input class="pc-text-input" id="pc-input" type="password" placeholder="Enter passcode"
-           autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false"
-           onkeydown="if(event.key==='Enter')submitPasscode()">
-    <button class="pc-unlock-btn" onclick="submitPasscode()">Unlock →</button>
+<!-- ─── PASSCODE SCREEN ─── -->
+<div id="s-passcode" class="screen">
+  <div class="auth-logo">
+    <div class="auth-logo-mark">CRYSTAL<span>.</span></div>
+    <div class="auth-logo-sub">Point of Sale</div>
+  </div>
+  <p class="pc-label">Enter access code to continue</p>
+  <input type="password" id="pc-input" class="pc-text-input" placeholder="Access code"
+         autocomplete="off" autocorrect="off" spellcheck="false"
+         onkeydown="if(event.key==='Enter')submitPasscode()">
+  <button class="pc-btn" onclick="submitPasscode()">Unlock</button>
+  <p id="pc-error" class="pc-error"></p>
+</div>
+
+<!-- ─── PIN SCREEN ─── -->
+<div id="s-pin" class="screen hidden">
+  <div class="auth-logo">
+    <div class="auth-logo-mark">CRYSTAL<span>.</span></div>
+    <div class="auth-logo-sub">Enter Your PIN</div>
+  </div>
+  <p id="pin-error" class="pin-error"></p>
+  <div class="pin-dots" id="pin-dots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="numpad">
+    <button class="num-btn" onclick="pinDigit('1')">1</button>
+    <button class="num-btn" onclick="pinDigit('2')">2</button>
+    <button class="num-btn" onclick="pinDigit('3')">3</button>
+    <button class="num-btn" onclick="pinDigit('4')">4</button>
+    <button class="num-btn" onclick="pinDigit('5')">5</button>
+    <button class="num-btn" onclick="pinDigit('6')">6</button>
+    <button class="num-btn" onclick="pinDigit('7')">7</button>
+    <button class="num-btn" onclick="pinDigit('8')">8</button>
+    <button class="num-btn" onclick="pinDigit('9')">9</button>
+    <button class="num-btn empty"></button>
+    <button class="num-btn" onclick="pinDigit('0')">0</button>
+    <button class="num-btn del" onclick="pinDel()">&#x232B;</button>
   </div>
 </div>
 
-<!-- ══ PIN LOGIN ══ -->
-<div class="screen hidden" id="s-pin">
-  <div style="padding:2.5rem 2rem 0;display:flex;flex-direction:column;align-items:center">
-    <div class="pin-logo">
-      <div class="pin-logo-mark">Crystal <span>Images</span></div>
-      <div class="pin-logo-sub">Enter PIN to start sale</div>
-    </div>
-    <div class="pin-error" id="pin-error"></div>
-    <div class="pin-dots" id="pin-dots">
-      <div class="pin-dot" id="pd0"></div>
-      <div class="pin-dot" id="pd1"></div>
-      <div class="pin-dot" id="pd2"></div>
-      <div class="pin-dot" id="pd3"></div>
-    </div>
-    <div class="numpad" id="numpad">
-      <button class="num-btn" onclick="pinKey('1')">1</button>
-      <button class="num-btn" onclick="pinKey('2')">2</button>
-      <button class="num-btn" onclick="pinKey('3')">3</button>
-      <button class="num-btn" onclick="pinKey('4')">4</button>
-      <button class="num-btn" onclick="pinKey('5')">5</button>
-      <button class="num-btn" onclick="pinKey('6')">6</button>
-      <button class="num-btn" onclick="pinKey('7')">7</button>
-      <button class="num-btn" onclick="pinKey('8')">8</button>
-      <button class="num-btn" onclick="pinKey('9')">9</button>
-      <div class="num-btn empty"></div>
-      <button class="num-btn" onclick="pinKey('0')">0</button>
-      <button class="num-btn del" onclick="pinDel()">⌫</button>
-    </div>
-  </div>
-</div>
+<!-- ─── MAIN POS ─── -->
+<div id="s-main" class="screen hidden">
 
-<!-- ══ DATE SELECTION ══ -->
-<div class="screen hidden" id="s-dates">
-  <div class="hdr">
-    <div>
-      <div class="hdr-title" id="dates-photog">Associate</div>
-      <div class="hdr-sub">Select a date</div>
-    </div>
-    <button class="back-btn" onclick="logout()" style="margin-left:auto" title="Lock">↩</button>
+  <!-- Header -->
+  <div class="pos-header">
+    <div class="pos-brand">CI</div>
+    <div class="pos-photog" id="pos-photog-name">Not signed in</div>
+    <button class="pos-new-btn" onclick="newSale()">New Sale</button>
   </div>
-  <div class="scroll-body" id="dates-body">
-    <div class="empty"><div class="empty-icon">📅</div>Loading dates…</div>
-  </div>
-</div>
 
-<!-- ══ LOCATION SELECTION ══ -->
-<div class="screen hidden" id="s-locations">
-  <div class="hdr">
-    <button class="back-btn" onclick="goBack('s-dates')">‹</button>
-    <div>
-      <div class="hdr-title" id="loc-date-label">Locations</div>
-      <div class="hdr-sub">Select a location</div>
-    </div>
-  </div>
-  <div class="scroll-body tight" id="locations-body">
-    <div class="empty"><div class="empty-icon">📍</div>Loading…</div>
-  </div>
-</div>
+  <!-- Split body -->
+  <div class="pos-body">
 
-<!-- ══ SUBFOLDER SELECTION ══ -->
-<div class="screen hidden" id="s-folders">
-  <div class="hdr">
-    <button class="back-btn" onclick="goBack('s-locations')">‹</button>
-    <div>
-      <div class="hdr-title" id="folder-location-label">Folders</div>
-      <div class="hdr-sub" id="folder-sub-label">Select a folder</div>
-    </div>
-  </div>
-  <div class="scroll-body" id="folders-body">
-    <div class="empty"><div class="empty-icon">📁</div>Loading…</div>
-  </div>
-</div>
+    <!-- Content panel -->
+    <div class="content-panel">
+      <div class="content-scroll" id="content-scroll">
 
-<!-- ══ PHOTO GALLERY ══ -->
-<div class="screen hidden" id="s-photos">
-  <div class="hdr">
-    <button class="back-btn" id="photos-back-btn" onclick="photosGoBack()">‹</button>
-    <div style="flex:1;min-width:0">
-      <div class="hdr-title" id="photos-title" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Photos</div>
-      <div class="hdr-sub" id="photos-sub"></div>
-    </div>
-  </div>
-  <div class="gallery-actions">
-    <button class="ga-btn" onclick="selectAll()">Select All</button>
-    <button class="ga-btn" onclick="clearSelection()">Clear</button>
-    <span class="ga-count" id="ga-count"></span>
-  </div>
-  <div class="scroll-body tight" id="photos-body" style="padding-bottom:90px">
-    <div class="photo-grid" id="photo-grid"></div>
-  </div>
-  <div id="photo-bar">
-    <div class="bar-info">
-      <div class="bar-count" id="bar-count">0 selected</div>
-      <div class="bar-price" id="bar-price">$0.00</div>
-      <div class="bar-tier" id="bar-tier"></div>
-    </div>
-    <button class="bar-btn" onclick="goToCheckout()">Checkout →</button>
-  </div>
-</div>
+        <!-- Action Photos tab -->
+        <div id="tab-action-photos" class="tab-panel active">
+          <div class="panel-pad">
+            <div class="section-title">Search by Last Name</div>
+            <div class="ap-search-row">
+              <input type="text" id="ap-search-input" class="ap-search-input"
+                     placeholder="Last name..." autocomplete="off" autocorrect="off"
+                     onkeydown="if(event.key==='Enter')apSearch()">
+              <button class="ap-search-btn" onclick="apSearch()">Search</button>
+            </div>
+            <div id="ap-results"></div>
+            <div id="ap-photos-view" class="hidden">
+              <div class="ap-breadcrumb">
+                <button class="ap-breadcrumb-btn" onclick="apClearPhotos()">Search</button>
+                <span>/</span>
+                <span id="ap-breadcrumb-name"></span>
+              </div>
+              <div id="ap-photo-grid" class="ap-photo-grid"></div>
+            </div>
+          </div>
+          <div id="ap-add-bar" class="ap-add-bar hidden">
+            <span class="ap-sel-count" id="ap-sel-count">0 selected</span>
+            <button class="ap-add-btn" id="ap-add-btn" onclick="apAddToCart()" disabled>Add to Cart</button>
+          </div>
+        </div>
 
-<!-- ══ CHECKOUT ══ -->
-<div class="screen hidden" id="s-checkout">
-  <div class="hdr">
-    <button class="back-btn" onclick="goBack('s-photos')">‹</button>
-    <div class="hdr-title">Checkout</div>
-  </div>
-  <div class="scroll-body" id="checkout-body">
+        <!-- Portraits tab -->
+        <div id="tab-portraits" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Portrait Session</div>
+            <div class="portrait-calc" id="portrait-calc">
+              <div class="portrait-row">
+                <div>
+                  <div class="portrait-row-label">Full Poses</div>
+                  <div class="portrait-row-sub" id="pose-price-sub">$65/pose</div>
+                </div>
+                <div class="stepper">
+                  <button class="step-btn" onclick="adjustPoses(-1)">-</button>
+                  <span class="step-val" id="pose-count">0</span>
+                  <button class="step-btn" onclick="adjustPoses(1)">+</button>
+                </div>
+              </div>
+              <div class="portrait-row">
+                <div>
+                  <div class="portrait-row-label">Individual Photos</div>
+                  <div class="portrait-row-sub">$40 each</div>
+                </div>
+                <div class="stepper">
+                  <button class="step-btn" onclick="adjustSingles(-1)">-</button>
+                  <span class="step-val" id="single-count">0</span>
+                  <button class="step-btn" onclick="adjustSingles(1)">+</button>
+                </div>
+              </div>
+              <div class="portrait-price-preview">
+                <span class="portrait-price-label">Session Total</span>
+                <span class="portrait-price-val" id="portrait-price">$0.00</span>
+              </div>
+              <button class="btn-add" onclick="portraitAddToCart()">Add Portrait Session to Cart</button>
+            </div>
+          </div>
+        </div>
 
-    <div class="checkout-section">
-      <div class="section-label">Selected Photos</div>
-      <div class="thumb-strip" id="checkout-thumbs"></div>
-    </div>
+        <!-- Base Area tab -->
+        <div id="tab-base-area" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Base Area</div>
+            <div id="base-area-grid" class="product-grid"></div>
+            <p id="base-area-empty" class="hidden" style="font-size:.82rem;color:var(--muted)">No items configured. Add them from the admin panel.</p>
+          </div>
+        </div>
 
-    <div class="checkout-section">
-      <div class="section-label">Pricing</div>
-      <div class="price-rows" id="price-rows"></div>
-    </div>
+        <!-- Private Sessions tab -->
+        <div id="tab-private" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Private Sessions</div>
+            <div class="private-card">
+              <div class="private-card-name">Private Action Shoot</div>
+              <div class="private-card-desc">Dedicated session for your group. Base rate covers up to 4 people — $75 per additional person over 4.</div>
+              <div class="private-people-row">
+                <span style="font-size:.85rem;font-weight:500">Number of People</span>
+                <div class="stepper">
+                  <button class="step-btn" onclick="adjustPrivatePeople(-1)">-</button>
+                  <span class="step-val" id="private-people">1</span>
+                  <button class="step-btn" onclick="adjustPrivatePeople(1)">+</button>
+                </div>
+              </div>
+              <div class="private-price-line" id="private-price-line">$550.00 (base rate, up to 4)</div>
+              <button class="btn-add" onclick="privateAddToCart()">Add to Cart</button>
+            </div>
+          </div>
+        </div>
 
-    <div class="checkout-section">
-      <div class="section-label">Discount Code</div>
-      <div class="coupon-row">
-        <input class="coupon-input" id="coupon-input" placeholder="Enter code" maxlength="20"
-               oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')applyCoupon()">
-        <button class="coupon-btn" onclick="applyCoupon()">Apply</button>
+        <!-- Prints tab -->
+        <div id="tab-prints" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Prints</div>
+            <div class="print-toggle-row">
+              <label class="toggle-switch">
+                <input type="checkbox" id="half-price-toggle" onchange="renderPrintSizes()">
+                <div class="toggle-track"></div>
+              </label>
+              <span class="toggle-label">Half-price (50% off)</span>
+            </div>
+            <div id="print-size-list" class="print-size-list"></div>
+          </div>
+        </div>
+
+        <!-- Frames tab -->
+        <div id="tab-frames" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Frames</div>
+            <div id="frames-list"></div>
+          </div>
+        </div>
+
+        <!-- Mats tab -->
+        <div id="tab-mats" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Mats</div>
+            <div id="mats-grid" class="product-grid"></div>
+            <p id="mats-empty" class="hidden" style="font-size:.82rem;color:var(--muted)">No items configured. Add them from the admin panel.</p>
+          </div>
+        </div>
+
+        <!-- Shipping tab -->
+        <div id="tab-shipping" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Shipping</div>
+            <div id="shipping-content"></div>
+          </div>
+        </div>
+
+        <!-- Recent Sales tab -->
+        <div id="tab-recent" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Recent Sales</div>
+            <div id="recent-sales-list"></div>
+          </div>
+        </div>
+
+      </div><!-- /content-scroll -->
+    </div><!-- /content-panel -->
+
+    <!-- Cart panel -->
+    <div class="cart-panel">
+      <div class="cart-header">Cart</div>
+      <div class="cart-items-list" id="cart-items-list">
+        <div class="cart-empty" id="cart-empty">No items added yet</div>
       </div>
-      <div class="coupon-status" id="coupon-status"></div>
+      <div class="cart-footer">
+        <div class="coupon-row" id="coupon-input-row">
+          <input type="text" id="coupon-input" class="coupon-input" placeholder="Coupon code"
+                 autocomplete="off" autocapitalize="characters"
+                 onkeydown="if(event.key==='Enter')applyCoupon()">
+          <button class="coupon-apply-btn" onclick="applyCoupon()">Apply</button>
+        </div>
+        <div id="coupon-tag-row" class="hidden">
+          <div class="coupon-tag">
+            <span id="coupon-tag-label"></span>
+            <button class="coupon-remove" onclick="removeCoupon()">x</button>
+          </div>
+        </div>
+        <div id="discount-row" class="discount-row hidden">
+          <span>Discount</span>
+          <span id="discount-amount"></span>
+        </div>
+        <div class="total-row">
+          <span class="total-label">Total</span>
+          <span class="total-amount" id="cart-total">$0.00</span>
+        </div>
+        <div class="cart-action-btns">
+          <button class="btn-customer" onclick="openCustomerModal()">
+            <span id="btn-customer-label">Add Customer Info</span>
+          </button>
+          <button class="btn-checkout" id="btn-checkout" onclick="launchSquare()" disabled>
+            Checkout via Square
+          </button>
+          <button class="btn-comp" onclick="chargeComp()">Mark as Comp</button>
+        </div>
+      </div>
+    </div><!-- /cart-panel -->
+
+  </div><!-- /pos-body -->
+
+  <!-- Tab bar -->
+  <div class="tab-bar" id="tab-bar">
+    <button class="tab-btn active" data-tab="action-photos" onclick="switchTab('action-photos')">Action Photos</button>
+    <button class="tab-btn" data-tab="portraits" onclick="switchTab('portraits')">Portraits</button>
+    <button class="tab-btn" data-tab="base-area" onclick="switchTab('base-area')">Base Area</button>
+    <button class="tab-btn" data-tab="private" onclick="switchTab('private')">Private Sessions</button>
+    <button class="tab-btn" data-tab="prints" onclick="switchTab('prints')">Prints</button>
+    <button class="tab-btn" data-tab="frames" onclick="switchTab('frames')">Frames</button>
+    <button class="tab-btn" data-tab="mats" onclick="switchTab('mats')">Mats</button>
+    <button class="tab-btn" data-tab="shipping" onclick="switchTab('shipping')">Shipping</button>
+    <button class="tab-btn" data-tab="recent" onclick="switchTab('recent')">Recent Sales</button>
+  </div>
+
+</div><!-- /s-main -->
+
+<!-- ─── CONFIRMATION ─── -->
+<div id="s-confirm" class="screen hidden">
+  <div class="confirm-check">&#10003;</div>
+  <div class="confirm-title">Sale Complete</div>
+  <div class="confirm-sub">Receipt sent to <span class="confirm-email" id="confirm-email"></span></div>
+  <div class="confirm-link-box hidden" id="confirm-link-box">
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem">Download link:</div>
+    <a class="confirm-link" id="confirm-link" href="#" target="_blank"></a>
+  </div>
+  <button class="confirm-new-btn" onclick="newSale()">Start New Sale</button>
+</div>
+
+<!-- ─── CUSTOMER INFO MODAL ─── -->
+<div id="customer-modal" class="modal-overlay hidden" onclick="modalBackdropClick(event)">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Customer Information</div>
+    <div class="modal-body">
+      <div class="field-row">
+        <div class="field-group">
+          <div class="field-label">First Name</div>
+          <input type="text" id="cust-first" class="field-input" placeholder="First" autocomplete="given-name">
+        </div>
+        <div class="field-group">
+          <div class="field-label">Last Name</div>
+          <input type="text" id="cust-last" class="field-input" placeholder="Last" autocomplete="family-name">
+        </div>
+      </div>
+      <div class="field-label">Email *</div>
+      <input type="email" id="cust-email" class="field-input" placeholder="email@example.com" autocomplete="email">
+      <div class="field-label">Phone *</div>
+      <input type="tel" id="cust-phone" class="field-input" placeholder="(000) 000-0000" autocomplete="tel">
+      <div id="addr-section" class="addr-section hidden">
+        <div class="addr-section-label">Mailing address required for shipped items</div>
+        <div class="field-label">Street Address</div>
+        <input type="text" id="cust-street" class="field-input" placeholder="123 Main St" autocomplete="street-address">
+        <div class="field-row">
+          <div class="field-group">
+            <div class="field-label">City</div>
+            <input type="text" id="cust-city" class="field-input" placeholder="City" autocomplete="address-level2">
+          </div>
+          <div class="field-group">
+            <div class="field-label">State</div>
+            <input type="text" id="cust-state" class="field-input" placeholder="MT" autocomplete="address-level1" maxlength="2" style="text-transform:uppercase">
+          </div>
+        </div>
+        <div class="field-label">ZIP Code</div>
+        <input type="text" id="cust-zip" class="field-input" placeholder="00000" autocomplete="postal-code" maxlength="10">
+      </div>
     </div>
-
-    <div class="checkout-section">
-      <div class="section-label">Customer Info</div>
-      <label class="field-label">Name</label>
-      <input class="text-input" id="cust-name" placeholder="First Last" type="text" autocomplete="name">
-      <label class="field-label">Email <span style="color:var(--danger)">*</span></label>
-      <input class="text-input" id="cust-email" placeholder="customer@email.com" type="email" autocomplete="email">
+    <div class="modal-footer">
+      <button class="modal-cancel" onclick="closeCustomerModal()">Cancel</button>
+      <button class="modal-save" onclick="saveCustomerInfo()">Save</button>
     </div>
-
-    <button class="charge-btn" id="charge-btn" onclick="launchSquare()">Charge with Square</button>
-    <button class="comp-btn" onclick="chargeComp()">Mark as Complimentary (no charge)</button>
-
   </div>
 </div>
 
-<!-- ══ CONFIRMATION ══ -->
-<div class="screen hidden" id="s-confirm">
-  <div class="confirm-icon" id="confirm-icon">✅</div>
-  <div class="confirm-title" id="confirm-title">Payment Complete!</div>
-  <div class="confirm-sub" id="confirm-sub">Download link sent to</div>
-  <div class="confirm-email" id="confirm-email"></div>
-  <div class="confirm-link-box" id="confirm-link-box" style="display:none">
-    <div style="font-size:.7rem;margin-bottom:.35rem;color:var(--muted)">AirDrop this link:</div>
-    <a id="confirm-link" href="#" target="_blank"></a>
+<!-- ─── PIN RESEND MODAL ─── -->
+<div id="pin-resend-overlay" class="pin-resend-overlay hidden">
+  <div class="pin-resend-box">
+    <div class="pin-resend-title">Confirm PIN to Resend</div>
+    <div class="pin-resend-sub" id="pin-resend-sub">Enter your PIN to resend the download link.</div>
+    <div class="pin-resend-dots" id="pin-resend-dots">
+      <div class="pin-dot" id="rpd0"></div>
+      <div class="pin-dot" id="rpd1"></div>
+      <div class="pin-dot" id="rpd2"></div>
+      <div class="pin-dot" id="rpd3"></div>
+    </div>
+    <div class="numpad">
+      <button class="num-btn" onclick="resendDigit('1')">1</button>
+      <button class="num-btn" onclick="resendDigit('2')">2</button>
+      <button class="num-btn" onclick="resendDigit('3')">3</button>
+      <button class="num-btn" onclick="resendDigit('4')">4</button>
+      <button class="num-btn" onclick="resendDigit('5')">5</button>
+      <button class="num-btn" onclick="resendDigit('6')">6</button>
+      <button class="num-btn" onclick="resendDigit('7')">7</button>
+      <button class="num-btn" onclick="resendDigit('8')">8</button>
+      <button class="num-btn" onclick="resendDigit('9')">9</button>
+      <button class="num-btn empty"></button>
+      <button class="num-btn" onclick="resendDigit('0')">0</button>
+      <button class="num-btn del" onclick="resendDel()">&#x232B;</button>
+    </div>
+    <button class="btn-comp" style="margin-top:.85rem" onclick="cancelResend()">Cancel</button>
   </div>
-  <button class="new-sale-btn" onclick="newSale()">New Sale</button>
 </div>
 
-</div><!-- #app -->
+<!-- ─── LOADING ─── -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="loading-spinner"></div>
+</div>
 
-<div id="toast"></div>
-<div id="loading"><div class="spinner"></div></div>
+<!-- ─── TOAST ─── -->
+<div id="toast" class="toast"></div>
 
+</div><!-- /app -->
 <script>
-// ─── State ───────────────────────────────────────────────────────────────────
-const S = {
-  photographer: null,
-  pin: '',
-  _savedPin: '',
-  date: null,
-  location: null,
-  folderType: null,
-  folderName: null,
-  photos: [],
-  selected: new Set(),
-  pricing: null,
-  coupon: null,
-  name: '',
-  email: '',
-  pendingOrder: null,
-};
-
+// ─── Constants ───────────────────────────────────────────────────────────────
 const PC_UNLOCK_KEY = 'ci_pos_unlocked';
 const PC_UNLOCK_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days
 
+// ─── State ───────────────────────────────────────────────────────────────────
+const S = {
+  // Auth
+  photographer: null,
+  _savedPin: '',
+
+  // Cart
+  cart: [],
+  coupon: null,
+
+  // Customer
+  customer: { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' },
+
+  // Action photos
+  ap: { query:'', families:[], family:null, photos:[], selected: new Set(), loading:false },
+
+  // Portrait
+  poses: 0,
+  singles: 0,
+
+  // Private sessions
+  privatePeople: 1,
+
+  // Data cache
+  portraitPricing: null,
+  printSizes: null,
+  frames: null,
+  products: null,
+  recentSales: null,
+
+  // Pending (Square redirect recovery)
+  pendingOrder: null,
+};
+
 // ─── Utilities ───────────────────────────────────────────────────────────────
 function $(id){ return document.getElementById(id); }
+function fmt(n){ return '$' + Number(n).toFixed(2); }
 
-function showToast(msg, dur=2500){
-  const t=$('toast'); t.textContent=msg; t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'), dur);
+let _toastTimer = null;
+function showToast(msg){
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 function setLoading(on){
-  $('loading').classList.toggle('show', on);
+  $('loading-overlay').classList.toggle('hidden', !on);
 }
 
-function fmtMoney(n){ return '$'+Number(n).toFixed(2); }
-
-function fmtDate(d){
-  if(!d) return '';
-  const parts = d.split('-');
-  if(parts.length !== 3) return d;
-  const dt = new Date(Number(parts[0]), Number(parts[1])-1, Number(parts[2]));
-  return dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
-}
-
-async function api(url){
-  const r = await fetch(url);
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-// ─── Screen navigation ───────────────────────────────────────────────────────
-const SCREEN_ORDER = ['s-passcode','s-pin','s-dates','s-locations','s-folders','s-photos','s-checkout','s-confirm'];
-let _cur = 's-pin';
-
+// ─── Screen management ───────────────────────────────────────────────────────
 function showScreen(id){
-  const prev = _cur;
-  _cur = id;
-  document.querySelectorAll('.screen').forEach(el => {
-    if(el.id === id){
-      el.classList.remove('hidden','slide-left');
-    } else if(el.id === prev) {
-      const goingForward = SCREEN_ORDER.indexOf(id) > SCREEN_ORDER.indexOf(prev);
-      el.classList.remove('hidden');
-      el.classList.toggle('slide-left', goingForward);
-      el.classList.toggle('hidden', !goingForward);
-      if(goingForward) setTimeout(()=>el.classList.add('hidden'),310);
-    } else {
-      el.classList.add('hidden');
-      el.classList.remove('slide-left');
-    }
+  ['s-passcode','s-pin','s-main','s-confirm'].forEach(s => {
+    const el = $(s);
+    if(el) el.classList.toggle('hidden', s !== id);
   });
 }
 
-function goBack(target){
-  const el = $(target);
-  if(!el) return;
-  const cur = $(_cur);
-  cur.classList.add('hidden'); cur.classList.remove('slide-left');
-  el.classList.remove('hidden','slide-left');
-  _cur = target;
-}
-
-// ─── Passcode unlock ─────────────────────────────────────────────────────────
+// ─── Passcode ────────────────────────────────────────────────────────────────
 function isUnlocked(){
   try {
     const ts = parseInt(localStorage.getItem(PC_UNLOCK_KEY) || '0', 10);
@@ -534,520 +864,957 @@ function isUnlocked(){
   } catch(e){ return false; }
 }
 
-function setUnlocked(){
-  try { localStorage.setItem(PC_UNLOCK_KEY, String(Date.now())); } catch(e){}
-}
-
 async function submitPasscode(){
-  const val = $('pc-input').value.trim();
-  if(!val) return;
-  setLoading(true);
+  const code = $('pc-input').value.trim();
+  if(!code) return;
+  $('pc-error').textContent = '';
   try {
-    const res = await fetch('/api/pos-unlock',{
+    const res = await fetch('/api/pos-unlock', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({passcode: val})
+      body: JSON.stringify({passcode: code})
     });
-    setLoading(false);
-    if(!res.ok){ throw new Error('bad'); }
-    setUnlocked();
-    $('pc-input').value = '';
-    showScreen('s-pin');
+    if(res.ok){
+      try { localStorage.setItem(PC_UNLOCK_KEY, Date.now().toString()); } catch(e){}
+      $('pc-input').value = '';
+      showScreen('s-pin');
+    } else {
+      $('pc-error').textContent = 'Incorrect access code';
+      $('pc-input').select();
+    }
   } catch(e){
-    setLoading(false);
-    $('pc-error').textContent = 'Incorrect passcode — try again';
-    $('pc-input').value = '';
-    setTimeout(()=>{ $('pc-error').textContent = ''; }, 2000);
+    $('pc-error').textContent = 'Connection error';
   }
 }
 
 // ─── PIN ─────────────────────────────────────────────────────────────────────
-function pinKey(d){
-  if(S.pin.length >= 4) return;
-  S.pin += d;
+let _pinBuf = '';
+function updatePinDots(prefix){
+  prefix = prefix || 'pd';
+  const buf = prefix === 'pd' ? _pinBuf : _resendBuf;
+  for(let i=0;i<4;i++){
+    const el = $(prefix + i);
+    if(!el) continue;
+    el.classList.toggle('filled', i < buf.length);
+    el.classList.remove('error');
+  }
+}
+
+function pinDigit(d){
+  if(_pinBuf.length >= 4) return;
+  _pinBuf += d;
   updatePinDots();
-  if(S.pin.length === 4) setTimeout(submitPin, 80);
+  if(_pinBuf.length === 4) submitPin();
 }
 
 function pinDel(){
-  S.pin = S.pin.slice(0,-1);
+  _pinBuf = _pinBuf.slice(0,-1);
+  updatePinDots();
   $('pin-error').textContent = '';
-  updatePinDots(false);
-}
-
-function updatePinDots(error=false){
-  for(let i=0;i<4;i++){
-    const dot = $('pd'+i);
-    dot.classList.toggle('filled', i < S.pin.length && !error);
-    dot.classList.toggle('error', error && i < S.pin.length);
-  }
 }
 
 async function submitPin(){
-  setLoading(true);
+  const pin = _pinBuf;
   try {
-    const res = await fetch('/api/photographer/auth',{
+    const res = await fetch('/api/photographer/auth', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({pin: S.pin})
+      body: JSON.stringify({pin})
     });
-    if(!res.ok){ throw new Error('Invalid PIN'); }
     const data = await res.json();
-    S.photographer = data.photographer;
-    S._savedPin = S.pin;
-    try { localStorage.setItem('ci_pos_pin', S.pin); } catch(e){}
-    $('dates-photog').textContent = S.photographer.name || 'Associate';
-    setLoading(false);
-    loadDates();
-    showScreen('s-dates');
-  } catch(e){
-    setLoading(false);
-    $('pin-error').textContent = 'Incorrect PIN — try again';
-    updatePinDots(true);
-    setTimeout(()=>{
-      S.pin='';
-      updatePinDots(false);
-      $('pin-error').textContent='';
-    },900);
-  }
-}
-
-function logout(){
-  S.photographer = null; S.pin = ''; S._savedPin = '';
-  updatePinDots();
-  showScreen('s-pin');
-}
-
-// ─── Dates ───────────────────────────────────────────────────────────────────
-async function loadDates(){
-  try {
-    const body = $('dates-body');
-    body.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
-    const {days} = await api('/api/days');
-    if(!days.length){
-      body.innerHTML='<div class="empty"><div class="empty-icon">📅</div>No photos yet.</div>';
-      return;
-    }
-    body.innerHTML = days.map(d=>`
-      <div class="date-card" onclick="selectDate('${d.date}')">
-        <div class="date-thumbs">
-          ${(d.previews||[]).slice(0,4).map(p=>`<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy">`).join('')}
-        </div>
-        <div class="date-info">
-          <div class="date-label">${fmtDate(d.date)}</div>
-          <div class="date-meta">${d.gallery_count} galler${d.gallery_count===1?'y':'ies'} · ${d.folder_count} location${d.folder_count===1?'':'s'}</div>
-        </div>
-        <div class="date-arrow">›</div>
-      </div>
-    `).join('');
-  } catch(e){ showToast('Error loading dates'); }
-}
-
-function selectDate(date){
-  S.date = date;
-  $('loc-date-label').textContent = fmtDate(date);
-  loadLocations(date);
-  showScreen('s-locations');
-}
-
-// ─── Locations ───────────────────────────────────────────────────────────────
-async function loadLocations(date){
-  const body = $('locations-body');
-  body.innerHTML = '<div class="empty"><div class="spinner"></div></div>';
-  try {
-    const {locations} = await api(`/api/locations?date=${encodeURIComponent(date)}`);
-    if(!locations.length){
-      body.innerHTML='<div class="empty"><div class="empty-icon">📍</div>No locations found.</div>';
-      return;
-    }
-    body.innerHTML = `<div class="loc-grid">${
-      locations.map(loc=>`
-        <div class="loc-card" onclick="selectLocation('${encodeURIComponent(loc.name)}')">
-          <div class="loc-thumb">
-            <div class="loc-thumb-grid">
-              ${(loc.previews||[]).slice(0,4).map(p=>`<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy">`).join('')}
-            </div>
-          </div>
-          <div class="loc-name">${loc.name}</div>
-        </div>
-      `).join('')
-    }</div>`;
-  } catch(e){ showToast('Error loading locations'); }
-}
-
-async function selectLocation(locEncoded){
-  const loc = decodeURIComponent(locEncoded);
-  S.location = loc;
-  S.folderType = null; S.folderName = null;
-
-  setLoading(true);
-  try {
-    const data = await api(`/api/subfolders?date=${encodeURIComponent(S.date)}&location=${encodeURIComponent(loc)}`);
-    setLoading(false);
-    if(data.has_items){
-      $('folder-location-label').textContent = loc;
-      $('folder-sub-label').textContent = data.type === 'portrait' ? 'Select a family' : 'Select a group';
-      S.folderType = data.type;
-      renderFolders(data.items, data.type);
-      showScreen('s-folders');
+    if(res.ok && data.name){
+      S.photographer = { name: data.name, id: data.id, pin };
+      S._savedPin = pin;
+      try { localStorage.setItem('ci_pos_pin', pin); } catch(e){}
+      _pinBuf = '';
+      updatePinDots();
+      $('pos-photog-name').textContent = data.name;
+      showScreen('s-main');
+      initMainPOS();
     } else {
-      await loadPhotos();
-      showScreen('s-photos');
+      pinError();
     }
   } catch(e){
-    setLoading(false); showToast('Error');
+    pinError();
   }
 }
 
-// ─── Folders ─────────────────────────────────────────────────────────────────
-function renderFolders(items, type){
-  const body = $('folders-body');
-  body.innerHTML = items.map(f=>`
-    <div class="folder-item" onclick="selectFolder('${encodeURIComponent(f.name)}')">
-      <div class="folder-thumb">
-        ${f.previews && f.previews[0] ? `<img src="/api/photo?path=${encodeURIComponent(f.previews[0])}&size=thumb" loading="lazy">` : ''}
-      </div>
-      <div class="folder-name">${f.name}</div>
-      <div class="folder-arrow">›</div>
-    </div>
-  `).join('');
+function pinError(){
+  for(let i=0;i<4;i++){ const el=$('pd'+i); if(el) el.classList.add('error'); }
+  $('pin-error').textContent = 'Invalid PIN';
+  setTimeout(()=>{ _pinBuf=''; updatePinDots(); $('pin-error').textContent=''; }, 900);
 }
 
-async function selectFolder(nameEncoded){
-  S.folderName = decodeURIComponent(nameEncoded);
-  setLoading(true);
-  try {
-    await loadPhotos();
-    setLoading(false);
-    showScreen('s-photos');
-  } catch(e){ setLoading(false); showToast('Error loading photos'); }
+// ─── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(tab){
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.querySelectorAll('.tab-panel').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + tab);
+  });
+  $('content-scroll').scrollTop = 0;
+
+  // Lazy-load tab data
+  if(tab === 'prints' && !S.printSizes) loadPrintSizes();
+  if(tab === 'frames' && !S.frames) loadFrames();
+  if(tab === 'recent') loadRecentSales();
+  if(tab === 'shipping') renderShipping();
 }
 
-// ─── Photos ───────────────────────────────────────────────────────────────────
-async function loadPhotos(){
-  S.selected = new Set();
-  let url = `/api/browse?date=${encodeURIComponent(S.date)}&location=${encodeURIComponent(S.location)}`;
-  if(S.folderName){
-    if(S.folderType === 'portrait') url += `&family=${encodeURIComponent(S.folderName)}`;
-    else url += `&group=${encodeURIComponent(S.folderName)}`;
-  }
-  const data = await api(url);
-  S.photos = data.photos || [];
+// ─── Cart ────────────────────────────────────────────────────────────────────
+function cartId(){ return Math.random().toString(36).slice(2,10); }
 
-  // Also load pricing
-  let purl = `/api/pricing?date=${encodeURIComponent(S.date)}&location=${encodeURIComponent(S.location)}`;
-  if(S.folderName) purl += `&family=${encodeURIComponent(S.folderName)}`;
-  try { S.pricing = await api(purl); } catch(e){ S.pricing = {tiers:[],combos:[]}; }
-
-  // Set header
-  const title = S.folderName || S.location;
-  $('photos-title').textContent = title;
-  $('photos-sub').textContent = `${S.photos.length} photo${S.photos.length===1?'':'s'} · ${fmtDate(S.date)}`;
-
-  renderPhotoGrid();
-  updatePhotoBar();
+function cartAdd(item){
+  item.id = cartId();
+  if(item.qty === undefined) item.qty = 1;
+  item.subtotal = item.price * item.qty;
+  S.cart.push(item);
+  renderCart();
+  showToast(item.label + ' added to cart');
 }
 
-function renderPhotoGrid(){
-  const grid = $('photo-grid');
-  grid.innerHTML = S.photos.map((p,i)=>`
-    <div class="photo-cell" id="pc-${i}" onclick="togglePhoto(${i})">
-      <img data-src="/api/photo?path=${encodeURIComponent(p.path)}&size=thumb" alt="">
-      <div class="photo-sel-ring"></div>
-    </div>
-  `).join('');
-
-  // Lazy load via IntersectionObserver
-  const obs = new IntersectionObserver((entries)=>{
-    entries.forEach(e=>{
-      if(e.isIntersecting){
-        const img = e.target.querySelector('img[data-src]');
-        if(img){ img.src=img.dataset.src; img.removeAttribute('data-src'); img.onload=()=>img.style.opacity=1; obs.unobserve(e.target); }
-      }
-    });
-  },{rootMargin:'200px'});
-  grid.querySelectorAll('.photo-cell').forEach(c=>obs.observe(c));
-
-  $('ga-count').textContent = `${S.photos.length} photos`;
+function cartRemove(id){
+  S.cart = S.cart.filter(i => i.id !== id);
+  renderCart();
 }
 
-function togglePhoto(i){
-  const path = S.photos[i].path;
-  if(S.selected.has(path)) S.selected.delete(path);
-  else S.selected.add(path);
-  const cell = $('pc-'+i);
-  cell.classList.toggle('selected', S.selected.has(path));
-  updatePhotoBar();
-}
-
-function selectAll(){
-  S.photos.forEach(p=>S.selected.add(p.path));
-  document.querySelectorAll('.photo-cell').forEach((c,i)=>c.classList.add('selected'));
-  updatePhotoBar();
-}
-
-function clearSelection(){
-  S.selected = new Set();
-  document.querySelectorAll('.photo-cell').forEach(c=>c.classList.remove('selected'));
-  updatePhotoBar();
-}
-
-function photosGoBack(){
-  if(S.folderName) goBack('s-folders');
-  else goBack('s-locations');
-}
-
-function calcPrice(count){
-  const tiers = (S.pricing && S.pricing.tiers) ? S.pricing.tiers : [];
-  if(!tiers.length) return {price:0, label:''};
-  const all = tiers.find(t=>t.count==='all');
-  if(all && count >= S.photos.length) return {price:all.price, label:all.label};
-  const num = tiers.filter(t=>typeof t.count==='number').sort((a,b)=>b.count-a.count);
-  for(const t of num){ if(count>=t.count) return {price:t.price, label:t.label}; }
-  // Below first tier - use lowest tier price if any selected
-  if(count>0 && num.length) return {price:num[num.length-1].price, label:num[num.length-1].label};
-  return {price:0, label:''};
-}
-
-function updatePhotoBar(){
-  const count = S.selected.size;
-  const bar = $('photo-bar');
-  $('bar-count').textContent = `${count} photo${count===1?'':'s'} selected`;
-  const {price,label} = calcPrice(count);
-  $('bar-price').textContent = fmtMoney(price);
-  $('bar-tier').textContent = label;
-  bar.classList.toggle('visible', count > 0);
-}
-
-function goToCheckout(){
-  if(S.selected.size===0){ showToast('Select at least one photo'); return; }
-  S.coupon = null;
-  $('coupon-input').value = '';
-  $('coupon-status').textContent = '';
-  $('coupon-status').className = 'coupon-status';
-  $('cust-name').value = S.name;
-  $('cust-email').value = S.email;
-  renderCheckout();
-  showScreen('s-checkout');
-}
-
-// ─── Checkout ────────────────────────────────────────────────────────────────
-function renderCheckout(){
-  // Thumb strip
-  const strip = $('checkout-thumbs');
-  const paths = [...S.selected];
-  strip.innerHTML = paths.slice(0,20).map(p=>
-    `<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy">`
-  ).join('') + (paths.length>20?`<div style="display:flex;align-items:center;padding:0 .5rem;color:var(--muted);font-size:.85rem">+${paths.length-20}</div>`:'');
-
-  // Price rows
-  const {price,label} = calcPrice(S.selected.size);
-  const discount = S.coupon ? calcDiscount(price, S.coupon) : 0;
-  const total = Math.max(0, price - discount);
-
-  let rows = `
-    <div class="price-row"><span>${label||S.selected.size+' photo'+(S.selected.size===1?'':'s')}</span><span>${fmtMoney(price)}</span></div>
-  `;
-  if(discount>0){
-    rows += `<div class="price-row discount"><span>Coupon (${S.coupon.code.toUpperCase()})</span><span>-${fmtMoney(discount)}</span></div>`;
-  }
-  rows += `<div class="price-row total"><span>Total</span><span>${fmtMoney(total)}</span></div>`;
-  $('price-rows').innerHTML = rows;
-
-  // Charge button label
-  $('charge-btn').textContent = `Charge ${fmtMoney(total)} with Square`;
-  $('charge-btn').disabled = total <= 0 && !S.coupon;
-}
-
-function calcDiscount(price, coupon){
-  if(!coupon||!coupon.valid) return 0;
-  if(coupon.discount_type==='percent') return Math.round(price * (coupon.amount/100) * 100)/100;
-  if(coupon.discount_type==='fixed') return Math.min(coupon.amount, price);
+function cartDiscount(){
+  if(!S.coupon) return 0;
+  const sub = S.cart.reduce((a,i) => a + i.subtotal, 0);
+  const c = S.coupon;
+  if(c.type === 'percent') return Math.min(sub, sub * (c.amount / 100));
+  if(c.type === 'fixed')   return Math.min(sub, c.amount);
   return 0;
 }
 
-async function applyCoupon(){
-  const code = $('coupon-input').value.trim();
-  if(!code){ showToast('Enter a code first'); return; }
-  const email = $('cust-email').value.trim();
-  const status = $('coupon-status');
-  status.textContent = 'Checking…'; status.className='coupon-status';
-  try {
-    const res = await fetch(`/api/validate-coupon?code=${encodeURIComponent(code)}&email=${encodeURIComponent(email)}`);
-    const data = await res.json();
-    if(data.valid){
-      S.coupon = data;
-      status.textContent = '✓ ' + (data.description || `${data.amount}${data.discount_type==='percent'?'%':' USD'} off`);
-      status.className = 'coupon-status ok';
-    } else {
-      S.coupon = null;
-      status.textContent = data.error || 'Invalid code';
-      status.className = 'coupon-status err';
-    }
-  } catch(e){
-    status.textContent = 'Could not validate'; status.className='coupon-status err';
-  }
-  renderCheckout();
+function cartTotal(){
+  const sub = S.cart.reduce((a,i) => a + i.subtotal, 0);
+  return Math.max(0, sub - cartDiscount());
 }
 
-// ─── Square ──────────────────────────────────────────────────────────────────
-function buildReceiptNotes(){
-  const count = S.selected.size;
-  let note = `Crystal Images — ${count} photo${count===1?'':'s'}`;
-  if(S.location) note += ` · ${S.location}`;
-  if(S.date) note += ` (${S.date})`;
-  if(S.coupon && S.coupon.valid){
-    const disc = calcDiscount(calcPrice(count).price, S.coupon);
-    note += ` · Code: ${S.coupon.code.toUpperCase()} (-${fmtMoney(disc)})`;
+function hasShippableItem(){
+  return S.cart.some(i => ['prints','frames','mats'].includes(i.category));
+}
+
+function renderCart(){
+  const list = $('cart-items-list');
+  const empty = $('cart-empty');
+  empty.classList.toggle('hidden', S.cart.length > 0);
+
+  // Remove existing item rows
+  list.querySelectorAll('.cart-item').forEach(e => e.remove());
+
+  S.cart.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'cart-item';
+    div.innerHTML = `
+      <div class="cart-item-info">
+        <div class="cart-item-label">${item.label}</div>
+        ${item.detail ? `<div class="cart-item-detail">${item.detail}</div>` : ''}
+        ${item.qty > 1 ? `<div class="cart-item-detail">${item.qty} x ${fmt(item.price)}</div>` : ''}
+      </div>
+      <div class="cart-item-price">${fmt(item.subtotal)}</div>
+      <button class="cart-item-remove" onclick="cartRemove('${item.id}')" title="Remove">x</button>
+    `;
+    list.insertBefore(div, empty);
+  });
+
+  // Coupon
+  const discount = cartDiscount();
+  $('discount-row').classList.toggle('hidden', discount === 0);
+  $('discount-amount').textContent = '-' + fmt(discount);
+  $('cart-total').textContent = fmt(cartTotal());
+
+  // Checkout button — require customer email
+  const hasCustomer = S.customer.email && S.customer.phone;
+  const hasItems = S.cart.length > 0;
+  $('btn-checkout').disabled = !(hasCustomer && hasItems);
+  $('btn-customer-label').textContent = hasCustomer
+    ? (S.customer.first || S.customer.email)
+    : 'Add Customer Info';
+
+  // Show shipping tab indicator if needed
+  if(hasShippableItem()){
+    document.querySelector('[data-tab="shipping"]').style.color = 'var(--accent)';
+  } else {
+    document.querySelector('[data-tab="shipping"]').style.color = '';
   }
-  return note;
+}
+
+// ─── Coupon ──────────────────────────────────────────────────────────────────
+async function applyCoupon(){
+  const code = $('coupon-input').value.trim().toUpperCase();
+  if(!code) return;
+  setLoading(true);
+  try {
+    const res = await fetch('/api/validate-coupon', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({code, total: S.cart.reduce((a,i)=>a+i.subtotal,0)})
+    });
+    const data = await res.json();
+    setLoading(false);
+    if(!res.ok || !data.valid){
+      showToast(data.error || 'Invalid coupon');
+      return;
+    }
+    S.coupon = {code: data.code, type: data.discount_type, amount: parseFloat(data.amount)};
+    $('coupon-input-row').classList.add('hidden');
+    $('coupon-tag-row').classList.remove('hidden');
+    $('coupon-tag-label').textContent = code + ' (' + (data.discount_type === 'percent' ? data.amount + '% off' : fmt(data.amount) + ' off') + ')';
+    renderCart();
+  } catch(e){
+    setLoading(false);
+    showToast('Error checking coupon');
+  }
+}
+
+function removeCoupon(){
+  S.coupon = null;
+  $('coupon-input').value = '';
+  $('coupon-input-row').classList.remove('hidden');
+  $('coupon-tag-row').classList.add('hidden');
+  renderCart();
+}
+
+// ─── Customer modal ───────────────────────────────────────────────────────────
+function openCustomerModal(){
+  const c = S.customer;
+  $('cust-first').value  = c.first  || '';
+  $('cust-last').value   = c.last   || '';
+  $('cust-email').value  = c.email  || '';
+  $('cust-phone').value  = c.phone  || '';
+  $('cust-street').value = c.street || '';
+  $('cust-city').value   = c.city   || '';
+  $('cust-state').value  = c.state  || '';
+  $('cust-zip').value    = c.zip    || '';
+  $('addr-section').classList.toggle('hidden', !hasShippableItem());
+  $('customer-modal').classList.remove('hidden');
+  setTimeout(() => $('cust-first').focus(), 100);
+}
+
+function closeCustomerModal(){
+  $('customer-modal').classList.add('hidden');
+}
+
+function modalBackdropClick(e){
+  if(e.target === $('customer-modal')) closeCustomerModal();
+}
+
+function saveCustomerInfo(){
+  const email = $('cust-email').value.trim();
+  const phone = $('cust-phone').value.trim();
+  if(!email){ showToast('Email is required'); $('cust-email').focus(); return; }
+  if(!phone){ showToast('Phone number is required'); $('cust-phone').focus(); return; }
+  S.customer = {
+    first:  $('cust-first').value.trim(),
+    last:   $('cust-last').value.trim(),
+    email,
+    phone,
+    street: $('cust-street').value.trim(),
+    city:   $('cust-city').value.trim(),
+    state:  $('cust-state').value.trim().toUpperCase(),
+    zip:    $('cust-zip').value.trim(),
+  };
+  closeCustomerModal();
+  renderCart();
+}
+
+// ─── Action Photos ────────────────────────────────────────────────────────────
+async function apSearch(){
+  const q = $('ap-search-input').value.trim();
+  if(!q){ showToast('Enter a last name to search'); return; }
+  S.ap.query = q;
+  S.ap.families = [];
+  apClearPhotos();
+  $('ap-results').innerHTML = '<div class="ap-loading">Searching...</div>';
+  try {
+    const res = await fetch(`/api/last-name-search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    S.ap.families = data.results || data || [];
+    renderApResults();
+  } catch(e){
+    $('ap-results').innerHTML = '<div class="ap-loading">Search failed</div>';
+  }
+}
+
+function renderApResults(){
+  const el = $('ap-results');
+  if(!S.ap.families.length){
+    el.innerHTML = '<div class="ap-loading">No results found</div>';
+    return;
+  }
+  el.innerHTML = S.ap.families.map((f,i) => `
+    <div class="ap-result-item" onclick="apSelectFamily(${i})">
+      <div>
+        <div class="ap-result-name">${f.last_name || f.folder || ''}</div>
+        <div class="ap-result-meta">${f.date || ''} &middot; ${f.location || ''}</div>
+      </div>
+      <span class="ap-result-arrow">&#8250;</span>
+    </div>
+  `).join('');
+}
+
+async function apSelectFamily(idx){
+  const f = S.ap.families[idx];
+  if(!f) return;
+  S.ap.family = f;
+  S.ap.selected.clear();
+  $('ap-results').innerHTML = '';
+  $('ap-photos-view').classList.remove('hidden');
+  $('ap-breadcrumb-name').textContent = `${f.last_name || f.folder || ''} — ${f.date || ''}`;
+  $('ap-photo-grid').innerHTML = '<div class="ap-loading">Loading photos...</div>';
+  $('ap-add-bar').classList.remove('hidden');
+  renderApSelCount();
+  try {
+    const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.folder || '' });
+    const res = await fetch(`/api/browse?${params}`);
+    const data = await res.json();
+    S.ap.photos = (data.photos || []);
+    renderApPhotos();
+  } catch(e){
+    $('ap-photo-grid').innerHTML = '<div class="ap-loading">Failed to load photos</div>';
+  }
+}
+
+function renderApPhotos(){
+  const grid = $('ap-photo-grid');
+  if(!S.ap.photos.length){
+    grid.innerHTML = '<div class="ap-loading">No photos found</div>';
+    return;
+  }
+  grid.innerHTML = S.ap.photos.map((p,i) => {
+    const url = p.url || p.thumb_url || '';
+    const key = p.path || p.key || '';
+    return `
+      <div class="ap-photo-item" id="apph-${i}" onclick="apTogglePhoto(${i})">
+        <img class="ap-photo-img" src="${url}" loading="lazy" alt="">
+        <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function apTogglePhoto(idx){
+  const p = S.ap.photos[idx];
+  if(!p) return;
+  const key = p.path || p.key || String(idx);
+  if(S.ap.selected.has(key)) S.ap.selected.delete(key);
+  else S.ap.selected.add(key);
+  const el = $('apph-' + idx);
+  if(el) el.classList.toggle('selected', S.ap.selected.has(key));
+  renderApSelCount();
+}
+
+function renderApSelCount(){
+  const n = S.ap.selected.size;
+  $('ap-sel-count').textContent = n + ' selected';
+  $('ap-add-btn').disabled = n === 0;
+}
+
+function apAddToCart(){
+  if(!S.ap.selected.size) return;
+  const f = S.ap.family;
+  const selectedKeys = [...S.ap.selected];
+  const selectedPhotos = S.ap.photos.filter(p => selectedKeys.includes(p.path || p.key));
+  const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || p.key));
+  cartAdd({
+    category: 'action_photos',
+    label: `Action Photos — ${f.last_name || f.folder || ''}`,
+    detail: `${selectedKeys.length} photo${selectedKeys.length !== 1 ? 's' : ''} · ${f.date || ''} · ${f.location || ''}`,
+    price: 0,
+    qty: 1,
+    subtotal: 0,
+    photo_paths: selectedPhotos.map(p => p.path || p.key),
+    filenames,
+    date: f.date || '',
+    location: f.location || '',
+    _pricePending: true,
+  });
+  // Reset selection
+  S.ap.selected.clear();
+  S.ap.photos.forEach((p,i) => {
+    const el = $('apph-' + i);
+    if(el) el.classList.remove('selected');
+  });
+  renderApSelCount();
+}
+
+function apClearPhotos(){
+  S.ap.family = null;
+  S.ap.photos = [];
+  S.ap.selected.clear();
+  $('ap-photos-view').classList.add('hidden');
+  $('ap-add-bar').classList.add('hidden');
+}
+
+// ─── Portraits ────────────────────────────────────────────────────────────────
+function adjustPoses(d){
+  S.poses = Math.max(0, S.poses + d);
+  $('pose-count').textContent = S.poses;
+  updatePortraitPrice();
+}
+
+function adjustSingles(d){
+  S.singles = Math.max(0, S.singles + d);
+  $('single-count').textContent = S.singles;
+  updatePortraitPrice();
+}
+
+function updatePortraitPrice(){
+  const pp = S.portraitPricing;
+  if(!pp) return;
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const single_price = pp.single_photo || 40;
+  let poseTotal = 0;
+  if(S.poses > 0){
+    const tier = tiers[Math.min(S.poses - 1, tiers.length - 1)];
+    poseTotal = tier * S.poses;
+    $('pose-price-sub').textContent = `${fmt(tier)}/pose (${S.poses} pose${S.poses!==1?'s':''})`;
+  } else {
+    $('pose-price-sub').textContent = `${fmt(tiers[0])}/pose`;
+  }
+  const total = poseTotal + single_price * S.singles;
+  $('portrait-price').textContent = fmt(total);
+  return total;
+}
+
+function portraitAddToCart(){
+  if(S.poses === 0 && S.singles === 0){
+    showToast('Select at least one pose or photo');
+    return;
+  }
+  const total = updatePortraitPrice();
+  const pp = S.portraitPricing;
+  const tiers = (pp||{}).pose_tiers || [65,57.5,50];
+  const tierLabel = S.poses > 0 ? `${fmt(tiers[Math.min(S.poses-1,tiers.length-1)])}/pose` : '';
+  const parts = [];
+  if(S.poses) parts.push(`${S.poses} pose${S.poses!==1?'s':''}`);
+  if(S.singles) parts.push(`${S.singles} individual photo${S.singles!==1?'s':''}`);
+  cartAdd({
+    category: 'portrait',
+    label: 'Portrait Session',
+    detail: parts.join(', ') + (tierLabel ? ` · ${tierLabel}` : ''),
+    price: total,
+    qty: 1,
+    subtotal: total,
+  });
+  S.poses = 0; S.singles = 0;
+  $('pose-count').textContent = '0';
+  $('single-count').textContent = '0';
+  updatePortraitPrice();
+}
+
+// ─── Private Sessions ─────────────────────────────────────────────────────────
+function adjustPrivatePeople(d){
+  S.privatePeople = Math.max(1, S.privatePeople + d);
+  $('private-people').textContent = S.privatePeople;
+  const base = 550;
+  const extra = Math.max(0, S.privatePeople - 4) * 75;
+  const total = base + extra;
+  if(S.privatePeople <= 4){
+    $('private-price-line').textContent = `${fmt(base)} (base rate, up to 4)`;
+  } else {
+    $('private-price-line').textContent = `${fmt(base)} base + ${fmt(extra)} (${S.privatePeople - 4} extra) = ${fmt(total)}`;
+  }
+}
+
+function privateAddToCart(){
+  const base = 550;
+  const extra = Math.max(0, S.privatePeople - 4) * 75;
+  const total = base + extra;
+  cartAdd({
+    category: 'private',
+    label: 'Private Action Shoot',
+    detail: `${S.privatePeople} ${S.privatePeople===1?'person':'people'}`,
+    price: total,
+    qty: 1,
+    subtotal: total,
+  });
+  S.privatePeople = 1;
+  $('private-people').textContent = '1';
+  adjustPrivatePeople(0); // reset price display
+}
+
+// ─── Prints ──────────────────────────────────────────────────────────────────
+async function loadPrintSizes(){
+  try {
+    const res = await fetch('/api/print-pricing');
+    const data = await res.json();
+    S.printSizes = data.sizes || [];
+    renderPrintSizes();
+  } catch(e){
+    $('print-size-list').innerHTML = '<div class="ap-loading">Failed to load</div>';
+  }
+}
+
+function renderPrintSizes(){
+  if(!S.printSizes) return;
+  const half = $('half-price-toggle').checked;
+  $('print-size-list').innerHTML = S.printSizes.map(s => {
+    const price = half ? s.price * 0.5 : s.price;
+    return `
+      <div class="print-size-row">
+        <span class="print-size-name">${s.label}</span>
+        <span class="print-size-price">${half ? '<s style="opacity:.5;font-size:.75rem">' + fmt(s.price) + '</s> ' : ''}${fmt(price)}</span>
+        <div class="stepper" style="gap:.5rem">
+          <button class="step-btn" style="width:26px;height:26px" onclick="printChange('${s.label}',${s.price},${half},-1)">-</button>
+          <span style="min-width:1.5ch;text-align:center;font-size:.9rem;font-weight:600" id="print-qty-${s.label.replace(/[^a-z0-9]/gi,'_')}">0</span>
+          <button class="step-btn" style="width:26px;height:26px" onclick="printChange('${s.label}',${s.price},${half},1)">+</button>
+        </div>
+        <button class="print-add-btn" onclick="printAddToCart('${s.label}',${price})">Add</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function printChange(label, basePrice, half, delta){
+  const key = label.replace(/[^a-z0-9]/gi,'_');
+  const el = $('print-qty-' + key);
+  if(!el) return;
+  const cur = parseInt(el.textContent) || 0;
+  el.textContent = Math.max(0, cur + delta);
+}
+
+function printAddToCart(label, price){
+  const key = label.replace(/[^a-z0-9]/gi,'_');
+  const qtyEl = $('print-qty-' + key);
+  const qty = qtyEl ? Math.max(1, parseInt(qtyEl.textContent) || 1) : 1;
+  const half = $('half-price-toggle').checked;
+  const actualPrice = half ? price : price; // price already adjusted when rendered
+  cartAdd({
+    category: 'prints',
+    label: `${label} Print${half ? ' (half price)' : ''}`,
+    detail: half ? '50% off' : '',
+    price: actualPrice,
+    qty,
+    subtotal: actualPrice * qty,
+  });
+  if(qtyEl) qtyEl.textContent = '0';
+}
+
+// ─── Frames ──────────────────────────────────────────────────────────────────
+async function loadFrames(){
+  const el = $('frames-list');
+  el.innerHTML = '<div class="ap-loading">Loading...</div>';
+  try {
+    const res = await fetch('/api/frames');
+    const data = await res.json();
+    S.frames = data.frames || [];
+    renderFrames();
+  } catch(e){
+    el.innerHTML = '<div class="ap-loading">Failed to load frames</div>';
+  }
+}
+
+function renderFrames(){
+  const el = $('frames-list');
+  if(!S.frames || !S.frames.length){
+    el.innerHTML = '<div class="ap-loading">No frames available</div>';
+    return;
+  }
+  el.innerHTML = S.frames.map(f => {
+    const opts = [];
+    if(f.landscape) opts.push({orient:'Landscape', price: f.landscape.price, vid: f.landscape.variation_id});
+    if(f.portrait)  opts.push({orient:'Portrait',  price: f.portrait.price,  vid: f.portrait.variation_id});
+    if(!opts.length) return '';
+    return `
+      <div class="frame-size-section">
+        <div class="frame-size-title">${f.size} Frame</div>
+        <div class="frame-orient-row">
+          ${opts.map(o => `
+            <div class="frame-option-btn" onclick="frameAddToCart('${f.size}','${o.orient}',${o.price})">
+              <div class="frame-option-name">${o.orient}</div>
+              <div class="frame-option-price">${fmt(o.price)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function frameAddToCart(size, orient, price){
+  cartAdd({
+    category: 'frames',
+    label: `${size} Frame — ${orient}`,
+    price: parseFloat(price),
+    qty: 1,
+    subtotal: parseFloat(price),
+  });
+}
+
+// ─── Custom products (Base Area, Mats) ────────────────────────────────────────
+async function loadProducts(){
+  try {
+    const res = await fetch('/api/pos-products');
+    S.products = await res.json();
+    renderBaseArea();
+    renderMats();
+  } catch(e){}
+}
+
+function renderProductGrid(items, gridId, emptyId, category){
+  const grid = $(gridId);
+  const empty = $(emptyId);
+  if(!items || !items.length){
+    grid.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  grid.innerHTML = items.map(item => `
+    <div class="product-card" onclick="customProductAdd('${category}','${escHtml(item.name)}',${item.price})">
+      <div class="product-card-name">${escHtml(item.name)}</div>
+      <div class="product-card-price">${fmt(item.price)}</div>
+      ${item.description ? `<div class="product-card-desc">${escHtml(item.description)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderBaseArea(){
+  renderProductGrid((S.products||{}).base_area, 'base-area-grid', 'base-area-empty', 'base_area');
+}
+
+function renderMats(){
+  renderProductGrid((S.products||{}).mats, 'mats-grid', 'mats-empty', 'mats');
+}
+
+function customProductAdd(category, name, price){
+  cartAdd({
+    category,
+    label: name,
+    price: parseFloat(price),
+    qty: 1,
+    subtotal: parseFloat(price),
+  });
+}
+
+function escHtml(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Shipping ─────────────────────────────────────────────────────────────────
+function renderShipping(){
+  const el = $('shipping-content');
+  if(!hasShippableItem()){
+    el.innerHTML = '<div class="shipping-notice">Add prints, frames, or mats to your cart to calculate shipping. Shipping costs will appear here.</div>';
+    return;
+  }
+  // Calculate shipping from cart items
+  const pp = S.printSizes || [];
+  let shippingTotal = 0;
+  const shippedItems = S.cart.filter(i => ['prints','frames','mats'].includes(i.category));
+  const printCount = shippedItems.filter(i => i.category === 'prints').reduce((a,i) => a + (i.qty||1), 0);
+  const frameCount = shippedItems.filter(i => i.category === 'frames').reduce((a,i) => a + (i.qty||1), 0);
+
+  // Simple: show address requirement
+  const hasAddr = S.customer.street && S.customer.zip;
+  let html = '';
+  shippedItems.forEach(item => {
+    html += `
+      <div class="shipping-info">
+        <div class="shipping-info-label">${item.label}</div>
+        <div class="shipping-info-val">Shipping calculated at checkout</div>
+      </div>
+    `;
+  });
+  if(!hasAddr){
+    html += '<div class="shipping-notice">Open Customer Info to add a mailing address for shipped items.</div>';
+  } else {
+    html += `<div class="shipping-notice">Mailing to: ${S.customer.street}, ${S.customer.city} ${S.customer.state} ${S.customer.zip}</div>`;
+  }
+  el.innerHTML = html;
+}
+
+// ─── Recent Sales ──────────────────────────────────────────────────────────────
+async function loadRecentSales(){
+  const el = $('recent-sales-list');
+  el.innerHTML = '<div class="ap-loading">Loading...</div>';
+  try {
+    const res = await fetch('/api/pos-recent-sales?limit=30');
+    const data = await res.json();
+    S.recentSales = data.orders || [];
+    renderRecentSales();
+  } catch(e){
+    el.innerHTML = '<div class="ap-loading">Failed to load</div>';
+  }
+}
+
+function renderRecentSales(){
+  const el = $('recent-sales-list');
+  if(!S.recentSales || !S.recentSales.length){
+    el.innerHTML = '<div class="ap-loading">No recent sales</div>';
+    return;
+  }
+  el.innerHTML = S.recentSales.map(o => {
+    const name = o.name || (o.first ? `${o.first} ${o.last||''}` : '');
+    const photog = o.photographer_name ? ` · ${o.photographer_name}` : '';
+    const hasDownload = !!o.package_token;
+    return `
+      <div class="sale-card">
+        <div class="sale-card-top">
+          <div class="sale-customer">${name || 'Unknown'}</div>
+          <div class="sale-amount">${fmt(o.total||0)}</div>
+        </div>
+        <div class="sale-meta">
+          ${o.date || ''} · ${o.email || ''}${photog}
+          ${o.location ? ' · ' + o.location : ''}
+        </div>
+        <div class="sale-actions">
+          ${hasDownload
+            ? `<button class="sale-resend-btn" onclick="initResend('${o.package_token}','${escHtml(o.email||'')}')">Resend Download</button>`
+            : `<span class="sale-no-dl">No download (non-photo sale)</span>`
+          }
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── Resend ───────────────────────────────────────────────────────────────────
+let _resendBuf = '';
+let _resendToken = '';
+let _resendEmail = '';
+
+function initResend(token, email){
+  _resendToken = token;
+  _resendEmail = email;
+  _resendBuf = '';
+  updateResendDots();
+  $('pin-resend-sub').textContent = `Enter your PIN to resend download to ${email}`;
+  $('pin-resend-overlay').classList.remove('hidden');
+}
+
+function cancelResend(){
+  _resendBuf = ''; _resendToken = ''; _resendEmail = '';
+  $('pin-resend-overlay').classList.add('hidden');
+}
+
+function resendDigit(d){
+  if(_resendBuf.length >= 4) return;
+  _resendBuf += d;
+  updateResendDots();
+  if(_resendBuf.length === 4) submitResend();
+}
+
+function resendDel(){
+  _resendBuf = _resendBuf.slice(0,-1);
+  updateResendDots();
+}
+
+function updateResendDots(){
+  for(let i=0;i<4;i++){
+    const el = $('rpd'+i);
+    if(el){ el.classList.toggle('filled', i < _resendBuf.length); el.classList.remove('error'); }
+  }
+}
+
+async function submitResend(){
+  setLoading(true);
+  try {
+    const res = await fetch('/api/pos-resend', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({pin: _resendBuf, token: _resendToken})
+    });
+    const data = await res.json();
+    setLoading(false);
+    if(res.ok){
+      cancelResend();
+      showToast('Download link resent');
+    } else {
+      for(let i=0;i<4;i++){ const el=$('rpd'+i); if(el) el.classList.add('error'); }
+      setTimeout(()=>{ _resendBuf=''; updateResendDots(); }, 900);
+      showToast(data.error || 'Failed to resend');
+    }
+  } catch(e){
+    setLoading(false);
+    showToast('Error resending');
+    cancelResend();
+  }
+}
+
+// ─── Square checkout ─────────────────────────────────────────────────────────
+function buildLineItems(){
+  return S.cart.map(item => ({
+    name: item.label,
+    quantity: String(item.qty || 1),
+    base_price_money: { amount: Math.round(item.price * 100), currency_code: 'USD' }
+  }));
+}
+
+function buildReceiptNotes(){
+  let parts = S.cart.map(i => `${i.label}${i.qty > 1 ? ' x'+i.qty : ''}: ${fmt(i.subtotal)}`);
+  if(S.coupon) parts.push(`Coupon ${S.coupon.code}: -${fmt(cartDiscount())}`);
+  parts.push(`Total: ${fmt(cartTotal())}`);
+  if(S.customer.first || S.customer.last) parts.push(`Customer: ${S.customer.first} ${S.customer.last}`.trim());
+  if(S.customer.phone) parts.push(`Phone: ${S.customer.phone}`);
+  return parts.join('\n');
 }
 
 function launchSquare(){
-  const name = $('cust-name').value.trim();
-  const email = $('cust-email').value.trim();
-  if(!email){ showToast('Customer email is required'); $('cust-email').focus(); return; }
-  S.name = name; S.email = email;
+  if(!S.customer.email){ showToast('Add customer info first'); openCustomerModal(); return; }
+  if(!S.cart.length){ showToast('Cart is empty'); return; }
 
-  const {price} = calcPrice(S.selected.size);
-  const discount = S.coupon ? calcDiscount(price, S.coupon) : 0;
-  const total = Math.max(0, price - discount);
-
-  const txId = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36);
+  const total = cartTotal();
+  const txId = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
   const callbackUrl = window.location.origin + '/pos?sq=1&txid=' + txId;
 
-  // Save pending state to localStorage so we can restore after Square redirects back
-  S.pendingOrder = {
-    txId, name, email,
-    photo_paths: [...S.selected],
-    filenames: [...S.selected].map(p=>p.split('/').pop()),
-    date: S.date, location: S.location,
-    total, coupon_code: S.coupon ? S.coupon.code : '',
-    coupon_discount: discount,
-    pricing_label: calcPrice(S.selected.size).label,
-    pin: S.photographer ? S.photographer.pin_for_pos || S._pin : '',
-  };
-  // Store pin separately (we kept it for pos-checkout)
-  S.pendingOrder.pin = S._savedPin || '';
+  // Build address string for storage
+  const c = S.customer;
+  const addrStr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ');
 
+  S.pendingOrder = {
+    txId,
+    items: S.cart.map(i => ({
+      id: i.id, category: i.category, label: i.label, price: i.price,
+      qty: i.qty || 1, subtotal: i.subtotal,
+      photo_paths: i.photo_paths || [],
+      filenames:   i.filenames   || [],
+      date:        i.date        || '',
+      location:    i.location    || '',
+    })),
+    name:    `${c.first} ${c.last}`.trim(),
+    email:   c.email,
+    phone:   c.phone,
+    address: addrStr,
+    total,
+    coupon_code:     S.coupon ? S.coupon.code : '',
+    coupon_discount: cartDiscount(),
+    pin:     S._savedPin || '',
+  };
   try { localStorage.setItem('ci_pos_pending', JSON.stringify(S.pendingOrder)); } catch(e){}
+  try { localStorage.setItem('ci_pos_pin', S._savedPin || ''); } catch(e){}
 
   const payload = {
-    amount_money: { amount: Math.round(total * 100), currency_code: 'USD' },
-    callback_url: callbackUrl,
+    amount_money:          { amount: Math.round(total * 100), currency_code: 'USD' },
+    callback_url:          callbackUrl,
     client_transaction_id: txId,
-    notes: buildReceiptNotes(),
+    line_items:            buildLineItems(),
+    notes:                 buildReceiptNotes(),
     options: {
       supported_tender_types: ['CARD','CASH','OTHER'],
-      skip_receipt_screen: false,
+      skip_receipt_screen:    false,
     }
   };
-  const encoded = btoa(JSON.stringify(payload));
-  window.location.href = `square-commerce-v1://payment/create?data=${encoded}`;
+  window.location.href = `square-commerce-v1://payment/create?data=${btoa(JSON.stringify(payload))}`;
 }
 
 async function chargeComp(){
-  const name = $('cust-name').value.trim();
-  const email = $('cust-email').value.trim();
-  if(!email){ showToast('Customer email is required'); $('cust-email').focus(); return; }
-  S.name = name; S.email = email;
+  if(!S.customer.email){ showToast('Add customer info first'); openCustomerModal(); return; }
+  if(!S.cart.length){ showToast('Cart is empty'); return; }
   setLoading(true);
-  try {
-    await completeCheckout('COMP');
-  } catch(e){ setLoading(false); showToast('Error: '+e.message); }
+  const c = S.customer;
+  const addrStr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ');
+  S.pendingOrder = {
+    items: S.cart,
+    name:    `${c.first} ${c.last}`.trim(),
+    email:   c.email,
+    phone:   c.phone,
+    address: addrStr,
+    total:   cartTotal(),
+    coupon_code:     S.coupon ? S.coupon.code : '',
+    coupon_discount: cartDiscount(),
+    pin:     S._savedPin || '',
+  };
+  try { await completeCheckout('COMP'); }
+  catch(e){ setLoading(false); showToast('Error: ' + e.message); }
 }
 
-// ─── Post-Square return ───────────────────────────────────────────────────────
+// ─── Square return handling ───────────────────────────────────────────────────
 function checkSquareReturn(){
   const params = new URLSearchParams(window.location.search);
   if(!params.has('sq')) return false;
-
-  // Clear URL params so refresh doesn't re-trigger
   window.history.replaceState({}, '', '/pos');
 
-  // Try to decode Square's data param
   const rawData = params.get('data');
   let status = params.get('status') || 'ok';
-  let squareTransactionId = params.get('txid') || '';
+  let squareTxId = params.get('txid') || '';
 
   if(rawData){
     try {
       const r = JSON.parse(atob(rawData));
       status = r.status || status;
-      squareTransactionId = r.transaction_id || squareTransactionId || r.payment_id || '';
+      squareTxId = r.transaction_id || r.payment_id || squareTxId;
     } catch(e){}
   }
 
   if(status === 'cancel'){
     showToast('Payment cancelled');
-    restoreStateAndShow('s-checkout');
+    restoreStateAndShow();
     return true;
   }
   if(status === 'error'){
     showToast('Payment error — try again');
-    restoreStateAndShow('s-checkout');
+    restoreStateAndShow();
     return true;
   }
-
-  // Success
-  restoreStateAndComplete(squareTransactionId);
+  restoreStateAndComplete(squareTxId);
   return true;
 }
 
-function restoreStateAndShow(screen){
+function restoreStateAndShow(){
   try {
     const saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null');
-    if(saved){ restoreFromSaved(saved); }
+    if(saved) restoreFromSaved(saved);
   } catch(e){}
-  showScreen(screen);
-}
-
-async function restoreStateAndComplete(txId){
-  try {
-    const saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null');
-    if(!saved){ showToast('Session data lost — contact manager'); showScreen('s-dates'); return; }
-    restoreFromSaved(saved);
-    await completeCheckout(txId);
-  } catch(e){
-    showToast('Error completing order: '+e.message);
-    showScreen('s-dates');
+  try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
+  if(isUnlocked()){
+    showScreen('s-main');
+    initMainPOS();
+    renderCart();
+  } else {
+    showScreen('s-passcode');
   }
 }
 
 function restoreFromSaved(saved){
   S.pendingOrder = saved;
-  S.date = saved.date;
-  S.location = saved.location;
-  S.email = saved.email;
-  S.name = saved.name;
-  if(saved.coupon_code) S.coupon = {valid:true, code:saved.coupon_code, amount:saved.coupon_discount};
+  S.cart = saved.items || [];
+  S.customer = {
+    first: (saved.name||'').split(' ')[0] || '',
+    last:  (saved.name||'').split(' ').slice(1).join(' ') || '',
+    email: saved.email || '',
+    phone: saved.phone || '',
+    street:'', city:'', state:'', zip:'',
+  };
+  if(saved.coupon_code) S.coupon = {code: saved.coupon_code, type:'fixed', amount: saved.coupon_discount||0};
+  S._savedPin = saved.pin || '';
 }
 
-async function completeCheckout(squareTransactionId){
-  setLoading(true);
-  try {
-    const o = S.pendingOrder || {};
-    const payload = {
-      pin:              S._savedPin || o.pin || '',
-      email:            S.email || o.email,
-      name:             S.name || o.name,
-      photo_paths:      o.photo_paths || [...S.selected],
-      filenames:        o.filenames || [...S.selected].map(p=>p.split('/').pop()),
-      date:             S.date || o.date,
-      location:         S.location || o.location,
-      total:            o.total !== undefined ? o.total : 0,
-      coupon_code:      o.coupon_code || '',
-      coupon_discount:  o.coupon_discount || 0,
-      square_payment_id: squareTransactionId || '',
-    };
+async function restoreStateAndComplete(txId){
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null'); } catch(e){}
+  if(!saved){ showToast('Session lost — contact manager'); showScreen('s-passcode'); return; }
+  restoreFromSaved(saved);
+  try { S._savedPin = localStorage.getItem('ci_pos_pin') || S._savedPin; } catch(e){}
+  try { await completeCheckout(txId); }
+  catch(e){ showToast('Error completing order: ' + e.message); showScreen('s-passcode'); }
+}
 
-    const res = await fetch('/api/pos-checkout',{
+async function completeCheckout(squareTxId){
+  setLoading(true);
+  const o = S.pendingOrder || {};
+  const c = S.customer;
+  const addrStr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ');
+  const payload = {
+    pin:              S._savedPin || o.pin || '',
+    email:            c.email  || o.email  || '',
+    name:             `${c.first||''} ${c.last||''}`.trim() || o.name || '',
+    phone:            c.phone  || o.phone  || '',
+    address:          addrStr  || o.address || '',
+    items:            S.cart.length ? S.cart : (o.items || []),
+    total:            cartTotal() || o.total || 0,
+    coupon_code:      S.coupon ? S.coupon.code : (o.coupon_code || ''),
+    coupon_discount:  cartDiscount() || o.coupon_discount || 0,
+    square_payment_id: squareTxId || '',
+  };
+  try {
+    const res = await fetch('/api/pos-checkout', {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     });
     const data = await res.json();
     setLoading(false);
-
     if(!res.ok) throw new Error(data.error || 'Checkout failed');
-
     localStorage.removeItem('ci_pos_pending');
     showConfirmation(data);
   } catch(e){
@@ -1057,36 +1824,58 @@ async function completeCheckout(squareTransactionId){
 }
 
 function showConfirmation(data){
-  const email = S.email || (S.pendingOrder && S.pendingOrder.email) || '';
-  $('confirm-email').textContent = email;
+  $('confirm-email').textContent = S.customer.email || (S.pendingOrder && S.pendingOrder.email) || '';
+  const box = $('confirm-link-box');
   if(data.download_url){
     $('confirm-link').textContent = data.download_url;
     $('confirm-link').href = data.download_url;
-    $('confirm-link-box').style.display = 'block';
+    box.classList.remove('hidden');
   } else {
-    $('confirm-link-box').style.display = 'none';
+    box.classList.add('hidden');
   }
   showScreen('s-confirm');
 }
 
+// ─── New sale ─────────────────────────────────────────────────────────────────
 function newSale(){
   S.photographer = null;
-  S.selected = new Set();
+  S.cart = [];
   S.coupon = null;
   S.pendingOrder = null;
-  S.name = ''; S.email = '';
-  S.pin = ''; S._savedPin = '';
+  S.customer = { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' };
+  S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), loading:false };
+  S.poses = 0; S.singles = 0; S.privatePeople = 1;
+  S._savedPin = '';
+  _pinBuf = '';
   updatePinDots();
+  $('pin-error').textContent = '';
   showScreen('s-pin');
 }
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', ()=>{
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function loadPortraitPricing(){
+  try {
+    const res = await fetch('/api/portrait-pricing');
+    S.portraitPricing = await res.json();
+    updatePortraitPrice();
+  } catch(e){}
+}
+
+function initMainPOS(){
+  loadPortraitPricing();
+  loadProducts();
+  renderCart();
+  adjustPrivatePeople(0); // set price display
+}
+
+window.addEventListener('DOMContentLoaded', () => {
   try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
-  // Square redirect takes priority — app was already unlocked when it left
   if(checkSquareReturn()) return;
-  // Show passcode screen or PIN screen depending on session unlock state
-  showScreen(isUnlocked() ? 's-pin' : 's-passcode');
+  if(isUnlocked()){
+    showScreen('s-pin');
+  } else {
+    showScreen('s-passcode');
+  }
 });
 </script>
 </body>
