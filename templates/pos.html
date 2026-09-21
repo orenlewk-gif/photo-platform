@@ -921,13 +921,14 @@ async function submitPin(){
       body: JSON.stringify({pin})
     });
     const data = await res.json();
-    if(res.ok && data.name){
-      S.photographer = { name: data.name, id: data.id, pin };
+    const photog = data.photographer || data;
+    if(res.ok && photog.name){
+      S.photographer = { name: photog.name, id: photog.id, pin };
       S._savedPin = pin;
       try { localStorage.setItem('ci_pos_pin', pin); } catch(e){}
       _pinBuf = '';
       updatePinDots();
-      $('pos-photog-name').textContent = data.name;
+      $('pos-photog-name').textContent = photog.name;
       showScreen('s-main');
       initMainPOS();
     } else {
