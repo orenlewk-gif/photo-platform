@@ -63,7 +63,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   height:72px;border-radius:var(--radius);background:var(--surface);
   border:1px solid var(--border);color:var(--text);font-size:1.5rem;font-weight:500;
   cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:background .12s;user-select:none;
+  transition:background .12s;user-select:none;touch-action:manipulation;
 }
 .num-btn:active{background:var(--surface2)}
 .num-btn.del{font-size:1.1rem;color:var(--muted)}
@@ -208,6 +208,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .step-btn{
   width:32px;height:32px;border-radius:8px;background:var(--surface2);border:none;
   color:var(--text);font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  touch-action:manipulation;
 }
 .step-btn:active{background:var(--surface3)}
 .step-val{font-size:1.1rem;font-weight:600;min-width:2ch;text-align:center}
@@ -414,7 +415,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 /* ── Toast ── */
 .toast{
-  position:fixed;bottom:calc(72px + max(env(safe-area-inset-bottom,0px),4px) + .75rem);
+  position:fixed;bottom:calc(52px + max(env(safe-area-inset-bottom,0px),0px) + .75rem);
   left:50%;transform:translateX(-50%);
   background:#1a2f45;border:1px solid var(--border);color:var(--text);
   font-size:.85rem;padding:.6rem 1.25rem;border-radius:24px;
@@ -432,6 +433,80 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .loading-spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* ── Category Nav (right panel top) ── */
+.cat-nav{
+  display:grid;grid-template-columns:1fr 1fr;
+  border-bottom:1px solid var(--border);flex-shrink:0;background:var(--surface);
+}
+.cat-btn{
+  background:var(--surface);border:none;border-right:1px solid var(--border);border-bottom:1px solid var(--border);
+  color:var(--muted);font-family:var(--font);font-size:.7rem;font-weight:600;
+  padding:.55rem .4rem;cursor:pointer;text-align:center;line-height:1.2;touch-action:manipulation;
+  transition:background .1s,color .1s;
+}
+.cat-btn:nth-child(even){border-right:none}
+.cat-btn:nth-last-child(-n+2){border-bottom:none}
+.cat-btn:active{background:var(--surface2)}
+.cat-btn.active{background:var(--surface2);color:var(--accent)}
+
+/* ── Cart customer bar ── */
+.cart-customer-bar{
+  display:flex;align-items:center;gap:.6rem;
+  padding:.55rem .85rem;border-bottom:1px solid var(--border);
+  cursor:pointer;background:var(--surface);flex-shrink:0;min-height:40px;
+  touch-action:manipulation;
+}
+.cart-customer-bar:active{background:var(--surface2)}
+.cart-customer-icon{font-size:.85rem;color:var(--muted);flex-shrink:0}
+.cart-customer-label{font-size:.78rem;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cart-customer-label.filled{color:var(--text);font-weight:500}
+
+/* ── Cart section label ── */
+.cart-section-label{
+  padding:.4rem .85rem;font-size:.65rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;
+}
+
+/* ── Totals breakdown ── */
+.subtotal-row{display:flex;justify-content:space-between;font-size:.78rem;color:var(--muted);margin-bottom:.2rem}
+.tax-row{display:flex;justify-content:space-between;font-size:.75rem;color:var(--muted);margin-bottom:.35rem;padding-bottom:.35rem;border-bottom:1px solid var(--border)}
+
+/* ── Per-item actions (notes, custom price) ── */
+.cart-item-actions{display:flex;gap:.35rem;margin-top:.35rem;flex-wrap:wrap;align-items:center}
+.cart-item-action-btn{
+  font-size:.67rem;color:var(--muted);background:var(--surface2);
+  border:1px solid var(--border);border-radius:5px;padding:.15rem .45rem;
+  cursor:pointer;font-family:var(--font);touch-action:manipulation;
+}
+.cart-item-action-btn:active{color:var(--text);background:var(--surface3)}
+.cart-item-note{
+  font-size:.7rem;color:var(--muted);font-style:italic;margin-top:.25rem;
+  background:var(--surface2);border-radius:4px;padding:.2rem .5rem;line-height:1.3;
+}
+.cart-item-price-edit{
+  width:80px;background:var(--surface2);border:1px solid var(--accent);
+  border-radius:6px;color:var(--text);padding:.25rem .4rem;font-size:.8rem;
+  font-family:var(--font);outline:none;display:none;
+}
+
+/* ── Bottom utility bar ── */
+.bottom-bar{
+  flex-shrink:0;display:flex;align-items:stretch;
+  background:var(--surface);border-top:1px solid var(--border);
+  padding-bottom:max(env(safe-area-inset-bottom,0px),0px);
+}
+.bottom-btn{
+  flex:1;padding:.6rem .5rem;
+  padding-bottom:calc(.6rem + max(env(safe-area-inset-bottom,0px),0px));
+  border:none;background:transparent;color:var(--muted);
+  font-size:.72rem;font-weight:500;cursor:pointer;font-family:var(--font);
+  touch-action:manipulation;border-right:1px solid var(--border);
+}
+.bottom-btn:last-child{border-right:none}
+.bottom-btn:active{background:var(--surface2);color:var(--text)}
+.bottom-btn.active{color:var(--accent)}
+
 /* ── Utility ── */
 .hidden{display:none!important}
 </style>
@@ -442,7 +517,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- ─── PASSCODE SCREEN ─── -->
 <div id="s-passcode" class="screen">
   <div class="auth-logo">
-    <div class="auth-logo-mark">CRYSTAL<span>.</span></div>
+    <div class="auth-logo-mark">CRYSTAL IMAGES<span> POS</span></div>
     <div class="auth-logo-sub">Point of Sale</div>
   </div>
   <p class="pc-label">Enter access code to continue</p>
@@ -456,7 +531,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 <!-- ─── PIN SCREEN ─── -->
 <div id="s-pin" class="screen hidden">
   <div class="auth-logo">
-    <div class="auth-logo-mark">CRYSTAL<span>.</span></div>
+    <div class="auth-logo-mark">CRYSTAL IMAGES<span> POS</span></div>
     <div class="auth-logo-sub">Enter Your PIN</div>
   </div>
   <p id="pin-error" class="pin-error"></p>
@@ -574,9 +649,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-private" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Private Sessions</div>
+
+            <!-- Private On Mountain Shoot -->
             <div class="private-card">
-              <div class="private-card-name">Private Action Shoot</div>
-              <div class="private-card-desc">Dedicated session for your group. Base rate covers up to 4 people — $75 per additional person over 4.</div>
+              <div class="private-card-name">Private On Mountain Shoot</div>
+              <div class="private-card-desc">Dedicated on-mountain session for your group. Base rate covers up to 4 people — $75 per additional person over 4.</div>
               <div class="private-people-row">
                 <span style="font-size:.85rem;font-weight:500">Number of People</span>
                 <div class="stepper">
@@ -586,8 +663,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
                 </div>
               </div>
               <div class="private-price-line" id="private-price-line">$550.00 (base rate, up to 4)</div>
-              <button class="btn-add" onclick="privateAddToCart()">Add to Cart</button>
+              <button class="btn-add" onclick="privateAddToCart('Private On Mountain Shoot')">Add to Cart</button>
             </div>
+
+            <!-- Other private session types -->
+            <div id="extra-private-grid" class="product-grid"></div>
           </div>
         </div>
 
@@ -644,10 +724,32 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
     <!-- Cart panel -->
     <div class="cart-panel">
-      <div class="cart-header">Cart</div>
+
+      <!-- Customer info bar -->
+      <div class="cart-customer-bar" id="cart-customer-bar" onclick="openCustomerModal()">
+        <span class="cart-customer-icon">&#9998;</span>
+        <span class="cart-customer-label" id="cart-customer-label">Add Customer</span>
+      </div>
+
+      <!-- Category navigation -->
+      <div class="cat-nav">
+        <button class="cat-btn active" data-tab="action-photos" onclick="switchTab('action-photos')">Action Photos</button>
+        <button class="cat-btn" data-tab="portraits" onclick="switchTab('portraits')">Portraits</button>
+        <button class="cat-btn" data-tab="base-area" onclick="switchTab('base-area')">Base Area</button>
+        <button class="cat-btn" data-tab="private" onclick="switchTab('private')">Private Session</button>
+        <button class="cat-btn" data-tab="prints" onclick="switchTab('prints')">Prints</button>
+        <button class="cat-btn" data-tab="frames" onclick="switchTab('frames')">Frames</button>
+        <button class="cat-btn" data-tab="mats" onclick="switchTab('mats')">Mats</button>
+        <button class="cat-btn" data-tab="shipping" onclick="switchTab('shipping')">Shipping</button>
+      </div>
+
+      <!-- Cart section -->
+      <div class="cart-section-label">Cart</div>
       <div class="cart-items-list" id="cart-items-list">
         <div class="cart-empty" id="cart-empty">No items added yet</div>
       </div>
+
+      <!-- Cart footer -->
       <div class="cart-footer">
         <div class="coupon-row" id="coupon-input-row">
           <input type="text" id="coupon-input" class="coupon-input" placeholder="Coupon code"
@@ -665,35 +767,32 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <span>Discount</span>
           <span id="discount-amount"></span>
         </div>
+        <div class="subtotal-row hidden" id="subtotal-row">
+          <span>Subtotal</span>
+          <span id="cart-subtotal">$0.00</span>
+        </div>
+        <div class="tax-row">
+          <span>4% Resort Tax</span>
+          <span id="cart-tax">$0.00</span>
+        </div>
         <div class="total-row">
-          <span class="total-label">Total</span>
+          <span class="total-label">Est. Total</span>
           <span class="total-amount" id="cart-total">$0.00</span>
         </div>
         <div class="cart-action-btns">
-          <button class="btn-customer" onclick="openCustomerModal()">
-            <span id="btn-customer-label">Add Customer Info</span>
-          </button>
           <button class="btn-checkout" id="btn-checkout" onclick="launchSquare()" disabled>
-            Checkout via Square
+            Charge via Square
           </button>
-          <button class="btn-comp" onclick="chargeComp()">Mark as Comp</button>
         </div>
       </div>
     </div><!-- /cart-panel -->
 
   </div><!-- /pos-body -->
 
-  <!-- Tab bar -->
-  <div class="tab-bar" id="tab-bar">
-    <button class="tab-btn active" data-tab="action-photos" onclick="switchTab('action-photos')">Action Photos</button>
-    <button class="tab-btn" data-tab="portraits" onclick="switchTab('portraits')">Portraits</button>
-    <button class="tab-btn" data-tab="base-area" onclick="switchTab('base-area')">Base Area</button>
-    <button class="tab-btn" data-tab="private" onclick="switchTab('private')">Private Sessions</button>
-    <button class="tab-btn" data-tab="prints" onclick="switchTab('prints')">Prints</button>
-    <button class="tab-btn" data-tab="frames" onclick="switchTab('frames')">Frames</button>
-    <button class="tab-btn" data-tab="mats" onclick="switchTab('mats')">Mats</button>
-    <button class="tab-btn" data-tab="shipping" onclick="switchTab('shipping')">Shipping</button>
-    <button class="tab-btn" data-tab="recent" onclick="switchTab('recent')">Recent Sales</button>
+  <!-- Bottom utility bar -->
+  <div class="bottom-bar">
+    <button class="bottom-btn" data-tab="recent" onclick="switchTab('recent')">Recent Sales</button>
+    <button class="bottom-btn" onclick="lockPOS()">Lock</button>
   </div>
 
 </div><!-- /s-main -->
@@ -947,7 +1046,8 @@ function pinError(){
 
 // ─── Tab switching ────────────────────────────────────────────────────────────
 function switchTab(tab){
-  document.querySelectorAll('.tab-btn').forEach(b => {
+  // Update all category buttons (cat-nav and bottom-bar)
+  document.querySelectorAll('.cat-btn, .bottom-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
   document.querySelectorAll('.tab-panel').forEach(p => {
@@ -968,10 +1068,11 @@ function cartId(){ return Math.random().toString(36).slice(2,10); }
 function cartAdd(item){
   item.id = cartId();
   if(item.qty === undefined) item.qty = 1;
+  if(item.note === undefined) item.note = '';
   item.subtotal = item.price * item.qty;
   S.cart.push(item);
   renderCart();
-  showToast(item.label + ' added to cart');
+  showToast(item.label + ' added');
 }
 
 function cartRemove(id){
@@ -1008,13 +1109,25 @@ function renderCart(){
   S.cart.forEach(item => {
     const div = document.createElement('div');
     div.className = 'cart-item';
+    const noteHtml = item.note
+      ? `<div class="cart-item-note">${escHtml(item.note)}</div>`
+      : '';
     div.innerHTML = `
       <div class="cart-item-info">
-        <div class="cart-item-label">${item.label}</div>
-        ${item.detail ? `<div class="cart-item-detail">${item.detail}</div>` : ''}
+        <div class="cart-item-label">${escHtml(item.label)}</div>
+        ${item.detail ? `<div class="cart-item-detail">${escHtml(item.detail)}</div>` : ''}
         ${item.qty > 1 ? `<div class="cart-item-detail">${item.qty} x ${fmt(item.price)}</div>` : ''}
+        ${noteHtml}
+        <div class="cart-item-actions">
+          <button class="cart-item-action-btn" onclick="cartEditNote('${item.id}')">+ Note</button>
+          <button class="cart-item-action-btn" onclick="cartEditPrice('${item.id}')">$ Custom</button>
+          <input class="cart-item-price-edit" id="price-edit-${item.id}" type="number" min="0" step="0.01"
+            value="${item.price.toFixed(2)}" placeholder="0.00"
+            onblur="cartSavePrice('${item.id}',this.value)"
+            onkeydown="if(event.key==='Enter'){this.blur();} if(event.key==='Escape'){this.style.display='none';}">
+        </div>
       </div>
-      <div class="cart-item-price">${fmt(item.subtotal)}</div>
+      <div class="cart-item-price" id="item-price-${item.id}">${fmt(item.subtotal)}</div>
       <button class="cart-item-remove" onclick="cartRemove('${item.id}')" title="Remove">x</button>
     `;
     list.insertBefore(div, empty);
@@ -1024,22 +1137,76 @@ function renderCart(){
   const discount = cartDiscount();
   $('discount-row').classList.toggle('hidden', discount === 0);
   $('discount-amount').textContent = '-' + fmt(discount);
-  $('cart-total').textContent = fmt(cartTotal());
 
-  // Checkout button — require customer email
-  const hasCustomer = S.customer.email && S.customer.phone;
+  // Subtotal, tax, total
+  const sub = cartTotal(); // pre-tax
+  const tax = Math.round(sub * 0.04 * 100) / 100;
+  const grandTotal = Math.round((sub + tax) * 100) / 100;
+  $('cart-subtotal').textContent = fmt(sub);
+  $('cart-tax').textContent = fmt(tax);
+  $('cart-total').textContent = fmt(grandTotal);
+
+  // Hide subtotal row when cart is empty
+  const subtotalRow = $('subtotal-row');
+  if(subtotalRow) subtotalRow.classList.toggle('hidden', S.cart.length === 0);
+
+  // Checkout button — require customer email + phone
+  const hasCustomer = !!(S.customer.email && S.customer.phone);
   const hasItems = S.cart.length > 0;
   $('btn-checkout').disabled = !(hasCustomer && hasItems);
-  $('btn-customer-label').textContent = hasCustomer
-    ? (S.customer.first || S.customer.email)
-    : 'Add Customer Info';
+
+  // Update customer bar
+  updateCartCustomerBar();
 
   // Show shipping tab indicator if needed
-  if(hasShippableItem()){
-    document.querySelector('[data-tab="shipping"]').style.color = 'var(--accent)';
-  } else {
-    document.querySelector('[data-tab="shipping"]').style.color = '';
+  const shippingBtn = document.querySelector('[data-tab="shipping"]');
+  if(shippingBtn){
+    shippingBtn.style.color = hasShippableItem() ? 'var(--accent)' : '';
   }
+}
+
+function updateCartCustomerBar(){
+  const lbl = $('cart-customer-label');
+  if(!lbl) return;
+  const c = S.customer;
+  const hasCustomer = !!(c.email && c.phone);
+  if(hasCustomer){
+    const name = [c.first, c.last].filter(Boolean).join(' ') || c.email;
+    lbl.textContent = name;
+    lbl.classList.add('filled');
+  } else {
+    lbl.textContent = 'Add Customer';
+    lbl.classList.remove('filled');
+  }
+}
+
+function cartEditNote(id){
+  const item = S.cart.find(i => i.id === id);
+  if(!item) return;
+  const note = prompt('Note for ' + item.label + ':', item.note || '');
+  if(note === null) return;
+  item.note = note.trim();
+  renderCart();
+}
+
+function cartEditPrice(id){
+  const el = $('price-edit-' + id);
+  if(!el) return;
+  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+  if(el.style.display === 'block') { el.focus(); el.select(); }
+}
+
+function cartSavePrice(id, val){
+  const item = S.cart.find(i => i.id === id);
+  const el = $('price-edit-' + id);
+  if(!item) return;
+  const price = parseFloat(val);
+  if(isNaN(price) || price < 0){ if(el) el.style.display='none'; return; }
+  item.price = price;
+  item.subtotal = price * (item.qty || 1);
+  if(el) el.style.display = 'none';
+  renderCart();
+  showToast('Price updated');
 }
 
 // ─── Coupon ──────────────────────────────────────────────────────────────────
@@ -1118,6 +1285,7 @@ function saveCustomerInfo(){
   };
   closeCustomerModal();
   renderCart();
+  updateCartCustomerBar();
 }
 
 // ─── Action Photos ────────────────────────────────────────────────────────────
@@ -1185,11 +1353,15 @@ function renderApPhotos(){
   }
   grid.innerHTML = S.ap.photos.map((p,i) => {
     const url = p.url || p.thumb_url || '';
-    const key = p.path || p.key || '';
+    const filename = p.filename || (p.path || '').split('/').pop() || '';
+    // Extract numeric part from filename for fast identification
+    const numMatch = filename.match(/(\d+)/);
+    const photoNum = numMatch ? numMatch[1] : (i + 1);
     return `
       <div class="ap-photo-item" id="apph-${i}" onclick="apTogglePhoto(${i})">
-        <img class="ap-photo-img" src="${url}" loading="lazy" alt="">
+        <img class="ap-photo-img" src="${url}" loading="lazy" alt="${filename}">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
+        <div style="position:absolute;bottom:2px;left:3px;font-size:.55rem;color:rgba(255,255,255,.75);font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.8)">${photoNum}</div>
       </div>
     `;
   }).join('');
@@ -1208,7 +1380,14 @@ function apTogglePhoto(idx){
 
 function renderApSelCount(){
   const n = S.ap.selected.size;
-  $('ap-sel-count').textContent = n + ' selected';
+  const total = S.ap.photos.length;
+  let label = n + ' selected';
+  if(n > 0){
+    const isAll = n === total && total > 0;
+    const price = isAll ? 115 : n * 25;
+    label = `${n} selected — ${isAll ? '$115 (all)' : '$' + price}`;
+  }
+  $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;
 }
 
@@ -1218,18 +1397,31 @@ function apAddToCart(){
   const selectedKeys = [...S.ap.selected];
   const selectedPhotos = S.ap.photos.filter(p => selectedKeys.includes(p.path || p.key));
   const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || p.key));
+  const totalPhotos = S.ap.photos.length;
+  const selectedCount = selectedKeys.length;
+
+  // Pricing: $115 for all photos in folder, $25/photo for partial
+  const isAll = selectedCount === totalPhotos && totalPhotos > 0;
+  let price, priceDetail;
+  if(isAll){
+    price = 115;
+    priceDetail = `All ${selectedCount} photos · $115 package`;
+  } else {
+    price = selectedCount * 25;
+    priceDetail = `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
+  }
+
   cartAdd({
     category: 'action_photos',
     label: `Action Photos — ${f.last_name || f.folder || ''}`,
-    detail: `${selectedKeys.length} photo${selectedKeys.length !== 1 ? 's' : ''} · ${f.date || ''} · ${f.location || ''}`,
-    price: 0,
+    detail: `${priceDetail} · ${f.date || ''} · ${f.location || ''}`,
+    price,
     qty: 1,
-    subtotal: 0,
+    subtotal: price,
     photo_paths: selectedPhotos.map(p => p.path || p.key),
     filenames,
     date: f.date || '',
     location: f.location || '',
-    _pricePending: true,
   });
   // Reset selection
   S.ap.selected.clear();
@@ -1319,13 +1511,13 @@ function adjustPrivatePeople(d){
   }
 }
 
-function privateAddToCart(){
+function privateAddToCart(label){
   const base = 550;
   const extra = Math.max(0, S.privatePeople - 4) * 75;
   const total = base + extra;
   cartAdd({
     category: 'private',
-    label: 'Private Action Shoot',
+    label: label || 'Private On Mountain Shoot',
     detail: `${S.privatePeople} ${S.privatePeople===1?'person':'people'}`,
     price: total,
     qty: 1,
@@ -1687,7 +1879,7 @@ function launchSquare(){
   try { localStorage.setItem('ci_pos_pin', S._savedPin || ''); } catch(e){}
 
   const payload = {
-    amount_money:          { amount: Math.round(total * 100), currency_code: 'USD' },
+    amount_money:          { amount: Math.round(total * 100), currency_code: 'USD' }, // pre-tax; Square adds 4% resort tax
     callback_url:          callbackUrl,
     client_transaction_id: txId,
     line_items:            buildLineItems(),
@@ -1838,20 +2030,26 @@ function showConfirmation(data){
   showScreen('s-confirm');
 }
 
-// ─── New sale ─────────────────────────────────────────────────────────────────
-function newSale(){
+// ─── Lock / New sale ──────────────────────────────────────────────────────────
+function lockPOS(){
   S.photographer = null;
+  S._savedPin = '';
+  _pinBuf = '';
+  updatePinDots();
+  $('pin-error').textContent = '';
+  showScreen('s-pin');
+}
+
+function newSale(){
   S.cart = [];
   S.coupon = null;
   S.pendingOrder = null;
   S.customer = { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' };
   S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), loading:false };
   S.poses = 0; S.singles = 0; S.privatePeople = 1;
-  S._savedPin = '';
-  _pinBuf = '';
-  updatePinDots();
-  $('pin-error').textContent = '';
-  showScreen('s-pin');
+  renderCart();
+  switchTab('action-photos');
+  showToast('Cart cleared');
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -1867,6 +2065,7 @@ function initMainPOS(){
   loadPortraitPricing();
   loadProducts();
   renderCart();
+  updateCartCustomerBar();
   adjustPrivatePeople(0); // set price display
 }
 
@@ -1879,7 +2078,20 @@ function applyTheme(t){
 }
 fetch('/api/pos-theme').then(r=>r.json()).then(applyTheme).catch(()=>{});
 
+// Phone number auto-formatter: (000) 000-0000
+function formatPhoneInput(e){
+  let v = e.target.value.replace(/\D/g,'').slice(0,10);
+  if(v.length >= 7) v = '(' + v.slice(0,3) + ') ' + v.slice(3,6) + '-' + v.slice(6);
+  else if(v.length >= 4) v = '(' + v.slice(0,3) + ') ' + v.slice(3);
+  else if(v.length > 0) v = '(' + v;
+  e.target.value = v;
+}
+
 window.addEventListener('DOMContentLoaded', () => {
+  // Phone formatting
+  const phoneEl = $('cust-phone');
+  if(phoneEl) phoneEl.addEventListener('input', formatPhoneInput);
+
   try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
   if(checkSquareReturn()) return;
   if(isUnlocked()){
