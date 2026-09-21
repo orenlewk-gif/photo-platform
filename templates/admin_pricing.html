@@ -127,6 +127,8 @@ input[type="text"].wide{width:175px}
     <a onclick="showSection('prints')" class="nav-link nav-sub" id="navsub-prints">Print &amp; Shipping</a>
     <a onclick="showSection('portrait')" class="nav-link nav-sub" id="navsub-portrait">Portrait Poses</a>
     <a onclick="showSection('seasons')" class="nav-link nav-sub" id="navsub-seasons">Seasons</a>
+    <a onclick="showSection('base-area')" class="nav-link nav-sub" id="navsub-base-area">Base Area</a>
+    <a onclick="showSection('mats')" class="nav-link nav-sub" id="navsub-mats">Mats</a>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link">Orders</a>
     <a href="/admin/discount-codes" class="nav-link">Discount Codes</a>
@@ -253,6 +255,32 @@ input[type="text"].wide{width:175px}
       </div>
     </div>
 
+    <!-- ── BASE AREA ── -->
+    <div id="sec-base-area" class="section">
+      <h1>Base Area</h1>
+      <p class="subtitle">Custom products shown on the Base Area tab of the POS. Click + Add Item to create a new product, then save.</p>
+      <div class="card">
+        <div id="base-area-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPosProduct('base_area')">+ Add Item</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePosProducts()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── MATS ── -->
+    <div id="sec-mats" class="section">
+      <h1>Mats</h1>
+      <p class="subtitle">Custom mat products shown on the Mats tab of the POS.</p>
+      <div class="card">
+        <div id="mats-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPosProduct('mats')">+ Add Item</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePosProducts()">Save</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /layout -->
 
@@ -266,6 +294,7 @@ let printData      = null;
 let portraitPricingData = null;
 let seasonsData         = [];
 let portraitLocsData    = [];
+let posProductsData     = { base_area: [], mats: [] };
 
 const isZipAct = n => n.includes('zip');
 
@@ -277,13 +306,15 @@ Promise.all([
   fetch('/api/portrait-pricing').then(r=>r.json()),
   fetch('/api/seasons').then(r=>r.json()),
   fetch('/api/admin/portrait-locations').then(r=>r.json()),
-]).then(([pd, zd, ppd, portd, sesd, pld]) => {
+  fetch('/api/pos-products').then(r=>r.json()),
+]).then(([pd, zd, ppd, portd, sesd, pld, posp]) => {
   pricingData         = pd;
   zipData             = zd;
   printData           = ppd;
   portraitPricingData = portd;
   seasonsData         = sesd.seasons || [];
   portraitLocsData    = pld.locations || [];
+  posProductsData     = posp || { base_area: [], mats: [] };
   renderAll();
 }).catch(e => { console.error('Pricing load error:', e); showToast('Load error: '+e, 'err'); });
 
@@ -295,6 +326,8 @@ function renderAll() {
   renderPortraitPricing();
   renderPortraitLocs();
   renderSeasons();
+  renderPosProducts('base_area');
+  renderPosProducts('mats');
 }
 
 // ── Section nav ───────────────────────────────────────────────────────────────
@@ -721,6 +754,64 @@ function showToast(msg, type='show') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = type;
   clearTimeout(_tt); _tt = setTimeout(()=>t.className='', 2800);
+}
+
+// ── POS Products (Base Area / Mats) ──────────────────────────────────────────
+function renderPosProducts(cat) {
+  const elId = cat === 'base_area' ? 'base-area-list' : 'mats-list';
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const items = posProductsData[cat] || [];
+  if (!items.length) {
+    el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No items yet. Click + Add Item below.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Name</th>
+        <th>Price</th>
+        <th>Description (optional)</th>
+        <th></th>
+      </tr></thead>
+      <tbody>
+        ${items.map((item, i) => `
+          <tr>
+            <td><input type="text" class="wide" value="${esc(item.name||'')}" oninput="posProductField('${cat}',${i},'name',this.value)" placeholder="Item name"></td>
+            <td><span class="dollar">$</span><input type="number" value="${item.price||0}" min="0" step="0.01" oninput="posProductField('${cat}',${i},'price',parseFloat(this.value)||0)"></td>
+            <td><input type="text" class="wide" value="${esc(item.description||'')}" oninput="posProductField('${cat}',${i},'description',this.value)" placeholder="Optional"></td>
+            <td><button class="btn btn-danger btn-sm" onclick="removePosProduct('${cat}',${i})">✕</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function posProductField(cat, i, field, val) {
+  if (!posProductsData[cat]) posProductsData[cat] = [];
+  if (posProductsData[cat][i]) posProductsData[cat][i][field] = val;
+}
+
+function addPosProduct(cat) {
+  if (!posProductsData[cat]) posProductsData[cat] = [];
+  posProductsData[cat].push({ name: '', price: 0, description: '' });
+  renderPosProducts(cat);
+}
+
+function removePosProduct(cat, i) {
+  posProductsData[cat].splice(i, 1);
+  renderPosProducts(cat);
+}
+
+async function savePosProducts() {
+  const r = await fetch('/api/admin/pos-products', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(posProductsData),
+  });
+  if (r.ok) showToast('Saved');
+  else showToast('Save failed', 'err');
 }
 </script>
 </body>
