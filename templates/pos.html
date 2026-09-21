@@ -260,16 +260,52 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .print-add-btn:active{background:var(--surface3)}
 
 /* ── Frames tab ── */
-.frame-size-section{margin-bottom:1rem}
-.frame-size-title{font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:.5rem;padding-bottom:.3rem;border-bottom:1px solid var(--border)}
-.frame-orient-row{display:flex;gap:.5rem}
+.frame-size-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.6rem;overflow:hidden}
+.frame-size-header{display:flex;align-items:center;justify-content:space-between;padding:.65rem .85rem;cursor:pointer;touch-action:manipulation}
+.frame-size-header:active{background:var(--surface2)}
+.frame-size-name{font-size:.9rem;font-weight:600}
+.frame-size-expand-hint{font-size:.72rem;color:var(--muted)}
+.frame-config{display:none;padding:.5rem .85rem .85rem;border-top:1px solid var(--border)}
+.frame-config.open{display:block}
+.frame-orient-row{display:flex;gap:.5rem;margin-bottom:.65rem}
 .frame-option-btn{
-  flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  padding:.65rem .5rem;cursor:pointer;text-align:center;
+  flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.6rem .5rem;cursor:pointer;text-align:center;touch-action:manipulation;
 }
-.frame-option-btn:active{background:var(--surface2);border-color:var(--accent)}
+.frame-option-btn.selected{border-color:var(--accent);background:rgba(245,196,48,.08)}
+.frame-option-btn:active{background:var(--surface3)}
 .frame-option-name{font-size:.78rem;font-weight:500}
 .frame-option-price{font-size:.88rem;font-weight:700;color:var(--accent);margin-top:.1rem}
+.frame-qty-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem}
+.frame-ship-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.65rem}
+.frame-add-btn{
+  width:100%;background:var(--accent);color:#0a1929;border:none;border-radius:var(--radius);
+  padding:.7rem;font-size:.88rem;font-weight:700;cursor:pointer;touch-action:manipulation;
+}
+.frame-add-btn:active{background:var(--accent2)}
+.frame-add-btn:disabled{opacity:.45;cursor:default}
+
+/* ── Ship item toggle ── */
+.ship-row{display:flex;align-items:center;gap:.6rem;padding:.5rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem}
+
+/* ── Customer search ── */
+.cust-search-wrap{position:relative;margin-bottom:.85rem}
+.cust-search-input{
+  width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  color:var(--text);padding:.7rem 1rem;font-size:.9rem;outline:none;font-family:var(--font);
+}
+.cust-search-input:focus{border-color:var(--accent)}
+.cust-search-dropdown{
+  position:absolute;top:100%;left:0;right:0;
+  background:var(--surface2);border:1px solid var(--border);border-top:none;
+  border-radius:0 0 var(--radius) var(--radius);z-index:20;max-height:180px;overflow-y:auto;display:none;
+}
+.cust-search-dropdown.open{display:block}
+.cust-search-option{padding:.55rem .85rem;cursor:pointer;font-size:.83rem;border-bottom:1px solid var(--border)}
+.cust-search-option:last-child{border-bottom:none}
+.cust-search-option:active{background:var(--surface3)}
+.cust-search-option-name{font-weight:600}
+.cust-search-option-meta{font-size:.72rem;color:var(--muted);margin-top:.05rem}
 
 /* ── Private Sessions ── */
 .private-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem}
@@ -774,6 +810,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               </label>
               <span class="toggle-label">Half-price (50% off)</span>
             </div>
+            <div class="ship-row">
+              <label class="toggle-switch">
+                <input type="checkbox" id="print-ship-toggle">
+                <div class="toggle-track"></div>
+              </label>
+              <span class="toggle-label">Ship prints (+$15)</span>
+            </div>
             <div id="print-size-list" class="print-size-list"></div>
           </div>
         </div>
@@ -896,6 +939,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="modal-handle"></div>
     <div class="modal-title">Customer Information</div>
     <div class="modal-body">
+      <!-- Customer search -->
+      <div class="cust-search-wrap">
+        <input type="text" id="cust-search" class="cust-search-input" placeholder="Search existing customers..."
+               autocomplete="off" oninput="custSearchType(this.value)">
+        <div class="cust-search-dropdown" id="cust-search-dropdown"></div>
+      </div>
       <div class="field-row">
         <div class="field-group">
           <div class="field-label">First Name</div>
@@ -999,6 +1048,10 @@ const S = {
 
   // Private sessions
   privatePeople: 1,
+
+  // Frame accordion state
+  _frameOpen: null,
+  _framePick: null,
 
   // Data cache
   portraitPricing: null,
@@ -1200,7 +1253,20 @@ function cartTotal(){
 }
 
 function hasShippableItem(){
-  return S.cart.some(i => ['prints','frames','mats'].includes(i.category));
+  return S.cart.some(i => i._ship);
+}
+
+function ensureShipping(type){
+  const hasPrints = S.cart.some(i => i.category === 'prints' && i._ship);
+  const hasFrames = S.cart.some(i => i.category === 'frames' && i._ship);
+  const price = (hasPrints && hasFrames) ? 25 : hasPrints ? 15 : 20;
+  const idx = S.cart.findIndex(i => i.category === '_shipping');
+  if(idx === -1){
+    S.cart.push({ id: cartId(), category: '_shipping', label: 'Shipping', detail: 'Mailed to customer address', price, qty: 1, subtotal: price, note: '', _auto: true });
+  } else {
+    S.cart[idx].price = price;
+    S.cart[idx].subtotal = price;
+  }
 }
 
 function renderCart(){
@@ -1263,10 +1329,18 @@ function renderCart(){
   // Update customer bar
   updateCartCustomerBar();
 
-  // Show shipping tab indicator if needed
-  const shippingBtn = document.querySelector('[data-tab="shipping"]');
-  if(shippingBtn){
-    shippingBtn.style.color = hasShippableItem() ? 'var(--accent)' : '';
+  // Auto-sync shipping line
+  const hasShip = S.cart.some(i => i._ship && i.category !== '_shipping');
+  const shipIdx = S.cart.findIndex(i => i.category === '_shipping');
+  if(hasShip && shipIdx === -1){
+    ensureShipping();
+    // Re-render to show the new shipping line
+    renderCart();
+    return;
+  } else if(!hasShip && shipIdx !== -1 && S.cart[shipIdx]._auto){
+    S.cart.splice(shipIdx, 1);
+    renderCart();
+    return;
   }
 }
 
@@ -1352,6 +1426,8 @@ function removeCoupon(){
 // ─── Customer modal ───────────────────────────────────────────────────────────
 function openCustomerModal(){
   const c = S.customer;
+  $('cust-search').value = '';
+  $('cust-search-dropdown').classList.remove('open');
   $('cust-first').value  = c.first  || '';
   $('cust-last').value   = c.last   || '';
   $('cust-email').value  = c.email  || '';
@@ -1362,11 +1438,14 @@ function openCustomerModal(){
   $('cust-zip').value    = c.zip    || '';
   $('addr-section').classList.toggle('hidden', !hasShippableItem());
   $('customer-modal').classList.remove('hidden');
-  setTimeout(() => $('cust-first').focus(), 100);
+  // Pre-load recent sales for search
+  if(!S.recentSales) loadRecentSales();
+  setTimeout(() => $('cust-search').focus(), 100);
 }
 
 function closeCustomerModal(){
   $('customer-modal').classList.add('hidden');
+  $('cust-search-dropdown').classList.remove('open');
 }
 
 function modalBackdropClick(e){
@@ -1391,6 +1470,57 @@ function saveCustomerInfo(){
   closeCustomerModal();
   renderCart();
   updateCartCustomerBar();
+}
+
+// ─── Customer search ─────────────────────────────────────────────────────────
+let _custSearchTimer = null;
+function custSearchType(val){
+  clearTimeout(_custSearchTimer);
+  if(!val.trim()){ $('cust-search-dropdown').classList.remove('open'); return; }
+  _custSearchTimer = setTimeout(() => {
+    const q = val.trim().toLowerCase();
+    const records = S.recentSales || [];
+    const matches = records.filter(o => {
+      const name = (o.name || `${o.first||''} ${o.last||''}`).toLowerCase();
+      const email = (o.email || '').toLowerCase();
+      return name.includes(q) || email.includes(q);
+    }).slice(0, 6);
+    const dd = $('cust-search-dropdown');
+    if(!matches.length){ dd.classList.remove('open'); return; }
+    dd.innerHTML = matches.map((o, i) => {
+      const name = o.name || `${o.first||''} ${o.last||''}`.trim() || 'Unknown';
+      const meta = [o.email, o.phone].filter(Boolean).join(' · ');
+      return `<div class="cust-search-option" onclick="custSearchSelect(${i})">
+        <div class="cust-search-option-name">${escHtml(name)}</div>
+        ${meta ? `<div class="cust-search-option-meta">${escHtml(meta)}</div>` : ''}
+      </div>`;
+    }).join('');
+    dd._matches = matches;
+    dd.classList.add('open');
+  }, 200);
+}
+
+function custSearchSelect(idx){
+  const dd = $('cust-search-dropdown');
+  const o = (dd._matches || [])[idx];
+  if(!o) return;
+  const nameParts = (o.name || `${o.first||''} ${o.last||''}`).trim().split(' ');
+  $('cust-first').value = nameParts[0] || '';
+  $('cust-last').value = nameParts.slice(1).join(' ') || '';
+  $('cust-email').value = o.email || '';
+  $('cust-phone').value = o.phone || '';
+  // Address from saved address string if available
+  if(o.address){
+    const parts = o.address.split(',').map(s => s.trim());
+    $('cust-street').value = parts[0] || '';
+    $('cust-city').value = parts[1] || '';
+    const stateZip = (parts[2] || '').trim().split(' ');
+    $('cust-state').value = stateZip[0] || '';
+    $('cust-zip').value = stateZip[1] || '';
+  }
+  dd.classList.remove('open');
+  $('cust-search').value = '';
+  $('addr-section').classList.toggle('hidden', !hasShippableItem());
 }
 
 // ─── Action Photos ────────────────────────────────────────────────────────────
@@ -1891,15 +2021,16 @@ function printAddToCart(label, price){
   const key = label.replace(/[^a-z0-9]/gi,'_');
   const qtyEl = $('print-qty-' + key);
   const qty = qtyEl ? Math.max(1, parseInt(qtyEl.textContent) || 1) : 1;
-  const half = $('half-price-toggle').checked;
-  const actualPrice = half ? price : price; // price already adjusted when rendered
+  const half = $('half-price-toggle') && $('half-price-toggle').checked;
+  const ship = $('print-ship-toggle') && $('print-ship-toggle').checked;
   cartAdd({
     category: 'prints',
     label: `${label} Print${half ? ' (half price)' : ''}`,
-    detail: half ? '50% off' : '',
-    price: actualPrice,
+    detail: [half ? '50% off' : '', ship ? 'Ship' : ''].filter(Boolean).join(' · '),
+    price,
     qty,
-    subtotal: actualPrice * qty,
+    subtotal: price * qty,
+    _ship: ship,
   });
   if(qtyEl) qtyEl.textContent = '0';
 }
@@ -1925,34 +2056,97 @@ function renderFrames(){
     return;
   }
   el.innerHTML = S.frames.map(f => {
+    const sizeKey = f.size.replace(/[^a-z0-9]/gi,'_');
+    const isOpen = S._frameOpen === sizeKey;
+    const pick = isOpen ? S._framePick : null;
     const opts = [];
-    if(f.landscape) opts.push({orient:'Landscape', price: f.landscape.price, vid: f.landscape.variation_id});
-    if(f.portrait)  opts.push({orient:'Portrait',  price: f.portrait.price,  vid: f.portrait.variation_id});
+    if(f.landscape) opts.push({orient:'Landscape', price: f.landscape.price});
+    if(f.portrait)  opts.push({orient:'Portrait',  price: f.portrait.price});
     if(!opts.length) return '';
+
+    const orientBtns = opts.map(o => {
+      const sel = pick && pick.orient === o.orient;
+      return `<div class="frame-option-btn${sel?' selected':''}" onclick="framePickOrient('${sizeKey}','${escHtml(o.orient)}',${o.price})">
+        <div class="frame-option-name">${o.orient}</div>
+        <div class="frame-option-price">${fmt(o.price)}</div>
+      </div>`;
+    }).join('');
+
+    const configContent = pick ? `
+      <div class="frame-qty-row">
+        <span style="font-size:.82rem;font-weight:500">Quantity</span>
+        <div class="stepper" style="gap:.5rem">
+          <button class="step-btn" style="width:26px;height:26px" onclick="frameQtyChange(-1)">-</button>
+          <span id="frame-qty-val" style="min-width:1.5ch;text-align:center;font-size:.9rem;font-weight:600">${pick.qty}</span>
+          <button class="step-btn" style="width:26px;height:26px" onclick="frameQtyChange(1)">+</button>
+        </div>
+      </div>
+      <div class="frame-ship-row">
+        <label class="toggle-switch">
+          <input type="checkbox" id="frame-ship-toggle" ${pick.ship?'checked':''} onchange="frameShipChange(this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+        <span style="font-size:.82rem;font-weight:500">Ship (+$20)</span>
+      </div>
+      <button class="frame-add-btn" onclick="frameAddToCart('${sizeKey}')">
+        Add to Cart — ${fmt(pick.price * pick.qty)}${pick.ship ? ' + $20 shipping' : ''}
+      </button>
+    ` : `<div style="font-size:.78rem;color:var(--muted);padding:.4rem 0">Select an orientation above</div>`;
+
     return `
       <div class="frame-size-section">
-        <div class="frame-size-title">${f.size} Frame</div>
-        <div class="frame-orient-row">
-          ${opts.map(o => `
-            <div class="frame-option-btn" onclick="frameAddToCart('${f.size}','${o.orient}',${o.price})">
-              <div class="frame-option-name">${o.orient}</div>
-              <div class="frame-option-price">${fmt(o.price)}</div>
-            </div>
-          `).join('')}
+        <div class="frame-size-header" onclick="frameToggle('${sizeKey}')">
+          <span class="frame-size-name">${f.size} Frame</span>
+          <span class="frame-size-expand-hint">${isOpen ? '&#8963; Close' : '&#8964; Options'}</span>
+        </div>
+        <div class="frame-config${isOpen?' open':''}">
+          <div class="frame-orient-row">${orientBtns}</div>
+          ${isOpen ? configContent : ''}
         </div>
       </div>
     `;
   }).join('');
 }
 
-function frameAddToCart(size, orient, price){
+function frameToggle(sizeKey){
+  S._frameOpen = S._frameOpen === sizeKey ? null : sizeKey;
+  S._framePick = null;
+  renderFrames();
+}
+
+function framePickOrient(sizeKey, orient, price){
+  S._frameOpen = sizeKey;
+  S._framePick = { sizeKey, orient, price: parseFloat(price), qty: (S._framePick||{}).qty || 1, ship: (S._framePick||{}).ship || false };
+  renderFrames();
+}
+
+function frameQtyChange(d){
+  if(!S._framePick) return;
+  S._framePick.qty = Math.max(1, S._framePick.qty + d);
+  renderFrames();
+}
+
+function frameShipChange(val){
+  if(!S._framePick) return;
+  S._framePick.ship = val;
+  renderFrames();
+}
+
+function frameAddToCart(sizeKey){
+  const pick = S._framePick;
+  const f = S.frames && S.frames.find(fr => fr.size.replace(/[^a-z0-9]/gi,'_') === sizeKey);
+  if(!pick || !f) return;
   cartAdd({
     category: 'frames',
-    label: `${size} Frame — ${orient}`,
-    price: parseFloat(price),
-    qty: 1,
-    subtotal: parseFloat(price),
+    label: `${f.size} Frame — ${pick.orient}`,
+    detail: pick.ship ? 'Ship' : '',
+    price: pick.price,
+    qty: pick.qty,
+    subtotal: pick.price * pick.qty,
+    _ship: pick.ship,
   });
+  S._framePick = null;
+  S._frameOpen = null;
 }
 
 // ─── Custom products (Base Area, Mats) ────────────────────────────────────────
@@ -2367,6 +2561,8 @@ function newSale(){
   S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData: S.ap._dateData || [] };
   S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() };
   S.privatePeople = 1;
+  S._frameOpen = null;
+  S._framePick = null;
   renderCart();
   showCatHome();
   showToast('Cart cleared — ready for new sale');

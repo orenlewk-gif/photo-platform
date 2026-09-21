@@ -1789,12 +1789,25 @@ async def pos_checkout(request: Request):
             })
 
         result = {"order_id": order_id}
+        download_url = None
         if photo_paths:
             download_url = f"{SITE_URL}/package/{token}"
             expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
             _send_package_email([customer_email], title, download_url, len(photo_paths), expire_str)
             result["token"]        = token
             result["download_url"] = download_url
+
+        # Always send itemized receipt
+        _send_pos_receipt_email(
+            to_email=customer_email,
+            customer_name=customer_name,
+            order_id=order_id,
+            items=items,
+            total=total,
+            coupon_code=coupon_code,
+            coupon_discount=coupon_discount,
+            download_url=download_url,
+        )
 
         return result
 
@@ -5901,6 +5914,78 @@ Photos are for personal use. Please do not resell original files.
                 print(f"Resend error ({email}): {r.text}")
         except Exception as e:
             print(f"Email send failed ({email}): {e}")
+
+
+def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
+                            items: list, total: float, coupon_code: str,
+                            coupon_discount: float, download_url: str | None):
+    if not RESEND_API_KEY or not to_email:
+        return
+    tax = round(total * 0.04, 2)
+    grand_total = round(total + tax, 2)
+    rows = ""
+    for item in items:
+        label = item.get("label", "Item")
+        qty = item.get("qty", 1)
+        price = float(item.get("price", 0))
+        subtotal = float(item.get("subtotal", price * qty))
+        detail = item.get("detail", "")
+        rows += f"""
+        <tr>
+          <td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem">{label}{(' <span style="font-size:.78rem;color:#888">— ' + detail + '</span>') if detail else ''}</td>
+          <td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:center;color:#666">{qty}</td>
+          <td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:right;font-weight:600">${subtotal:.2f}</td>
+        </tr>"""
+    coupon_row = ""
+    if coupon_code and coupon_discount > 0:
+        coupon_row = f'<tr><td colspan="2" style="padding:.35rem .5rem;font-size:.83rem;color:#888">Coupon {coupon_code.upper()}</td><td style="padding:.35rem .5rem;font-size:.83rem;text-align:right;color:#e05252">-${coupon_discount:.2f}</td></tr>'
+    dl_section = ""
+    if download_url:
+        dl_section = f"""
+        <p style="margin:1.25rem 0 .5rem;font-size:.9rem;font-weight:600;color:#111">Your Photos</p>
+        <p style="margin:0 0 1.25rem">
+          <a href="{download_url}" style="background:#1a73e8;color:#fff;padding:.55rem 1.25rem;border-radius:6px;font-size:.88rem;font-weight:600;text-decoration:none;display:inline-block">Download Your Photos</a>
+        </p>"""
+    greeting = f"Hi {customer_name.split()[0]}," if customer_name else "Hi,"
+    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">
+  <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:2rem 2rem 1.5rem">
+    <p style="margin:0 0 .15rem;font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.5px">Crystal Images</p>
+    <h2 style="margin:0 0 .25rem;font-size:1.15rem;color:#111">Your Receipt</h2>
+    <p style="margin:0 0 1.5rem;font-size:.75rem;color:#aaa">Order {order_id}</p>
+    <p style="margin:0 0 1.25rem;font-size:.9rem;color:#333">{greeting} Thank you — here is a summary of your purchase.</p>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:.75rem">
+      <thead>
+        <tr style="border-bottom:2px solid #eee">
+          <th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:left;font-weight:500">ITEM</th>
+          <th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:center;font-weight:500">QTY</th>
+          <th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:right;font-weight:500">TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>{rows}</tbody>
+    </table>
+    {coupon_row}
+    <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem">
+      <tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Subtotal</td><td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${total:.2f}</td></tr>
+      <tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">4% Resort Tax</td><td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tax:.2f}</td></tr>
+      <tr style="border-top:2px solid #eee"><td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td><td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${grand_total:.2f}</td></tr>
+    </table>
+    {dl_section}
+    <hr style="border:none;border-top:1px solid #eee;margin:0 0 1rem">
+    <p style="margin:0;font-size:.75rem;color:#aaa;line-height:1.6">Questions? Contact us at <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a>. Photos are for personal use — print, frame, and share freely.</p>
+  </div>
+</div></body></html>"""
+    try:
+        r = http_requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            json={"from": RESEND_FROM, "to": [to_email], "subject": f"Your Crystal Images Receipt — {order_id}", "html": html},
+            timeout=10,
+        )
+        if not r.ok:
+            print(f"Receipt email error ({to_email}): {r.text}")
+    except Exception as e:
+        print(f"Receipt email failed ({to_email}): {e}")
 
 
 def _store_pkg(token: str, payload: dict):
