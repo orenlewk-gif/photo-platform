@@ -871,6 +871,59 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
     return {"count": len(results), "photos": results}
 
 
+@app.get("/api/pos-dates")
+def pos_dates():
+    """POS: return unique (date, location) pairs for the date/location dropdowns."""
+    from collections import defaultdict
+    date_locs: dict = defaultdict(set)
+    for item in data:
+        if item.get("draft"):
+            continue
+        d = item.get("date", "").strip()
+        loc = clean_location(item.get("location", ""))
+        if d and loc:
+            date_locs[d].add(loc)
+    sorted_dates = sorted(date_locs.keys(), reverse=True)[:90]
+    return {
+        "dates": [
+            {"date": d, "locations": sorted(date_locs[d])}
+            for d in sorted_dates
+        ]
+    }
+
+
+@app.get("/api/pos-families")
+def pos_families(date: str = Query(""), location: str = Query("")):
+    """POS: return unique families/groups for a given date+location with preview paths."""
+    from collections import defaultdict
+    families: dict = {}
+    previews: dict = defaultdict(list)
+    for item in data:
+        if item.get("draft"):
+            continue
+        if item.get("date", "") != date:
+            continue
+        if clean_location(item.get("location", "")) != location:
+            continue
+        ln = item.get("last_name", "").strip()
+        grp = item.get("group", "").strip()
+        name = ln or grp
+        if not name:
+            continue
+        key = name.lower()
+        if key not in families:
+            families[key] = {"name": name, "last_name": ln, "group": grp, "date": date, "location": location}
+        if len(previews[key]) < 4:
+            path = item.get("path", "")
+            if path:
+                previews[key].append(path)
+    results = [
+        {**v, "previews": previews[k]}
+        for k, v in sorted(families.items())
+    ]
+    return {"families": results}
+
+
 @app.get("/api/search")
 def search(
     request:   Request,

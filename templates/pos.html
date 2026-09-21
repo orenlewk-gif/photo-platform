@@ -278,6 +278,33 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .private-people-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
 .private-price-line{font-size:.78rem;color:var(--muted);text-align:center;margin-bottom:.5rem}
 
+/* ── Search result preview thumbnails ── */
+.ap-result-previews{display:flex;gap:4px;margin-top:.45rem}
+.ap-result-thumb{width:52px;height:52px;object-fit:cover;border-radius:5px;background:var(--surface2);flex-shrink:0}
+
+/* ── Action Photos date/location filters ── */
+.ap-filter-row{margin-bottom:.5rem}
+.ap-select{
+  width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  color:var(--text);padding:.7rem 1rem;font-size:.88rem;outline:none;
+  -webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237aadca' d='M0 0l6 8 6-8z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 1rem center;padding-right:2.5rem;
+}
+.ap-select:focus{border-color:var(--accent)}
+.ap-search-divider{font-size:.72rem;color:var(--muted);text-align:center;padding:.5rem 0;margin-bottom:.5rem;letter-spacing:.08em;text-transform:uppercase}
+
+/* ── Portrait pose groups ── */
+.pr-pose-group{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem;overflow:hidden}
+.pr-pose-header{display:flex;align-items:center;justify-content:space-between;padding:.6rem .85rem;cursor:pointer}
+.pr-pose-header:active{background:var(--surface2)}
+.pr-pose-name{font-size:.85rem;font-weight:600}
+.pr-pose-sub{font-size:.72rem;color:var(--muted)}
+.pr-pose-thumbs{display:flex;gap:4px;padding:0 .85rem .6rem}
+.pr-pose-thumb{width:58px;height:58px;object-fit:cover;border-radius:5px;background:var(--surface2);flex-shrink:0}
+.pr-pose-expand{font-size:.72rem;color:var(--accent);cursor:pointer;padding:0 .85rem .55rem;display:none}
+.pr-pose-photos{display:none;padding:.5rem .6rem}
+
 /* ── Action Photos ── */
 .ap-search-row{display:flex;gap:.5rem;margin-bottom:.85rem}
 .ap-search-input{
@@ -616,7 +643,20 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <!-- Action Photos tab -->
         <div id="tab-action-photos" class="tab-panel active">
           <div class="panel-pad">
-            <div class="section-title">Search by Last Name</div>
+            <div class="section-title">Action Photos</div>
+            <!-- Date + Location selects -->
+            <div class="ap-filter-row">
+              <select id="ap-date-select" class="ap-select" onchange="apDateChanged()">
+                <option value="">Select date...</option>
+              </select>
+            </div>
+            <div class="ap-filter-row" id="ap-loc-row" style="display:none">
+              <select id="ap-loc-select" class="ap-select" onchange="apLocChanged()">
+                <option value="">Select location...</option>
+              </select>
+            </div>
+            <!-- OR last name search -->
+            <div class="ap-search-divider">or search by last name</div>
             <div class="ap-search-row">
               <input type="text" id="ap-search-input" class="ap-search-input"
                      placeholder="Last name..." autocomplete="off" autocorrect="off"
@@ -626,8 +666,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             <div id="ap-results"></div>
             <div id="ap-photos-view" class="hidden">
               <div class="ap-breadcrumb">
-                <button class="ap-breadcrumb-btn" onclick="apClearPhotos()">Search</button>
-                <span>/</span>
+                <button class="ap-breadcrumb-btn" onclick="apClearPhotos()">&#8592; Back</button>
                 <span id="ap-breadcrumb-name"></span>
               </div>
               <div id="ap-photo-grid" class="ap-photo-grid"></div>
@@ -642,35 +681,31 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <!-- Portraits tab -->
         <div id="tab-portraits" class="tab-panel">
           <div class="panel-pad">
-            <div class="section-title">Portrait Session</div>
-            <div class="portrait-calc" id="portrait-calc">
-              <div class="portrait-row">
-                <div>
-                  <div class="portrait-row-label">Full Poses</div>
-                  <div class="portrait-row-sub" id="pose-price-sub">$65/pose</div>
-                </div>
-                <div class="stepper">
-                  <button class="step-btn" onclick="adjustPoses(-1)">-</button>
-                  <span class="step-val" id="pose-count">0</span>
-                  <button class="step-btn" onclick="adjustPoses(1)">+</button>
-                </div>
+            <div class="section-title">Portraits</div>
+            <div class="ap-search-row">
+              <input type="text" id="pr-search-input" class="ap-search-input"
+                     placeholder="Last name..." autocomplete="off" autocorrect="off"
+                     onkeydown="if(event.key==='Enter')portraitSearch()">
+              <button class="ap-search-btn" onclick="portraitSearch()">Search</button>
+            </div>
+            <div id="pr-results"></div>
+            <div id="pr-photos-view" class="hidden">
+              <div class="ap-breadcrumb">
+                <button class="ap-breadcrumb-btn" onclick="portraitClearPhotos()">&#8592; Back</button>
+                <span id="pr-breadcrumb-name"></span>
               </div>
-              <div class="portrait-row">
-                <div>
-                  <div class="portrait-row-label">Individual Photos</div>
-                  <div class="portrait-row-sub">$40 each</div>
-                </div>
-                <div class="stepper">
-                  <button class="step-btn" onclick="adjustSingles(-1)">-</button>
-                  <span class="step-val" id="single-count">0</span>
-                  <button class="step-btn" onclick="adjustSingles(1)">+</button>
-                </div>
-              </div>
-              <div class="portrait-price-preview">
-                <span class="portrait-price-label">Session Total</span>
-                <span class="portrait-price-val" id="portrait-price">$0.00</span>
-              </div>
-              <button class="btn-add" onclick="portraitAddToCart()">Add Portrait Session to Cart</button>
+              <div id="pr-photo-grid" class="ap-photo-grid"></div>
+            </div>
+          </div>
+          <div id="portrait-add-bar" class="ap-add-bar hidden">
+            <div style="flex:1">
+              <div class="ap-sel-count" id="pr-sel-count">0 selected</div>
+              <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem" id="pr-price-hint"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-end">
+              <button class="ap-add-btn" id="portrait-singles-btn" onclick="portraitAddSingles()" disabled>Add Singles</button>
+              <button class="ap-add-btn" id="portrait-pose-btn" onclick="portraitAddPose()" disabled
+                style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Add as Pose</button>
             </div>
           </div>
         </div>
@@ -705,8 +740,26 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               <button class="btn-add" onclick="privateAddToCart('Private On Mountain Shoot')">Add to Cart</button>
             </div>
 
-            <!-- Other private session types -->
-            <div id="extra-private-grid" class="product-grid"></div>
+            <!-- Private Portrait Session -->
+            <div class="private-card">
+              <div class="private-card-name">Private Portrait Session</div>
+              <div class="private-card-desc">Dedicated portrait session at a scenic mountain location. Perfect for families and couples wanting a guided shoot.</div>
+              <button class="btn-add" onclick="cartAdd({category:'private',label:'Private Portrait Session',detail:'On-mountain portrait session',price:550,qty:1,subtotal:550});showToast('Added to cart')">Add to Cart</button>
+            </div>
+
+            <!-- Private Ski Lesson Photography -->
+            <div class="private-card">
+              <div class="private-card-name">Private Ski Lesson Photography</div>
+              <div class="private-card-desc">Photographer follows along during a private ski lesson to capture progression and technique.</div>
+              <button class="btn-add" onclick="cartAdd({category:'private',label:'Private Ski Lesson Photography',detail:'Ski lesson photography session',price:350,qty:1,subtotal:350});showToast('Added to cart')">Add to Cart</button>
+            </div>
+
+            <!-- Custom Private Session -->
+            <div class="private-card">
+              <div class="private-card-name">Custom Private Session</div>
+              <div class="private-card-desc">Custom session — use the price override to set a custom amount.</div>
+              <button class="btn-add" onclick="cartAdd({category:'private',label:'Custom Private Session',detail:'Custom session',price:0,qty:1,subtotal:0});showToast('Added — set custom price in cart')">Add to Cart</button>
+            </div>
           </div>
         </div>
 
@@ -939,11 +992,10 @@ const S = {
   customer: { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' },
 
   // Action photos
-  ap: { query:'', families:[], family:null, photos:[], selected: new Set(), loading:false },
+  ap: { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData:[] },
 
-  // Portrait
-  poses: 0,
-  singles: 0,
+  // Portraits
+  pr: { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() },
 
   // Private sessions
   privatePeople: 1,
@@ -1108,6 +1160,7 @@ function switchTab(tab){
   if(cs) cs.scrollTop = 0;
 
   // Lazy-load tab data
+  if(tab === 'action-photos') loadApDates();
   if(tab === 'prints' && !S.printSizes) loadPrintSizes();
   if(tab === 'frames' && !S.frames) loadFrames();
   if(tab === 'recent') loadRecentSales();
@@ -1341,6 +1394,57 @@ function saveCustomerInfo(){
 }
 
 // ─── Action Photos ────────────────────────────────────────────────────────────
+async function loadApDates(){
+  const sel = $('ap-date-select');
+  if(sel.options.length > 1) return; // already loaded
+  try {
+    const res = await fetch('/api/pos-dates');
+    const data = await res.json();
+    S.ap._dateData = data.dates || [];
+    S.ap._dateData.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.date;
+      o.textContent = d.date;
+      sel.appendChild(o);
+    });
+  } catch(e){ /* silent */ }
+}
+
+function apDateChanged(){
+  const date = $('ap-date-select').value;
+  const locRow = $('ap-loc-row');
+  const locSel = $('ap-loc-select');
+  apClearPhotos();
+  $('ap-results').innerHTML = '';
+  if(!date){ locRow.style.display = 'none'; return; }
+  const entry = (S.ap._dateData || []).find(d => d.date === date);
+  const locs = entry ? entry.locations : [];
+  locSel.innerHTML = '<option value="">Select location...</option>';
+  locs.forEach(l => {
+    const o = document.createElement('option');
+    o.value = l; o.textContent = l;
+    locSel.appendChild(o);
+  });
+  locRow.style.display = '';
+  if(locs.length === 1){ locSel.value = locs[0]; apLocChanged(); }
+}
+
+async function apLocChanged(){
+  const date = $('ap-date-select').value;
+  const location = $('ap-loc-select').value;
+  apClearPhotos();
+  if(!date || !location) return;
+  $('ap-results').innerHTML = '<div class="ap-loading">Loading families...</div>';
+  try {
+    const res = await fetch(`/api/pos-families?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`);
+    const data = await res.json();
+    S.ap.families = data.families || [];
+    renderApResults();
+  } catch(e){
+    $('ap-results').innerHTML = '<div class="ap-loading">Failed to load</div>';
+  }
+}
+
 async function apSearch(){
   const q = $('ap-search-input').value.trim();
   if(!q){ showToast('Enter a last name to search'); return; }
@@ -1364,15 +1468,23 @@ function renderApResults(){
     el.innerHTML = '<div class="ap-loading">No results found</div>';
     return;
   }
-  el.innerHTML = S.ap.families.map((f,i) => `
-    <div class="ap-result-item" onclick="apSelectFamily(${i})">
-      <div>
-        <div class="ap-result-name">${f.last_name || f.folder || ''}</div>
-        <div class="ap-result-meta">${f.date || ''} &middot; ${f.location || ''}</div>
+  el.innerHTML = S.ap.families.map((f,i) => {
+    const previews = (f.previews || []).slice(0,4).map(p =>
+      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">`
+    ).join('');
+    return `
+      <div class="ap-result-item" onclick="apSelectFamily(${i})" style="flex-direction:column;align-items:flex-start">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+          <div>
+            <div class="ap-result-name">${f.last_name || f.folder || f.name || ''}</div>
+            <div class="ap-result-meta">${f.date || ''} &middot; ${f.location || ''}</div>
+          </div>
+          <span class="ap-result-arrow">&#8250;</span>
+        </div>
+        ${previews ? `<div class="ap-result-previews">${previews}</div>` : ''}
       </div>
-      <span class="ap-result-arrow">&#8250;</span>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 async function apSelectFamily(idx){
@@ -1382,12 +1494,12 @@ async function apSelectFamily(idx){
   S.ap.selected.clear();
   $('ap-results').innerHTML = '';
   $('ap-photos-view').classList.remove('hidden');
-  $('ap-breadcrumb-name').textContent = `${f.last_name || f.folder || ''} — ${f.date || ''}`;
+  $('ap-breadcrumb-name').textContent = `${f.last_name || f.folder || f.name || ''} — ${f.date || ''}`;
   $('ap-photo-grid').innerHTML = '<div class="ap-loading">Loading photos...</div>';
   $('ap-add-bar').classList.remove('hidden');
   renderApSelCount();
   try {
-    const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.folder || '' });
+    const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.folder || f.name || '' });
     const res = await fetch(`/api/browse?${params}`);
     const data = await res.json();
     S.ap.photos = (data.photos || []);
@@ -1404,11 +1516,10 @@ function renderApPhotos(){
     return;
   }
   grid.innerHTML = S.ap.photos.map((p,i) => {
-    const url = p.url || p.thumb_url || '';
+    const url = `/api/photo?path=${encodeURIComponent(p.path || '')}&size=thumb`;
     const filename = p.filename || (p.path || '').split('/').pop() || '';
-    // Extract numeric part from filename for fast identification
-    const numMatch = filename.match(/(\d+)/);
-    const photoNum = numMatch ? numMatch[1] : (i + 1);
+    const numMatch = filename.match(/(\d+)/g);
+    const photoNum = numMatch ? numMatch[numMatch.length - 1] : (i + 1);
     return `
       <div class="ap-photo-item" id="apph-${i}" onclick="apTogglePhoto(${i})">
         <img class="ap-photo-img" src="${url}" loading="lazy" alt="${filename}">
@@ -1422,7 +1533,7 @@ function renderApPhotos(){
 function apTogglePhoto(idx){
   const p = S.ap.photos[idx];
   if(!p) return;
-  const key = p.path || p.key || String(idx);
+  const key = p.path || String(idx);
   if(S.ap.selected.has(key)) S.ap.selected.delete(key);
   else S.ap.selected.add(key);
   const el = $('apph-' + idx);
@@ -1433,11 +1544,11 @@ function apTogglePhoto(idx){
 function renderApSelCount(){
   const n = S.ap.selected.size;
   const total = S.ap.photos.length;
-  let label = n + ' selected';
+  let label = n === 0 ? 'Tap photos to select' : `${n} selected`;
   if(n > 0){
     const isAll = n === total && total > 0;
     const price = isAll ? 115 : n * 25;
-    label = `${n} selected — ${isAll ? '$115 (all)' : '$' + price}`;
+    label = `${n} selected — ${isAll ? '$115 (all ' + total + ')' : '$' + price}`;
   }
   $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;
@@ -1447,37 +1558,23 @@ function apAddToCart(){
   if(!S.ap.selected.size) return;
   const f = S.ap.family;
   const selectedKeys = [...S.ap.selected];
-  const selectedPhotos = S.ap.photos.filter(p => selectedKeys.includes(p.path || p.key));
-  const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || p.key));
+  const selectedPhotos = S.ap.photos.filter(p => selectedKeys.includes(p.path || ''));
+  const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || ''));
   const totalPhotos = S.ap.photos.length;
   const selectedCount = selectedKeys.length;
-
-  // Pricing: $115 for all photos in folder, $25/photo for partial
   const isAll = selectedCount === totalPhotos && totalPhotos > 0;
-  let price, priceDetail;
-  if(isAll){
-    price = 115;
-    priceDetail = `All ${selectedCount} photos · $115 package`;
-  } else {
-    price = selectedCount * 25;
-    priceDetail = `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
-  }
-
+  const price = isAll ? 115 : selectedCount * 25;
+  const priceDetail = isAll ? `All ${selectedCount} photos · $115 package` : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
   cartAdd({
     category: 'action_photos',
-    label: `Action Photos — ${f.last_name || f.folder || ''}`,
+    label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
     detail: `${priceDetail} · ${f.date || ''} · ${f.location || ''}`,
-    price,
-    qty: 1,
-    subtotal: price,
-    photo_paths: selectedPhotos.map(p => p.path || p.key),
-    filenames,
-    date: f.date || '',
-    location: f.location || '',
+    price, qty: 1, subtotal: price,
+    photo_paths: selectedPhotos.map(p => p.path || ''),
+    filenames, date: f.date || '', location: f.location || '',
   });
-  // Reset selection
   S.ap.selected.clear();
-  S.ap.photos.forEach((p,i) => {
+  S.ap.photos.forEach((_,i) => {
     const el = $('apph-' + i);
     if(el) el.classList.remove('selected');
   });
@@ -1493,60 +1590,230 @@ function apClearPhotos(){
 }
 
 // ─── Portraits ────────────────────────────────────────────────────────────────
-function adjustPoses(d){
-  S.poses = Math.max(0, S.poses + d);
-  $('pose-count').textContent = S.poses;
-  updatePortraitPrice();
-}
-
-function adjustSingles(d){
-  S.singles = Math.max(0, S.singles + d);
-  $('single-count').textContent = S.singles;
-  updatePortraitPrice();
-}
-
-function updatePortraitPrice(){
-  const pp = S.portraitPricing;
-  if(!pp) return;
-  const tiers = pp.pose_tiers || [65, 57.5, 50];
-  const single_price = pp.single_photo || 40;
-  let poseTotal = 0;
-  if(S.poses > 0){
-    const tier = tiers[Math.min(S.poses - 1, tiers.length - 1)];
-    poseTotal = tier * S.poses;
-    $('pose-price-sub').textContent = `${fmt(tier)}/pose (${S.poses} pose${S.poses!==1?'s':''})`;
-  } else {
-    $('pose-price-sub').textContent = `${fmt(tiers[0])}/pose`;
+async function portraitSearch(){
+  const q = $('pr-search-input').value.trim();
+  if(!q){ showToast('Enter a last name to search'); return; }
+  $('pr-results').innerHTML = '<div class="ap-loading">Searching...</div>';
+  portraitClearPhotos();
+  try {
+    const res = await fetch(`/api/last-name-search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    S.pr.sessions = data.results || data || [];
+    renderPortraitResults();
+  } catch(e){
+    $('pr-results').innerHTML = '<div class="ap-loading">Search failed</div>';
   }
-  const total = poseTotal + single_price * S.singles;
-  $('portrait-price').textContent = fmt(total);
-  return total;
 }
 
-function portraitAddToCart(){
-  if(S.poses === 0 && S.singles === 0){
-    showToast('Select at least one pose or photo');
+function renderPortraitResults(){
+  const el = $('pr-results');
+  if(!S.pr.sessions.length){
+    el.innerHTML = '<div class="ap-loading">No results found</div>';
     return;
   }
-  const total = updatePortraitPrice();
-  const pp = S.portraitPricing;
-  const tiers = (pp||{}).pose_tiers || [65,57.5,50];
-  const tierLabel = S.poses > 0 ? `${fmt(tiers[Math.min(S.poses-1,tiers.length-1)])}/pose` : '';
-  const parts = [];
-  if(S.poses) parts.push(`${S.poses} pose${S.poses!==1?'s':''}`);
-  if(S.singles) parts.push(`${S.singles} individual photo${S.singles!==1?'s':''}`);
+  el.innerHTML = S.pr.sessions.map((s,i) => {
+    const previews = (s.previews || []).slice(0,4).map(p =>
+      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">`
+    ).join('');
+    return `
+      <div class="ap-result-item" onclick="portraitSelectSession(${i})" style="flex-direction:column;align-items:flex-start">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+          <div>
+            <div class="ap-result-name">${s.last_name || s.name || ''}</div>
+            <div class="ap-result-meta">${s.date || ''} &middot; ${s.location || ''}</div>
+          </div>
+          <span class="ap-result-arrow">&#8250;</span>
+        </div>
+        ${previews ? `<div class="ap-result-previews">${previews}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+async function portraitSelectSession(idx){
+  const s = S.pr.sessions[idx];
+  if(!s) return;
+  S.pr.session = s;
+  S.pr.selected.clear();
+  $('pr-results').innerHTML = '';
+  $('pr-photos-view').classList.remove('hidden');
+  $('pr-breadcrumb-name').textContent = `${s.last_name || s.name || ''} — ${s.date || ''}`;
+  $('pr-photo-grid').innerHTML = '<div class="ap-loading">Loading photos...</div>';
+  $('portrait-add-bar').classList.remove('hidden');
+  renderPortraitSelCount();
+  try {
+    const params = new URLSearchParams({ date: s.date || '', location: s.location || '', family: s.last_name || s.name || '' });
+    const res = await fetch(`/api/browse?${params}`);
+    const data = await res.json();
+    S.pr.photos = data.photos || [];
+    S.pr.poses = groupPortraitPoses(S.pr.photos);
+    renderPortraitPoses();
+  } catch(e){
+    $('pr-photo-grid').innerHTML = '<div class="ap-loading">Failed to load photos</div>';
+  }
+}
+
+function groupPortraitPoses(photos){
+  if(!photos.length) return [];
+  const sorted = [...photos].sort((a,b) => {
+    const na = parseInt(((a.filename||a.path||'').match(/\d+/g)||[]).pop() || 0);
+    const nb = parseInt(((b.filename||b.path||'').match(/\d+/g)||[]).pop() || 0);
+    return na - nb;
+  });
+  const groups = [];
+  let cur = [sorted[0]];
+  for(let i = 1; i < sorted.length; i++){
+    const pn = parseInt(((sorted[i-1].filename||sorted[i-1].path||'').match(/\d+/g)||[]).pop() || 0);
+    const cn = parseInt(((sorted[i].filename||sorted[i].path||'').match(/\d+/g)||[]).pop() || 0);
+    if(cn - pn <= 25) cur.push(sorted[i]);
+    else { groups.push(cur); cur = [sorted[i]]; }
+  }
+  groups.push(cur);
+  return groups.map((g,i) => ({ id: i, photos: g, expanded: false }));
+}
+
+function renderPortraitPoses(){
+  const grid = $('pr-photo-grid');
+  if(!S.pr.poses.length){
+    grid.innerHTML = '<div class="ap-loading">No photos found</div>';
+    return;
+  }
+  grid.innerHTML = S.pr.poses.map((pose,pi) => {
+    const thumbs = pose.photos.slice(0,3).map(p =>
+      `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb" loading="lazy" alt="">`
+    ).join('');
+    const allSelected = pose.photos.every(p => S.pr.selected.has(p.path || ''));
+    const someSelected = pose.photos.some(p => S.pr.selected.has(p.path || ''));
+    const inlinePhotos = pose.expanded ? pose.photos.map((p,pi2) => {
+      const fn = p.filename || (p.path||'').split('/').pop() || '';
+      const num = ((fn.match(/\d+/g))||[]).pop() || (pi2+1);
+      const sel = S.pr.selected.has(p.path||'');
+      return `<div class="ap-photo-item${sel?' selected':''}" id="prph-${pose.id}-${pi2}" onclick="portraitToggle(${pose.id},${pi2})" style="width:68px;height:68px">
+        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb" loading="lazy" alt="">
+        <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
+        <div style="position:absolute;bottom:2px;left:3px;font-size:.5rem;color:rgba(255,255,255,.75);font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.8)">${num}</div>
+      </div>`;
+    }).join('') : '';
+    return `
+      <div class="pr-pose-group" id="prpose-${pose.id}">
+        <div class="pr-pose-header" onclick="portraitTogglePose(${pi})">
+          <div>
+            <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos${someSelected?' · '+pose.photos.filter(p=>S.pr.selected.has(p.path||'')).length+' selected':''})</span></div>
+          </div>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <button onclick="event.stopPropagation();portraitSelectPose(${pi})" style="font-size:.7rem;padding:.2rem .5rem;background:${allSelected?'var(--accent)':'var(--surface2)'};color:${allSelected?'#0a1929':'var(--text)'};border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--font)">
+              ${allSelected ? 'Deselect' : 'Select All'}
+            </button>
+            <span style="color:var(--muted);font-size:.9rem">${pose.expanded ? '&#8963;' : '&#8964;'}</span>
+          </div>
+        </div>
+        <div class="pr-pose-thumbs">${thumbs}</div>
+        ${pose.expanded ? `<div class="pr-pose-photos" style="display:flex;flex-wrap:wrap;gap:4px;padding:.5rem .6rem">${inlinePhotos}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function portraitTogglePose(poseIdx){
+  if(!S.pr.poses[poseIdx]) return;
+  S.pr.poses[poseIdx].expanded = !S.pr.poses[poseIdx].expanded;
+  renderPortraitPoses();
+}
+
+function portraitSelectPose(poseIdx){
+  const pose = S.pr.poses[poseIdx];
+  if(!pose) return;
+  const allSelected = pose.photos.every(p => S.pr.selected.has(p.path||''));
+  pose.photos.forEach(p => {
+    if(allSelected) S.pr.selected.delete(p.path||'');
+    else S.pr.selected.add(p.path||'');
+  });
+  renderPortraitPoses();
+  renderPortraitSelCount();
+}
+
+function portraitToggle(poseId, photoIdx){
+  const pose = S.pr.poses.find(p => p.id === poseId);
+  if(!pose) return;
+  const p = pose.photos[photoIdx];
+  if(!p) return;
+  const key = p.path || '';
+  if(S.pr.selected.has(key)) S.pr.selected.delete(key);
+  else S.pr.selected.add(key);
+  renderPortraitPoses();
+  renderPortraitSelCount();
+}
+
+function renderPortraitSelCount(){
+  const n = S.pr.selected.size;
+  $('pr-sel-count').textContent = n === 0 ? 'Tap to select photos or poses' : `${n} photo${n!==1?'s':''} selected`;
+  const pp = S.portraitPricing || {};
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const singlePrice = pp.single_photo || 40;
+  const existingPosesInCart = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+  const tierIdx = Math.min(existingPosesInCart, tiers.length - 1);
+  const poseRate = tiers[tierIdx];
+  if(n > 0){
+    $('pr-price-hint').textContent = `Singles: $${n * singlePrice} · As pose: $${fmt(poseRate)} (${n} photos)`;
+  } else {
+    $('pr-price-hint').textContent = '';
+  }
+  const disabled = n === 0;
+  $('portrait-singles-btn').disabled = disabled;
+  $('portrait-pose-btn').disabled = disabled;
+}
+
+function portraitAddSingles(){
+  if(!S.pr.selected.size) return;
+  const s = S.pr.session;
+  const selectedPaths = [...S.pr.selected];
+  const selectedPhotos = S.pr.photos.filter(p => selectedPaths.includes(p.path||''));
+  const pp = S.portraitPricing || {};
+  const singlePrice = pp.single_photo || 40;
+  const price = selectedPaths.length * singlePrice;
   cartAdd({
     category: 'portrait',
-    label: 'Portrait Session',
-    detail: parts.join(', ') + (tierLabel ? ` · ${tierLabel}` : ''),
-    price: total,
-    qty: 1,
-    subtotal: total,
+    label: `Portrait Singles — ${s.last_name || s.name || ''}`,
+    detail: `${selectedPaths.length} photo${selectedPaths.length!==1?'s':''} · $${singlePrice} each · ${s.date||''}`,
+    price, qty: 1, subtotal: price,
+    photo_paths: selectedPaths,
+    date: s.date || '', location: s.location || '',
   });
-  S.poses = 0; S.singles = 0;
-  $('pose-count').textContent = '0';
-  $('single-count').textContent = '0';
-  updatePortraitPrice();
+  S.pr.selected.clear();
+  renderPortraitPoses();
+  renderPortraitSelCount();
+}
+
+function portraitAddPose(){
+  if(!S.pr.selected.size) return;
+  const s = S.pr.session;
+  const selectedPaths = [...S.pr.selected];
+  const pp = S.portraitPricing || {};
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+  const tierIdx = Math.min(existingPoses, tiers.length - 1);
+  const poseRate = tiers[tierIdx];
+  cartAdd({
+    category: 'portrait',
+    label: `Portrait Pose — ${s.last_name || s.name || ''}`,
+    detail: `${selectedPaths.length} photos · $${fmt(poseRate)}/pose · ${s.date||''}`,
+    price: poseRate, qty: 1, subtotal: poseRate,
+    photo_paths: selectedPaths,
+    date: s.date || '', location: s.location || '',
+    _poseUnit: true,
+  });
+  S.pr.selected.clear();
+  renderPortraitPoses();
+  renderPortraitSelCount();
+}
+
+function portraitClearPhotos(){
+  S.pr.session = null;
+  S.pr.photos = [];
+  S.pr.poses = [];
+  S.pr.selected.clear();
+  $('pr-photos-view').classList.add('hidden');
+  $('portrait-add-bar').classList.add('hidden');
 }
 
 // ─── Private Sessions ─────────────────────────────────────────────────────────
@@ -2097,8 +2364,9 @@ function newSale(){
   S.coupon = null;
   S.pendingOrder = null;
   S.customer = { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' };
-  S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), loading:false };
-  S.poses = 0; S.singles = 0; S.privatePeople = 1;
+  S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData: S.ap._dateData || [] };
+  S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() };
+  S.privatePeople = 1;
   renderCart();
   showCatHome();
   showToast('Cart cleared — ready for new sale');
@@ -2109,7 +2377,6 @@ async function loadPortraitPricing(){
   try {
     const res = await fetch('/api/portrait-pricing');
     S.portraitPricing = await res.json();
-    updatePortraitPrice();
   } catch(e){}
 }
 
