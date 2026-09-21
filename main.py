@@ -1763,6 +1763,16 @@ def _save_pos_products(d):
     s3.put_object(Bucket=R2_BUCKET, Key=POS_PRODUCTS_KEY,
                   Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
 
+@app.get("/api/pos-theme")
+def api_pos_theme():
+    cfg = _load_settings()
+    c = cfg.get("frontend", {})
+    return {
+        "accent":  _safe_color(c.get("accent",   "#F5C430"), "#F5C430"),
+        "bg":      _safe_color(c.get("page_bg",  "#093A52"), "#093A52"),
+        "surface": _safe_color(c.get("panel_bg", "#093A53"), "#093A53"),
+    }
+
 @app.get("/api/pos-products")
 def api_pos_products():
     return _load_pos_products()
@@ -4956,8 +4966,8 @@ import copy as _copy
 _SETTINGS_DEFAULTS: dict = {
     "time_filter_locations": [],
     "site":     {"name": "Crystal Images", "tagline": "", "logo_url": ""},
-    "frontend": {"accent": "#F5C518", "page_bg": "#0c2336", "panel_bg": "#0a1e2e"},
-    "admin":    {"accent": "#F5C518", "page_bg": "#0f1117", "panel_bg": "#0a1320"},
+    "frontend": {"accent": "#F5C430", "page_bg": "#093A52", "panel_bg": "#093A53"},
+    "admin":    {"accent": "#F5C430", "page_bg": "#093A52", "panel_bg": "#093A52"},
 }
 
 def _safe_color(val: str, default: str) -> str:

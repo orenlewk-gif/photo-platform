@@ -7,14 +7,15 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CI POS">
 <link rel="manifest" href="/pos/manifest.json">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
 <title>Crystal Images POS</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --bg:#07192a;--surface:#0f2540;--surface2:#162e4a;--surface3:#1e3a5a;
-  --border:rgba(255,255,255,.1);--accent:#F5C518;--accent2:#d4a900;
-  --text:#e4ecf4;--muted:#7a9ab5;--danger:#e05252;--success:#4ccd8a;
-  --radius:12px;--font:-apple-system,'SF Pro Display',sans-serif;
+  --bg:#082f44;--surface:#093A52;--surface2:#0d4a65;--surface3:#115577;
+  --border:rgba(255,255,255,.1);--accent:#F5C430;--accent2:#d4a800;
+  --text:#e4ecf4;--muted:#7aadca;--danger:#e05252;--success:#4ccd8a;
+  --radius:12px;--font:'Manrope',sans-serif;
 }
 html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
 #app{position:relative;width:100%;height:100%;overflow:hidden}
@@ -1867,6 +1868,15 @@ function initMainPOS(){
   renderCart();
   adjustPrivatePeople(0); // set price display
 }
+
+// Apply theme colors from admin settings
+function applyTheme(t){
+  const r = document.documentElement;
+  if(t.accent)  { r.style.setProperty('--accent',  t.accent); r.style.setProperty('--accent2', t.accent); }
+  if(t.bg)      { r.style.setProperty('--bg',      t.bg); }
+  if(t.surface) { r.style.setProperty('--surface', t.surface); }
+}
+fetch('/api/pos-theme').then(r=>r.json()).then(applyTheme).catch(()=>{});
 
 window.addEventListener('DOMContentLoaded', () => {
   try { S._savedPin = localStorage.getItem('ci_pos_pin') || ''; } catch(e){}
