@@ -1256,16 +1256,50 @@ function hasShippableItem(){
   return S.cart.some(i => i._ship);
 }
 
-function ensureShipping(type){
-  const hasPrints = S.cart.some(i => i.category === 'prints' && i._ship);
-  const hasFrames = S.cart.some(i => i.category === 'frames' && i._ship);
-  const price = (hasPrints && hasFrames) ? 25 : hasPrints ? 15 : 20;
+function calcShipping(){
+  const pp = S.printSizes || [];
+  const FREE_THRESHOLD = 3;
+  const printItems = S.cart.filter(i => i.category === 'prints' && i._ship);
+  const frameItems = S.cart.filter(i => i.category === 'frames' && i._ship);
+  if(!printItems.length && !frameItems.length) return 0;
+
+  // Frame rates: ship_framed for each frame unit (qty-expanded), first full + rest 50%
+  const frameRates = [];
+  for(const item of frameItems){
+    const sz = pp[item._size_idx || 0] || pp[0] || {};
+    const rate = sz.ship_framed || 15;
+    for(let q = 0; q < (item.qty || 1); q++) frameRates.push(rate);
+  }
+  if(frameRates.length){
+    frameRates.sort((a,b) => b - a);
+    return Math.round((frameRates[0] + frameRates.slice(1).reduce((s,r) => s + r * 0.5, 0)) * 100) / 100;
+  }
+
+  // Print-only: max rate; free when 3+ prints
+  const printRates = [];
+  for(const item of printItems){
+    const sz = pp[item._size_idx || 0] || pp[0] || {};
+    const rate = sz.ship_print || 8;
+    for(let q = 0; q < (item.qty || 1); q++) printRates.push(rate);
+  }
+  if(printRates.length >= FREE_THRESHOLD) return 0;
+  return Math.max(...printRates);
+}
+
+function ensureShipping(){
+  const price = calcShipping();
   const idx = S.cart.findIndex(i => i.category === '_shipping');
+  if(price === 0){
+    if(idx !== -1 && S.cart[idx]._auto) S.cart.splice(idx, 1);
+    return;
+  }
+  const detail = price === 0 ? 'Free shipping' : 'Mailed to customer address';
   if(idx === -1){
-    S.cart.push({ id: cartId(), category: '_shipping', label: 'Shipping', detail: 'Mailed to customer address', price, qty: 1, subtotal: price, note: '', _auto: true });
+    S.cart.push({ id: cartId(), category: '_shipping', label: 'Shipping', detail, price, qty: 1, subtotal: price, note: '', _auto: true });
   } else {
     S.cart[idx].price = price;
     S.cart[idx].subtotal = price;
+    S.cart[idx].detail = detail;
   }
 }
 
@@ -2023,6 +2057,7 @@ function printAddToCart(label, price){
   const qty = qtyEl ? Math.max(1, parseInt(qtyEl.textContent) || 1) : 1;
   const half = $('half-price-toggle') && $('half-price-toggle').checked;
   const ship = $('print-ship-toggle') && $('print-ship-toggle').checked;
+  const sizeEntry = (S.printSizes || []).find(s => s.label === label);
   cartAdd({
     category: 'prints',
     label: `${label} Print${half ? ' (half price)' : ''}`,
@@ -2031,6 +2066,7 @@ function printAddToCart(label, price){
     qty,
     subtotal: price * qty,
     _ship: ship,
+    _size_idx: sizeEntry ? (sizeEntry.size_idx || 0) : 0,
   });
   if(qtyEl) qtyEl.textContent = '0';
 }
@@ -2115,8 +2151,11 @@ function frameToggle(sizeKey){
 }
 
 function framePickOrient(sizeKey, orient, price){
+  const SIZE_IDX = {'5x7':0,'8x10':1,'10x13':2,'16x20':3};
+  const f = S.frames && S.frames.find(fr => fr.size.replace(/[^a-z0-9]/gi,'_') === sizeKey);
+  const sizeIdx = f ? (SIZE_IDX[f.size] !== undefined ? SIZE_IDX[f.size] : 0) : 0;
   S._frameOpen = sizeKey;
-  S._framePick = { sizeKey, orient, price: parseFloat(price), qty: (S._framePick||{}).qty || 1, ship: (S._framePick||{}).ship || false };
+  S._framePick = { sizeKey, orient, price: parseFloat(price), qty: (S._framePick||{}).qty || 1, ship: (S._framePick||{}).ship || false, _size_idx: sizeIdx };
   renderFrames();
 }
 
@@ -2144,6 +2183,7 @@ function frameAddToCart(sizeKey){
     qty: pick.qty,
     subtotal: pick.price * pick.qty,
     _ship: pick.ship,
+    _size_idx: pick._size_idx || 0,
   });
   S._framePick = null;
   S._frameOpen = null;
