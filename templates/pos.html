@@ -285,6 +285,47 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .frame-add-btn:active{background:var(--accent2)}
 .frame-add-btn:disabled{opacity:.45;cursor:default}
 
+/* ── Item modal ── */
+.item-modal-sheet{max-width:420px;width:calc(100% - 2rem)}
+.item-modal-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.85rem 1.1rem .7rem;border-bottom:1px solid var(--border);
+}
+.item-modal-title{font-size:1rem;font-weight:700}
+.item-modal-close{
+  background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;
+  padding:.2rem .4rem;touch-action:manipulation;line-height:1;
+}
+.item-modal-close:active{color:var(--text)}
+.item-modal-body{padding:.85rem 1.1rem;overflow-y:auto;max-height:55vh}
+.item-modal-footer{
+  padding:.75rem 1.1rem;border-top:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;gap:.75rem;flex-shrink:0;
+}
+.item-modal-price-preview{display:flex;flex-direction:column}
+.item-modal-price-label{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.item-modal-price-val{font-size:1.25rem;font-weight:700;color:var(--accent)}
+.item-modal-add-btn{
+  flex:1;background:var(--accent);color:#0a1929;border:none;border-radius:var(--radius);
+  padding:.75rem 1rem;font-size:.9rem;font-weight:700;cursor:pointer;touch-action:manipulation;
+}
+.item-modal-add-btn:active{background:var(--accent2)}
+/* Inside item modal body */
+.im-desc{font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:.85rem}
+.im-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem}
+.im-row-label{font-size:.85rem;font-weight:500}
+.im-orient-row{display:flex;gap:.5rem;margin-bottom:.8rem}
+.im-orient-btn{
+  flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.65rem .5rem;cursor:pointer;text-align:center;touch-action:manipulation;
+}
+.im-orient-btn.selected{border-color:var(--accent);background:rgba(245,196,48,.08)}
+.im-orient-btn:active{background:var(--surface3)}
+.im-orient-name{font-size:.8rem;font-weight:500}
+.im-orient-price{font-size:.9rem;font-weight:700;color:var(--accent);margin-top:.1rem}
+.im-people-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
+.im-price-note{font-size:.75rem;color:var(--muted);text-align:center;margin-bottom:.4rem}
+
 /* ── Ship item toggle ── */
 .ship-row{display:flex;align-items:center;gap:.6rem;padding:.5rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem}
 
@@ -308,9 +349,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .cust-search-option-meta{font-size:.72rem;color:var(--muted);margin-top:.05rem}
 
 /* ── Private Sessions ── */
-.private-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:1rem}
+.private-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1rem;margin-bottom:.6rem;cursor:pointer;touch-action:manipulation}
+.private-card:active{background:var(--surface2);border-color:var(--accent)}
 .private-card-name{font-size:.95rem;font-weight:700;margin-bottom:.25rem}
-.private-card-desc{font-size:.78rem;color:var(--muted);line-height:1.4;margin-bottom:.85rem}
+.private-card-desc{font-size:.78rem;color:var(--muted);line-height:1.4;margin-bottom:.4rem}
+.private-card-hint{font-size:.72rem;color:var(--accent);font-weight:600;text-align:right}
 .private-people-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem}
 .private-price-line{font-size:.78rem;color:var(--muted);text-align:center;margin-bottom:.5rem}
 
@@ -760,41 +803,25 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="panel-pad">
             <div class="section-title">Private Sessions</div>
 
-            <!-- Private On Mountain Shoot -->
-            <div class="private-card">
+            <div class="private-card" onclick="openItemModal({type:'private_people',label:'Private On Mountain Shoot',desc:'Dedicated on-mountain session. Base rate covers up to 4 people — $75 per additional person over 4.',basePrice:550,category:'private'})">
               <div class="private-card-name">Private On Mountain Shoot</div>
               <div class="private-card-desc">Dedicated on-mountain session for your group. Base rate covers up to 4 people — $75 per additional person over 4.</div>
-              <div class="private-people-row">
-                <span style="font-size:.85rem;font-weight:500">Number of People</span>
-                <div class="stepper">
-                  <button class="step-btn" onclick="adjustPrivatePeople(-1)">-</button>
-                  <span class="step-val" id="private-people">1</span>
-                  <button class="step-btn" onclick="adjustPrivatePeople(1)">+</button>
-                </div>
-              </div>
-              <div class="private-price-line" id="private-price-line">$550.00 (base rate, up to 4)</div>
-              <button class="btn-add" onclick="privateAddToCart('Private On Mountain Shoot')">Add to Cart</button>
+              <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
-
-            <!-- Private Portrait Session -->
-            <div class="private-card">
+            <div class="private-card" onclick="openItemModal({type:'simple',label:'Private Portrait Session',desc:'Dedicated portrait session at a scenic mountain location. Perfect for families and couples.',basePrice:550,category:'private'})">
               <div class="private-card-name">Private Portrait Session</div>
-              <div class="private-card-desc">Dedicated portrait session at a scenic mountain location. Perfect for families and couples wanting a guided shoot.</div>
-              <button class="btn-add" onclick="cartAdd({category:'private',label:'Private Portrait Session',detail:'On-mountain portrait session',price:550,qty:1,subtotal:550});showToast('Added to cart')">Add to Cart</button>
+              <div class="private-card-desc">Dedicated portrait session at a scenic mountain location. Perfect for families and couples.</div>
+              <div class="private-card-hint">Tap to add &rsaquo;</div>
             </div>
-
-            <!-- Private Ski Lesson Photography -->
-            <div class="private-card">
+            <div class="private-card" onclick="openItemModal({type:'simple',label:'Private Ski Lesson Photography',desc:'Photographer follows along during a private ski lesson to capture progression and technique.',basePrice:350,category:'private'})">
               <div class="private-card-name">Private Ski Lesson Photography</div>
               <div class="private-card-desc">Photographer follows along during a private ski lesson to capture progression and technique.</div>
-              <button class="btn-add" onclick="cartAdd({category:'private',label:'Private Ski Lesson Photography',detail:'Ski lesson photography session',price:350,qty:1,subtotal:350});showToast('Added to cart')">Add to Cart</button>
+              <div class="private-card-hint">Tap to add &rsaquo;</div>
             </div>
-
-            <!-- Custom Private Session -->
-            <div class="private-card">
+            <div class="private-card" onclick="openItemModal({type:'simple',label:'Custom Private Session',desc:'Custom session — set price in the modal or override in cart.',basePrice:0,category:'private'})">
               <div class="private-card-name">Custom Private Session</div>
-              <div class="private-card-desc">Custom session — use the price override to set a custom amount.</div>
-              <button class="btn-add" onclick="cartAdd({category:'private',label:'Custom Private Session',detail:'Custom session',price:0,qty:1,subtotal:0});showToast('Added — set custom price in cart')">Add to Cart</button>
+              <div class="private-card-desc">Custom session — set price in the modal or use the price override in cart.</div>
+              <div class="private-card-hint">Tap to add &rsaquo;</div>
             </div>
           </div>
         </div>
@@ -810,13 +837,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               </label>
               <span class="toggle-label">Half-price (50% off)</span>
             </div>
-            <div class="ship-row">
-              <label class="toggle-switch">
-                <input type="checkbox" id="print-ship-toggle">
-                <div class="toggle-track"></div>
-              </label>
-              <span class="toggle-label">Ship prints (+$15)</span>
-            </div>
             <div id="print-size-list" class="print-size-list"></div>
           </div>
         </div>
@@ -825,7 +845,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-frames" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Frames</div>
-            <div id="frames-list"></div>
+            <div id="frames-list" class="print-size-list"></div>
           </div>
         </div>
 
@@ -984,6 +1004,24 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   </div>
 </div>
 
+<!-- ─── ITEM MODAL ─── -->
+<div id="item-modal" class="modal-overlay hidden" onclick="itemModalBackdrop(event)">
+  <div class="modal-sheet item-modal-sheet" onclick="event.stopPropagation()">
+    <div class="item-modal-header">
+      <div class="item-modal-title" id="item-modal-title"></div>
+      <button class="item-modal-close" onclick="closeItemModal()">&#10005;</button>
+    </div>
+    <div class="item-modal-body" id="item-modal-body"></div>
+    <div class="item-modal-footer">
+      <div class="item-modal-price-preview">
+        <span class="item-modal-price-label">Total</span>
+        <span class="item-modal-price-val" id="item-modal-price">$0.00</span>
+      </div>
+      <button class="item-modal-add-btn" id="item-modal-add-btn" onclick="itemModalAddToCart()">Add to Cart</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── PIN RESEND MODAL ─── -->
 <div id="pin-resend-overlay" class="pin-resend-overlay hidden">
   <div class="pin-resend-box">
@@ -1049,9 +1087,8 @@ const S = {
   // Private sessions
   privatePeople: 1,
 
-  // Frame accordion state
-  _frameOpen: null,
-  _framePick: null,
+  // Item modal state
+  _im: null,
 
   // Data cache
   portraitPricing: null,
@@ -2025,30 +2062,17 @@ async function loadPrintSizes(){
 
 function renderPrintSizes(){
   if(!S.printSizes) return;
-  const half = $('half-price-toggle').checked;
+  const half = $('half-price-toggle') && $('half-price-toggle').checked;
   $('print-size-list').innerHTML = S.printSizes.map(s => {
     const price = half ? s.price * 0.5 : s.price;
     return `
-      <div class="print-size-row">
+      <div class="print-size-row" style="cursor:pointer" onclick="openItemModal({type:'print',label:'${escHtml(s.label)} Print',basePrice:${price},category:'prints',_size_idx:${s.size_idx||0},_half:${!!half}})" >
         <span class="print-size-name">${s.label}</span>
         <span class="print-size-price">${half ? '<s style="opacity:.5;font-size:.75rem">' + fmt(s.price) + '</s> ' : ''}${fmt(price)}</span>
-        <div class="stepper" style="gap:.5rem">
-          <button class="step-btn" style="width:26px;height:26px" onclick="printChange('${s.label}',${s.price},${half},-1)">-</button>
-          <span style="min-width:1.5ch;text-align:center;font-size:.9rem;font-weight:600" id="print-qty-${s.label.replace(/[^a-z0-9]/gi,'_')}">0</span>
-          <button class="step-btn" style="width:26px;height:26px" onclick="printChange('${s.label}',${s.price},${half},1)">+</button>
-        </div>
-        <button class="print-add-btn" onclick="printAddToCart('${s.label}',${price})">Add</button>
+        <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
       </div>
     `;
   }).join('');
-}
-
-function printChange(label, basePrice, half, delta){
-  const key = label.replace(/[^a-z0-9]/gi,'_');
-  const el = $('print-qty-' + key);
-  if(!el) return;
-  const cur = parseInt(el.textContent) || 0;
-  el.textContent = Math.max(0, cur + delta);
 }
 
 function printAddToCart(label, price){
@@ -2091,102 +2115,22 @@ function renderFrames(){
     el.innerHTML = '<div class="ap-loading">No frames available</div>';
     return;
   }
+  const SIZE_IDX = {'5x7':0,'8x10':1,'10x13':2,'16x20':3};
   el.innerHTML = S.frames.map(f => {
-    const sizeKey = f.size.replace(/[^a-z0-9]/gi,'_');
-    const isOpen = S._frameOpen === sizeKey;
-    const pick = isOpen ? S._framePick : null;
+    const sizeIdx = SIZE_IDX[f.size] !== undefined ? SIZE_IDX[f.size] : 0;
     const opts = [];
-    if(f.landscape) opts.push({orient:'Landscape', price: f.landscape.price});
-    if(f.portrait)  opts.push({orient:'Portrait',  price: f.portrait.price});
+    if(f.landscape) opts.push({orient:'Landscape', price: parseFloat(f.landscape.price||0)});
+    if(f.portrait)  opts.push({orient:'Portrait',  price: parseFloat(f.portrait.price||0)});
     if(!opts.length) return '';
-
-    const orientBtns = opts.map(o => {
-      const sel = pick && pick.orient === o.orient;
-      return `<div class="frame-option-btn${sel?' selected':''}" onclick="framePickOrient('${sizeKey}','${escHtml(o.orient)}',${o.price})">
-        <div class="frame-option-name">${o.orient}</div>
-        <div class="frame-option-price">${fmt(o.price)}</div>
-      </div>`;
-    }).join('');
-
-    const configContent = pick ? `
-      <div class="frame-qty-row">
-        <span style="font-size:.82rem;font-weight:500">Quantity</span>
-        <div class="stepper" style="gap:.5rem">
-          <button class="step-btn" style="width:26px;height:26px" onclick="frameQtyChange(-1)">-</button>
-          <span id="frame-qty-val" style="min-width:1.5ch;text-align:center;font-size:.9rem;font-weight:600">${pick.qty}</span>
-          <button class="step-btn" style="width:26px;height:26px" onclick="frameQtyChange(1)">+</button>
-        </div>
-      </div>
-      <div class="frame-ship-row">
-        <label class="toggle-switch">
-          <input type="checkbox" id="frame-ship-toggle" ${pick.ship?'checked':''} onchange="frameShipChange(this.checked)">
-          <div class="toggle-track"></div>
-        </label>
-        <span style="font-size:.82rem;font-weight:500">Ship (+$20)</span>
-      </div>
-      <button class="frame-add-btn" onclick="frameAddToCart('${sizeKey}')">
-        Add to Cart — ${fmt(pick.price * pick.qty)}${pick.ship ? ' + $20 shipping' : ''}
-      </button>
-    ` : `<div style="font-size:.78rem;color:var(--muted);padding:.4rem 0">Select an orientation above</div>`;
-
+    const minPrice = Math.min(...opts.map(o => o.price));
     return `
-      <div class="frame-size-section">
-        <div class="frame-size-header" onclick="frameToggle('${sizeKey}')">
-          <span class="frame-size-name">${f.size} Frame</span>
-          <span class="frame-size-expand-hint">${isOpen ? '&#8963; Close' : '&#8964; Options'}</span>
-        </div>
-        <div class="frame-config${isOpen?' open':''}">
-          <div class="frame-orient-row">${orientBtns}</div>
-          ${isOpen ? configContent : ''}
-        </div>
+      <div class="print-size-row" style="cursor:pointer" onclick="openItemModal({type:'frame',label:'${escHtml(f.size)} Frame',category:'frames',_size_idx:${sizeIdx},opts:${encodeURIComponent(JSON.stringify(opts))}})">
+        <span class="print-size-name">${f.size} Frame</span>
+        <span class="print-size-price">from ${fmt(minPrice)}</span>
+        <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
       </div>
     `;
   }).join('');
-}
-
-function frameToggle(sizeKey){
-  S._frameOpen = S._frameOpen === sizeKey ? null : sizeKey;
-  S._framePick = null;
-  renderFrames();
-}
-
-function framePickOrient(sizeKey, orient, price){
-  const SIZE_IDX = {'5x7':0,'8x10':1,'10x13':2,'16x20':3};
-  const f = S.frames && S.frames.find(fr => fr.size.replace(/[^a-z0-9]/gi,'_') === sizeKey);
-  const sizeIdx = f ? (SIZE_IDX[f.size] !== undefined ? SIZE_IDX[f.size] : 0) : 0;
-  S._frameOpen = sizeKey;
-  S._framePick = { sizeKey, orient, price: parseFloat(price), qty: (S._framePick||{}).qty || 1, ship: (S._framePick||{}).ship || false, _size_idx: sizeIdx };
-  renderFrames();
-}
-
-function frameQtyChange(d){
-  if(!S._framePick) return;
-  S._framePick.qty = Math.max(1, S._framePick.qty + d);
-  renderFrames();
-}
-
-function frameShipChange(val){
-  if(!S._framePick) return;
-  S._framePick.ship = val;
-  renderFrames();
-}
-
-function frameAddToCart(sizeKey){
-  const pick = S._framePick;
-  const f = S.frames && S.frames.find(fr => fr.size.replace(/[^a-z0-9]/gi,'_') === sizeKey);
-  if(!pick || !f) return;
-  cartAdd({
-    category: 'frames',
-    label: `${f.size} Frame — ${pick.orient}`,
-    detail: pick.ship ? 'Ship' : '',
-    price: pick.price,
-    qty: pick.qty,
-    subtotal: pick.price * pick.qty,
-    _ship: pick.ship,
-    _size_idx: pick._size_idx || 0,
-  });
-  S._framePick = null;
-  S._frameOpen = null;
 }
 
 // ─── Custom products (Base Area, Mats) ────────────────────────────────────────
@@ -2226,17 +2170,214 @@ function renderMats(){
 }
 
 function customProductAdd(category, name, price){
-  cartAdd({
-    category,
-    label: name,
-    price: parseFloat(price),
-    qty: 1,
-    subtotal: parseFloat(price),
-  });
+  openItemModal({ type:'simple', label: name, basePrice: parseFloat(price), category });
 }
 
 function escHtml(s){
   return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Item Modal ───────────────────────────────────────────────────────────────
+// S._im holds the current modal item state
+function openItemModal(cfg){
+  // Decode opts if passed as encoded string (from inline onclick)
+  if(typeof cfg.opts === 'string'){
+    try { cfg.opts = JSON.parse(decodeURIComponent(cfg.opts)); } catch(e){ cfg.opts = []; }
+  }
+  S._im = {
+    type:      cfg.type || 'simple',
+    label:     cfg.label || '',
+    desc:      cfg.desc  || '',
+    category:  cfg.category || '',
+    basePrice: parseFloat(cfg.basePrice) || 0,
+    price:     parseFloat(cfg.basePrice) || 0,
+    qty:       1,
+    ship:      false,
+    people:    1,          // for private_people type
+    orient:    null,       // for frame type
+    opts:      cfg.opts || [],
+    _size_idx: cfg._size_idx || 0,
+    _half:     cfg._half || false,
+  };
+  renderItemModal();
+  $('item-modal').classList.remove('hidden');
+}
+
+function closeItemModal(){
+  $('item-modal').classList.add('hidden');
+  S._im = null;
+}
+
+function itemModalBackdrop(e){
+  if(e.target === $('item-modal')) closeItemModal();
+}
+
+function renderItemModal(){
+  const im = S._im;
+  if(!im) return;
+  $('item-modal-title').textContent = im.label;
+
+  let body = '';
+  if(im.desc) body += `<div class="im-desc">${escHtml(im.desc)}</div>`;
+
+  if(im.type === 'frame'){
+    // Orientation selector
+    body += `<div class="im-orient-row">` +
+      im.opts.map(o => `
+        <div class="im-orient-btn${im.orient === o.orient ? ' selected' : ''}" onclick="imPickOrient('${escHtml(o.orient)}',${o.price})">
+          <div class="im-orient-name">${o.orient}</div>
+          <div class="im-orient-price">${fmt(o.price)}</div>
+        </div>`
+      ).join('') + `</div>`;
+  }
+
+  if(im.type === 'private_people'){
+    const base = 550;
+    const extra = Math.max(0, im.people - 4) * 75;
+    const total = base + extra;
+    body += `
+      <div class="im-people-row">
+        <span class="im-row-label">Number of People</span>
+        <div class="stepper" style="gap:.6rem">
+          <button class="step-btn" onclick="imPeopleChange(-1)">-</button>
+          <span class="step-val" id="im-people-val">${im.people}</span>
+          <button class="step-btn" onclick="imPeopleChange(1)">+</button>
+        </div>
+      </div>
+      <div class="im-price-note" id="im-people-note">${im.people <= 4 ? fmt(base) + ' base rate (up to 4)' : fmt(base) + ' base + ' + fmt(extra) + ' extra = ' + fmt(total)}</div>
+    `;
+  } else {
+    // Quantity
+    body += `
+      <div class="im-row">
+        <span class="im-row-label">Quantity</span>
+        <div class="stepper" style="gap:.6rem">
+          <button class="step-btn" onclick="imQtyChange(-1)">-</button>
+          <span class="step-val" id="im-qty-val">${im.qty}</span>
+          <button class="step-btn" onclick="imQtyChange(1)">+</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // Ship toggle for prints and frames
+  if(im.type === 'print' || im.type === 'frame'){
+    const shipRate = imShipRate();
+    body += `
+      <div class="im-row">
+        <span class="im-row-label">Ship (+${fmt(shipRate)})</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="im-ship-toggle" ${im.ship ? 'checked' : ''} onchange="imShipChange(this.checked)">
+          <div class="toggle-track"></div>
+        </label>
+      </div>
+    `;
+  }
+
+  $('item-modal-body').innerHTML = body;
+  imUpdatePrice();
+}
+
+function imShipRate(){
+  const im = S._im;
+  if(!im) return 0;
+  const pp = S.printSizes || [];
+  const sz = pp[im._size_idx] || pp[0] || {};
+  if(im.type === 'frame') return sz.ship_framed || 15;
+  return sz.ship_print || 8;
+}
+
+function imUpdatePrice(){
+  const im = S._im;
+  if(!im) return;
+  let price = im.price;
+  let qty = im.qty;
+
+  if(im.type === 'private_people'){
+    const base = 550;
+    const extra = Math.max(0, im.people - 4) * 75;
+    price = base + extra;
+    qty = 1;
+    im.price = price;
+  } else if(im.type === 'frame' && im.orient === null){
+    $('item-modal-price').textContent = '—';
+    $('item-modal-add-btn').disabled = true;
+    return;
+  }
+
+  const sub = price * qty;
+  const shipCost = im.ship ? imShipRate() : 0;
+  $('item-modal-price').textContent = fmt(sub + shipCost) + (im.ship ? ` (incl. ${fmt(shipCost)} ship)` : '');
+  $('item-modal-add-btn').disabled = false;
+}
+
+function imPickOrient(orient, price){
+  if(!S._im) return;
+  S._im.orient = orient;
+  S._im.price = parseFloat(price);
+  S._im.basePrice = parseFloat(price);
+  renderItemModal();
+}
+
+function imQtyChange(d){
+  if(!S._im) return;
+  S._im.qty = Math.max(1, S._im.qty + d);
+  const el = $('im-qty-val');
+  if(el) el.textContent = S._im.qty;
+  imUpdatePrice();
+}
+
+function imPeopleChange(d){
+  if(!S._im) return;
+  S._im.people = Math.max(1, S._im.people + d);
+  const el = $('im-people-val');
+  if(el) el.textContent = S._im.people;
+  const base = 550, extra = Math.max(0, S._im.people - 4) * 75;
+  const note = $('im-people-note');
+  if(note) note.textContent = S._im.people <= 4 ? fmt(base) + ' base rate (up to 4)' : fmt(base) + ' base + ' + fmt(extra) + ' extra = ' + fmt(base + extra);
+  imUpdatePrice();
+}
+
+function imShipChange(val){
+  if(!S._im) return;
+  S._im.ship = val;
+  imUpdatePrice();
+}
+
+function itemModalAddToCart(){
+  const im = S._im;
+  if(!im) return;
+  if(im.type === 'frame' && !im.orient){ showToast('Select an orientation first'); return; }
+
+  let price = im.price;
+  let qty = im.qty;
+  let detail = '';
+
+  if(im.type === 'private_people'){
+    const base = 550, extra = Math.max(0, im.people - 4) * 75;
+    price = base + extra;
+    qty = 1;
+    detail = `${im.people} ${im.people === 1 ? 'person' : 'people'}`;
+    if(extra > 0) detail += ` · ${fmt(base)} base + ${fmt(extra)} extra`;
+  } else if(im.type === 'frame'){
+    detail = im.orient + (im.ship ? ' · Ship' : '');
+  } else if(im.type === 'print'){
+    detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : ''].filter(Boolean).join(' · ');
+  } else if(im.ship){
+    detail = 'Ship';
+  }
+
+  cartAdd({
+    category: im.category,
+    label:    im.label,
+    detail,
+    price,
+    qty,
+    subtotal: price * qty,
+    _ship:    im.ship || false,
+    _size_idx: im._size_idx || 0,
+  });
+  closeItemModal();
 }
 
 // ─── Shipping ─────────────────────────────────────────────────────────────────
@@ -2601,8 +2742,7 @@ function newSale(){
   S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData: S.ap._dateData || [] };
   S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() };
   S.privatePeople = 1;
-  S._frameOpen = null;
-  S._framePick = null;
+  S._im = null;
   renderCart();
   showCatHome();
   showToast('Cart cleared — ready for new sale');
@@ -2621,7 +2761,6 @@ function initMainPOS(){
   loadProducts();
   renderCart();
   updateCartCustomerBar();
-  adjustPrivatePeople(0);
   // Start on category home (not inside any tab)
   showCatHome();
 }
