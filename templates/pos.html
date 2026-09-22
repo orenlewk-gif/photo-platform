@@ -310,6 +310,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   padding:.75rem 1rem;font-size:.9rem;font-weight:700;cursor:pointer;touch-action:manipulation;
 }
 .item-modal-add-btn:active{background:var(--accent2)}
+/* Item modal — centered popup not a bottom sheet */
+#item-modal{align-items:center;justify-content:center;padding:1rem}
+.item-modal-sheet{border-radius:var(--radius)!important}
+/* Cart item editable */
+.cart-item-editable{cursor:pointer}
+.cart-item-editable:active{background:rgba(255,255,255,.04);border-radius:6px}
 /* Inside item modal body */
 .im-desc{font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:.85rem}
 .im-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem}
@@ -706,8 +712,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="cat-tile" data-tab="prints" onclick="openCategory('prints','Prints')">Prints</div>
           <div class="cat-tile" data-tab="frames" onclick="openCategory('frames','Frames')">Frames</div>
           <div class="cat-tile" data-tab="mats" onclick="openCategory('mats','Mats')">Mats</div>
-          <div class="cat-tile" data-tab="shipping" onclick="openCategory('shipping','Shipping')">Shipping</div>
-          <div class="cat-tile" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</div>
         </div>
       </div>
 
@@ -734,14 +738,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
                 <option value="">Select location...</option>
               </select>
             </div>
-            <!-- OR last name search -->
-            <div class="ap-search-divider">or search by last name</div>
-            <div class="ap-search-row">
-              <input type="text" id="ap-search-input" class="ap-search-input"
-                     placeholder="Last name..." autocomplete="off" autocorrect="off"
-                     onkeydown="if(event.key==='Enter')apSearch()">
-              <button class="ap-search-btn" onclick="apSearch()">Search</button>
-            </div>
             <div id="ap-results"></div>
             <div id="ap-photos-view" class="hidden">
               <div class="ap-breadcrumb">
@@ -764,6 +760,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             <div class="ap-search-row">
               <input type="text" id="pr-search-input" class="ap-search-input"
                      placeholder="Last name..." autocomplete="off" autocorrect="off"
+                     oninput="prSearchType(this.value)"
                      onkeydown="if(event.key==='Enter')portraitSearch()">
               <button class="ap-search-btn" onclick="portraitSearch()">Search</button>
             </div>
@@ -784,7 +781,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-end">
               <button class="ap-add-btn" id="portrait-singles-btn" onclick="portraitAddSingles()" disabled>Add Singles</button>
               <button class="ap-add-btn" id="portrait-pose-btn" onclick="portraitAddPose()" disabled
-                style="background:var(--surface2);color:var(--text);border:1px solid var(--border)">Add as Pose</button>
+                style="background:var(--surface2);color:var(--text);border:1px solid var(--border);display:none">Add to Cart</button>
             </div>
           </div>
         </div>
@@ -808,20 +805,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               <div class="private-card-desc">Dedicated on-mountain session for your group. Base rate covers up to 4 people — $75 per additional person over 4.</div>
               <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
-            <div class="private-card" onclick="openItemModal({type:'simple',label:'Private Portrait Session',desc:'Dedicated portrait session at a scenic mountain location. Perfect for families and couples.',basePrice:550,category:'private'})">
+            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Private Portrait Session',desc:'Dedicated portrait session at a scenic mountain location. Perfect for families and couples.',basePrice:550,category:'private'})">
               <div class="private-card-name">Private Portrait Session</div>
               <div class="private-card-desc">Dedicated portrait session at a scenic mountain location. Perfect for families and couples.</div>
-              <div class="private-card-hint">Tap to add &rsaquo;</div>
+              <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
-            <div class="private-card" onclick="openItemModal({type:'simple',label:'Private Ski Lesson Photography',desc:'Photographer follows along during a private ski lesson to capture progression and technique.',basePrice:350,category:'private'})">
-              <div class="private-card-name">Private Ski Lesson Photography</div>
-              <div class="private-card-desc">Photographer follows along during a private ski lesson to capture progression and technique.</div>
-              <div class="private-card-hint">Tap to add &rsaquo;</div>
-            </div>
-            <div class="private-card" onclick="openItemModal({type:'simple',label:'Custom Private Session',desc:'Custom session — set price in the modal or override in cart.',basePrice:0,category:'private'})">
+            <div class="private-card" onclick="openItemModal({type:'private_custom',label:'Custom Private Session',desc:'Enter a custom price and notes for this session.',basePrice:0,category:'private'})">
               <div class="private-card-name">Custom Private Session</div>
-              <div class="private-card-desc">Custom session — set price in the modal or use the price override in cart.</div>
-              <div class="private-card-hint">Tap to add &rsaquo;</div>
+              <div class="private-card-desc">Set a custom price and add session notes before adding to cart.</div>
+              <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
           </div>
         </div>
@@ -830,7 +822,18 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-prints" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Prints</div>
-            <div class="print-toggle-row">
+            <!-- Session context (optional) -->
+            <div class="ap-filter-row">
+              <select id="pt-date-select" class="ap-select" onchange="ptDateChanged()">
+                <option value="">Session date (optional)...</option>
+              </select>
+            </div>
+            <div class="ap-filter-row" id="pt-loc-row" style="display:none">
+              <select id="pt-loc-select" class="ap-select" onchange="ptLocChanged()">
+                <option value="">Select location...</option>
+              </select>
+            </div>
+            <div class="print-toggle-row" style="margin-top:.5rem">
               <label class="toggle-switch">
                 <input type="checkbox" id="half-price-toggle" onchange="renderPrintSizes()">
                 <div class="toggle-track"></div>
@@ -883,8 +886,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
       <!-- Customer info bar -->
       <div class="cart-customer-bar" id="cart-customer-bar" onclick="openCustomerModal()">
-        <span class="cart-customer-icon">&#9998;</span>
         <span class="cart-customer-label" id="cart-customer-label">Add Customer</span>
+        <span id="cart-customer-edit-hint" style="font-size:.7rem;color:var(--accent);font-weight:600;flex-shrink:0">Edit</span>
       </div>
 
       <!-- Cart section -->
@@ -1251,7 +1254,7 @@ function switchTab(tab){
 
   // Lazy-load tab data
   if(tab === 'action-photos') loadApDates();
-  if(tab === 'prints' && !S.printSizes) loadPrintSizes();
+  if(tab === 'prints'){ if(!S.printSizes) loadPrintSizes(); loadPtDates(); }
   if(tab === 'frames' && !S.frames) loadFrames();
   if(tab === 'recent') loadRecentSales();
   if(tab === 'shipping') renderShipping();
@@ -1354,23 +1357,16 @@ function renderCart(){
     const noteHtml = item.note
       ? `<div class="cart-item-note">${escHtml(item.note)}</div>`
       : '';
+    const isShipping = item.category === '_shipping';
     div.innerHTML = `
-      <div class="cart-item-info">
+      <div class="cart-item-info${!isShipping ? ' cart-item-editable' : ''}" ${!isShipping ? `onclick="cartItemEdit('${item.id}')"` : ''} style="flex:1;min-width:0">
         <div class="cart-item-label">${escHtml(item.label)}</div>
         ${item.detail ? `<div class="cart-item-detail">${escHtml(item.detail)}</div>` : ''}
         ${item.qty > 1 ? `<div class="cart-item-detail">${item.qty} x ${fmt(item.price)}</div>` : ''}
         ${noteHtml}
-        <div class="cart-item-actions">
-          <button class="cart-item-action-btn" onclick="cartEditNote('${item.id}')">+ Note</button>
-          <button class="cart-item-action-btn" onclick="cartEditPrice('${item.id}')">$ Custom</button>
-          <input class="cart-item-price-edit" id="price-edit-${item.id}" type="number" min="0" step="0.01"
-            value="${item.price.toFixed(2)}" placeholder="0.00"
-            onblur="cartSavePrice('${item.id}',this.value)"
-            onkeydown="if(event.key==='Enter'){this.blur();} if(event.key==='Escape'){this.style.display='none';}">
-        </div>
       </div>
       <div class="cart-item-price" id="item-price-${item.id}">${fmt(item.subtotal)}</div>
-      <button class="cart-item-remove" onclick="cartRemove('${item.id}')" title="Remove">x</button>
+      <button class="cart-item-remove" onclick="event.stopPropagation();cartRemove('${item.id}')" title="Remove">x</button>
     `;
     list.insertBefore(div, empty);
   });
@@ -1430,34 +1426,7 @@ function updateCartCustomerBar(){
   }
 }
 
-function cartEditNote(id){
-  const item = S.cart.find(i => i.id === id);
-  if(!item) return;
-  const note = prompt('Note for ' + item.label + ':', item.note || '');
-  if(note === null) return;
-  item.note = note.trim();
-  renderCart();
-}
-
-function cartEditPrice(id){
-  const el = $('price-edit-' + id);
-  if(!el) return;
-  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
-  if(el.style.display === 'block') { el.focus(); el.select(); }
-}
-
-function cartSavePrice(id, val){
-  const item = S.cart.find(i => i.id === id);
-  const el = $('price-edit-' + id);
-  if(!item) return;
-  const price = parseFloat(val);
-  if(isNaN(price) || price < 0){ if(el) el.style.display='none'; return; }
-  item.price = price;
-  item.subtotal = price * (item.qty || 1);
-  if(el) el.style.display = 'none';
-  renderCart();
-  showToast('Price updated');
-}
+// cartEditNote / cartEditPrice / cartSavePrice replaced by cartItemEdit popup
 
 // ─── Coupon ──────────────────────────────────────────────────────────────────
 async function applyCoupon(){
@@ -1747,9 +1716,12 @@ function renderApSelCount(){
   const total = S.ap.photos.length;
   let label = n === 0 ? 'Tap photos to select' : `${n} selected`;
   if(n > 0){
+    const price = Math.min(n * 25, 115);
+    const capped = (n * 25) > 115;
     const isAll = n === total && total > 0;
-    const price = isAll ? 115 : n * 25;
-    label = `${n} selected — ${isAll ? '$115 (all ' + total + ')' : '$' + price}`;
+    if(isAll) label = `${n} selected — $115 (all photos)`;
+    else if(capped) label = `${n} selected — $115 (best value)`;
+    else label = `${n} selected — $${price}`;
   }
   $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;
@@ -1763,9 +1735,11 @@ function apAddToCart(){
   const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || ''));
   const totalPhotos = S.ap.photos.length;
   const selectedCount = selectedKeys.length;
+  const price = Math.min(selectedCount * 25, 115);
   const isAll = selectedCount === totalPhotos && totalPhotos > 0;
-  const price = isAll ? 115 : selectedCount * 25;
-  const priceDetail = isAll ? `All ${selectedCount} photos · $115 package` : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
+  const priceDetail = isAll ? `All ${selectedCount} photos · $115 package`
+    : price === 115 ? `${selectedCount} photos · $115 (capped)`
+    : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
   cartAdd({
     category: 'action_photos',
     label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
@@ -1788,9 +1762,19 @@ function apClearPhotos(){
   S.ap.selected.clear();
   $('ap-photos-view').classList.add('hidden');
   $('ap-add-bar').classList.add('hidden');
+  // Restore family cards so user can pick another folder
+  if(S.ap.families.length) renderApResults();
 }
 
 // ─── Portraits ────────────────────────────────────────────────────────────────
+let _prSearchTimer = null;
+function prSearchType(val){
+  clearTimeout(_prSearchTimer);
+  const q = val.trim();
+  if(!q){ $('pr-results').innerHTML = ''; return; }
+  _prSearchTimer = setTimeout(() => portraitSearch(), 300);
+}
+
 async function portraitSearch(){
   const q = $('pr-search-input').value.trim();
   if(!q){ showToast('Enter a last name to search'); return; }
@@ -1955,13 +1939,17 @@ function renderPortraitSelCount(){
   const tierIdx = Math.min(existingPosesInCart, tiers.length - 1);
   const poseRate = tiers[tierIdx];
   if(n > 0){
-    $('pr-price-hint').textContent = `Singles: $${n * singlePrice} · As pose: $${fmt(poseRate)} (${n} photos)`;
+    $('pr-price-hint').textContent = `Singles: $${n * singlePrice} · As pose: ${fmt(poseRate)} (${n} photos)`;
   } else {
     $('pr-price-hint').textContent = '';
   }
-  const disabled = n === 0;
-  $('portrait-singles-btn').disabled = disabled;
-  $('portrait-pose-btn').disabled = disabled;
+  $('portrait-singles-btn').disabled = n === 0;
+  // Pose button only shown/enabled when 2+ photos selected
+  const poseBtn = $('portrait-pose-btn');
+  if(poseBtn){
+    poseBtn.style.display = n > 1 ? 'block' : 'none';
+    poseBtn.disabled = n <= 1;
+  }
 }
 
 function portraitAddSingles(){
@@ -2048,6 +2036,47 @@ function privateAddToCart(label){
   adjustPrivatePeople(0); // reset price display
 }
 
+// ─── Prints date/location context ────────────────────────────────────────────
+const _pt = { date: '', location: '' };
+
+async function loadPtDates(){
+  const sel = $('pt-date-select');
+  if(!sel || sel.options.length > 1) return;
+  // Reuse the same /api/pos-dates data — load if not already cached
+  if(!S.ap._dateData || !S.ap._dateData.length){
+    try {
+      const res = await fetch('/api/pos-dates');
+      const data = await res.json();
+      S.ap._dateData = data.dates || [];
+    } catch(e){ return; }
+  }
+  S.ap._dateData.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.date; o.textContent = d.date;
+    sel.appendChild(o);
+  });
+}
+
+function ptDateChanged(){
+  const date = $('pt-date-select').value;
+  _pt.date = date; _pt.location = '';
+  const locRow = $('pt-loc-row'), locSel = $('pt-loc-select');
+  if(!date){ locRow.style.display = 'none'; return; }
+  const entry = (S.ap._dateData || []).find(d => d.date === date);
+  const locs = entry ? entry.locations : [];
+  locSel.innerHTML = '<option value="">Select location...</option>';
+  locs.forEach(l => {
+    const o = document.createElement('option');
+    o.value = l; o.textContent = l; locSel.appendChild(o);
+  });
+  locRow.style.display = '';
+  if(locs.length === 1){ locSel.value = locs[0]; ptLocChanged(); }
+}
+
+function ptLocChanged(){
+  _pt.location = $('pt-loc-select').value || '';
+}
+
 // ─── Prints ──────────────────────────────────────────────────────────────────
 async function loadPrintSizes(){
   try {
@@ -2124,7 +2153,7 @@ function renderFrames(){
     if(!opts.length) return '';
     const minPrice = Math.min(...opts.map(o => o.price));
     return `
-      <div class="print-size-row" style="cursor:pointer" onclick="openItemModal({type:'frame',label:'${escHtml(f.size)} Frame',category:'frames',_size_idx:${sizeIdx},opts:${encodeURIComponent(JSON.stringify(opts))}})">
+      <div class="print-size-row" style="cursor:pointer;touch-action:manipulation" onclick="openItemModal({type:'frame',label:'${escHtml(f.size)} Frame',category:'frames',_size_idx:${sizeIdx},opts:'${encodeURIComponent(JSON.stringify(opts))}'})" >
         <span class="print-size-name">${f.size} Frame</span>
         <span class="print-size-price">from ${fmt(minPrice)}</span>
         <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
@@ -2178,26 +2207,27 @@ function escHtml(s){
 }
 
 // ─── Item Modal ───────────────────────────────────────────────────────────────
-// S._im holds the current modal item state
 function openItemModal(cfg){
-  // Decode opts if passed as encoded string (from inline onclick)
   if(typeof cfg.opts === 'string'){
     try { cfg.opts = JSON.parse(decodeURIComponent(cfg.opts)); } catch(e){ cfg.opts = []; }
   }
   S._im = {
-    type:      cfg.type || 'simple',
-    label:     cfg.label || '',
-    desc:      cfg.desc  || '',
-    category:  cfg.category || '',
-    basePrice: parseFloat(cfg.basePrice) || 0,
-    price:     parseFloat(cfg.basePrice) || 0,
-    qty:       1,
-    ship:      false,
-    people:    1,          // for private_people type
-    orient:    null,       // for frame type
-    opts:      cfg.opts || [],
-    _size_idx: cfg._size_idx || 0,
-    _half:     cfg._half || false,
+    type:        cfg.type || 'simple',
+    label:       cfg.label || '',
+    desc:        cfg.desc  || '',
+    category:    cfg.category || '',
+    basePrice:   parseFloat(cfg.basePrice) || 0,
+    price:       parseFloat(cfg.basePrice) || 0,
+    qty:         cfg.qty  || 1,
+    ship:        cfg.ship || false,
+    people:      cfg.people || 1,
+    orient:      cfg.orient || null,
+    opts:        cfg.opts || [],
+    _size_idx:   cfg._size_idx || 0,
+    _half:       cfg._half || false,
+    customPrice: cfg.customPrice != null ? cfg.customPrice : null,
+    notes:       cfg.notes || '',
+    _editId:     cfg._editId || null,
   };
   renderItemModal();
   $('item-modal').classList.remove('hidden');
@@ -2212,66 +2242,104 @@ function itemModalBackdrop(e){
   if(e.target === $('item-modal')) closeItemModal();
 }
 
+function _imQtyStepper(qty){
+  return `<div class="im-row">
+    <span class="im-row-label">Quantity</span>
+    <div class="stepper" style="gap:.6rem">
+      <button class="step-btn" onclick="imQtyChange(-1)">-</button>
+      <span class="step-val" id="im-qty-val">${qty}</span>
+      <button class="step-btn" onclick="imQtyChange(1)">+</button>
+    </div>
+  </div>`;
+}
+
+function _imShipToggle(ship){
+  const rate = imShipRate();
+  return `<div class="im-row">
+    <span class="im-row-label">Ship (+${fmt(rate)})</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="im-ship-toggle" ${ship ? 'checked' : ''} onchange="imShipChange(this.checked)">
+      <div class="toggle-track"></div>
+    </label>
+  </div>`;
+}
+
+function _imCustomPriceField(val, placeholder){
+  const v = (val != null && val !== '') ? val : '';
+  return `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price (optional)</span></div>
+  <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
+    placeholder="${escHtml(placeholder || 'Leave blank for default')}" value="${v}"
+    oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">`;
+}
+
 function renderItemModal(){
   const im = S._im;
   if(!im) return;
-  $('item-modal-title').textContent = im.label;
+  const isEdit = im.type === 'cart_edit';
+  $('item-modal-title').textContent = isEdit ? 'Edit Item' : im.label;
+  $('item-modal-add-btn').textContent = isEdit ? 'Save Changes' : 'Add to Cart';
 
   let body = '';
-  if(im.desc) body += `<div class="im-desc">${escHtml(im.desc)}</div>`;
+  if(im.desc && !isEdit) body += `<div class="im-desc">${escHtml(im.desc)}</div>`;
 
   if(im.type === 'frame'){
-    // Orientation selector
     body += `<div class="im-orient-row">` +
       im.opts.map(o => `
         <div class="im-orient-btn${im.orient === o.orient ? ' selected' : ''}" onclick="imPickOrient('${escHtml(o.orient)}',${o.price})">
           <div class="im-orient-name">${o.orient}</div>
           <div class="im-orient-price">${fmt(o.price)}</div>
-        </div>`
-      ).join('') + `</div>`;
-  }
+        </div>`).join('') + `</div>`;
+    body += _imQtyStepper(im.qty);
+    body += _imShipToggle(im.ship);
 
-  if(im.type === 'private_people'){
-    const base = 550;
-    const extra = Math.max(0, im.people - 4) * 75;
-    const total = base + extra;
-    body += `
-      <div class="im-people-row">
-        <span class="im-row-label">Number of People</span>
-        <div class="stepper" style="gap:.6rem">
-          <button class="step-btn" onclick="imPeopleChange(-1)">-</button>
-          <span class="step-val" id="im-people-val">${im.people}</span>
-          <button class="step-btn" onclick="imPeopleChange(1)">+</button>
-        </div>
-      </div>
-      <div class="im-price-note" id="im-people-note">${im.people <= 4 ? fmt(base) + ' base rate (up to 4)' : fmt(base) + ' base + ' + fmt(extra) + ' extra = ' + fmt(total)}</div>
-    `;
-  } else {
-    // Quantity
-    body += `
-      <div class="im-row">
-        <span class="im-row-label">Quantity</span>
-        <div class="stepper" style="gap:.6rem">
-          <button class="step-btn" onclick="imQtyChange(-1)">-</button>
-          <span class="step-val" id="im-qty-val">${im.qty}</span>
-          <button class="step-btn" onclick="imQtyChange(1)">+</button>
-        </div>
-      </div>
-    `;
-  }
+  } else if(im.type === 'print'){
+    body += _imQtyStepper(im.qty);
+    body += _imShipToggle(im.ship);
 
-  // Ship toggle for prints and frames
-  if(im.type === 'print' || im.type === 'frame'){
-    const shipRate = imShipRate();
-    body += `
-      <div class="im-row">
-        <span class="im-row-label">Ship (+${fmt(shipRate)})</span>
-        <label class="toggle-switch">
-          <input type="checkbox" id="im-ship-toggle" ${im.ship ? 'checked' : ''} onchange="imShipChange(this.checked)">
-          <div class="toggle-track"></div>
-        </label>
+  } else if(im.type === 'private_people'){
+    const base = 550, extra = Math.max(0, im.people - 4) * 75, total = base + extra;
+    body += `<div class="im-people-row">
+      <span class="im-row-label">Number of People</span>
+      <div class="stepper" style="gap:.6rem">
+        <button class="step-btn" onclick="imPeopleChange(-1)">-</button>
+        <span class="step-val" id="im-people-val">${im.people}</span>
+        <button class="step-btn" onclick="imPeopleChange(1)">+</button>
       </div>
-    `;
+    </div>
+    <div class="im-price-note" id="im-people-note">${im.people <= 4 ? fmt(base) + ' base rate (up to 4)' : fmt(base) + ' base + ' + fmt(extra) + ' extra = ' + fmt(total)}</div>`;
+    body += _imCustomPriceField(im.customPrice, `Leave blank — ${fmt(total)}`);
+
+  } else if(im.type === 'private_fixed'){
+    body += `<div class="im-row" style="margin-bottom:.55rem">
+      <span class="im-row-label">Session Price</span>
+      <span style="font-size:1rem;font-weight:700;color:var(--accent)">${fmt(im.basePrice)}</span>
+    </div>`;
+    body += _imCustomPriceField(im.customPrice, `Leave blank — ${fmt(im.basePrice)}`);
+
+  } else if(im.type === 'private_custom'){
+    body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Price</span></div>
+    <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
+      placeholder="Enter amount" value="${im.customPrice != null ? im.customPrice : ''}"
+      oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">
+    <div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Notes</span></div>
+    <textarea id="im-notes" class="field-input" rows="3" placeholder="Session notes..."
+      oninput="imNotesChange(this.value)" style="resize:none;height:80px;margin-bottom:.5rem">${escHtml(im.notes || '')}</textarea>`;
+
+  } else if(im.type === 'simple'){
+    body += _imQtyStepper(im.qty);
+
+  } else if(im.type === 'cart_edit'){
+    const canQty = !['action_photos','portrait'].includes(im.category);
+    const canShip = ['prints','frames'].includes(im.category);
+    if(canQty) body += _imQtyStepper(im.qty);
+    if(canShip) body += _imShipToggle(im.ship);
+    body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
+    <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
+      placeholder="Leave blank to keep ${fmt(im.basePrice)}" value="${im.customPrice != null ? im.customPrice : ''}"
+      oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">
+    <div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Note</span></div>
+    <textarea id="im-notes" class="field-input" rows="2" placeholder="Add a note..."
+      oninput="imNotesChange(this.value)" style="resize:none;height:60px;margin-bottom:.5rem">${escHtml(im.notes || '')}</textarea>`;
   }
 
   $('item-modal-body').innerHTML = body;
@@ -2283,31 +2351,44 @@ function imShipRate(){
   if(!im) return 0;
   const pp = S.printSizes || [];
   const sz = pp[im._size_idx] || pp[0] || {};
-  if(im.type === 'frame') return sz.ship_framed || 15;
+  if(im.type === 'frame' || (im.type === 'cart_edit' && im.category === 'frames')) return sz.ship_framed || 15;
   return sz.ship_print || 8;
 }
 
 function imUpdatePrice(){
   const im = S._im;
   if(!im) return;
-  let price = im.price;
-  let qty = im.qty;
+  let price, qty = im.qty;
 
   if(im.type === 'private_people'){
-    const base = 550;
-    const extra = Math.max(0, im.people - 4) * 75;
-    price = base + extra;
+    const base = 550, extra = Math.max(0, im.people - 4) * 75;
+    const calc = base + extra;
+    price = (im.customPrice != null) ? im.customPrice : calc;
     qty = 1;
-    im.price = price;
+  } else if(im.type === 'private_fixed'){
+    price = (im.customPrice != null) ? im.customPrice : im.basePrice;
+    qty = 1;
+  } else if(im.type === 'private_custom'){
+    price = im.customPrice != null ? im.customPrice : 0;
+    qty = 1;
+    if(!price){
+      $('item-modal-price').textContent = 'Enter price above';
+      $('item-modal-add-btn').disabled = true;
+      return;
+    }
   } else if(im.type === 'frame' && im.orient === null){
     $('item-modal-price').textContent = '—';
     $('item-modal-add-btn').disabled = true;
     return;
+  } else if(im.type === 'cart_edit'){
+    price = (im.customPrice != null) ? im.customPrice : im.basePrice;
+  } else {
+    price = im.price;
   }
 
   const sub = price * qty;
   const shipCost = im.ship ? imShipRate() : 0;
-  $('item-modal-price').textContent = fmt(sub + shipCost) + (im.ship ? ` (incl. ${fmt(shipCost)} ship)` : '');
+  $('item-modal-price').textContent = fmt(sub + shipCost) + (im.ship && shipCost ? ` (incl. ${fmt(shipCost)} ship)` : '');
   $('item-modal-add-btn').disabled = false;
 }
 
@@ -2344,40 +2425,109 @@ function imShipChange(val){
   imUpdatePrice();
 }
 
+function imCustomPriceChange(val){
+  if(!S._im) return;
+  const v = parseFloat(val);
+  S._im.customPrice = (!val.trim() || isNaN(v)) ? null : v;
+  imUpdatePrice();
+}
+
+function imNotesChange(val){
+  if(!S._im) return;
+  S._im.notes = val;
+}
+
 function itemModalAddToCart(){
   const im = S._im;
   if(!im) return;
   if(im.type === 'frame' && !im.orient){ showToast('Select an orientation first'); return; }
+  if(im.type === 'private_custom' && !(im.customPrice > 0)){ showToast('Enter a price'); return; }
 
-  let price = im.price;
-  let qty = im.qty;
-  let detail = '';
+  // ── Cart-edit mode: update existing item ──────────────────────────────────
+  if(im.type === 'cart_edit'){
+    const item = S.cart.find(i => i.id === im._editId);
+    if(item){
+      item.price    = im.customPrice != null ? im.customPrice : im.basePrice;
+      item.qty      = im.qty;
+      item.note     = im.notes;
+      item._ship    = im.ship;
+      item.subtotal = item.price * item.qty;
+    }
+    closeItemModal();
+    renderCart();
+    showToast('Item updated');
+    return;
+  }
+
+  // ── New item ──────────────────────────────────────────────────────────────
+  let price, qty = im.qty, detail = '';
 
   if(im.type === 'private_people'){
     const base = 550, extra = Math.max(0, im.people - 4) * 75;
-    price = base + extra;
+    const calc = base + extra;
+    price = im.customPrice != null ? im.customPrice : calc;
     qty = 1;
     detail = `${im.people} ${im.people === 1 ? 'person' : 'people'}`;
     if(extra > 0) detail += ` · ${fmt(base)} base + ${fmt(extra)} extra`;
+    if(im.customPrice != null) detail += ' · Custom price';
+  } else if(im.type === 'private_fixed'){
+    price = im.customPrice != null ? im.customPrice : im.basePrice;
+    qty = 1;
+    if(im.customPrice != null) detail = 'Custom price';
+  } else if(im.type === 'private_custom'){
+    price = im.customPrice || 0;
+    qty = 1;
+    detail = im.notes ? im.notes.slice(0, 100) : '';
   } else if(im.type === 'frame'){
+    price = im.price;
     detail = im.orient + (im.ship ? ' · Ship' : '');
   } else if(im.type === 'print'){
-    detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : ''].filter(Boolean).join(' · ');
-  } else if(im.ship){
-    detail = 'Ship';
+    price = im.price;
+    const ptCtx = [_pt.date, _pt.location].filter(Boolean).join(' · ');
+    detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : '', ptCtx].filter(Boolean).join(' · ');
+  } else {
+    price = im.price;
+    if(im.ship) detail = 'Ship';
   }
 
-  cartAdd({
-    category: im.category,
-    label:    im.label,
+  const cartItem = {
+    category:  im.category,
+    label:     im.label,
     detail,
     price,
     qty,
-    subtotal: price * qty,
-    _ship:    im.ship || false,
+    subtotal:  price * qty,
+    _ship:     im.ship || false,
     _size_idx: im._size_idx || 0,
-  });
+  };
+  if(im.notes) cartItem.note = im.notes;
+
+  cartAdd(cartItem);
   closeItemModal();
+}
+
+// ─── Cart item edit popup ────────────────────────────────────────────────────
+function cartItemEdit(id){
+  const item = S.cart.find(i => i.id === id);
+  if(!item || item.category === '_shipping') return;
+  openItemModal({
+    type:        'cart_edit',
+    _editId:     id,
+    label:       item.label,
+    desc:        item.detail || '',
+    category:    item.category,
+    basePrice:   item.price,
+    price:       item.price,
+    qty:         item.qty  || 1,
+    ship:        item._ship || false,
+    people:      item._people || 1,
+    orient:      item._orient || null,
+    opts:        [],
+    _size_idx:   item._size_idx || 0,
+    _half:       item._half || false,
+    customPrice: null,
+    notes:       item.note || '',
+  });
 }
 
 // ─── Shipping ─────────────────────────────────────────────────────────────────
