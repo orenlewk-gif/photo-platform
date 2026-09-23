@@ -393,7 +393,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .ap-search-divider{font-size:.72rem;color:var(--muted);text-align:center;padding:.5rem 0;margin-bottom:.5rem;letter-spacing:.08em;text-transform:uppercase}
 
 /* ── Portrait pose groups ── */
-.pr-pose-group{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem;overflow:hidden}
+.pr-pose-group{background:var(--surface);border:1.5px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem;overflow:hidden;transition:border-color .15s}
+.pr-pose-group.pr-pose-selected{border-color:var(--accent);background:rgba(245,196,48,.04)}
+.pr-pose-check{width:22px;height:22px;border:2px solid var(--border);border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:.8rem;color:#0a1929;background:transparent;transition:all .15s}
+.pr-pose-check.checked{background:var(--accent);border-color:var(--accent)}
 .pr-pose-header{display:flex;align-items:center;justify-content:space-between;padding:.6rem .85rem;cursor:pointer}
 .pr-pose-header:active{background:var(--surface2)}
 .pr-pose-name{font-size:.85rem;font-weight:600}
@@ -803,10 +806,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               <button class="ap-add-btn" id="ap-add-btn" onclick="apAddToCart()" disabled>Add to Cart</button>
             </div>
             <div style="display:flex;gap:.75rem;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--muted);cursor:pointer;padding:.1rem 0">
-                <input type="checkbox" id="ap-logo-toggle" style="accent-color:var(--accent);width:16px;height:16px">
-                Add logo (+$2 each)
-              </label>
               <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;cursor:pointer;padding:.1rem 0" id="ap-range-label">
                 <input type="checkbox" id="ap-range-toggle" style="accent-color:var(--accent);width:16px;height:16px" onchange="apRangeModeChanged()">
                 <span id="ap-range-hint" style="color:var(--muted)">Range select</span>
@@ -838,10 +837,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div id="portrait-add-bar" class="ap-add-bar hidden" style="flex-direction:column;align-items:stretch;gap:.4rem">
             <div style="display:flex;align-items:center;gap:.5rem">
               <div style="flex:1">
-                <div class="ap-sel-count" id="pr-sel-count">Tap "Add Pose" for pose pricing · or tap a photo for a single</div>
+                <div class="ap-sel-count" id="pr-sel-count">Select poses or tap a photo for a single</div>
                 <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem" id="pr-price-hint"></div>
               </div>
-              <button class="ap-add-btn" id="portrait-add-btn" onclick="portraitAddToCart()" disabled>Add to Cart</button>
+              <button class="ap-add-btn" id="portrait-add-btn" onclick="portraitHandleAdd()" disabled>Add to Cart</button>
             </div>
           </div>
         </div>
@@ -1187,7 +1186,7 @@ const S = {
   ap: { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData:[] },
 
   // Portraits
-  pr: { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() },
+  pr: { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set() },
 
   // Private sessions
   privatePeople: 1,
@@ -2027,24 +2026,21 @@ function apAddToCart(){
   const totalPhotos = S.ap.photos.length;
   const selectedCount = selectedKeys.length;
   const basePrice = Math.min(selectedCount * 25, 115);
-  const logoAddon = $('ap-logo-toggle') && $('ap-logo-toggle').checked;
-  const logoPrice = logoAddon ? selectedCount * 2 : 0;
-  const price = basePrice + logoPrice;
   const isAll = selectedCount === totalPhotos && totalPhotos > 0;
   const priceDetail = isAll ? `All ${selectedCount} photos · $115 package`
     : basePrice === 115 ? `${selectedCount} photos · $115 (capped)`
     : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
-  const detail = [priceDetail, logoAddon ? `+$${logoPrice} logo` : '', f.date || '', f.location || ''].filter(Boolean).join(' · ');
+  const detail = [priceDetail, f.date || '', f.location || ''].filter(Boolean).join(' · ');
   cartAdd({
     category: 'action_photos',
     label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
     detail,
-    price, qty: 1, subtotal: price,
+    price: basePrice, qty: 1, subtotal: basePrice,
     photo_paths: selectedPhotos.map(p => p.path || ''),
     filenames, date: f.date || '', location: f.location || '',
+    _logoPaths: [], _baseActionPrice: basePrice,
   });
   S.ap.selected.clear();
-  if($('ap-logo-toggle')) $('ap-logo-toggle').checked = false;
   S.ap.photos.forEach((_,i) => {
     const el = $('apph-' + i);
     if(el) el.classList.remove('selected');
@@ -2118,6 +2114,7 @@ async function portraitSelectSession(idx){
   if(!s) return;
   S.pr.session = s;
   S.pr.selected.clear();
+  S.pr.selectedPoses.clear();
   $('pr-results').innerHTML = '';
   $('pr-photos-view').classList.remove('hidden');
   $('pr-breadcrumb-name').textContent = `${s.last_name || s.name || ''} — ${s.date || ''}`;
@@ -2177,7 +2174,8 @@ function renderPortraitPoses(){
     return;
   }
   grid.innerHTML = S.pr.poses.map((pose,pi) => {
-    const thumbs = pose.photos.slice(0,4).map(p =>
+    const isSel = S.pr.selectedPoses.has(pi);
+    const thumbs = pose.photos.slice(0,6).map(p =>
       `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">`
     ).join('');
     const inlinePhotos = pose.expanded ? pose.photos.map((p,pi2) => {
@@ -2191,26 +2189,34 @@ function renderPortraitPoses(){
       </div>`;
     }).join('') : '';
     return `
-      <div class="pr-pose-group" id="prpose-${pose.id}">
-        <div class="pr-pose-header" onclick="portraitTogglePose(${pi})">
-          <div>
-            <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos)</span></div>
+      <div class="pr-pose-group${isSel?' pr-pose-selected':''}" id="prpose-${pose.id}">
+        <div class="pr-pose-header" onclick="portraitTogglePoseSelect(${pi})" style="cursor:pointer">
+          <div style="display:flex;align-items:center;gap:.55rem">
+            <div class="pr-pose-check${isSel?' checked':''}">${isSel ? '&#10003;' : ''}</div>
+            <div>
+              <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos)</span></div>
+            </div>
           </div>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <button onclick="event.stopPropagation();portraitAddPoseToCart(${pi})" style="font-size:.78rem;padding:.3rem .7rem;background:var(--accent);color:#0a1929;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);font-weight:700">Add Pose</button>
-            <span style="color:var(--muted);font-size:.9rem">${pose.expanded ? '&#8963;' : '&#8964;'}</span>
-          </div>
+          <span onclick="event.stopPropagation();portraitTogglePoseExpand(${pi})" style="color:var(--muted);font-size:1rem;padding:.2rem .4rem;cursor:pointer">${pose.expanded ? '&#8963;' : '&#8964;'}</span>
         </div>
-        <div class="pr-pose-thumbs">${thumbs}</div>
+        <div class="pr-pose-thumbs" onclick="portraitTogglePoseSelect(${pi})" style="cursor:pointer">${thumbs}</div>
         ${pose.expanded ? `<div class="pr-photo-fullgrid">${inlinePhotos}</div>` : ''}
       </div>
     `;
   }).join('');
 }
 
-function portraitTogglePose(poseIdx){
-  if(!S.pr.poses[poseIdx]) return;
-  S.pr.poses[poseIdx].expanded = !S.pr.poses[poseIdx].expanded;
+function portraitTogglePoseSelect(pi){
+  if(S.pr.selectedPoses.has(pi)) S.pr.selectedPoses.delete(pi);
+  else S.pr.selectedPoses.add(pi);
+  S.pr.selected.clear(); // clear single-photo selection when pose toggled
+  renderPortraitPoses();
+  renderPortraitSelCount();
+}
+
+function portraitTogglePoseExpand(pi){
+  if(!S.pr.poses[pi]) return;
+  S.pr.poses[pi].expanded = !S.pr.poses[pi].expanded;
   renderPortraitPoses();
 }
 
@@ -2252,6 +2258,7 @@ function portraitToggle(poseId, photoIdx){
   const p = pose.photos[photoIdx];
   if(!p) return;
   const key = p.path || '';
+  S.pr.selectedPoses.clear(); // singles and poses are mutually exclusive
   if(S.pr.selected.has(key)){
     S.pr.selected.delete(key);
   } else {
@@ -2263,20 +2270,70 @@ function portraitToggle(poseId, photoIdx){
 }
 
 function renderPortraitSelCount(){
-  const n = S.pr.selected.size;
+  const nSingle = S.pr.selected.size;
+  const nPoses = S.pr.selectedPoses.size;
   const pp = S.portraitPricing || {};
   const singlePrice = pp.single_photo || 40;
-
-  if(n === 0){
-    $('pr-sel-count').textContent = 'Tap "Add Pose" for pose pricing · or tap a photo for a single';
-    $('pr-price-hint').textContent = '';
-  } else {
-    $('pr-sel-count').textContent = `1 photo selected — ${fmt(singlePrice)} single`;
-    $('pr-price-hint').textContent = `Tap "Add to Cart" to add this single photo`;
-  }
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
 
   const btn = $('portrait-add-btn');
-  if(btn) btn.disabled = n === 0;
+  const hint = $('pr-price-hint');
+  const countEl = $('pr-sel-count');
+
+  if(nPoses > 0){
+    let total = 0;
+    for(let i = 0; i < nPoses; i++){
+      total += tiers[Math.min(existingPoses + i, tiers.length - 1)];
+    }
+    countEl.textContent = `${nPoses} pose${nPoses!==1?'s':''} selected — ${fmt(total)}`;
+    hint.textContent = `Tier pricing: ${Array.from({length: nPoses}, (_,i) => fmt(tiers[Math.min(existingPoses+i, tiers.length-1)])).join(', ')}`;
+    if(btn){ btn.disabled = false; btn.textContent = `Add ${nPoses} Pose${nPoses!==1?'s':''}  to Cart`; }
+  } else if(nSingle > 0){
+    countEl.textContent = `1 photo selected — ${fmt(singlePrice)} single`;
+    hint.textContent = 'Tap "Add to Cart" to add this single photo';
+    if(btn){ btn.disabled = false; btn.textContent = 'Add to Cart'; }
+  } else {
+    countEl.textContent = 'Select poses or tap a photo for a single';
+    hint.textContent = '';
+    if(btn){ btn.disabled = true; btn.textContent = 'Add to Cart'; }
+  }
+}
+
+function portraitHandleAdd(){
+  if(S.pr.selectedPoses.size > 0) portraitAddSelectedPoses();
+  else portraitAddToCart();
+}
+
+function portraitAddSelectedPoses(){
+  if(!S.pr.selectedPoses.size) return;
+  const s = S.pr.session;
+  const pp = S.portraitPricing || {};
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const poseIndices = [...S.pr.selectedPoses].sort((a,b) => a-b);
+
+  poseIndices.forEach((pi, order) => {
+    const pose = S.pr.poses[pi];
+    if(!pose) return;
+    const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+    const rate = tiers[Math.min(existingPoses, tiers.length - 1)];
+    const paths = pose.photos.map(p => p.path || '');
+    const detail = [`${paths.length} photos · ${fmt(rate)}/pose`, s.date||''].filter(Boolean).join(' · ');
+    cartAdd({
+      category: 'portrait',
+      label: `Portrait Pose ${pi + 1} — ${s.last_name || s.name || ''}`,
+      detail, price: rate, qty: 1, subtotal: rate,
+      photo_paths: paths, date: s.date || '', location: s.location || '',
+      _poseUnit: true, _poseBasePrice: rate, _logoPaths: [],
+    });
+  });
+
+  recalcPortraitPosePrices();
+  S.pr.selectedPoses.clear();
+  renderPortraitPoses();
+  renderPortraitSelCount();
+  renderCart();
+  showToast(`${poseIndices.length} pose${poseIndices.length!==1?'s':''} added`);
 }
 
 function recalcPortraitPosePrices(){
@@ -2323,6 +2380,7 @@ function portraitClearPhotos(){
   S.pr.photos = [];
   S.pr.poses = [];
   S.pr.selected.clear();
+  S.pr.selectedPoses.clear();
   $('pr-photos-view').classList.add('hidden');
   $('portrait-add-bar').classList.add('hidden');
 }
@@ -2669,6 +2727,7 @@ function openItemModal(cfg){
     _logoPaths:    Array.isArray(cfg._logoPaths) ? [...cfg._logoPaths] : [],
     _poseUnit:     cfg._poseUnit || false,
     _poseBasePrice: cfg._poseBasePrice || 0,
+    _baseActionPrice: cfg._baseActionPrice || 0,
   };
   renderItemModal();
   $('item-modal').classList.remove('hidden');
@@ -2765,8 +2824,8 @@ function renderItemModal(){
       </div>`;
     }
     body += _imQtyStepper(im.qty);
-    body += _imShipToggle(im.ship);
     body += _imLogoToggle(im._logo || false);
+    body += _imShipToggle(im.ship);
     // Custom print size: show price input if it's a custom size
     if(im._customSize){
       body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
@@ -2833,25 +2892,23 @@ function renderItemModal(){
       body += `</div>`;
       body += `<div id="portrait-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * 2)}` : 'Tap a photo to add logo (+$2 each)'}</div>`;
 
-    // Action photos: show thumbnails with print shortcut (read-only selection)
+    // Action photos: thumbnails with per-photo logo toggle + print shortcut
     } else if(im.category === 'action_photos' && im.photo_paths && im.photo_paths.length){
-      body += `<div class="im-row" style="margin-bottom:.4rem"><span class="im-row-label">Photos — tap PRINT for 50% off prints</span></div>`;
-      body += `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.4rem;margin-bottom:.55rem">`;
+      const apLogoPaths = new Set(im._logoPaths || []);
+      const apLogoCount = apLogoPaths.size;
+      body += `<div class="im-row" style="margin-bottom:.4rem"><span class="im-row-label">Photos — tap to add/remove logo · tap PRINT for 50% off prints</span></div>`;
+      body += `<div id="ap-photo-thumbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.4rem;margin-bottom:.4rem">`;
       body += im.photo_paths.map((path, i) => {
-        const fn = path.split('/').pop();
-        return `<div style="position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;border:1.5px solid var(--border)">
+        const hasLogo = apLogoPaths.has(path);
+        return `<div data-apidx="${i}" onclick="imActionPhotoTap(${i})" style="position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;cursor:pointer;border:2.5px solid ${hasLogo ? 'var(--accent)' : 'var(--border)'}">
           <img src="/api/photo?path=${encodeURIComponent(path)}&size=thumb&nowm=1" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
-          <button onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();imQuickPrint(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.7);color:#fff;font-size:.55rem;border:none;border-radius:3px;padding:1px 4px;cursor:pointer;font-family:var(--font)">PRINT</button>
+          ${hasLogo ? `<div style="position:absolute;bottom:0;left:0;right:0;background:var(--accent);color:#0a1929;font-size:.58rem;font-weight:700;text-align:center;padding:1px 0">LOGO</div>` : ''}
+          <button data-apprintidx="${i}" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();imQuickPrint(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.7);color:#fff;font-size:.55rem;border:none;border-radius:3px;padding:1px 4px;cursor:pointer;font-family:var(--font)">PRINT</button>
         </div>`;
       }).join('');
       body += `</div>`;
+      body += `<div id="ap-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${apLogoCount > 0 ? `${apLogoCount} photo${apLogoCount!==1?'s':''} with logo · +${fmt(apLogoCount * 2)}` : 'Tap a photo to add logo (+$2 each)'}</div>`;
 
-    } else {
-      // Non-photo items: show custom price field
-      body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
-      <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
-        placeholder="Leave blank to keep ${fmt(im.basePrice)}" value="${im.customPrice != null ? im.customPrice : ''}"
-        oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">`;
     }
 
     // Custom price for non-photo cart items only
@@ -2907,6 +2964,9 @@ function imUpdatePrice(){
     if(im.category === 'portrait' && im._poseBasePrice){
       const logoCount = (im._logoPaths || []).length;
       price = im._poseBasePrice + logoCount * 2;
+    } else if(im.category === 'action_photos' && im._baseActionPrice){
+      const logoCount = (im._logoPaths || []).length;
+      price = im._baseActionPrice + logoCount * 2;
     } else {
       price = (im.customPrice != null) ? im.customPrice : im.basePrice;
     }
@@ -3010,6 +3070,33 @@ function imPortraitPhotoTap(idx){
   imUpdatePrice();
 }
 
+function imActionPhotoTap(idx){
+  const im = S._im;
+  if(!im || !im.photo_paths) return;
+  const path = im.photo_paths[idx];
+  if(!path) return;
+  const logoPaths = new Set(im._logoPaths || []);
+  if(logoPaths.has(path)) logoPaths.delete(path);
+  else logoPaths.add(path);
+  im._logoPaths = [...logoPaths];
+  const el = document.querySelector(`[data-apidx="${idx}"]`);
+  if(el){
+    el.style.border = logoPaths.has(path) ? '2.5px solid var(--accent)' : '2.5px solid var(--border)';
+    let badge = el.querySelector('.logo-badge');
+    if(logoPaths.has(path) && !badge){
+      badge = document.createElement('div');
+      badge.className = 'logo-badge';
+      badge.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:var(--accent);color:#0a1929;font-size:.58rem;font-weight:700;text-align:center;padding:1px 0';
+      badge.textContent = 'LOGO';
+      el.appendChild(badge);
+    } else if(!logoPaths.has(path) && badge){ badge.remove(); }
+  }
+  const logoCount = im._logoPaths.length;
+  const countEl = $('ap-logo-count');
+  if(countEl) countEl.textContent = logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * 2)}` : 'Tap a photo to add logo (+$2 each)';
+  imUpdatePrice();
+}
+
 function imQuickPrint(idx){
   const im = S._im;
   if(!im || !im.photo_paths) return;
@@ -3049,6 +3136,13 @@ function itemModalAddToCart(){
         const logoStr = logoCount > 0 ? ` · +$${logoCount * 2} logo` : '';
         item.detail = item.detail.replace(/ · \+\$\d+ logo/g, '') + logoStr;
         if(item._poseUnit) recalcPortraitPosePrices();
+      } else if(item.category === 'action_photos'){
+        item._logoPaths = im._logoPaths || [];
+        const logoCount = item._logoPaths.length;
+        item.price = (item._baseActionPrice || item.price) + logoCount * 2;
+        item.subtotal = item.price;
+        const logoStr = logoCount > 0 ? ` · +$${logoCount * 2} logo` : '';
+        item.detail = item.detail.replace(/ · \+\$\d+ logo/g, '') + logoStr;
       } else {
         item.price    = im.customPrice != null ? im.customPrice : im.basePrice;
         item.qty      = im.qty;
@@ -3090,7 +3184,7 @@ function itemModalAddToCart(){
     price = customSzPrice !== null ? customSzPrice : im.price;
     const logoExtra = im._logo ? 2 * qty : 0;
     price = price + logoExtra / qty; // embed in per-unit so subtotal is right
-    const ptCtx = [_pt.date, _pt.location].filter(Boolean).join(' · ');
+    const ptCtx = [im._photoName || (im._photoPath||'').split('/').pop() || '', _pt.date, _pt.location].filter(Boolean).join(' · ');
     detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : '', im._logo ? '+$2/print logo' : '', ptCtx].filter(Boolean).join(' · ');
   } else {
     price = im.price;
@@ -3140,6 +3234,7 @@ function cartItemEdit(id){
     _logoPaths:    item._logoPaths ? [...item._logoPaths] : [],
     _poseUnit:     item._poseUnit || false,
     _poseBasePrice: item._poseBasePrice || 0,
+    _baseActionPrice: item._baseActionPrice || 0,
   });
 }
 
@@ -3668,7 +3763,7 @@ function newSale(){
   S.pendingOrder = null;
   S.customer = { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' };
   S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData: S.ap._dateData || [] };
-  S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() };
+  S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set() };
   S.privatePeople = 1;
   S._im = null;
   // Reset inner photo views so next sale starts fresh
