@@ -1099,11 +1099,12 @@ def _thumb_r2_key(r2_key: str) -> str:
     return "thumbs/v2/" + r2_key
 
 @app.get("/api/photo")
-def get_photo(path: str, size: str = Query("medium")):
+def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False)):
     """
-    size=thumb  → 450px  q72  (gallery thumbnails — served from pre-generated R2 thumb when available)
+    size=thumb  → 700px  q80  (gallery thumbnails — served from pre-generated R2 thumb when available)
     size=medium → 1800px q90  (lightbox)
     size=full   → 2400px q92  (download-quality)
+    nowm=1      → skip watermark (used by POS for photographer-facing thumbnails)
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
@@ -1119,8 +1120,8 @@ def get_photo(path: str, size: str = Query("medium")):
         if not key.startswith("images/"):
             return JSONResponse(status_code=400, content={"error": "Invalid path"})
         if os.getenv("R2_ENDPOINT_URL"):
-            # For thumbs: try pre-generated version first (much faster — no processing)
-            if size == "thumb":
+            # For thumbs without watermark: try pre-generated version first
+            if size == "thumb" and not nowm:
                 tkey = _thumb_r2_key(key)
                 try:
                     obj = s3.get_object(Bucket=R2_BUCKET, Key=tkey)
@@ -1137,12 +1138,13 @@ def get_photo(path: str, size: str = Query("medium")):
             img = Image.open(obj["Body"]).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
-            img = apply_watermark(img, size)
+            if not nowm:
+                img = apply_watermark(img, size)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality, optimize=True)
 
-            # Cache the newly generated thumb to R2 for next time
-            if size == "thumb":
+            # Cache the newly generated thumb to R2 for next time (watermarked only)
+            if size == "thumb" and not nowm:
                 try:
                     buf.seek(0)
                     s3.put_object(
@@ -1162,7 +1164,8 @@ def get_photo(path: str, size: str = Query("medium")):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)
             img.thumbnail((max_px, max_px), Image.LANCZOS)
-            img = apply_watermark(img, size)
+            if not nowm:
+                img = apply_watermark(img, size)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality)
             buf.seek(0)
@@ -4093,9 +4096,12 @@ def pos_manifest():
         "short_name": "CI POS",
         "start_url": "/pos",
         "display": "standalone",
-        "background_color": "#07192a",
-        "theme_color": "#07192a",
-        "icons": []
+        "background_color": "#082f44",
+        "theme_color": "#082f44",
+        "icons": [
+            {"src": "/static/pos-icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/pos-icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ]
     })
 
 # ── Upload downloads ──

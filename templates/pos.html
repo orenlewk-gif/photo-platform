@@ -316,6 +316,19 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 /* Cart item editable */
 .cart-item-editable{cursor:pointer}
 .cart-item-editable:active{background:rgba(255,255,255,.04);border-radius:6px}
+/* Save cart */
+.save-cart-row{
+  display:flex;gap:.5rem;padding:.45rem .85rem;border-top:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;
+}
+.save-cart-btn{
+  flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--muted);
+  font-size:.72rem;font-weight:600;border-radius:8px;padding:.35rem .6rem;
+  cursor:pointer;font-family:var(--font);text-align:center;
+}
+.save-cart-btn:active{background:var(--surface3);color:var(--text)}
+/* Portrait photo grid — matches action photos */
+.pr-photo-fullgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:.4rem;padding:.5rem .6rem}
 /* Inside item modal body */
 .im-desc{font-size:.82rem;color:var(--muted);line-height:1.5;margin-bottom:.85rem}
 .im-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem}
@@ -439,6 +452,12 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .ap-add-btn:disabled{opacity:.4;cursor:not-allowed}
 .ap-add-btn:active:not(:disabled){background:var(--accent2)}
 .ap-loading{padding:2rem;text-align:center;color:var(--muted);font-size:.85rem}
+.ap-photo-num{
+  position:absolute;bottom:3px;left:4px;
+  font-size:.55rem;font-weight:700;color:#fff;line-height:1;
+  background:rgba(0,0,0,.55);border-radius:3px;padding:1px 4px;
+  pointer-events:none;
+}
 
 /* ── Recent Sales ── */
 .sale-card{
@@ -580,15 +599,46 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
 /* ── Cart customer bar ── */
 .cart-customer-bar{
-  display:flex;align-items:center;gap:.6rem;
-  padding:.55rem .85rem;border-bottom:1px solid var(--border);
-  cursor:pointer;background:var(--surface);flex-shrink:0;min-height:40px;
-  touch-action:manipulation;
+  position:relative;
+  display:flex;align-items:center;gap:.5rem;
+  padding:.45rem .85rem;border-bottom:1px solid var(--border);
+  background:var(--surface);flex-shrink:0;min-height:40px;
 }
-.cart-customer-bar:active{background:var(--surface2)}
-.cart-customer-icon{font-size:.85rem;color:var(--muted);flex-shrink:0}
-.cart-customer-label{font-size:.78rem;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cart-customer-label.filled{color:var(--text);font-weight:500}
+.cart-customer-input{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--text);font-size:.82rem;font-family:var(--font);
+  min-width:0;
+}
+.cart-customer-input::placeholder{color:var(--muted)}
+.cart-customer-add-btn{
+  flex-shrink:0;background:var(--accent);color:#0a1929;
+  border:none;border-radius:7px;font-size:.72rem;font-weight:700;
+  padding:.25rem .6rem;cursor:pointer;font-family:var(--font);
+  white-space:nowrap;
+}
+.cart-customer-add-btn:active{background:var(--accent2)}
+.cart-customer-clear-btn{
+  flex-shrink:0;background:none;border:none;color:var(--muted);
+  font-size:.85rem;cursor:pointer;padding:0 .2rem;line-height:1;
+}
+.cust-bar-dropdown{
+  position:absolute;top:100%;left:0;right:0;z-index:200;
+  background:var(--surface2);border:1px solid var(--border);
+  border-top:none;border-radius:0 0 var(--radius) var(--radius);
+  overflow:hidden;display:none;
+}
+.cust-bar-dropdown.open{display:block}
+.cust-bar-item{
+  padding:.6rem .85rem;font-size:.8rem;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);
+}
+.cust-bar-item:last-child{border-bottom:none}
+.cust-bar-item:active{background:var(--surface3)}
+.cust-bar-item-name{font-weight:600;color:var(--text)}
+.cust-bar-item-sub{font-size:.7rem;color:var(--muted)}
+.cust-bar-newbtn{
+  padding:.6rem .85rem;font-size:.8rem;cursor:pointer;color:var(--accent);font-weight:600;
+}
+.cust-bar-newbtn:active{background:var(--surface3)}
 
 /* ── Cart section label ── */
 .cart-section-label{
@@ -775,14 +825,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           </div>
           <div id="portrait-add-bar" class="ap-add-bar hidden">
             <div style="flex:1">
-              <div class="ap-sel-count" id="pr-sel-count">0 selected</div>
+              <div class="ap-sel-count" id="pr-sel-count">Tap to select photos or poses</div>
               <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem" id="pr-price-hint"></div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:.35rem;align-items:flex-end">
-              <button class="ap-add-btn" id="portrait-singles-btn" onclick="portraitAddSingles()" disabled>Add Singles</button>
-              <button class="ap-add-btn" id="portrait-pose-btn" onclick="portraitAddPose()" disabled
-                style="background:var(--surface2);color:var(--text);border:1px solid var(--border);display:none">Add to Cart</button>
-            </div>
+            <button class="ap-add-btn" id="portrait-add-btn" onclick="portraitAddToCart()" disabled>Add to Cart</button>
           </div>
         </div>
 
@@ -800,19 +846,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="panel-pad">
             <div class="section-title">Private Sessions</div>
 
-            <div class="private-card" onclick="openItemModal({type:'private_people',label:'Private On Mountain Shoot',desc:'Dedicated on-mountain session. Base rate covers up to 4 people — $75 per additional person over 4.',basePrice:550,category:'private'})">
+            <div class="private-card" onclick="openItemModal({type:'private_people',label:'Private On Mountain Shoot',desc:'',basePrice:550,category:'private'})">
               <div class="private-card-name">Private On Mountain Shoot</div>
-              <div class="private-card-desc">Dedicated on-mountain session for your group. Base rate covers up to 4 people — $75 per additional person over 4.</div>
               <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
-            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Private Portrait Session',desc:'Dedicated portrait session at a scenic mountain location. Perfect for families and couples.',basePrice:550,category:'private'})">
+            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Private Portrait Session',desc:'',basePrice:550,category:'private'})">
               <div class="private-card-name">Private Portrait Session</div>
-              <div class="private-card-desc">Dedicated portrait session at a scenic mountain location. Perfect for families and couples.</div>
               <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
-            <div class="private-card" onclick="openItemModal({type:'private_custom',label:'Custom Private Session',desc:'Enter a custom price and notes for this session.',basePrice:0,category:'private'})">
+            <div class="private-card" onclick="openItemModal({type:'private_custom',label:'Custom Private Session',desc:'',basePrice:0,category:'private'})">
               <div class="private-card-name">Custom Private Session</div>
-              <div class="private-card-desc">Set a custom price and add session notes before adding to cart.</div>
               <div class="private-card-hint">Tap to configure &rsaquo;</div>
             </div>
           </div>
@@ -884,14 +927,23 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <!-- Cart panel -->
     <div class="cart-panel">
 
-      <!-- Customer info bar -->
-      <div class="cart-customer-bar" id="cart-customer-bar" onclick="openCustomerModal()">
-        <span class="cart-customer-label" id="cart-customer-label">Add Customer</span>
-        <span id="cart-customer-edit-hint" style="font-size:.7rem;color:var(--accent);font-weight:600;flex-shrink:0">Edit</span>
+      <!-- Customer info bar — inline search -->
+      <div class="cart-customer-bar" id="cart-customer-bar">
+        <input type="text" id="cart-customer-input" class="cart-customer-input"
+               placeholder="Customer name..." autocomplete="off" autocorrect="off"
+               oninput="customerBarSearch(this.value)"
+               onfocus="customerBarFocus()">
+        <button class="cart-customer-clear-btn" id="cart-customer-clear" onclick="customerBarClear()" style="display:none">&#10005;</button>
+        <button class="cart-customer-add-btn" id="cart-customer-add-btn" onclick="customerBarNew()" style="display:none">+ Add</button>
       </div>
+      <div class="cust-bar-dropdown" id="cust-bar-dropdown"></div>
 
-      <!-- Cart section -->
-      <div class="cart-section-label">Cart</div>
+      <!-- Cart section header with save -->
+      <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
+        <div class="cart-section-label" style="border-bottom:none;flex:1">Cart</div>
+        <button class="save-cart-btn" id="save-cart-btn" onclick="saveCart()" style="flex:0 0 auto;border-radius:0;border-left:1px solid var(--border);border-top:none;border-right:none;border-bottom:none;padding:.35rem .75rem;font-size:.68rem;color:var(--muted)">Save Cart</button>
+        <button class="save-cart-btn" id="saved-carts-btn" onclick="showSavedCarts()" style="flex:0 0 auto;border-radius:0;border-left:1px solid var(--border);border-top:none;border-right:none;border-bottom:none;padding:.35rem .75rem;font-size:.68rem;color:var(--accent);display:none" id="saved-carts-btn">Saved (<span id="saved-carts-count">0</span>)</button>
+      </div>
       <div class="cart-items-list" id="cart-items-list">
         <div class="cart-empty" id="cart-empty">No items added yet</div>
       </div>
@@ -1412,18 +1464,228 @@ function renderCart(){
 }
 
 function updateCartCustomerBar(){
-  const lbl = $('cart-customer-label');
-  if(!lbl) return;
+  const inp = $('cart-customer-input');
+  if(!inp) return;
   const c = S.customer;
   const hasCustomer = !!(c.email && c.phone);
+  const addBtn = $('cart-customer-add-btn');
+  const clearBtn = $('cart-customer-clear');
   if(hasCustomer){
-    const name = [c.first, c.last].filter(Boolean).join(' ') || c.email;
-    lbl.textContent = name;
-    lbl.classList.add('filled');
-  } else {
-    lbl.textContent = 'Add Customer';
-    lbl.classList.remove('filled');
+    const name = [c.first, c.last].filter(Boolean).join(' ') || c.email || '';
+    inp.value = name;
+    inp.style.color = 'var(--text)';
+    inp.style.fontWeight = '500';
+    if(clearBtn) clearBtn.style.display = '';
+    if(addBtn) addBtn.style.display = 'none';
+    $('cust-bar-dropdown').classList.remove('open');
+  } else if(!c.email && !c.phone && !c.first && !c.last){
+    // Full reset — clear the input
+    inp.value = '';
+    inp.style.color = '';
+    inp.style.fontWeight = '';
+    if(clearBtn) clearBtn.style.display = 'none';
+    if(addBtn) addBtn.style.display = 'none';
+    $('cust-bar-dropdown').classList.remove('open');
   }
+  $('btn-checkout').disabled = !hasCustomer || S.cart.length === 0;
+}
+
+// ─── Customer bar inline search ───────────────────────────────────────────────
+let _custBarTimer = null;
+function customerBarSearch(val){
+  clearTimeout(_custBarTimer);
+  const q = val.trim();
+  const clearBtn = $('cart-customer-clear');
+  const addBtn = $('cart-customer-add-btn');
+  if(!q){
+    $('cust-bar-dropdown').classList.remove('open');
+    if(clearBtn) clearBtn.style.display = 'none';
+    if(addBtn) addBtn.style.display = 'none';
+    return;
+  }
+  if(clearBtn) clearBtn.style.display = '';
+  _custBarTimer = setTimeout(() => _runCustBarSearch(q), 280);
+}
+
+async function _runCustBarSearch(q){
+  const drop = $('cust-bar-dropdown');
+  if(!drop) return;
+  // Search recent sales for name matches
+  if(!S.recentSales) await loadRecentSales();
+  const sales = S.recentSales || [];
+  const ql = q.toLowerCase();
+  const seen = new Set();
+  const matches = [];
+  sales.forEach(s => {
+    const name = ((s.name||'') + ' ' + (s.email||'')).toLowerCase();
+    const key = s.email || s.phone || s.name;
+    if(name.includes(ql) && !seen.has(key)){
+      seen.add(key);
+      matches.push(s);
+    }
+  });
+  const addBtn = $('cart-customer-add-btn');
+  if(matches.length === 0){
+    drop.innerHTML = `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ New customer: "${escHtml(q)}"</div>`;
+    drop.classList.add('open');
+    if(addBtn) addBtn.style.display = '';
+  } else {
+    drop.innerHTML = matches.slice(0,5).map(s => `
+      <div class="cust-bar-item" onclick="customerBarSelect(${JSON.stringify(s).replace(/"/g,'&quot;')})">
+        <div class="cust-bar-item-name">${escHtml(s.name||'')}</div>
+        <div class="cust-bar-item-sub">${escHtml(s.email||'')} ${s.phone ? '&middot; '+escHtml(s.phone) : ''}</div>
+      </div>
+    `).join('') + `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ Add new customer</div>`;
+    drop.classList.add('open');
+    if(addBtn) addBtn.style.display = 'none';
+  }
+}
+
+function customerBarSelect(sale){
+  const nameParts = (sale.name||'').split(' ');
+  S.customer = {
+    first:  nameParts[0] || '',
+    last:   nameParts.slice(1).join(' ') || '',
+    email:  sale.email || '',
+    phone:  sale.phone || '',
+    street: sale.address || '',
+    city:'', state:'', zip:'',
+  };
+  $('cust-bar-dropdown').classList.remove('open');
+  updateCartCustomerBar();
+  renderCart();
+}
+
+function customerBarClear(){
+  S.customer = {first:'',last:'',email:'',phone:'',street:'',city:'',state:'',zip:''};
+  const inp = $('cart-customer-input');
+  if(inp){ inp.value = ''; inp.style.color=''; inp.style.fontWeight=''; }
+  $('cust-bar-dropdown').classList.remove('open');
+  const addBtn = $('cart-customer-add-btn');
+  const clearBtn = $('cart-customer-clear');
+  if(addBtn) addBtn.style.display = 'none';
+  if(clearBtn) clearBtn.style.display = 'none';
+  renderCart();
+}
+
+function customerBarFocus(){
+  const inp = $('cart-customer-input');
+  if(!inp) return;
+  if(inp.value.trim()) customerBarSearch(inp.value);
+}
+
+function customerBarNew(){
+  const inp = $('cart-customer-input');
+  const typedName = (inp ? inp.value.trim() : '');
+  const nameParts = typedName.split(' ');
+  // Prefill the modal with whatever was typed
+  const c = S.customer;
+  $('cust-search').value = '';
+  $('cust-search-dropdown').classList.remove('open');
+  $('cust-first').value  = nameParts[0] || c.first || '';
+  $('cust-last').value   = nameParts.slice(1).join(' ') || c.last || '';
+  $('cust-email').value  = c.email  || '';
+  $('cust-phone').value  = c.phone  || '';
+  $('cust-street').value = c.street || '';
+  $('cust-city').value   = c.city   || '';
+  $('cust-state').value  = c.state  || '';
+  $('cust-zip').value    = c.zip    || '';
+  $('addr-section').classList.toggle('hidden', !hasShippableItem());
+  $('cust-bar-dropdown').classList.remove('open');
+  $('customer-modal').classList.remove('hidden');
+  if(!S.recentSales) loadRecentSales();
+  setTimeout(() => { if(!c.email) $('cust-email').focus(); }, 100);
+}
+
+// ─── Save / restore cart ─────────────────────────────────────────────────────
+function saveCart(){
+  if(!S.cart.length){ showToast('Nothing in cart to save'); return; }
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_pos_saved_carts') || '[]');
+    const name = [S.customer.first, S.customer.last].filter(Boolean).join(' ') ||
+                 S.customer.email || 'Unnamed';
+    saved.unshift({
+      ts: Date.now(),
+      name,
+      customer: {...S.customer},
+      cart: [...S.cart],
+      coupon: S.coupon || null,
+    });
+    // Keep last 10 saved carts
+    localStorage.setItem('ci_pos_saved_carts', JSON.stringify(saved.slice(0, 10)));
+    updateSavedCartsBadge();
+    showToast('Cart saved');
+  } catch(e){ showToast('Could not save cart'); }
+}
+
+function updateSavedCartsBadge(){
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_pos_saved_carts') || '[]');
+    const btn = $('saved-carts-btn');
+    const cnt = $('saved-carts-count');
+    if(btn){ btn.style.display = saved.length ? '' : 'none'; }
+    if(cnt){ cnt.textContent = saved.length; }
+  } catch(e){}
+}
+
+function showSavedCarts(){
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_pos_saved_carts') || '[]');
+    if(!saved.length){ showToast('No saved carts'); return; }
+    // Build a simple modal-like overlay
+    let html = `<div style="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;display:flex;align-items:center;justify-content:center;padding:1rem" onclick="this.remove()">
+      <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:360px;max-height:70vh;overflow:hidden;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div style="padding:.75rem 1rem;font-weight:700;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+          Saved Carts
+          <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer">&#10005;</button>
+        </div>
+        <div style="overflow-y:auto;flex:1">`;
+    saved.forEach((c,i) => {
+      const dt = new Date(c.ts);
+      const dateStr = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      const total = (c.cart || []).reduce((a,x) => a + (x.subtotal||0), 0);
+      html += `<div style="padding:.7rem 1rem;border-bottom:1px solid var(--border);cursor:pointer" onclick="restoreSavedCart(${i});this.closest('[style*=fixed]').remove()">
+        <div style="font-weight:600;font-size:.85rem">${escHtml(c.name)}</div>
+        <div style="font-size:.72rem;color:var(--muted)">${dateStr} &middot; ${c.cart.length} item${c.cart.length!==1?'s':''} &middot; ${fmt(total)}</div>
+      </div>`;
+    });
+    html += `</div>
+        <div style="padding:.6rem;border-top:1px solid var(--border)">
+          <button onclick="clearSavedCarts();this.closest('[style*=fixed]').remove()" style="width:100%;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:.4rem;font-size:.75rem;cursor:pointer;font-family:var(--font)">Clear all saved carts</button>
+        </div>
+      </div>
+    </div>`;
+    document.body.insertAdjacentHTML('beforeend', html);
+  } catch(e){ showToast('Could not load saved carts'); }
+}
+
+function restoreSavedCart(idx){
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_pos_saved_carts') || '[]');
+    const c = saved[idx];
+    if(!c) return;
+    S.cart = c.cart || [];
+    S.customer = c.customer || {first:'',last:'',email:'',phone:'',street:'',city:'',state:'',zip:''};
+    S.coupon = c.coupon || null;
+    // Remove the restored cart from saved list
+    saved.splice(idx, 1);
+    localStorage.setItem('ci_pos_saved_carts', JSON.stringify(saved));
+    updateSavedCartsBadge();
+    updateCartCustomerBar();
+    renderCart();
+    if(S.coupon){
+      $('coupon-input-row').classList.add('hidden');
+      $('coupon-tag-row').classList.remove('hidden');
+      $('coupon-tag-label').textContent = S.coupon.code + ' applied';
+    }
+    showToast('Cart restored');
+  } catch(e){ showToast('Could not restore cart'); }
+}
+
+function clearSavedCarts(){
+  localStorage.removeItem('ci_pos_saved_carts');
+  updateSavedCartsBadge();
+  showToast('Saved carts cleared');
 }
 
 // cartEditNote / cartEditPrice / cartSavePrice replaced by cartItemEdit popup
@@ -1640,7 +1902,7 @@ function renderApResults(){
   }
   el.innerHTML = S.ap.families.map((f,i) => {
     const previews = (f.previews || []).slice(0,4).map(p =>
-      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">`
+      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`
     ).join('');
     return `
       <div class="ap-result-item" onclick="apSelectFamily(${i})" style="flex-direction:column;align-items:flex-start">
@@ -1686,7 +1948,7 @@ function renderApPhotos(){
     return;
   }
   grid.innerHTML = S.ap.photos.map((p,i) => {
-    const url = `/api/photo?path=${encodeURIComponent(p.path || '')}&size=thumb`;
+    const url = `/api/photo?path=${encodeURIComponent(p.path || '')}&size=thumb&nowm=1`;
     const filename = p.filename || (p.path || '').split('/').pop() || '';
     const numMatch = filename.match(/(\d+)/g);
     const photoNum = numMatch ? numMatch[numMatch.length - 1] : (i + 1);
@@ -1694,7 +1956,7 @@ function renderApPhotos(){
       <div class="ap-photo-item" id="apph-${i}" onclick="apTogglePhoto(${i})">
         <img class="ap-photo-img" src="${url}" loading="lazy" alt="${filename}">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
-        <div style="position:absolute;bottom:2px;left:3px;font-size:.55rem;color:rgba(255,255,255,.75);font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.8)">${photoNum}</div>
+        <div class="ap-photo-num">${photoNum}</div>
       </div>
     `;
   }).join('');
@@ -1798,7 +2060,7 @@ function renderPortraitResults(){
   }
   el.innerHTML = S.pr.sessions.map((s,i) => {
     const previews = (s.previews || []).slice(0,4).map(p =>
-      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">`
+      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`
     ).join('');
     return `
       <div class="ap-result-item" onclick="portraitSelectSession(${i})" style="flex-direction:column;align-items:flex-start">
@@ -1865,25 +2127,26 @@ function renderPortraitPoses(){
   }
   grid.innerHTML = S.pr.poses.map((pose,pi) => {
     const thumbs = pose.photos.slice(0,3).map(p =>
-      `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb" loading="lazy" alt="">`
+      `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">`
     ).join('');
     const allSelected = pose.photos.every(p => S.pr.selected.has(p.path || ''));
     const someSelected = pose.photos.some(p => S.pr.selected.has(p.path || ''));
+    const selectedCount = pose.photos.filter(p => S.pr.selected.has(p.path||'')).length;
     const inlinePhotos = pose.expanded ? pose.photos.map((p,pi2) => {
       const fn = p.filename || (p.path||'').split('/').pop() || '';
       const num = ((fn.match(/\d+/g))||[]).pop() || (pi2+1);
       const sel = S.pr.selected.has(p.path||'');
-      return `<div class="ap-photo-item${sel?' selected':''}" id="prph-${pose.id}-${pi2}" onclick="portraitToggle(${pose.id},${pi2})" style="width:68px;height:68px">
-        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb" loading="lazy" alt="">
+      return `<div class="ap-photo-item${sel?' selected':''}" id="prph-${pose.id}-${pi2}" onclick="portraitToggle(${pose.id},${pi2})">
+        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
-        <div style="position:absolute;bottom:2px;left:3px;font-size:.5rem;color:rgba(255,255,255,.75);font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.8)">${num}</div>
+        <div class="ap-photo-num">${num}</div>
       </div>`;
     }).join('') : '';
     return `
       <div class="pr-pose-group" id="prpose-${pose.id}">
         <div class="pr-pose-header" onclick="portraitTogglePose(${pi})">
           <div>
-            <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos${someSelected?' · '+pose.photos.filter(p=>S.pr.selected.has(p.path||'')).length+' selected':''})</span></div>
+            <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos${someSelected?' &middot; '+selectedCount+' selected':''})</span></div>
           </div>
           <div style="display:flex;gap:.5rem;align-items:center">
             <button onclick="event.stopPropagation();portraitSelectPose(${pi})" style="font-size:.7rem;padding:.2rem .5rem;background:${allSelected?'var(--accent)':'var(--surface2)'};color:${allSelected?'#0a1929':'var(--text)'};border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--font)">
@@ -1893,7 +2156,7 @@ function renderPortraitPoses(){
           </div>
         </div>
         <div class="pr-pose-thumbs">${thumbs}</div>
-        ${pose.expanded ? `<div class="pr-pose-photos" style="display:flex;flex-wrap:wrap;gap:4px;padding:.5rem .6rem">${inlinePhotos}</div>` : ''}
+        ${pose.expanded ? `<div class="pr-photo-fullgrid">${inlinePhotos}</div>` : ''}
       </div>
     `;
   }).join('');
@@ -1931,69 +2194,96 @@ function portraitToggle(poseId, photoIdx){
 
 function renderPortraitSelCount(){
   const n = S.pr.selected.size;
-  $('pr-sel-count').textContent = n === 0 ? 'Tap to select photos or poses' : `${n} photo${n!==1?'s':''} selected`;
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
   const singlePrice = pp.single_photo || 40;
+
+  // Determine if the selection is a complete pose (all photos from exactly one pose)
+  const fullPose = S.pr.poses.find(pose =>
+    pose.photos.length > 0 &&
+    pose.photos.every(p => S.pr.selected.has(p.path||'')) &&
+    pose.photos.length === n
+  );
+
   const existingPosesInCart = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
-  const tierIdx = Math.min(existingPosesInCart, tiers.length - 1);
-  const poseRate = tiers[tierIdx];
-  if(n > 0){
-    $('pr-price-hint').textContent = `Singles: $${n * singlePrice} · As pose: ${fmt(poseRate)} (${n} photos)`;
-  } else {
+  const nextTierIdx = Math.min(existingPosesInCart, tiers.length - 1);
+  const poseRate = tiers[nextTierIdx];
+
+  if(n === 0){
+    $('pr-sel-count').textContent = 'Tap to select photos or poses';
     $('pr-price-hint').textContent = '';
+  } else if(fullPose){
+    $('pr-sel-count').textContent = `Pose selected — ${n} photos`;
+    $('pr-price-hint').textContent = `Pose price: ${fmt(poseRate)}`;
+  } else {
+    const price = n * singlePrice;
+    $('pr-sel-count').textContent = `${n} photo${n!==1?'s':''} selected`;
+    $('pr-price-hint').textContent = `Singles: ${fmt(price)} ($${singlePrice} each)`;
   }
-  $('portrait-singles-btn').disabled = n === 0;
-  // Pose button only shown/enabled when 2+ photos selected
-  const poseBtn = $('portrait-pose-btn');
-  if(poseBtn){
-    poseBtn.style.display = n > 1 ? 'block' : 'none';
-    poseBtn.disabled = n <= 1;
-  }
+
+  const btn = $('portrait-add-btn');
+  if(btn) btn.disabled = n === 0;
 }
 
-function portraitAddSingles(){
-  if(!S.pr.selected.size) return;
-  const s = S.pr.session;
-  const selectedPaths = [...S.pr.selected];
-  const selectedPhotos = S.pr.photos.filter(p => selectedPaths.includes(p.path||''));
+function recalcPortraitPosePrices(){
+  // After adding a pose, retroactively reprice all poses in cart
   const pp = S.portraitPricing || {};
-  const singlePrice = pp.single_photo || 40;
-  const price = selectedPaths.length * singlePrice;
-  cartAdd({
-    category: 'portrait',
-    label: `Portrait Singles — ${s.last_name || s.name || ''}`,
-    detail: `${selectedPaths.length} photo${selectedPaths.length!==1?'s':''} · $${singlePrice} each · ${s.date||''}`,
-    price, qty: 1, subtotal: price,
-    photo_paths: selectedPaths,
-    date: s.date || '', location: s.location || '',
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const poses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit);
+  poses.forEach((item, idx) => {
+    const rate = tiers[Math.min(idx, tiers.length - 1)];
+    item.price = rate;
+    item.subtotal = rate;
+    item.detail = item.detail.replace(/\$[\d.]+\/pose/, `${fmt(rate)}/pose`);
   });
-  S.pr.selected.clear();
-  renderPortraitPoses();
-  renderPortraitSelCount();
 }
 
-function portraitAddPose(){
+function portraitAddToCart(){
   if(!S.pr.selected.size) return;
   const s = S.pr.session;
   const selectedPaths = [...S.pr.selected];
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
-  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
-  const tierIdx = Math.min(existingPoses, tiers.length - 1);
-  const poseRate = tiers[tierIdx];
-  cartAdd({
-    category: 'portrait',
-    label: `Portrait Pose — ${s.last_name || s.name || ''}`,
-    detail: `${selectedPaths.length} photos · $${fmt(poseRate)}/pose · ${s.date||''}`,
-    price: poseRate, qty: 1, subtotal: poseRate,
-    photo_paths: selectedPaths,
-    date: s.date || '', location: s.location || '',
-    _poseUnit: true,
-  });
+  const singlePrice = pp.single_photo || 40;
+
+  // Check if the selection is a complete pose
+  const fullPose = S.pr.poses.find(pose =>
+    pose.photos.length > 0 &&
+    pose.photos.every(p => S.pr.selected.has(p.path||'')) &&
+    pose.photos.length === selectedPaths.length
+  );
+
+  if(fullPose){
+    // Add as pose — price will be recalculated retroactively
+    const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+    const poseRate = tiers[Math.min(existingPoses, tiers.length - 1)];
+    cartAdd({
+      category: 'portrait',
+      label: `Portrait Pose — ${s.last_name || s.name || ''}`,
+      detail: `${selectedPaths.length} photos · ${fmt(poseRate)}/pose · ${s.date||''}`,
+      price: poseRate, qty: 1, subtotal: poseRate,
+      photo_paths: selectedPaths,
+      date: s.date || '', location: s.location || '',
+      _poseUnit: true,
+    });
+    recalcPortraitPosePrices();
+  } else {
+    // Individual singles
+    const price = selectedPaths.length * singlePrice;
+    cartAdd({
+      category: 'portrait',
+      label: `Portrait Singles — ${s.last_name || s.name || ''}`,
+      detail: `${selectedPaths.length} photo${selectedPaths.length!==1?'s':''} · $${singlePrice} each · ${s.date||''}`,
+      price, qty: 1, subtotal: price,
+      photo_paths: selectedPaths,
+      date: s.date || '', location: s.location || '',
+    });
+  }
+
   S.pr.selected.clear();
   renderPortraitPoses();
   renderPortraitSelCount();
+  renderCart();
 }
 
 function portraitClearPhotos(){
@@ -2272,6 +2562,13 @@ function _imCustomPriceField(val, placeholder){
     oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">`;
 }
 
+function _imNotesField(rows, placeholder){
+  const im = S._im;
+  return `<div class="im-row" style="margin-bottom:.3rem;margin-top:.5rem"><span class="im-row-label">Notes</span></div>
+  <textarea id="im-notes" class="field-input" rows="${rows||2}" placeholder="${placeholder||'Add a note...'}"
+    oninput="imNotesChange(this.value)" style="resize:none;height:${(rows||2)*28}px;margin-bottom:.5rem">${escHtml(im ? im.notes||'' : '')}</textarea>`;
+}
+
 function renderItemModal(){
   const im = S._im;
   if(!im) return;
@@ -2291,10 +2588,12 @@ function renderItemModal(){
         </div>`).join('') + `</div>`;
     body += _imQtyStepper(im.qty);
     body += _imShipToggle(im.ship);
+    body += _imNotesField(2);
 
   } else if(im.type === 'print'){
     body += _imQtyStepper(im.qty);
     body += _imShipToggle(im.ship);
+    body += _imNotesField(2);
 
   } else if(im.type === 'private_people'){
     const base = 550, extra = Math.max(0, im.people - 4) * 75, total = base + extra;
@@ -2308,6 +2607,7 @@ function renderItemModal(){
     </div>
     <div class="im-price-note" id="im-people-note">${im.people <= 4 ? fmt(base) + ' base rate (up to 4)' : fmt(base) + ' base + ' + fmt(extra) + ' extra = ' + fmt(total)}</div>`;
     body += _imCustomPriceField(im.customPrice, `Leave blank — ${fmt(total)}`);
+    body += _imNotesField(2);
 
   } else if(im.type === 'private_fixed'){
     body += `<div class="im-row" style="margin-bottom:.55rem">
@@ -2315,18 +2615,18 @@ function renderItemModal(){
       <span style="font-size:1rem;font-weight:700;color:var(--accent)">${fmt(im.basePrice)}</span>
     </div>`;
     body += _imCustomPriceField(im.customPrice, `Leave blank — ${fmt(im.basePrice)}`);
+    body += _imNotesField(2);
 
   } else if(im.type === 'private_custom'){
     body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Price</span></div>
     <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
       placeholder="Enter amount" value="${im.customPrice != null ? im.customPrice : ''}"
-      oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">
-    <div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Notes</span></div>
-    <textarea id="im-notes" class="field-input" rows="3" placeholder="Session notes..."
-      oninput="imNotesChange(this.value)" style="resize:none;height:80px;margin-bottom:.5rem">${escHtml(im.notes || '')}</textarea>`;
+      oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">`;
+    body += _imNotesField(3, 'Session notes...');
 
   } else if(im.type === 'simple'){
     body += _imQtyStepper(im.qty);
+    body += _imNotesField(2);
 
   } else if(im.type === 'cart_edit'){
     const canQty = !['action_photos','portrait'].includes(im.category);
@@ -2336,10 +2636,8 @@ function renderItemModal(){
     body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
     <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
       placeholder="Leave blank to keep ${fmt(im.basePrice)}" value="${im.customPrice != null ? im.customPrice : ''}"
-      oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">
-    <div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Note</span></div>
-    <textarea id="im-notes" class="field-input" rows="2" placeholder="Add a note..."
-      oninput="imNotesChange(this.value)" style="resize:none;height:60px;margin-bottom:.5rem">${escHtml(im.notes || '')}</textarea>`;
+      oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">`;
+    body += _imNotesField(2);
   }
 
   $('item-modal-body').innerHTML = body;
@@ -2911,6 +3209,7 @@ function initMainPOS(){
   loadProducts();
   renderCart();
   updateCartCustomerBar();
+  updateSavedCartsBadge();
   // Start on category home (not inside any tab)
   showCatHome();
 }
