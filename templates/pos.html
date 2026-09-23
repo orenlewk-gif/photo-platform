@@ -802,10 +802,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               <span class="ap-sel-count" id="ap-sel-count" style="flex:1">0 selected</span>
               <button class="ap-add-btn" id="ap-add-btn" onclick="apAddToCart()" disabled>Add to Cart</button>
             </div>
-            <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--muted);cursor:pointer;padding:.1rem 0">
-              <input type="checkbox" id="ap-logo-toggle" style="accent-color:var(--accent);width:16px;height:16px">
-              Add logo to selected photos (+$2 each)
-            </label>
+            <div style="display:flex;gap:.75rem;flex-wrap:wrap">
+              <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--muted);cursor:pointer;padding:.1rem 0">
+                <input type="checkbox" id="ap-logo-toggle" style="accent-color:var(--accent);width:16px;height:16px">
+                Add logo (+$3 each)
+              </label>
+              <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;cursor:pointer;padding:.1rem 0" id="ap-range-label">
+                <input type="checkbox" id="ap-range-toggle" style="accent-color:var(--accent);width:16px;height:16px" onchange="apRangeModeChanged()">
+                <span id="ap-range-hint" style="color:var(--muted)">Range select</span>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -839,7 +845,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             </div>
             <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--muted);cursor:pointer;padding:.1rem 0">
               <input type="checkbox" id="pr-logo-toggle" style="accent-color:var(--accent);width:16px;height:16px">
-              Add logo to single photo (+$2)
+              Add logo (+$3/photo) — applies to next add
             </label>
           </div>
         </div>
@@ -1954,14 +1960,53 @@ function renderApPhotos(){
   }).join('');
 }
 
+let _apRangeAnchor = null; // index of first tap in range mode
+
+function apRangeModeChanged(){
+  const on = $('ap-range-toggle') && $('ap-range-toggle').checked;
+  _apRangeAnchor = null;
+  const hint = $('ap-range-hint');
+  if(hint) hint.style.color = on ? 'var(--accent)' : 'var(--muted)';
+  const label = $('ap-range-hint');
+  if(label) label.textContent = on ? 'Tap first, then last photo' : 'Range select';
+}
+
 function apTogglePhoto(idx){
   const p = S.ap.photos[idx];
   if(!p) return;
-  const key = p.path || String(idx);
-  if(S.ap.selected.has(key)) S.ap.selected.delete(key);
-  else S.ap.selected.add(key);
-  const el = $('apph-' + idx);
-  if(el) el.classList.toggle('selected', S.ap.selected.has(key));
+  const rangeMode = $('ap-range-toggle') && $('ap-range-toggle').checked;
+  if(rangeMode){
+    if(_apRangeAnchor === null){
+      // First tap — set anchor, select it
+      _apRangeAnchor = idx;
+      S.ap.selected.clear();
+      S.ap.photos.forEach((_,i) => { const el = $('apph-'+i); if(el) el.classList.remove('selected'); });
+      S.ap.selected.add(p.path || String(idx));
+      const el = $('apph-' + idx);
+      if(el) el.classList.add('selected');
+      const hint = $('ap-range-hint');
+      if(hint) hint.textContent = 'Now tap the last photo';
+    } else {
+      // Second tap — select range between anchor and idx
+      const lo = Math.min(_apRangeAnchor, idx);
+      const hi = Math.max(_apRangeAnchor, idx);
+      S.ap.selected.clear();
+      S.ap.photos.forEach((_,i) => { const el = $('apph-'+i); if(el) el.classList.remove('selected'); });
+      for(let i = lo; i <= hi; i++){
+        const ph = S.ap.photos[i];
+        if(ph){ S.ap.selected.add(ph.path || String(i)); const el = $('apph-'+i); if(el) el.classList.add('selected'); }
+      }
+      _apRangeAnchor = null;
+      const hint = $('ap-range-hint');
+      if(hint) hint.textContent = 'Range select';
+    }
+  } else {
+    const key = p.path || String(idx);
+    if(S.ap.selected.has(key)) S.ap.selected.delete(key);
+    else S.ap.selected.add(key);
+    const el = $('apph-' + idx);
+    if(el) el.classList.toggle('selected', S.ap.selected.has(key));
+  }
   renderApSelCount();
 }
 
@@ -1991,7 +2036,7 @@ function apAddToCart(){
   const selectedCount = selectedKeys.length;
   const basePrice = Math.min(selectedCount * 25, 115);
   const logoAddon = $('ap-logo-toggle') && $('ap-logo-toggle').checked;
-  const logoPrice = logoAddon ? selectedCount * 2 : 0;
+  const logoPrice = logoAddon ? selectedCount * 3 : 0;
   const price = basePrice + logoPrice;
   const isAll = selectedCount === totalPhotos && totalPhotos > 0;
   const priceDetail = isAll ? `All ${selectedCount} photos · $115 package`
@@ -2019,9 +2064,11 @@ function apClearPhotos(){
   S.ap.family = null;
   S.ap.photos = [];
   S.ap.selected.clear();
+  _apRangeAnchor = null;
+  const rt = $('ap-range-toggle'); if(rt) rt.checked = false;
+  const rh = $('ap-range-hint'); if(rh) rh.textContent = 'Range select';
   $('ap-photos-view').classList.add('hidden');
   $('ap-add-bar').classList.add('hidden');
-  // Restore family cards so user can pick another folder
   if(S.ap.families.length) renderApResults();
 }
 
@@ -2184,21 +2231,26 @@ function portraitAddPoseToCart(poseIdx){
   const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
   const poseRate = tiers[Math.min(existingPoses, tiers.length - 1)];
   const paths = pose.photos.map(p => p.path || '');
+  const logoAddon = $('pr-logo-toggle') && $('pr-logo-toggle').checked;
+  const logoPrice = logoAddon ? paths.length * 3 : 0;
+  const total = poseRate + logoPrice;
+  const detail = [`${paths.length} photos · ${fmt(poseRate)}/pose`, logoAddon ? `+$${logoPrice} logo` : '', s.date||''].filter(Boolean).join(' · ');
   cartAdd({
     category: 'portrait',
     label: `Portrait Pose ${poseIdx + 1} — ${s.last_name || s.name || ''}`,
-    detail: `${paths.length} photos · ${fmt(poseRate)}/pose · ${s.date||''}`,
-    price: poseRate, qty: 1, subtotal: poseRate,
+    detail,
+    price: total, qty: 1, subtotal: total,
     photo_paths: paths,
     date: s.date || '', location: s.location || '',
     _poseUnit: true,
+    _poseBasePrice: poseRate,
   });
   recalcPortraitPosePrices();
   S.pr.selected.clear();
   renderPortraitPoses();
   renderPortraitSelCount();
   renderCart();
-  showToast(`Pose ${poseIdx + 1} added — ${fmt(poseRate)}`);
+  showToast(`Pose ${poseIdx + 1} added — ${fmt(total)}`);
 }
 
 function portraitSelectPose(poseIdx){ portraitAddPoseToCart(poseIdx); }
@@ -2237,14 +2289,15 @@ function renderPortraitSelCount(){
 }
 
 function recalcPortraitPosePrices(){
-  // After adding a pose, retroactively reprice all poses in cart
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
   const poses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit);
   poses.forEach((item, idx) => {
     const rate = tiers[Math.min(idx, tiers.length - 1)];
-    item.price = rate;
-    item.subtotal = rate;
+    item._poseBasePrice = rate;
+    const logoExtra = item.price - (item._poseBasePrice || rate); // preserve existing logo surcharge
+    item.price = rate + Math.max(0, logoExtra);
+    item.subtotal = item.price;
     item.detail = item.detail.replace(/\$[\d.]+\/pose/, `${fmt(rate)}/pose`);
   });
 }
@@ -2256,9 +2309,9 @@ function portraitAddToCart(){
   const singlePrice = pp.single_photo || 40;
   const path = [...S.pr.selected][0]; // only 1 single allowed (exclusive selection)
   const logoAddon = $('pr-logo-toggle') && $('pr-logo-toggle').checked;
-  const logoPrice = logoAddon ? 2 : 0;
+  const logoPrice = logoAddon ? 3 : 0;
   const total = singlePrice + logoPrice;
-  const detail = [`1 photo · $${singlePrice}`, logoAddon ? '+$2 logo' : '', s.date||''].filter(Boolean).join(' · ');
+  const detail = [`1 photo · $${singlePrice}`, logoAddon ? '+$3 logo' : '', s.date||''].filter(Boolean).join(' · ');
   cartAdd({
     category: 'portrait',
     label: `Portrait Single — ${s.last_name || s.name || ''}`,
