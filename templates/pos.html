@@ -1461,11 +1461,17 @@ function renderCart(){
       ? `<div class="cart-item-note">${escHtml(item.note)}</div>`
       : '';
     const isShipping = item.category === '_shipping';
+    // Sub-lines for upcharges
+    let subLines = '';
+    if(item._logoPrice) subLines += `<div class="cart-item-detail" style="color:var(--accent)">Logo +${fmt(item._logoPrice)}</div>`;
+    if(item._shipPrice) subLines += `<div class="cart-item-detail">Ship +${fmt(item._shipPrice)}</div>`;
+    if(item._half) subLines += `<div class="cart-item-detail" style="color:var(--accent)">50% off applied</div>`;
     div.innerHTML = `
       <div class="cart-item-info${!isShipping ? ' cart-item-editable' : ''}" ${!isShipping ? `onclick="cartItemEdit('${item.id}')"` : ''} style="flex:1;min-width:0">
         <div class="cart-item-label">${escHtml(item.label)}</div>
         ${item.detail ? `<div class="cart-item-detail">${escHtml(item.detail)}</div>` : ''}
         ${item.qty > 1 ? `<div class="cart-item-detail">${item.qty} x ${fmt(item.price)}</div>` : ''}
+        ${subLines}
         ${noteHtml}
       </div>
       <div class="cart-item-price" id="item-price-${item.id}">${fmt(item.subtotal)}</div>
@@ -2284,13 +2290,13 @@ function renderPortraitSelCount(){
   const countEl = $('pr-sel-count');
 
   if(nPoses > 0){
-    let total = 0;
-    for(let i = 0; i < nPoses; i++){
-      total += tiers[Math.min(existingPoses + i, tiers.length - 1)];
-    }
-    countEl.textContent = `${nPoses} pose${nPoses!==1?'s':''} selected — ${fmt(total)}`;
-    hint.textContent = `Tier pricing: ${Array.from({length: nPoses}, (_,i) => fmt(tiers[Math.min(existingPoses+i, tiers.length-1)])).join(', ')}`;
-    if(btn){ btn.disabled = false; btn.textContent = `Add ${nPoses} Pose${nPoses!==1?'s':''}  to Cart`; }
+    // Flat rate: all poses get same price based on how many are being added
+    const totalAfter = existingPoses + nPoses;
+    const rate = tiers[Math.min(totalAfter - 1, tiers.length - 1)];
+    const total = rate * nPoses;
+    countEl.textContent = `${nPoses} pose${nPoses!==1?'s':''} selected — ${fmt(rate)} each = ${fmt(total)}`;
+    hint.textContent = existingPoses > 0 ? `${existingPoses} pose${existingPoses!==1?'s':''} already in cart — total ${totalAfter} poses` : '';
+    if(btn){ btn.disabled = false; btn.textContent = `Add ${nPoses} Pose${nPoses!==1?'s':''} to Cart`; }
   } else if(nSingle > 0){
     countEl.textContent = `1 photo selected — ${fmt(singlePrice)} single`;
     hint.textContent = 'Tap "Add to Cart" to add this single photo';
@@ -2313,12 +2319,14 @@ function portraitAddSelectedPoses(){
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
   const poseIndices = [...S.pr.selectedPoses].sort((a,b) => a-b);
+  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+  // Flat rate for all poses based on total count after adding
+  const totalAfter = existingPoses + poseIndices.length;
+  const rate = tiers[Math.min(totalAfter - 1, tiers.length - 1)];
 
-  poseIndices.forEach((pi, order) => {
+  poseIndices.forEach((pi) => {
     const pose = S.pr.poses[pi];
     if(!pose) return;
-    const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
-    const rate = tiers[Math.min(existingPoses, tiers.length - 1)];
     const paths = pose.photos.map(p => p.path || '');
     const detail = [`${paths.length} photos · ${fmt(rate)}/pose`, s.date||''].filter(Boolean).join(' · ');
     cartAdd({
@@ -2342,8 +2350,9 @@ function recalcPortraitPosePrices(){
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
   const poses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit);
-  poses.forEach((item, idx) => {
-    const rate = tiers[Math.min(idx, tiers.length - 1)];
+  // All poses get same flat rate based on total count
+  const rate = tiers[Math.min(poses.length - 1, tiers.length - 1)];
+  poses.forEach((item) => {
     item._poseBasePrice = rate;
     const logoCount = (item._logoPaths || []).length;
     item.price = rate + logoCount * 2;
@@ -2589,15 +2598,19 @@ function psmToggleSize(idx){
   if(_psm.sizes.has(idx)) _psm.sizes.delete(idx);
   else _psm.sizes.add(idx);
   psmUpdateFooter();
+  const isSel = _psm.sizes.has(idx);
   // Update checkbox UI
   const cb = $('psm-sz-' + idx);
   if(cb){
-    cb.classList.toggle('checked', _psm.sizes.has(idx));
-    cb.textContent = _psm.sizes.has(idx) ? '&#10003;' : '';
+    cb.classList.toggle('checked', isSel);
+    cb.innerHTML = isSel ? '&#10003;' : '';
   }
   // Update row highlight
   const row = $('psm-row-' + idx);
-  if(row) row.style.background = _psm.sizes.has(idx) ? 'rgba(245,196,48,.07)' : '';
+  if(row) row.style.background = isSel ? 'rgba(245,196,48,.07)' : '';
+  // Update logo sub-line
+  const sub = $('psm-logo-sub-' + idx);
+  if(sub) sub.style.display = (isSel && _psm.logo) ? '' : 'none';
 }
 
 function psmUpdateFooter(){
@@ -2653,10 +2666,14 @@ function renderPSM(){
   sizes.forEach((s, idx) => {
     const price = _psm.half ? s.price * 0.5 : s.price;
     const isSel = _psm.sizes.has(idx);
-    body += `<div class="print-size-row" id="psm-row-${idx}" style="cursor:pointer;background:${isSel?'rgba(245,196,48,.07)':''}" onclick="psmToggleSize(${idx})">
-      <div class="pr-pose-check${isSel?' checked':''}" id="psm-sz-${idx}" style="flex-shrink:0">${isSel?'&#10003;':''}</div>
-      <span class="print-size-name" style="flex:1">${escHtml(s.label)}</span>
-      <span class="print-size-price">${_psm.half ? `<s style="opacity:.5;font-size:.75rem">${fmt(s.price)}</s> ` : ''}${fmt(price)}</span>
+    body += `<div id="psm-row-${idx}" style="cursor:pointer;background:${isSel?'rgba(245,196,48,.07)':''};">
+      <div class="print-size-row" onclick="psmToggleSize(${idx})" style="border:none;padding-bottom:.1rem">
+        <div class="pr-pose-check${isSel?' checked':''}" id="psm-sz-${idx}" style="flex-shrink:0">${isSel?'&#10003;':''}</div>
+        <span class="print-size-name" style="flex:1">${escHtml(s.label)}</span>
+        <span class="print-size-price">${_psm.half ? `<s style="opacity:.5;font-size:.75rem">${fmt(s.price)}</s> ` : ''}${fmt(price)}</span>
+        <button onclick="event.stopPropagation();psmCrop(${idx})" style="background:var(--surface3);border:1px solid var(--border);color:var(--text);border-radius:5px;padding:.18rem .45rem;font-size:.65rem;cursor:pointer;font-family:var(--font);margin-left:.35rem;white-space:nowrap">Crop</button>
+      </div>
+      <div id="psm-logo-sub-${idx}" style="display:${(isSel&&_psm.logo)?'':'none'};font-size:.7rem;color:var(--muted);padding:0 .5rem .35rem 2.4rem">Logo +${fmt(2)}</div>
     </div>`;
   });
   // Custom size
@@ -2676,11 +2693,26 @@ function psmToggleHalf(){
 }
 function psmToggleLogo(){
   _psm.logo = !_psm.logo;
-  renderPSM();
+  const cb = $('psm-logo-cb'); if(cb) cb.checked = _psm.logo;
+  (S.printSizes || []).forEach((_, idx) => {
+    const sub = $('psm-logo-sub-' + idx);
+    if(sub) sub.style.display = (_psm.sizes.has(idx) && _psm.logo) ? '' : 'none';
+  });
+  psmUpdateFooter();
 }
 function psmToggleShip(){
   _psm.ship = !_psm.ship;
-  renderPSM();
+  const cb = $('psm-ship-cb'); if(cb) cb.checked = _psm.ship;
+  psmUpdateFooter();
+}
+
+function psmCrop(idx){
+  const sizes = S.printSizes || [];
+  const s = sizes[idx];
+  if(!s || !_psm.photo.path) return;
+  // Open crop tool using item-modal state temporarily
+  S._im = { _photoPath: _psm.photo.path, label: s.label };
+  openCropTool();
 }
 
 function psmCustomSize(){
@@ -2695,27 +2727,37 @@ function psmAddToCart(){
   if(!_psm.sizes.size) return;
   const p = _psm.photo;
   const sizes = S.printSizes || [];
-  _psm.sizes.forEach(idx => {
+  const sizeIndices = [..._psm.sizes].sort((a,b) => a-b);
+  // Ship cost charged once for the whole batch (on the first item)
+  let shipAssigned = false;
+  const shipRate = _psm.ship ? 8 : 0;
+  const ptCtx = [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
+
+  sizeIndices.forEach(idx => {
     const s = sizes[idx];
     if(!s) return;
     const baseP = _psm.half ? s.price * 0.5 : s.price;
-    const logoExtra = _psm.logo ? 2 : 0;
-    const price = baseP + logoExtra;
-    const ptCtx = [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
-    const detail = [_psm.half ? '50% off' : '', _psm.ship ? 'Ship' : '', _psm.logo ? '+$2 logo' : '', ptCtx].filter(Boolean).join(' · ');
+    const logoPrice = _psm.logo ? 2 : 0;
+    const thisShip = (!shipAssigned && shipRate) ? shipRate : 0;
+    if(thisShip) shipAssigned = true;
+    const price = baseP + logoPrice + thisShip;
+    const detail = ptCtx;
     const cartItem = {
       category: 'prints',
-      label: `${s.label} Print${_psm.half ? ' (50% off)' : ''}`,
+      label: `${s.label} Print`,
       detail,
       price, qty: 1, subtotal: price,
-      _ship: _psm.ship,
+      _ship: !!thisShip,
+      _half: _psm.half,
+      _logo: _psm.logo,
+      _logoPrice: logoPrice || 0,
+      _shipPrice: thisShip || 0,
       _size_idx: s.size_idx || idx,
       photo_paths: [p.path],
     };
-    if(_psm.logo) cartItem._logo = true;
     cartAdd(cartItem);
   });
-  const n = _psm.sizes.size;
+  const n = sizeIndices.length;
   closePSM();
   renderCart();
   showToast(`${n} print${n!==1?'s':''} added`);
