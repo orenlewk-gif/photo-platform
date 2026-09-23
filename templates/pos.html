@@ -893,27 +893,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             <div id="pt-results"></div>
             <div id="pt-photos-view" class="hidden">
               <div class="ap-breadcrumb">
-                <button class="ap-breadcrumb-btn" onclick="ptClearPhoto()">&#8592; Back</button>
+                <button class="ap-breadcrumb-btn" onclick="ptBackToFamilies()">&#8592; Back</button>
                 <span id="pt-breadcrumb-name"></span>
               </div>
-              <div id="pt-photo-grid" class="ap-photo-grid" style="margin-bottom:.5rem"></div>
-            </div>
-            <!-- Selected photo bar -->
-            <div id="pt-selected-bar" style="display:none;background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius);padding:.5rem .75rem;display:none;align-items:center;gap:.6rem;margin-bottom:.65rem;flex-shrink:0">
-              <img id="pt-selected-thumb" src="" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px">
-              <span id="pt-selected-name" style="flex:1;font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
-              <button onclick="ptClearPhoto()" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;font-family:var(--font)">Change</button>
-            </div>
-            <!-- Step 3: Print options (only visible after photo selected) -->
-            <div id="pt-print-options" style="display:none">
-              <div class="print-toggle-row" style="margin-top:.5rem">
-                <label class="toggle-switch">
-                  <input type="checkbox" id="half-price-toggle" onchange="renderPrintSizes()">
-                  <div class="toggle-track"></div>
-                </label>
-                <span class="toggle-label">Half-price (50% off)</span>
-              </div>
-              <div id="print-size-list" class="print-size-list"></div>
+              <div style="font-size:.72rem;color:var(--muted);margin-bottom:.4rem">Tap a photo to select print sizes</div>
+              <div id="pt-photo-grid" class="ap-photo-grid"></div>
             </div>
           </div>
         </div>
@@ -1122,6 +1106,24 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <span class="item-modal-price-val" id="item-modal-price">$0.00</span>
       </div>
       <button class="item-modal-add-btn" id="item-modal-add-btn" onclick="itemModalAddToCart()">Add to Cart</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PRINT SIZE MODAL (PSM) ─── -->
+<div id="psm-overlay" class="modal-overlay hidden" onclick="psmBackdrop(event)">
+  <div class="modal-sheet item-modal-sheet" onclick="event.stopPropagation()" style="max-height:85vh">
+    <div class="item-modal-header">
+      <div class="item-modal-title">Select Print Sizes</div>
+      <button class="item-modal-close" onclick="closePSM()">&#10005;</button>
+    </div>
+    <div id="psm-body" class="item-modal-body"></div>
+    <div class="item-modal-footer">
+      <div class="item-modal-price-preview">
+        <span class="item-modal-price-label">Total</span>
+        <span class="item-modal-price-val" id="psm-total">$0.00</span>
+      </div>
+      <button class="item-modal-add-btn" id="psm-add-btn" onclick="psmAddToCart()" disabled>Add Prints</button>
     </div>
   </div>
 </div>
@@ -2529,38 +2531,21 @@ async function ptSelectFamily(f){
 
 function ptPickPhoto(photo){
   _ptPhoto = { path: photo.path || '', filename: photo.filename || (photo.path||'').split('/').pop() || '' };
-  // Highlight selection in grid
-  const grid = $('pt-photo-grid');
-  if(grid){
-    grid.querySelectorAll('.ap-photo-item').forEach(el => el.classList.remove('selected'));
-    const path = photo.path || '';
-    grid.querySelectorAll('[data-ptpi]').forEach(el => {
-      const pi = parseInt(el.dataset.ptpi);
-      const gp = grid._photos && grid._photos[pi];
-      if(gp && gp.path === path) el.classList.add('selected');
-    });
-  }
-  // Show selected bar and print options
-  const bar = $('pt-selected-bar');
-  const thumb = $('pt-selected-thumb');
-  const nameEl = $('pt-selected-name');
-  if(bar){ bar.style.display = 'flex'; }
-  if(thumb) thumb.src = `/api/photo?path=${encodeURIComponent(_ptPhoto.path)}&size=thumb&nowm=1`;
-  if(nameEl) nameEl.textContent = _ptPhoto.filename;
-  const opts = $('pt-print-options');
-  if(opts) opts.style.display = '';
-  renderPrintSizes();
+  openPSM(_ptPhoto);
+}
+
+function ptBackToFamilies(){
+  _ptPhoto = { path: '', filename: '' };
+  const photosView = $('pt-photos-view'); if(photosView) photosView.classList.add('hidden');
+  const grid = $('pt-photo-grid'); if(grid) grid.innerHTML = '';
+  if(_pt.date && _pt.location) ptLocChanged();
 }
 
 function ptClearPhoto(){
-  _ptPhoto = { path: '', filename: '', session: null };
-  const bar = $('pt-selected-bar'); if(bar) bar.style.display = 'none';
-  const opts = $('pt-print-options'); if(opts) opts.style.display = 'none';
+  _ptPhoto = { path: '', filename: '' };
   const photosView = $('pt-photos-view'); if(photosView) photosView.classList.add('hidden');
   const grid = $('pt-photo-grid'); if(grid) grid.innerHTML = '';
   const ptRes = $('pt-results'); if(ptRes) ptRes.innerHTML = '';
-  // Re-trigger location load to show families again
-  if(_pt.date && _pt.location) ptLocChanged();
 }
 
 // ─── Prints ──────────────────────────────────────────────────────────────────
@@ -2569,34 +2554,171 @@ async function loadPrintSizes(){
     const res = await fetch('/api/print-pricing');
     const data = await res.json();
     S.printSizes = data.sizes || [];
-    renderPrintSizes();
   } catch(e){
-    $('print-size-list').innerHTML = '<div class="ap-loading">Failed to load</div>';
+    console.error('Failed to load print sizes', e);
   }
 }
 
 function renderPrintSizes(){
-  if(!S.printSizes) return;
-  if(!_ptPhoto.path){ $('print-size-list').innerHTML = ''; return; }
-  const half = $('half-price-toggle') && $('half-price-toggle').checked;
-  const rows = S.printSizes.map(s => {
-    const price = half ? s.price * 0.5 : s.price;
-    const im = {type:'print',label:`${s.label} Print`,price,basePrice:price,category:'prints',
-      _size_idx:s.size_idx||0,_half:!!half,
-      _photoPath:_ptPhoto.path,_photoName:_ptPhoto.filename,qty:1,ship:false,_logo:false,notes:''};
-    return `<div class="print-size-row" style="cursor:pointer" onclick='openItemModal(${JSON.stringify(im).replace(/'/g,"\\'")})'>
-        <span class="print-size-name">${escHtml(s.label)}</span>
-        <span class="print-size-price">${half ? '<s style="opacity:.5;font-size:.75rem">' + fmt(s.price) + '</s> ' : ''}${fmt(price)}</span>
-        <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
-      </div>`;
+  // Kept as no-op; print size selection now handled by PSM
+}
+
+// ─── Print Size Modal (PSM) ────────────────────────────────────────────────────
+const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false };
+
+function openPSM(photo, halfDefault){
+  if(!S.printSizes || !S.printSizes.length) return;
+  _psm.photo = photo;
+  _psm.sizes.clear();
+  _psm.half = !!halfDefault;
+  _psm.logo = false;
+  _psm.ship = false;
+  renderPSM();
+  $('psm-overlay').classList.remove('hidden');
+}
+
+function closePSM(){
+  $('psm-overlay').classList.add('hidden');
+}
+
+function psmBackdrop(e){
+  if(e.target === $('psm-overlay')) closePSM();
+}
+
+function psmToggleSize(idx){
+  if(_psm.sizes.has(idx)) _psm.sizes.delete(idx);
+  else _psm.sizes.add(idx);
+  psmUpdateFooter();
+  // Update checkbox UI
+  const cb = $('psm-sz-' + idx);
+  if(cb){
+    cb.classList.toggle('checked', _psm.sizes.has(idx));
+    cb.textContent = _psm.sizes.has(idx) ? '&#10003;' : '';
+  }
+  // Update row highlight
+  const row = $('psm-row-' + idx);
+  if(row) row.style.background = _psm.sizes.has(idx) ? 'rgba(245,196,48,.07)' : '';
+}
+
+function psmUpdateFooter(){
+  const sizes = S.printSizes || [];
+  let total = 0;
+  _psm.sizes.forEach(idx => {
+    const s = sizes[idx];
+    if(s){
+      const p = _psm.half ? s.price * 0.5 : s.price;
+      total += p + (_psm.logo ? 2 : 0);
+    }
   });
-  // Custom size row
-  rows.push(`<div class="print-size-row" style="cursor:pointer" onclick='openItemModal({type:"print",label:"Custom Print",price:0,basePrice:0,category:"prints",_size_idx:0,_half:${!!half},_customSize:true,_photoPath:${JSON.stringify(_ptPhoto.path)},_photoName:${JSON.stringify(_ptPhoto.filename)},qty:1,ship:false,_logo:false,notes:""})'>
-    <span class="print-size-name">Custom</span>
+  if(_psm.ship && _psm.sizes.size > 0){
+    const sz = sizes[[..._psm.sizes][0]];
+    const shipRate = sz && sz.ship_price ? sz.ship_price : 8;
+    total += shipRate;
+  }
+  const n = _psm.sizes.size;
+  $('psm-total').textContent = fmt(total);
+  const btn = $('psm-add-btn');
+  if(btn){ btn.disabled = n === 0; btn.textContent = n > 0 ? `Add ${n} Print${n!==1?'s':''}` : 'Add Prints'; }
+}
+
+function renderPSM(){
+  const p = _psm.photo;
+  const sizes = S.printSizes || [];
+  let body = '';
+  // Photo row
+  body += `<div style="display:flex;align-items:center;gap:.65rem;margin-bottom:.75rem;background:var(--surface2);border-radius:8px;padding:.5rem .65rem">
+    <img src="/api/photo?path=${encodeURIComponent(p.path)}&size=thumb&nowm=1" style="width:52px;height:52px;object-fit:cover;border-radius:6px;flex-shrink:0" alt="">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:.78rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.filename)}</div>
+      <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem">Tap sizes below to select</div>
+    </div>
+  </div>`;
+  // Toggles
+  body += `<div style="display:flex;flex-direction:column;gap:.45rem;margin-bottom:.7rem">`;
+  body += `<div style="display:flex;align-items:center;gap:.55rem;cursor:pointer" onclick="psmToggleHalf()">
+    <label class="toggle-switch" style="pointer-events:none"><input type="checkbox" id="psm-half-cb" ${_psm.half?'checked':''}><div class="toggle-track"></div></label>
+    <span class="toggle-label">Half-price (50% off)</span>
+  </div>`;
+  body += `<div style="display:flex;align-items:center;gap:.55rem;cursor:pointer" onclick="psmToggleLogo()">
+    <label class="toggle-switch" style="pointer-events:none"><input type="checkbox" id="psm-logo-cb" ${_psm.logo?'checked':''}><div class="toggle-track"></div></label>
+    <span class="toggle-label">Add logo (+$2/print)</span>
+  </div>`;
+  body += `<div style="display:flex;align-items:center;gap:.55rem;cursor:pointer" onclick="psmToggleShip()">
+    <label class="toggle-switch" style="pointer-events:none"><input type="checkbox" id="psm-ship-cb" ${_psm.ship?'checked':''}><div class="toggle-track"></div></label>
+    <span class="toggle-label">Ship (+$8)</span>
+  </div>`;
+  body += `</div>`;
+  // Size rows
+  body += `<div class="print-size-list">`;
+  sizes.forEach((s, idx) => {
+    const price = _psm.half ? s.price * 0.5 : s.price;
+    const isSel = _psm.sizes.has(idx);
+    body += `<div class="print-size-row" id="psm-row-${idx}" style="cursor:pointer;background:${isSel?'rgba(245,196,48,.07)':''}" onclick="psmToggleSize(${idx})">
+      <div class="pr-pose-check${isSel?' checked':''}" id="psm-sz-${idx}" style="flex-shrink:0">${isSel?'&#10003;':''}</div>
+      <span class="print-size-name" style="flex:1">${escHtml(s.label)}</span>
+      <span class="print-size-price">${_psm.half ? `<s style="opacity:.5;font-size:.75rem">${fmt(s.price)}</s> ` : ''}${fmt(price)}</span>
+    </div>`;
+  });
+  // Custom size
+  body += `<div class="print-size-row" style="cursor:pointer" onclick="psmCustomSize()">
+    <div class="pr-pose-check" style="flex-shrink:0"></div>
+    <span class="print-size-name" style="flex:1">Custom</span>
     <span class="print-size-price" style="font-size:.72rem;color:var(--muted)">enter price</span>
-    <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
-  </div>`);
-  $('print-size-list').innerHTML = rows.join('');
+  </div>`;
+  body += `</div>`;
+  $('psm-body').innerHTML = body;
+  psmUpdateFooter();
+}
+
+function psmToggleHalf(){
+  _psm.half = !_psm.half;
+  renderPSM();
+}
+function psmToggleLogo(){
+  _psm.logo = !_psm.logo;
+  renderPSM();
+}
+function psmToggleShip(){
+  _psm.ship = !_psm.ship;
+  renderPSM();
+}
+
+function psmCustomSize(){
+  const p = _psm.photo;
+  closePSM();
+  openItemModal({type:'print',label:'Custom Print',price:0,basePrice:0,category:'prints',
+    _size_idx:0,_half:_psm.half,_customSize:true,
+    _photoPath:p.path,_photoName:p.filename,qty:1,ship:_psm.ship,_logo:_psm.logo,notes:''});
+}
+
+function psmAddToCart(){
+  if(!_psm.sizes.size) return;
+  const p = _psm.photo;
+  const sizes = S.printSizes || [];
+  _psm.sizes.forEach(idx => {
+    const s = sizes[idx];
+    if(!s) return;
+    const baseP = _psm.half ? s.price * 0.5 : s.price;
+    const logoExtra = _psm.logo ? 2 : 0;
+    const price = baseP + logoExtra;
+    const ptCtx = [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
+    const detail = [_psm.half ? '50% off' : '', _psm.ship ? 'Ship' : '', _psm.logo ? '+$2 logo' : '', ptCtx].filter(Boolean).join(' · ');
+    const cartItem = {
+      category: 'prints',
+      label: `${s.label} Print${_psm.half ? ' (50% off)' : ''}`,
+      detail,
+      price, qty: 1, subtotal: price,
+      _ship: _psm.ship,
+      _size_idx: s.size_idx || idx,
+      photo_paths: [p.path],
+    };
+    if(_psm.logo) cartItem._logo = true;
+    cartAdd(cartItem);
+  });
+  const n = _psm.sizes.size;
+  closePSM();
+  renderCart();
+  showToast(`${n} print${n!==1?'s':''} added`);
 }
 
 function printAddToCart(label, price){
@@ -3103,19 +3225,12 @@ function imQuickPrint(idx){
   const path = im.photo_paths[idx];
   if(!path) return;
   const fn = path.split('/').pop();
-  closeItemModal();
-  quickPrintPhoto(path, fn);
+  openPSM({ path, filename: fn }, true);
 }
 
 function quickPrintPhoto(path, filename){
-  openCategory('prints', 'Prints');
   _ptPhoto = { path, filename };
-  const bar = $('pt-selected-bar'); if(bar) bar.style.display = 'flex';
-  const thumb = $('pt-selected-thumb'); if(thumb) thumb.src = `/api/photo?path=${encodeURIComponent(path)}&size=thumb&nowm=1`;
-  const nameEl = $('pt-selected-name'); if(nameEl) nameEl.textContent = filename;
-  const opts = $('pt-print-options'); if(opts) opts.style.display = '';
-  const halfToggle = $('half-price-toggle'); if(halfToggle) halfToggle.checked = true;
-  renderPrintSizes();
+  openPSM({ path, filename }, true);
 }
 
 function itemModalAddToCart(){
