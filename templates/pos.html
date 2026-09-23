@@ -849,8 +849,22 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-base-area" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Base Area</div>
-            <div id="base-area-grid" class="product-grid"></div>
-            <p id="base-area-empty" class="hidden" style="font-size:.82rem;color:var(--muted)">No items configured. Add them from the admin panel.</p>
+            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Base Area — 4–8 People',desc:'',basePrice:200,category:'base_area'})">
+              <div class="private-card-name">4–8 People</div>
+              <div class="private-card-hint">$200 &rsaquo;</div>
+            </div>
+            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Base Area — Up to 15 People',desc:'',basePrice:300,category:'base_area'})">
+              <div class="private-card-name">Up to 15 People</div>
+              <div class="private-card-hint">$300 &rsaquo;</div>
+            </div>
+            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Base Area — 15+ People',desc:'',basePrice:375,category:'base_area'})">
+              <div class="private-card-name">15+ People</div>
+              <div class="private-card-hint">$375 &rsaquo;</div>
+            </div>
+            <div class="private-card" onclick="openItemModal({type:'private_custom',label:'Base Area — Custom',desc:'',basePrice:0,category:'base_area'})">
+              <div class="private-card-name">Custom Pricing</div>
+              <div class="private-card-hint">Tap to enter price &rsaquo;</div>
+            </div>
           </div>
         </div>
 
@@ -1377,7 +1391,10 @@ function cartAdd(item){
 }
 
 function cartRemove(id){
+  const item = S.cart.find(i => i.id === id);
+  const wasPortraitPose = item && item.category === 'portrait' && item._poseUnit;
   S.cart = S.cart.filter(i => i.id !== id);
+  if(wasPortraitPose) recalcPortraitPosePrices();
   renderCart();
 }
 
@@ -1463,7 +1480,14 @@ function renderCart(){
     const isShipping = item.category === '_shipping';
     // Sub-lines for upcharges
     let subLines = '';
-    if(item._logoPrice) subLines += `<div class="cart-item-detail" style="color:var(--accent)">Logo +${fmt(item._logoPrice)}</div>`;
+    if(item._logoPaths && item._logoPaths.length){
+      item._logoPaths.forEach(p => {
+        const fn = p.split('/').pop();
+        subLines += `<div class="cart-item-detail" style="color:var(--accent)">${escHtml(fn)} +$2</div>`;
+      });
+    } else if(item._logoPrice){
+      subLines += `<div class="cart-item-detail" style="color:var(--accent)">Logo +${fmt(item._logoPrice)}</div>`;
+    }
     if(item._shipPrice) subLines += `<div class="cart-item-detail">Ship +${fmt(item._shipPrice)}</div>`;
     if(item._half) subLines += `<div class="cart-item-detail" style="color:var(--accent)">50% off applied</div>`;
     div.innerHTML = `
@@ -2353,6 +2377,7 @@ function recalcPortraitPosePrices(){
   // All poses get same flat rate based on total count
   const rate = tiers[Math.min(poses.length - 1, tiers.length - 1)];
   poses.forEach((item) => {
+    if(item._customPrice != null) return;
     item._poseBasePrice = rate;
     const logoCount = (item._logoPaths || []).length;
     item.price = rate + logoCount * 2;
@@ -2728,39 +2753,43 @@ function psmAddToCart(){
   const p = _psm.photo;
   const sizes = S.printSizes || [];
   const sizeIndices = [..._psm.sizes].sort((a,b) => a-b);
-  // Ship cost charged once for the whole batch (on the first item)
-  let shipAssigned = false;
-  const shipRate = _psm.ship ? 8 : 0;
   const ptCtx = [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
+  // Ship is handled as a separate auto line item via ensureShipping(); don't embed in price
+  let _psmCropCartId = null;
 
   sizeIndices.forEach(idx => {
     const s = sizes[idx];
     if(!s) return;
     const baseP = _psm.half ? s.price * 0.5 : s.price;
     const logoPrice = _psm.logo ? 2 : 0;
-    const thisShip = (!shipAssigned && shipRate) ? shipRate : 0;
-    if(thisShip) shipAssigned = true;
-    const price = baseP + logoPrice + thisShip;
-    const detail = ptCtx;
+    const price = baseP + logoPrice;
     const cartItem = {
       category: 'prints',
       label: `${s.label} Print`,
-      detail,
+      detail: ptCtx,
       price, qty: 1, subtotal: price,
-      _ship: !!thisShip,
+      _ship: _psm.ship,
       _half: _psm.half,
       _logo: _psm.logo,
       _logoPrice: logoPrice || 0,
-      _shipPrice: thisShip || 0,
-      _size_idx: s.size_idx || idx,
+      _size_idx: s.size_idx !== undefined ? s.size_idx : idx,
       photo_paths: [p.path],
     };
     cartAdd(cartItem);
+    if(!_psmCropCartId) _psmCropCartId = cartItem.id;
   });
   const n = sizeIndices.length;
   closePSM();
   renderCart();
   showToast(`${n} print${n!==1?'s':''} added`);
+  // Auto-open crop for single-size selection
+  if(n === 1 && _psmCropCartId){
+    const idx = sizeIndices[0];
+    const s = sizes[idx];
+    _crop._cartId = _psmCropCartId;
+    S._im = { _photoPath: p.path, label: s ? s.label : '' };
+    setTimeout(() => openCropTool(), 200);
+  }
 }
 
 function printAddToCart(label, price){
@@ -2892,6 +2921,7 @@ function openItemModal(cfg){
     _poseUnit:     cfg._poseUnit || false,
     _poseBasePrice: cfg._poseBasePrice || 0,
     _baseActionPrice: cfg._baseActionPrice || 0,
+    _customSize:   cfg._customSize || false,
   };
   renderItemModal();
   $('item-modal').classList.remove('hidden');
@@ -3046,15 +3076,17 @@ function renderItemModal(){
       body += `<div id="portrait-photo-thumbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.4rem;margin-bottom:.4rem">`;
       body += im.photo_paths.map((path, i) => {
         const hasLogo = logoPaths.has(path);
-        const fn = path.split('/').pop();
-        return `<div data-pmidx="${i}" onclick="imPortraitPhotoTap(${i})" style="position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;cursor:pointer;border:2.5px solid ${hasLogo ? 'var(--accent)' : 'var(--border)'}">
-          <img src="/api/photo?path=${encodeURIComponent(path)}&size=thumb&nowm=1" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
-          ${hasLogo ? `<div style="position:absolute;bottom:0;left:0;right:0;background:var(--accent);color:#0a1929;font-size:.58rem;font-weight:700;text-align:center;padding:1px 0">LOGO</div>` : ''}
-          <button data-pmprintidx="${i}" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();imQuickPrint(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.7);color:#fff;font-size:.55rem;border:none;border-radius:3px;padding:1px 4px;cursor:pointer;font-family:var(--font)">PRINT</button>
+        return `<div style="display:flex;flex-direction:column;gap:2px">
+          <div data-pmidx="${i}" onclick="imPortraitPhotoTap(${i})" style="position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;cursor:pointer;border:2.5px solid ${hasLogo ? 'var(--accent)' : 'var(--border)'}">
+            <img src="/api/photo?path=${encodeURIComponent(path)}&size=thumb&nowm=1" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
+            ${hasLogo ? `<div style="position:absolute;bottom:0;left:0;right:0;background:var(--accent);color:#0a1929;font-size:.58rem;font-weight:700;text-align:center;padding:1px 0">LOGO</div>` : ''}
+          </div>
+          <button onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();imQuickPrint(${i})" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:.6rem;border-radius:4px;padding:2px 0;cursor:pointer;font-family:var(--font)">PRINT</button>
         </div>`;
       }).join('');
       body += `</div>`;
       body += `<div id="portrait-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * 2)}` : 'Tap a photo to add logo (+$2 each)'}</div>`;
+      body += _imCustomPriceField(im.customPrice, `Leave blank for auto (${fmt(im._poseBasePrice + (im._logoPaths||[]).length * 2)})`);
 
     // Action photos: thumbnails with per-photo logo toggle + print shortcut
     } else if(im.category === 'action_photos' && im.photo_paths && im.photo_paths.length){
@@ -3064,18 +3096,21 @@ function renderItemModal(){
       body += `<div id="ap-photo-thumbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.4rem;margin-bottom:.4rem">`;
       body += im.photo_paths.map((path, i) => {
         const hasLogo = apLogoPaths.has(path);
-        return `<div data-apidx="${i}" onclick="imActionPhotoTap(${i})" style="position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;cursor:pointer;border:2.5px solid ${hasLogo ? 'var(--accent)' : 'var(--border)'}">
-          <img src="/api/photo?path=${encodeURIComponent(path)}&size=thumb&nowm=1" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
-          ${hasLogo ? `<div style="position:absolute;bottom:0;left:0;right:0;background:var(--accent);color:#0a1929;font-size:.58rem;font-weight:700;text-align:center;padding:1px 0">LOGO</div>` : ''}
-          <button data-apprintidx="${i}" onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();imQuickPrint(${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.7);color:#fff;font-size:.55rem;border:none;border-radius:3px;padding:1px 4px;cursor:pointer;font-family:var(--font)">PRINT</button>
+        return `<div style="display:flex;flex-direction:column;gap:2px">
+          <div data-apidx="${i}" onclick="imActionPhotoTap(${i})" style="position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;cursor:pointer;border:2.5px solid ${hasLogo ? 'var(--accent)' : 'var(--border)'}">
+            <img src="/api/photo?path=${encodeURIComponent(path)}&size=thumb&nowm=1" style="width:100%;height:100%;object-fit:cover;display:block" alt="">
+            ${hasLogo ? `<div style="position:absolute;bottom:0;left:0;right:0;background:var(--accent);color:#0a1929;font-size:.58rem;font-weight:700;text-align:center;padding:1px 0">LOGO</div>` : ''}
+          </div>
+          <button onpointerdown="event.stopPropagation()" onclick="event.stopPropagation();imQuickPrint(${i})" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);font-size:.6rem;border-radius:4px;padding:2px 0;cursor:pointer;font-family:var(--font)">PRINT</button>
         </div>`;
       }).join('');
       body += `</div>`;
       body += `<div id="ap-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${apLogoCount > 0 ? `${apLogoCount} photo${apLogoCount!==1?'s':''} with logo · +${fmt(apLogoCount * 2)}` : 'Tap a photo to add logo (+$2 each)'}</div>`;
+      body += _imCustomPriceField(im.customPrice, `Leave blank for auto (${fmt(im._baseActionPrice + (im._logoPaths||[]).length * 2)})`);
 
     }
 
-    // Custom price for non-photo cart items only
+    // Custom price for non-photo cart items
     const hasPhotos = ['portrait','action_photos'].includes(im.category) && im.photo_paths && im.photo_paths.length;
     if(!hasPhotos){
       body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
@@ -3127,10 +3162,12 @@ function imUpdatePrice(){
   } else if(im.type === 'cart_edit'){
     if(im.category === 'portrait' && im._poseBasePrice){
       const logoCount = (im._logoPaths || []).length;
-      price = im._poseBasePrice + logoCount * 2;
+      const calc = im._poseBasePrice + logoCount * 2;
+      price = (im.customPrice != null) ? im.customPrice : calc;
     } else if(im.category === 'action_photos' && im._baseActionPrice){
       const logoCount = (im._logoPaths || []).length;
-      price = im._baseActionPrice + logoCount * 2;
+      const calc = im._baseActionPrice + logoCount * 2;
+      price = (im.customPrice != null) ? im.customPrice : calc;
     } else {
       price = (im.customPrice != null) ? im.customPrice : im.basePrice;
     }
@@ -3288,15 +3325,27 @@ function itemModalAddToCart(){
       if(item.category === 'portrait'){
         item._logoPaths = im._logoPaths || [];
         const logoCount = item._logoPaths.length;
-        item.price = (item._poseBasePrice || 0) + logoCount * 2;
+        if(im.customPrice != null){
+          item._customPrice = im.customPrice;
+          item.price = im.customPrice;
+        } else {
+          item._customPrice = null;
+          item.price = (item._poseBasePrice || 0) + logoCount * 2;
+        }
         item.subtotal = item.price;
         const logoStr = logoCount > 0 ? ` · +$${logoCount * 2} logo` : '';
         item.detail = item.detail.replace(/ · \+\$\d+ logo/g, '') + logoStr;
-        if(item._poseUnit) recalcPortraitPosePrices();
+        if(item._poseUnit && im.customPrice == null) recalcPortraitPosePrices();
       } else if(item.category === 'action_photos'){
         item._logoPaths = im._logoPaths || [];
         const logoCount = item._logoPaths.length;
-        item.price = (item._baseActionPrice || item.price) + logoCount * 2;
+        if(im.customPrice != null){
+          item._customPrice = im.customPrice;
+          item.price = im.customPrice;
+        } else {
+          item._customPrice = null;
+          item.price = (item._baseActionPrice || item.price) + logoCount * 2;
+        }
         item.subtotal = item.price;
         const logoStr = logoCount > 0 ? ` · +$${logoCount * 2} logo` : '';
         item.detail = item.detail.replace(/ · \+\$\d+ logo/g, '') + logoStr;
@@ -3385,7 +3434,7 @@ function cartItemEdit(id){
     opts:          [],
     _size_idx:     item._size_idx || 0,
     _half:         item._half || false,
-    customPrice:   null,
+    customPrice:   item._customPrice != null ? item._customPrice : null,
     notes:         item.note || '',
     photo_paths:   item.photo_paths || [],
     _logoPaths:    item._logoPaths ? [...item._logoPaths] : [],
@@ -3759,7 +3808,7 @@ function openCropTool(){
   _crop.aspect = aspect;
   _crop.box = {x:0,y:0,w:0,h:0};
   _crop.drag = null;
-  $('crop-aspect-label').textContent = aspect ? `Aspect: ${aspect.toFixed(2)} (drag to crop)` : 'Drag to set crop area';
+  $('crop-aspect-label').textContent = aspect ? `${im.label || 'Print'} — drag corners to resize · inside to move` : 'Drag to set crop area';
   $('crop-modal').classList.remove('hidden');
 
   const photoUrl = `/api/photo?path=${encodeURIComponent(im._photoPath)}&size=large&nowm=1`;
@@ -3829,7 +3878,7 @@ function cropDrawOverlay(){
   ctx.fillRect(0, 0, ov.width, ov.height);
   const b = _crop.box;
   ctx.clearRect(b.x, b.y, b.w, b.h);
-  ctx.strokeStyle = 'var(--accent,#F5C430)';
+  ctx.strokeStyle = '#F5C430';
   ctx.lineWidth = 2;
   ctx.strokeRect(b.x, b.y, b.w, b.h);
   // Rule-of-thirds grid
@@ -3839,6 +3888,11 @@ function cropDrawOverlay(){
     ctx.beginPath(); ctx.moveTo(b.x + b.w*i/3, b.y); ctx.lineTo(b.x + b.w*i/3, b.y+b.h); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(b.x, b.y + b.h*i/3); ctx.lineTo(b.x+b.w, b.y + b.h*i/3); ctx.stroke();
   }
+  // Corner handles
+  ctx.fillStyle = '#F5C430';
+  [[b.x, b.y], [b.x+b.w, b.y], [b.x, b.y+b.h], [b.x+b.w, b.y+b.h]].forEach(([cx,cy]) => {
+    ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI*2); ctx.fill();
+  });
 }
 
 function _cropEventXY(e){
@@ -3853,21 +3907,88 @@ function _cropEventXY(e){
 function cropDragStart(e){
   e.preventDefault();
   const pt = _cropEventXY(e);
-  _crop.drag = { startX: pt.x, startY: pt.y };
+  const b = _crop.box;
+  const HIT = 22;
+  // Corner hit test
+  const corners = [
+    {name:'tl', x:b.x,    y:b.y},
+    {name:'tr', x:b.x+b.w,y:b.y},
+    {name:'bl', x:b.x,    y:b.y+b.h},
+    {name:'br', x:b.x+b.w,y:b.y+b.h},
+  ];
+  for(const c of corners){
+    if(Math.abs(pt.x - c.x) < HIT && Math.abs(pt.y - c.y) < HIT){
+      _crop.drag = { mode:'resize', corner:c.name, startPt:pt, box0:{...b} };
+      return;
+    }
+  }
+  // Inside box → move
+  if(pt.x >= b.x && pt.x <= b.x+b.w && pt.y >= b.y && pt.y <= b.y+b.h){
+    _crop.drag = { mode:'move', startPt:pt, box0:{...b} };
+    return;
+  }
+  // Outside → draw new
+  _crop.drag = { mode:'draw', startX:pt.x, startY:pt.y };
 }
 
 function cropDragMove(e){
   if(!_crop.drag) return;
   e.preventDefault();
   const pt = _cropEventXY(e);
-  let x = Math.min(_crop.drag.startX, pt.x), y = Math.min(_crop.drag.startY, pt.y);
-  let w = Math.abs(pt.x - _crop.drag.startX), h = Math.abs(pt.y - _crop.drag.startY);
-  if(_crop.aspect && w > 0 && h > 0){
-    if(w / h > _crop.aspect) h = w / _crop.aspect;
-    else                     w = h * _crop.aspect;
+  const d = _crop.drag;
+  const cw = _crop.canvW, ch = _crop.canvH;
+  const asp = _crop.aspect;
+  const MIN = 20;
+
+  if(d.mode === 'move'){
+    const dx = pt.x - d.startPt.x, dy = pt.y - d.startPt.y;
+    let nx = Math.max(0, Math.min(cw - d.box0.w, d.box0.x + dx));
+    let ny = Math.max(0, Math.min(ch - d.box0.h, d.box0.y + dy));
+    _crop.box = { x:nx, y:ny, w:d.box0.w, h:d.box0.h };
+    cropDrawOverlay();
+    return;
   }
-  w = Math.min(w, _crop.canvW - x);
-  h = Math.min(h, _crop.canvH - y);
+
+  if(d.mode === 'resize'){
+    const b0 = d.box0;
+    const c = d.corner;
+    let nx = b0.x, ny = b0.y, nw = b0.w, nh = b0.h;
+    if(c === 'br'){
+      nw = Math.max(MIN, pt.x - b0.x);
+      nh = asp ? nw / asp : Math.max(MIN, pt.y - b0.y);
+    } else if(c === 'bl'){
+      nw = Math.max(MIN, b0.x + b0.w - pt.x);
+      nh = asp ? nw / asp : Math.max(MIN, pt.y - b0.y);
+      nx = b0.x + b0.w - nw;
+    } else if(c === 'tr'){
+      nw = Math.max(MIN, pt.x - b0.x);
+      nh = asp ? nw / asp : Math.max(MIN, b0.y + b0.h - pt.y);
+      ny = b0.y + b0.h - nh;
+    } else if(c === 'tl'){
+      nw = Math.max(MIN, b0.x + b0.w - pt.x);
+      nh = asp ? nw / asp : Math.max(MIN, b0.y + b0.h - pt.y);
+      nx = b0.x + b0.w - nw;
+      ny = b0.y + b0.h - nh;
+    }
+    // Clamp to canvas
+    if(nx < 0){ nw += nx; if(asp) nh = nw/asp; nx = 0; }
+    if(ny < 0){ nh += ny; if(asp) nw = nh*asp; ny = 0; }
+    if(nx + nw > cw) nw = cw - nx;
+    if(ny + nh > ch) nh = ch - ny;
+    if(nw >= MIN && nh >= MIN) _crop.box = { x:nx, y:ny, w:nw, h:nh };
+    cropDrawOverlay();
+    return;
+  }
+
+  // draw mode
+  let x = Math.min(d.startX, pt.x), y = Math.min(d.startY, pt.y);
+  let w = Math.abs(pt.x - d.startX), h = Math.abs(pt.y - d.startY);
+  if(asp && w > 0 && h > 0){
+    if(w / h > asp) h = w / asp;
+    else            w = h * asp;
+  }
+  w = Math.min(w, cw - x);
+  h = Math.min(h, ch - y);
   if(w > 2 && h > 2) _crop.box = { x, y, w, h };
   cropDrawOverlay();
 }
