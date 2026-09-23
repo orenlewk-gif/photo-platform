@@ -868,6 +868,20 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
             "w": w,
             "h": h,
         })
+    # Attach pose group index from folder_meta when available
+    if family and results:
+        fk = _folder_key(date, location, family)
+        fm = _load_folder_meta()
+        folder_data = fm.get(fk, {})
+        poses = folder_data.get("poses", [])
+        if poses:
+            fn_to_pose: dict = {}
+            for pi, pose in enumerate(poses):
+                for fn in pose.get("files", []):
+                    fn_to_pose[fn] = pi
+            for r in results:
+                fn = os.path.basename(r["path"])
+                r["pose_group"] = fn_to_pose.get(fn, -1)
     return {"count": len(results), "photos": results}
 
 

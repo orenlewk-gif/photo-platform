@@ -592,10 +592,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 }
 .cat-back-btn{
   background:none;border:none;color:var(--accent);
-  font-size:.82rem;font-weight:600;cursor:pointer;font-family:var(--font);
+  font-size:1rem;font-weight:600;cursor:pointer;font-family:var(--font);
   padding:.25rem .35rem;touch-action:manipulation;white-space:nowrap;
 }
-.cat-content-title{font-size:.82rem;font-weight:600;flex:1;color:var(--text)}
+.cat-content-title{font-size:1rem;font-weight:600;flex:1;color:var(--text)}
 
 /* ── Cart customer bar ── */
 .cart-customer-bar{
@@ -606,7 +606,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 }
 .cart-customer-input{
   flex:1;background:transparent;border:none;outline:none;
-  color:var(--text);font-size:.82rem;font-family:var(--font);
+  color:var(--text);font-size:.97rem;font-family:var(--font);
   min-width:0;
 }
 .cart-customer-input::placeholder{color:var(--muted)}
@@ -797,9 +797,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               <div id="ap-photo-grid" class="ap-photo-grid"></div>
             </div>
           </div>
-          <div id="ap-add-bar" class="ap-add-bar hidden">
-            <span class="ap-sel-count" id="ap-sel-count">0 selected</span>
-            <button class="ap-add-btn" id="ap-add-btn" onclick="apAddToCart()" disabled>Add to Cart</button>
+          <div id="ap-add-bar" class="ap-add-bar hidden" style="flex-direction:column;align-items:stretch;gap:.4rem">
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <span class="ap-sel-count" id="ap-sel-count" style="flex:1">0 selected</span>
+              <button class="ap-add-btn" id="ap-add-btn" onclick="apAddToCart()" disabled>Add to Cart</button>
+            </div>
+            <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--muted);cursor:pointer;padding:.1rem 0">
+              <input type="checkbox" id="ap-logo-toggle" style="accent-color:var(--accent);width:16px;height:16px">
+              Add logo to selected photos (+$2 each)
+            </label>
           </div>
         </div>
 
@@ -823,12 +829,18 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
               <div id="pr-photo-grid" class="ap-photo-grid"></div>
             </div>
           </div>
-          <div id="portrait-add-bar" class="ap-add-bar hidden">
-            <div style="flex:1">
-              <div class="ap-sel-count" id="pr-sel-count">Tap to select photos or poses</div>
-              <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem" id="pr-price-hint"></div>
+          <div id="portrait-add-bar" class="ap-add-bar hidden" style="flex-direction:column;align-items:stretch;gap:.4rem">
+            <div style="display:flex;align-items:center;gap:.5rem">
+              <div style="flex:1">
+                <div class="ap-sel-count" id="pr-sel-count">Tap "Add Pose" for pose pricing · or tap a photo for a single</div>
+                <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem" id="pr-price-hint"></div>
+              </div>
+              <button class="ap-add-btn" id="portrait-add-btn" onclick="portraitAddToCart()" disabled>Add to Cart</button>
             </div>
-            <button class="ap-add-btn" id="portrait-add-btn" onclick="portraitAddToCart()" disabled>Add to Cart</button>
+            <label style="display:flex;align-items:center;gap:.5rem;font-size:.78rem;color:var(--muted);cursor:pointer;padding:.1rem 0">
+              <input type="checkbox" id="pr-logo-toggle" style="accent-color:var(--accent);width:16px;height:16px">
+              Add logo to single photo (+$2)
+            </label>
           </div>
         </div>
 
@@ -865,10 +877,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-prints" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Prints</div>
-            <!-- Session context (optional) -->
+            <!-- Step 1: Select session date -->
             <div class="ap-filter-row">
               <select id="pt-date-select" class="ap-select" onchange="ptDateChanged()">
-                <option value="">Session date (optional)...</option>
+                <option value="">Select session date...</option>
               </select>
             </div>
             <div class="ap-filter-row" id="pt-loc-row" style="display:none">
@@ -876,14 +888,32 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
                 <option value="">Select location...</option>
               </select>
             </div>
-            <div class="print-toggle-row" style="margin-top:.5rem">
-              <label class="toggle-switch">
-                <input type="checkbox" id="half-price-toggle" onchange="renderPrintSizes()">
-                <div class="toggle-track"></div>
-              </label>
-              <span class="toggle-label">Half-price (50% off)</span>
+            <!-- Step 2: Browse families and pick a photo -->
+            <div id="pt-results"></div>
+            <div id="pt-photos-view" class="hidden">
+              <div class="ap-breadcrumb">
+                <button class="ap-breadcrumb-btn" onclick="ptClearPhoto()">&#8592; Back</button>
+                <span id="pt-breadcrumb-name"></span>
+              </div>
+              <div id="pt-photo-grid" class="ap-photo-grid" style="margin-bottom:.5rem"></div>
             </div>
-            <div id="print-size-list" class="print-size-list"></div>
+            <!-- Selected photo bar -->
+            <div id="pt-selected-bar" style="display:none;background:var(--surface);border:1px solid var(--accent);border-radius:var(--radius);padding:.5rem .75rem;display:none;align-items:center;gap:.6rem;margin-bottom:.65rem;flex-shrink:0">
+              <img id="pt-selected-thumb" src="" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px">
+              <span id="pt-selected-name" style="flex:1;font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+              <button onclick="ptClearPhoto()" style="background:none;border:none;color:var(--muted);font-size:.8rem;cursor:pointer;font-family:var(--font)">Change</button>
+            </div>
+            <!-- Step 3: Print options (only visible after photo selected) -->
+            <div id="pt-print-options" style="display:none">
+              <div class="print-toggle-row" style="margin-top:.5rem">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="half-price-toggle" onchange="renderPrintSizes()">
+                  <div class="toggle-track"></div>
+                </label>
+                <span class="toggle-label">Half-price (50% off)</span>
+              </div>
+              <div id="print-size-list" class="print-size-list"></div>
+            </div>
           </div>
         </div>
 
@@ -938,11 +968,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div>
       <div class="cust-bar-dropdown" id="cust-bar-dropdown"></div>
 
-      <!-- Cart section header with save -->
+      <!-- Cart section header -->
       <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
         <div class="cart-section-label" style="border-bottom:none;flex:1">Cart</div>
-        <button class="save-cart-btn" id="save-cart-btn" onclick="saveCart()" style="flex:0 0 auto;border-radius:0;border-left:1px solid var(--border);border-top:none;border-right:none;border-bottom:none;padding:.35rem .75rem;font-size:.68rem;color:var(--muted)">Save Cart</button>
-        <button class="save-cart-btn" id="saved-carts-btn" onclick="showSavedCarts()" style="flex:0 0 auto;border-radius:0;border-left:1px solid var(--border);border-top:none;border-right:none;border-bottom:none;padding:.35rem .75rem;font-size:.68rem;color:var(--accent);display:none" id="saved-carts-btn">Saved (<span id="saved-carts-count">0</span>)</button>
       </div>
       <div class="cart-items-list" id="cart-items-list">
         <div class="cart-empty" id="cart-empty">No items added yet</div>
@@ -982,6 +1010,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <button class="btn-checkout" id="btn-checkout" onclick="launchSquare()" disabled>
             Charge via Square
           </button>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem">
+            <button id="save-cart-btn" onclick="saveCart()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.65rem;font-size:.9rem;font-weight:600;cursor:pointer;font-family:var(--font)">Save Cart</button>
+            <button id="saved-carts-btn" onclick="showSavedCarts()" style="flex:1;background:var(--surface2);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius);padding:.65rem;font-size:.9rem;font-weight:600;cursor:pointer;font-family:var(--font);display:none">Saved (<span id="saved-carts-count">0</span>)</button>
+          </div>
         </div>
       </div>
     </div><!-- /cart-panel -->
@@ -1014,12 +1046,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="modal-handle"></div>
     <div class="modal-title">Customer Information</div>
     <div class="modal-body">
-      <!-- Customer search -->
-      <div class="cust-search-wrap">
-        <input type="text" id="cust-search" class="cust-search-input" placeholder="Search existing customers..."
-               autocomplete="off" oninput="custSearchType(this.value)">
-        <div class="cust-search-dropdown" id="cust-search-dropdown"></div>
-      </div>
       <div class="field-row">
         <div class="field-group">
           <div class="field-label">First Name</div>
@@ -1055,6 +1081,28 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="modal-footer">
       <button class="modal-cancel" onclick="closeCustomerModal()">Cancel</button>
       <button class="modal-save" onclick="saveCustomerInfo()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── CROP TOOL MODAL ─── -->
+<div id="crop-modal" class="modal-overlay hidden" onclick="event.stopPropagation()" style="align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,.85)">
+  <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:480px;display:flex;flex-direction:column;max-height:90vh">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid var(--border)">
+      <div style="font-size:1rem;font-weight:700">Crop Photo</div>
+      <button onclick="closeCropTool()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:.2rem .4rem">&#10005;</button>
+    </div>
+    <div style="padding:.75rem;overflow:hidden;flex:1;display:flex;flex-direction:column;gap:.5rem">
+      <div style="font-size:.75rem;color:var(--muted);text-align:center" id="crop-aspect-label">Drag to set crop area</div>
+      <div style="position:relative;overflow:hidden;background:#000;border-radius:8px;flex:1;min-height:0" id="crop-canvas-wrap">
+        <canvas id="crop-canvas" style="width:100%;height:100%;object-fit:contain;touch-action:none;cursor:crosshair;display:block"></canvas>
+        <canvas id="crop-overlay" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas>
+      </div>
+      <div style="display:flex;gap:.5rem">
+        <button onclick="cropReset()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.6rem;font-size:.85rem;cursor:pointer;font-family:var(--font)">Reset</button>
+        <button onclick="cropDownload()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--accent);border-radius:var(--radius);padding:.6rem;font-size:.85rem;font-weight:600;cursor:pointer;font-family:var(--font)">Download Crop</button>
+        <button onclick="cropConfirm()" style="flex:1;background:var(--accent);border:none;color:#0a1929;border-radius:var(--radius);padding:.6rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:var(--font)">Use Crop</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1578,10 +1626,7 @@ function customerBarNew(){
   const inp = $('cart-customer-input');
   const typedName = (inp ? inp.value.trim() : '');
   const nameParts = typedName.split(' ');
-  // Prefill the modal with whatever was typed
   const c = S.customer;
-  $('cust-search').value = '';
-  $('cust-search-dropdown').classList.remove('open');
   $('cust-first').value  = nameParts[0] || c.first || '';
   $('cust-last').value   = nameParts.slice(1).join(' ') || c.last || '';
   $('cust-email').value  = c.email  || '';
@@ -1593,17 +1638,16 @@ function customerBarNew(){
   $('addr-section').classList.toggle('hidden', !hasShippableItem());
   $('cust-bar-dropdown').classList.remove('open');
   $('customer-modal').classList.remove('hidden');
-  if(!S.recentSales) loadRecentSales();
   setTimeout(() => { if(!c.email) $('cust-email').focus(); }, 100);
 }
 
 // ─── Save / restore cart ─────────────────────────────────────────────────────
 function saveCart(){
   if(!S.cart.length){ showToast('Nothing in cart to save'); return; }
+  const name = [S.customer.first, S.customer.last].filter(Boolean).join(' ') || S.customer.email || '';
+  if(!name){ showToast('Enter customer name before saving cart'); $('cart-customer-input').focus(); return; }
   try {
     const saved = JSON.parse(localStorage.getItem('ci_pos_saved_carts') || '[]');
-    const name = [S.customer.first, S.customer.last].filter(Boolean).join(' ') ||
-                 S.customer.email || 'Unnamed';
     saved.unshift({
       ts: Date.now(),
       name,
@@ -1728,8 +1772,6 @@ function removeCoupon(){
 // ─── Customer modal ───────────────────────────────────────────────────────────
 function openCustomerModal(){
   const c = S.customer;
-  $('cust-search').value = '';
-  $('cust-search-dropdown').classList.remove('open');
   $('cust-first').value  = c.first  || '';
   $('cust-last').value   = c.last   || '';
   $('cust-email').value  = c.email  || '';
@@ -1740,14 +1782,11 @@ function openCustomerModal(){
   $('cust-zip').value    = c.zip    || '';
   $('addr-section').classList.toggle('hidden', !hasShippableItem());
   $('customer-modal').classList.remove('hidden');
-  // Pre-load recent sales for search
-  if(!S.recentSales) loadRecentSales();
-  setTimeout(() => $('cust-search').focus(), 100);
+  setTimeout(() => { if(!c.email) $('cust-email').focus(); }, 100);
 }
 
 function closeCustomerModal(){
   $('customer-modal').classList.add('hidden');
-  $('cust-search-dropdown').classList.remove('open');
 }
 
 function modalBackdropClick(e){
@@ -1774,56 +1813,9 @@ function saveCustomerInfo(){
   updateCartCustomerBar();
 }
 
-// ─── Customer search ─────────────────────────────────────────────────────────
-let _custSearchTimer = null;
-function custSearchType(val){
-  clearTimeout(_custSearchTimer);
-  if(!val.trim()){ $('cust-search-dropdown').classList.remove('open'); return; }
-  _custSearchTimer = setTimeout(() => {
-    const q = val.trim().toLowerCase();
-    const records = S.recentSales || [];
-    const matches = records.filter(o => {
-      const name = (o.name || `${o.first||''} ${o.last||''}`).toLowerCase();
-      const email = (o.email || '').toLowerCase();
-      return name.includes(q) || email.includes(q);
-    }).slice(0, 6);
-    const dd = $('cust-search-dropdown');
-    if(!matches.length){ dd.classList.remove('open'); return; }
-    dd.innerHTML = matches.map((o, i) => {
-      const name = o.name || `${o.first||''} ${o.last||''}`.trim() || 'Unknown';
-      const meta = [o.email, o.phone].filter(Boolean).join(' · ');
-      return `<div class="cust-search-option" onclick="custSearchSelect(${i})">
-        <div class="cust-search-option-name">${escHtml(name)}</div>
-        ${meta ? `<div class="cust-search-option-meta">${escHtml(meta)}</div>` : ''}
-      </div>`;
-    }).join('');
-    dd._matches = matches;
-    dd.classList.add('open');
-  }, 200);
-}
-
-function custSearchSelect(idx){
-  const dd = $('cust-search-dropdown');
-  const o = (dd._matches || [])[idx];
-  if(!o) return;
-  const nameParts = (o.name || `${o.first||''} ${o.last||''}`).trim().split(' ');
-  $('cust-first').value = nameParts[0] || '';
-  $('cust-last').value = nameParts.slice(1).join(' ') || '';
-  $('cust-email').value = o.email || '';
-  $('cust-phone').value = o.phone || '';
-  // Address from saved address string if available
-  if(o.address){
-    const parts = o.address.split(',').map(s => s.trim());
-    $('cust-street').value = parts[0] || '';
-    $('cust-city').value = parts[1] || '';
-    const stateZip = (parts[2] || '').trim().split(' ');
-    $('cust-state').value = stateZip[0] || '';
-    $('cust-zip').value = stateZip[1] || '';
-  }
-  dd.classList.remove('open');
-  $('cust-search').value = '';
-  $('addr-section').classList.toggle('hidden', !hasShippableItem());
-}
+// ─── Customer search (modal search removed — these are now stubs) ──────────────
+function custSearchType(val){ /* search bar removed from modal */ }
+function custSearchSelect(idx){ /* search bar removed from modal */ }
 
 // ─── Action Photos ────────────────────────────────────────────────────────────
 async function loadApDates(){
@@ -1997,20 +1989,25 @@ function apAddToCart(){
   const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || ''));
   const totalPhotos = S.ap.photos.length;
   const selectedCount = selectedKeys.length;
-  const price = Math.min(selectedCount * 25, 115);
+  const basePrice = Math.min(selectedCount * 25, 115);
+  const logoAddon = $('ap-logo-toggle') && $('ap-logo-toggle').checked;
+  const logoPrice = logoAddon ? selectedCount * 2 : 0;
+  const price = basePrice + logoPrice;
   const isAll = selectedCount === totalPhotos && totalPhotos > 0;
   const priceDetail = isAll ? `All ${selectedCount} photos · $115 package`
-    : price === 115 ? `${selectedCount} photos · $115 (capped)`
+    : basePrice === 115 ? `${selectedCount} photos · $115 (capped)`
     : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
+  const detail = [priceDetail, logoAddon ? `+$${logoPrice} logo` : '', f.date || '', f.location || ''].filter(Boolean).join(' · ');
   cartAdd({
     category: 'action_photos',
     label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
-    detail: `${priceDetail} · ${f.date || ''} · ${f.location || ''}`,
+    detail,
     price, qty: 1, subtotal: price,
     photo_paths: selectedPhotos.map(p => p.path || ''),
     filenames, date: f.date || '', location: f.location || '',
   });
   S.ap.selected.clear();
+  if($('ap-logo-toggle')) $('ap-logo-toggle').checked = false;
   S.ap.photos.forEach((_,i) => {
     const el = $('apph-' + i);
     if(el) el.classList.remove('selected');
@@ -2102,6 +2099,21 @@ async function portraitSelectSession(idx){
 
 function groupPortraitPoses(photos){
   if(!photos.length) return [];
+  // Use backend pose_group assignments if present
+  const hasPoseData = photos.some(p => p.pose_group !== undefined && p.pose_group >= 0);
+  if(hasPoseData){
+    const map = {};
+    photos.forEach(p => {
+      const g = (p.pose_group !== undefined && p.pose_group >= 0) ? p.pose_group : 9999;
+      if(!map[g]) map[g] = [];
+      map[g].push(p);
+    });
+    return Object.keys(map)
+      .map(Number).sort((a,b) => a - b)
+      .filter(g => g < 9999) // skip unlabeled
+      .map((g, i) => ({ id: i, photos: map[g], expanded: false }));
+  }
+  // Fallback: gap heuristic with smaller threshold (5 frames)
   const sorted = [...photos].sort((a,b) => {
     const na = parseInt(((a.filename||a.path||'').match(/\d+/g)||[]).pop() || 0);
     const nb = parseInt(((b.filename||b.path||'').match(/\d+/g)||[]).pop() || 0);
@@ -2112,7 +2124,7 @@ function groupPortraitPoses(photos){
   for(let i = 1; i < sorted.length; i++){
     const pn = parseInt(((sorted[i-1].filename||sorted[i-1].path||'').match(/\d+/g)||[]).pop() || 0);
     const cn = parseInt(((sorted[i].filename||sorted[i].path||'').match(/\d+/g)||[]).pop() || 0);
-    if(cn - pn <= 25) cur.push(sorted[i]);
+    if(cn - pn <= 5) cur.push(sorted[i]);
     else { groups.push(cur); cur = [sorted[i]]; }
   }
   groups.push(cur);
@@ -2126,12 +2138,9 @@ function renderPortraitPoses(){
     return;
   }
   grid.innerHTML = S.pr.poses.map((pose,pi) => {
-    const thumbs = pose.photos.slice(0,3).map(p =>
+    const thumbs = pose.photos.slice(0,4).map(p =>
       `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">`
     ).join('');
-    const allSelected = pose.photos.every(p => S.pr.selected.has(p.path || ''));
-    const someSelected = pose.photos.some(p => S.pr.selected.has(p.path || ''));
-    const selectedCount = pose.photos.filter(p => S.pr.selected.has(p.path||'')).length;
     const inlinePhotos = pose.expanded ? pose.photos.map((p,pi2) => {
       const fn = p.filename || (p.path||'').split('/').pop() || '';
       const num = ((fn.match(/\d+/g))||[]).pop() || (pi2+1);
@@ -2146,12 +2155,10 @@ function renderPortraitPoses(){
       <div class="pr-pose-group" id="prpose-${pose.id}">
         <div class="pr-pose-header" onclick="portraitTogglePose(${pi})">
           <div>
-            <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos${someSelected?' &middot; '+selectedCount+' selected':''})</span></div>
+            <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos)</span></div>
           </div>
           <div style="display:flex;gap:.5rem;align-items:center">
-            <button onclick="event.stopPropagation();portraitSelectPose(${pi})" style="font-size:.7rem;padding:.2rem .5rem;background:${allSelected?'var(--accent)':'var(--surface2)'};color:${allSelected?'#0a1929':'var(--text)'};border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:var(--font)">
-              ${allSelected ? 'Deselect' : 'Select All'}
-            </button>
+            <button onclick="event.stopPropagation();portraitAddPoseToCart(${pi})" style="font-size:.78rem;padding:.3rem .7rem;background:var(--accent);color:#0a1929;border:none;border-radius:6px;cursor:pointer;font-family:var(--font);font-weight:700">Add Pose</button>
             <span style="color:var(--muted);font-size:.9rem">${pose.expanded ? '&#8963;' : '&#8964;'}</span>
           </div>
         </div>
@@ -2168,17 +2175,33 @@ function portraitTogglePose(poseIdx){
   renderPortraitPoses();
 }
 
-function portraitSelectPose(poseIdx){
+function portraitAddPoseToCart(poseIdx){
   const pose = S.pr.poses[poseIdx];
-  if(!pose) return;
-  const allSelected = pose.photos.every(p => S.pr.selected.has(p.path||''));
-  pose.photos.forEach(p => {
-    if(allSelected) S.pr.selected.delete(p.path||'');
-    else S.pr.selected.add(p.path||'');
+  if(!pose || !pose.photos.length) return;
+  const s = S.pr.session;
+  const pp = S.portraitPricing || {};
+  const tiers = pp.pose_tiers || [65, 57.5, 50];
+  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+  const poseRate = tiers[Math.min(existingPoses, tiers.length - 1)];
+  const paths = pose.photos.map(p => p.path || '');
+  cartAdd({
+    category: 'portrait',
+    label: `Portrait Pose ${poseIdx + 1} — ${s.last_name || s.name || ''}`,
+    detail: `${paths.length} photos · ${fmt(poseRate)}/pose · ${s.date||''}`,
+    price: poseRate, qty: 1, subtotal: poseRate,
+    photo_paths: paths,
+    date: s.date || '', location: s.location || '',
+    _poseUnit: true,
   });
+  recalcPortraitPosePrices();
+  S.pr.selected.clear();
   renderPortraitPoses();
   renderPortraitSelCount();
+  renderCart();
+  showToast(`Pose ${poseIdx + 1} added — ${fmt(poseRate)}`);
 }
+
+function portraitSelectPose(poseIdx){ portraitAddPoseToCart(poseIdx); }
 
 function portraitToggle(poseId, photoIdx){
   const pose = S.pr.poses.find(p => p.id === poseId);
@@ -2186,8 +2209,12 @@ function portraitToggle(poseId, photoIdx){
   const p = pose.photos[photoIdx];
   if(!p) return;
   const key = p.path || '';
-  if(S.pr.selected.has(key)) S.pr.selected.delete(key);
-  else S.pr.selected.add(key);
+  if(S.pr.selected.has(key)){
+    S.pr.selected.delete(key);
+  } else {
+    S.pr.selected.clear(); // exclusive: only 1 single at a time
+    S.pr.selected.add(key);
+  }
   renderPortraitPoses();
   renderPortraitSelCount();
 }
@@ -2195,30 +2222,14 @@ function portraitToggle(poseId, photoIdx){
 function renderPortraitSelCount(){
   const n = S.pr.selected.size;
   const pp = S.portraitPricing || {};
-  const tiers = pp.pose_tiers || [65, 57.5, 50];
   const singlePrice = pp.single_photo || 40;
 
-  // Determine if the selection is a complete pose (all photos from exactly one pose)
-  const fullPose = S.pr.poses.find(pose =>
-    pose.photos.length > 0 &&
-    pose.photos.every(p => S.pr.selected.has(p.path||'')) &&
-    pose.photos.length === n
-  );
-
-  const existingPosesInCart = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
-  const nextTierIdx = Math.min(existingPosesInCart, tiers.length - 1);
-  const poseRate = tiers[nextTierIdx];
-
   if(n === 0){
-    $('pr-sel-count').textContent = 'Tap to select photos or poses';
+    $('pr-sel-count').textContent = 'Tap "Add Pose" for pose pricing · or tap a photo for a single';
     $('pr-price-hint').textContent = '';
-  } else if(fullPose){
-    $('pr-sel-count').textContent = `Pose selected — ${n} photos`;
-    $('pr-price-hint').textContent = `Pose price: ${fmt(poseRate)}`;
   } else {
-    const price = n * singlePrice;
-    $('pr-sel-count').textContent = `${n} photo${n!==1?'s':''} selected`;
-    $('pr-price-hint').textContent = `Singles: ${fmt(price)} ($${singlePrice} each)`;
+    $('pr-sel-count').textContent = `1 photo selected — ${fmt(singlePrice)} single`;
+    $('pr-price-hint').textContent = `Tap "Add to Cart" to add this single photo`;
   }
 
   const btn = $('portrait-add-btn');
@@ -2241,45 +2252,21 @@ function recalcPortraitPosePrices(){
 function portraitAddToCart(){
   if(!S.pr.selected.size) return;
   const s = S.pr.session;
-  const selectedPaths = [...S.pr.selected];
   const pp = S.portraitPricing || {};
-  const tiers = pp.pose_tiers || [65, 57.5, 50];
   const singlePrice = pp.single_photo || 40;
-
-  // Check if the selection is a complete pose
-  const fullPose = S.pr.poses.find(pose =>
-    pose.photos.length > 0 &&
-    pose.photos.every(p => S.pr.selected.has(p.path||'')) &&
-    pose.photos.length === selectedPaths.length
-  );
-
-  if(fullPose){
-    // Add as pose — price will be recalculated retroactively
-    const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
-    const poseRate = tiers[Math.min(existingPoses, tiers.length - 1)];
-    cartAdd({
-      category: 'portrait',
-      label: `Portrait Pose — ${s.last_name || s.name || ''}`,
-      detail: `${selectedPaths.length} photos · ${fmt(poseRate)}/pose · ${s.date||''}`,
-      price: poseRate, qty: 1, subtotal: poseRate,
-      photo_paths: selectedPaths,
-      date: s.date || '', location: s.location || '',
-      _poseUnit: true,
-    });
-    recalcPortraitPosePrices();
-  } else {
-    // Individual singles
-    const price = selectedPaths.length * singlePrice;
-    cartAdd({
-      category: 'portrait',
-      label: `Portrait Singles — ${s.last_name || s.name || ''}`,
-      detail: `${selectedPaths.length} photo${selectedPaths.length!==1?'s':''} · $${singlePrice} each · ${s.date||''}`,
-      price, qty: 1, subtotal: price,
-      photo_paths: selectedPaths,
-      date: s.date || '', location: s.location || '',
-    });
-  }
-
+  const path = [...S.pr.selected][0]; // only 1 single allowed (exclusive selection)
+  const logoAddon = $('pr-logo-toggle') && $('pr-logo-toggle').checked;
+  const logoPrice = logoAddon ? 2 : 0;
+  const total = singlePrice + logoPrice;
+  const detail = [`1 photo · $${singlePrice}`, logoAddon ? '+$2 logo' : '', s.date||''].filter(Boolean).join(' · ');
+  cartAdd({
+    category: 'portrait',
+    label: `Portrait Single — ${s.last_name || s.name || ''}`,
+    detail,
+    price: total, qty: 1, subtotal: total,
+    photo_paths: [path],
+    date: s.date || '', location: s.location || '',
+  });
   S.pr.selected.clear();
   renderPortraitPoses();
   renderPortraitSelCount();
@@ -2328,11 +2315,11 @@ function privateAddToCart(label){
 
 // ─── Prints date/location context ────────────────────────────────────────────
 const _pt = { date: '', location: '' };
+let _ptPhoto = { path: '', filename: '', session: null };
 
 async function loadPtDates(){
   const sel = $('pt-date-select');
   if(!sel || sel.options.length > 1) return;
-  // Reuse the same /api/pos-dates data — load if not already cached
   if(!S.ap._dateData || !S.ap._dateData.length){
     try {
       const res = await fetch('/api/pos-dates');
@@ -2350,7 +2337,10 @@ async function loadPtDates(){
 function ptDateChanged(){
   const date = $('pt-date-select').value;
   _pt.date = date; _pt.location = '';
+  ptClearPhoto();
   const locRow = $('pt-loc-row'), locSel = $('pt-loc-select');
+  const resultsEl = $('pt-results');
+  if(resultsEl) resultsEl.innerHTML = '';
   if(!date){ locRow.style.display = 'none'; return; }
   const entry = (S.ap._dateData || []).find(d => d.date === date);
   const locs = entry ? entry.locations : [];
@@ -2363,8 +2353,128 @@ function ptDateChanged(){
   if(locs.length === 1){ locSel.value = locs[0]; ptLocChanged(); }
 }
 
-function ptLocChanged(){
+async function ptLocChanged(){
   _pt.location = $('pt-loc-select').value || '';
+  ptClearPhoto();
+  if(!_pt.date || !_pt.location) return;
+  const resultsEl = $('pt-results');
+  if(resultsEl) resultsEl.innerHTML = '<div class="ap-loading">Loading families...</div>';
+  try {
+    const res = await fetch(`/api/pos-families?date=${encodeURIComponent(_pt.date)}&location=${encodeURIComponent(_pt.location)}`);
+    const data = await res.json();
+    const families = data.families || [];
+    if(!resultsEl) return;
+    if(!families.length){ resultsEl.innerHTML = '<div class="ap-loading">No families found</div>'; return; }
+    resultsEl.innerHTML = families.map((f,i) => {
+      const previews = (f.previews || []).slice(0,4).map(p =>
+        `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`
+      ).join('');
+      return `<div class="ap-result-item" onclick="ptSelectFamily(${JSON.stringify(f).replace(/"/g,'&quot;')})" style="flex-direction:column;align-items:flex-start">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+          <div>
+            <div class="ap-result-name">${f.last_name || f.name || ''}</div>
+            <div class="ap-result-meta">${f.date || ''} &middot; ${f.location || ''}</div>
+          </div>
+          <span class="ap-result-arrow">&#8250;</span>
+        </div>
+        ${previews ? `<div class="ap-result-previews">${previews}</div>` : ''}
+      </div>`;
+    }).join('');
+    resultsEl._families = families;
+    // Convert inline onclick to index-based approach
+    resultsEl.innerHTML = families.map((f,i) => {
+      const previews = (f.previews || []).slice(0,4).map(p =>
+        `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`
+      ).join('');
+      return `<div class="ap-result-item" data-ptfi="${i}" style="flex-direction:column;align-items:flex-start">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+          <div>
+            <div class="ap-result-name">${f.last_name || f.name || ''}</div>
+            <div class="ap-result-meta">${f.date || ''} &middot; ${f.location || ''}</div>
+          </div>
+          <span class="ap-result-arrow">&#8250;</span>
+        </div>
+        ${previews ? `<div class="ap-result-previews">${previews}</div>` : ''}
+      </div>`;
+    }).join('');
+    resultsEl.querySelectorAll('[data-ptfi]').forEach(el => {
+      const fi = parseInt(el.dataset.ptfi);
+      el.onclick = () => ptSelectFamily(families[fi]);
+    });
+  } catch(e){
+    if(resultsEl) resultsEl.innerHTML = '<div class="ap-loading">Failed to load</div>';
+  }
+}
+
+async function ptSelectFamily(f){
+  const resultsEl = $('pt-results');
+  if(resultsEl) resultsEl.innerHTML = '';
+  const photosView = $('pt-photos-view');
+  const grid = $('pt-photo-grid');
+  if(photosView) photosView.classList.remove('hidden');
+  const breadcrumb = $('pt-breadcrumb-name');
+  if(breadcrumb) breadcrumb.textContent = `${f.last_name || f.name || ''} — ${f.date || ''}`;
+  if(grid) grid.innerHTML = '<div class="ap-loading">Loading photos...</div>';
+  try {
+    const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.name || '' });
+    const res = await fetch(`/api/browse?${params}`);
+    const data = await res.json();
+    const photos = data.photos || [];
+    if(!grid) return;
+    if(!photos.length){ grid.innerHTML = '<div class="ap-loading">No photos found</div>'; return; }
+    grid.innerHTML = photos.map((p,i) => {
+      const fn = p.filename || (p.path||'').split('/').pop() || '';
+      const num = ((fn.match(/\d+/g))||[]).pop() || (i+1);
+      return `<div class="ap-photo-item" data-ptpi="${i}" style="outline:3px solid transparent;outline-offset:-3px">
+        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">
+        <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
+        <div class="ap-photo-num">${num}</div>
+      </div>`;
+    }).join('');
+    grid.querySelectorAll('[data-ptpi]').forEach(el => {
+      const pi = parseInt(el.dataset.ptpi);
+      el.onclick = () => ptPickPhoto(photos[pi]);
+    });
+    grid._photos = photos;
+  } catch(e){
+    if(grid) grid.innerHTML = '<div class="ap-loading">Failed to load photos</div>';
+  }
+}
+
+function ptPickPhoto(photo){
+  _ptPhoto = { path: photo.path || '', filename: photo.filename || (photo.path||'').split('/').pop() || '' };
+  // Highlight selection in grid
+  const grid = $('pt-photo-grid');
+  if(grid){
+    grid.querySelectorAll('.ap-photo-item').forEach(el => el.classList.remove('selected'));
+    const path = photo.path || '';
+    grid.querySelectorAll('[data-ptpi]').forEach(el => {
+      const pi = parseInt(el.dataset.ptpi);
+      const gp = grid._photos && grid._photos[pi];
+      if(gp && gp.path === path) el.classList.add('selected');
+    });
+  }
+  // Show selected bar and print options
+  const bar = $('pt-selected-bar');
+  const thumb = $('pt-selected-thumb');
+  const nameEl = $('pt-selected-name');
+  if(bar){ bar.style.display = 'flex'; }
+  if(thumb) thumb.src = `/api/photo?path=${encodeURIComponent(_ptPhoto.path)}&size=thumb&nowm=1`;
+  if(nameEl) nameEl.textContent = _ptPhoto.filename;
+  const opts = $('pt-print-options');
+  if(opts) opts.style.display = '';
+  renderPrintSizes();
+}
+
+function ptClearPhoto(){
+  _ptPhoto = { path: '', filename: '', session: null };
+  const bar = $('pt-selected-bar'); if(bar) bar.style.display = 'none';
+  const opts = $('pt-print-options'); if(opts) opts.style.display = 'none';
+  const photosView = $('pt-photos-view'); if(photosView) photosView.classList.add('hidden');
+  const grid = $('pt-photo-grid'); if(grid) grid.innerHTML = '';
+  const ptRes = $('pt-results'); if(ptRes) ptRes.innerHTML = '';
+  // Re-trigger location load to show families again
+  if(_pt.date && _pt.location) ptLocChanged();
 }
 
 // ─── Prints ──────────────────────────────────────────────────────────────────
@@ -2381,17 +2491,26 @@ async function loadPrintSizes(){
 
 function renderPrintSizes(){
   if(!S.printSizes) return;
+  if(!_ptPhoto.path){ $('print-size-list').innerHTML = ''; return; }
   const half = $('half-price-toggle') && $('half-price-toggle').checked;
-  $('print-size-list').innerHTML = S.printSizes.map(s => {
+  const rows = S.printSizes.map(s => {
     const price = half ? s.price * 0.5 : s.price;
-    return `
-      <div class="print-size-row" style="cursor:pointer" onclick="openItemModal({type:'print',label:'${escHtml(s.label)} Print',basePrice:${price},category:'prints',_size_idx:${s.size_idx||0},_half:${!!half}})" >
-        <span class="print-size-name">${s.label}</span>
+    const im = {type:'print',label:`${s.label} Print`,price,basePrice:price,category:'prints',
+      _size_idx:s.size_idx||0,_half:!!half,
+      _photoPath:_ptPhoto.path,_photoName:_ptPhoto.filename,qty:1,ship:false,_logo:false,notes:''};
+    return `<div class="print-size-row" style="cursor:pointer" onclick='openItemModal(${JSON.stringify(im).replace(/'/g,"\\'")})'>
+        <span class="print-size-name">${escHtml(s.label)}</span>
         <span class="print-size-price">${half ? '<s style="opacity:.5;font-size:.75rem">' + fmt(s.price) + '</s> ' : ''}${fmt(price)}</span>
         <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
-      </div>
-    `;
-  }).join('');
+      </div>`;
+  });
+  // Custom size row
+  rows.push(`<div class="print-size-row" style="cursor:pointer" onclick='openItemModal({type:"print",label:"Custom Print",price:0,basePrice:0,category:"prints",_size_idx:0,_half:${!!half},_customSize:true,_photoPath:${JSON.stringify(_ptPhoto.path)},_photoName:${JSON.stringify(_ptPhoto.filename)},qty:1,ship:false,_logo:false,notes:""})'>
+    <span class="print-size-name">Custom</span>
+    <span class="print-size-price" style="font-size:.72rem;color:var(--muted)">enter price</span>
+    <span style="font-size:.72rem;color:var(--accent);font-weight:600">Select &rsaquo;</span>
+  </div>`);
+  $('print-size-list').innerHTML = rows.join('');
 }
 
 function printAddToCart(label, price){
@@ -2569,6 +2688,16 @@ function _imNotesField(rows, placeholder){
     oninput="imNotesChange(this.value)" style="resize:none;height:${(rows||2)*28}px;margin-bottom:.5rem">${escHtml(im ? im.notes||'' : '')}</textarea>`;
 }
 
+function _imLogoToggle(checked){
+  return `<div class="im-row" style="margin-bottom:.5rem">
+    <span class="im-row-label">Add logo (+$3)</span>
+    <label class="toggle-switch">
+      <input type="checkbox" id="im-logo-toggle" ${checked ? 'checked' : ''} onchange="imLogoChange(this.checked)">
+      <div class="toggle-track"></div>
+    </label>
+  </div>`;
+}
+
 function renderItemModal(){
   const im = S._im;
   if(!im) return;
@@ -2591,8 +2720,28 @@ function renderItemModal(){
     body += _imNotesField(2);
 
   } else if(im.type === 'print'){
+    // Show selected photo thumbnail and crop button
+    if(im._photoPath){
+      const thumbUrl = `/api/photo?path=${encodeURIComponent(im._photoPath)}&size=thumb&nowm=1`;
+      body += `<div style="display:flex;align-items:center;gap:.65rem;margin-bottom:.75rem;background:var(--surface2);border-radius:8px;padding:.5rem .65rem">
+        <img src="${thumbUrl}" style="width:52px;height:52px;object-fit:cover;border-radius:6px" alt="">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.75rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(im._photoName || im._photoPath.split('/').pop())}</div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:.1rem">Selected photo</div>
+        </div>
+        <button onclick="openCropTool()" style="background:var(--surface3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.3rem .6rem;font-size:.72rem;cursor:pointer;font-family:var(--font);white-space:nowrap">Crop</button>
+      </div>`;
+    }
     body += _imQtyStepper(im.qty);
     body += _imShipToggle(im.ship);
+    body += _imLogoToggle(im._logo || false);
+    // Custom print size: show price input if it's a custom size
+    if(im._customSize){
+      body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
+      <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
+        placeholder="Enter print price" value="${im.customPrice != null ? im.customPrice : ''}"
+        oninput="imCustomPriceChange(this.value)" style="margin-bottom:.65rem">`;
+    }
     body += _imNotesField(2);
 
   } else if(im.type === 'private_people'){
@@ -2680,12 +2829,21 @@ function imUpdatePrice(){
     return;
   } else if(im.type === 'cart_edit'){
     price = (im.customPrice != null) ? im.customPrice : im.basePrice;
+  } else if(im.type === 'print' && im._customSize){
+    price = (im.customPrice != null && im.customPrice > 0) ? im.customPrice : 0;
+    if(!price){
+      $('item-modal-price').textContent = 'Enter price above';
+      $('item-modal-add-btn').disabled = true;
+      return;
+    }
   } else {
     price = im.price;
   }
 
-  const sub = price * qty;
-  const shipCost = im.ship ? imShipRate() : 0;
+  const logoExtra = (im.type === 'print' && im._logo) ? (3 * (qty || 1)) : 0;
+  const sub = price * qty + logoExtra;
+  const baseShipRate = imShipRate();
+  const shipCost = im.ship ? (qty <= 1 ? baseShipRate : baseShipRate + (qty - 1) * baseShipRate * 0.5) : 0;
   $('item-modal-price').textContent = fmt(sub + shipCost) + (im.ship && shipCost ? ` (incl. ${fmt(shipCost)} ship)` : '');
   $('item-modal-add-btn').disabled = false;
 }
@@ -2735,6 +2893,12 @@ function imNotesChange(val){
   S._im.notes = val;
 }
 
+function imLogoChange(val){
+  if(!S._im) return;
+  S._im._logo = val;
+  imUpdatePrice();
+}
+
 function itemModalAddToCart(){
   const im = S._im;
   if(!im) return;
@@ -2780,9 +2944,12 @@ function itemModalAddToCart(){
     price = im.price;
     detail = im.orient + (im.ship ? ' · Ship' : '');
   } else if(im.type === 'print'){
-    price = im.price;
+    const customSzPrice = im._customSize ? (im.customPrice || 0) : null;
+    price = customSzPrice !== null ? customSzPrice : im.price;
+    const logoExtra = im._logo ? 3 * qty : 0;
+    price = price + logoExtra / qty; // embed in per-unit so subtotal is right
     const ptCtx = [_pt.date, _pt.location].filter(Boolean).join(' · ');
-    detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : '', ptCtx].filter(Boolean).join(' · ');
+    detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : '', im._logo ? '+$3/print logo' : '', ptCtx].filter(Boolean).join(' · ');
   } else {
     price = im.price;
     if(im.ship) detail = 'Ship';
@@ -2799,6 +2966,8 @@ function itemModalAddToCart(){
     _size_idx: im._size_idx || 0,
   };
   if(im.notes) cartItem.note = im.notes;
+  if(im.type === 'print' && im._photoPath) cartItem.photo_paths = [im._photoPath];
+  if(im.type === 'print' && im._cropData) cartItem._cropData = im._cropData;
 
   cartAdd(cartItem);
   closeItemModal();
@@ -3182,6 +3351,171 @@ function lockPOS(){
   showScreen('s-pin');
 }
 
+// ─── Photo Crop Tool ─────────────────────────────────────────────────────────
+const _crop = { img: null, aspect: null, drag: null, box: {x:0,y:0,w:0,h:0}, imgNatW:0, imgNatH:0, canvW:0, canvH:0, scaleX:1, scaleY:1 };
+
+function openCropTool(){
+  const im = S._im;
+  if(!im || !im._photoPath) return;
+  const aspect = _printAspect(im.label || '');
+  _crop.aspect = aspect;
+  _crop.box = {x:0,y:0,w:0,h:0};
+  _crop.drag = null;
+  $('crop-aspect-label').textContent = aspect ? `Aspect: ${aspect.toFixed(2)} (drag to crop)` : 'Drag to set crop area';
+  $('crop-modal').classList.remove('hidden');
+
+  const photoUrl = `/api/photo?path=${encodeURIComponent(im._photoPath)}&size=large&nowm=1`;
+  const canvas = $('crop-canvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function(){
+    _crop.imgNatW = img.naturalWidth;
+    _crop.imgNatH = img.naturalHeight;
+    const wrap = $('crop-canvas-wrap');
+    const maxW = wrap.clientWidth, maxH = Math.max(300, wrap.clientHeight - 10);
+    const scl = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
+    canvas.width  = Math.round(img.naturalWidth  * scl);
+    canvas.height = Math.round(img.naturalHeight * scl);
+    _crop.canvW = canvas.width; _crop.canvH = canvas.height;
+    _crop.scaleX = img.naturalWidth  / canvas.width;
+    _crop.scaleY = img.naturalHeight / canvas.height;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    _crop.img = img;
+    // Default box = full image with aspect lock
+    cropResetBox();
+    cropDrawOverlay();
+  };
+  img.onerror = () => showToast('Could not load photo for crop');
+  img.src = photoUrl;
+
+  // Touch/mouse events on the visible canvas
+  canvas.ontouchstart = canvas.onmousedown = cropDragStart;
+  canvas.ontouchmove  = canvas.onmousemove = cropDragMove;
+  canvas.ontouchend   = canvas.onmouseup   = cropDragEnd;
+}
+
+function _printAspect(label){
+  const m = label.match(/(\d+)[x×](\d+)/i);
+  if(!m) return null;
+  return parseInt(m[1]) / parseInt(m[2]);
+}
+
+function cropResetBox(){
+  const cw = _crop.canvW, ch = _crop.canvH;
+  const asp = _crop.aspect;
+  if(asp){
+    const canvAsp = cw / ch;
+    let bw, bh;
+    if(canvAsp > asp){ bh = ch; bw = ch * asp; }
+    else              { bw = cw; bh = cw / asp; }
+    _crop.box = { x: (cw - bw) / 2, y: (ch - bh) / 2, w: bw, h: bh };
+  } else {
+    _crop.box = { x: 0, y: 0, w: cw, h: ch };
+  }
+}
+
+function cropReset(){ cropResetBox(); cropDrawOverlay(); }
+
+function cropDrawOverlay(){
+  const ov = $('crop-overlay');
+  if(!ov) return;
+  const canvas = $('crop-canvas');
+  ov.width  = canvas.width;
+  ov.height = canvas.height;
+  ov.style.width  = canvas.style.width;
+  ov.style.height = canvas.style.height;
+  const ctx = ov.getContext('2d');
+  ctx.clearRect(0, 0, ov.width, ov.height);
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  ctx.fillRect(0, 0, ov.width, ov.height);
+  const b = _crop.box;
+  ctx.clearRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = 'var(--accent,#F5C430)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(b.x, b.y, b.w, b.h);
+  // Rule-of-thirds grid
+  ctx.strokeStyle = 'rgba(245,196,48,.4)';
+  ctx.lineWidth = 1;
+  for(let i=1;i<3;i++){
+    ctx.beginPath(); ctx.moveTo(b.x + b.w*i/3, b.y); ctx.lineTo(b.x + b.w*i/3, b.y+b.h); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b.x, b.y + b.h*i/3); ctx.lineTo(b.x+b.w, b.y + b.h*i/3); ctx.stroke();
+  }
+}
+
+function _cropEventXY(e){
+  const canvas = $('crop-canvas');
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches ? e.touches[0] : e;
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY };
+}
+
+function cropDragStart(e){
+  e.preventDefault();
+  const pt = _cropEventXY(e);
+  _crop.drag = { startX: pt.x, startY: pt.y };
+}
+
+function cropDragMove(e){
+  if(!_crop.drag) return;
+  e.preventDefault();
+  const pt = _cropEventXY(e);
+  let x = Math.min(_crop.drag.startX, pt.x), y = Math.min(_crop.drag.startY, pt.y);
+  let w = Math.abs(pt.x - _crop.drag.startX), h = Math.abs(pt.y - _crop.drag.startY);
+  if(_crop.aspect && w > 0 && h > 0){
+    if(w / h > _crop.aspect) h = w / _crop.aspect;
+    else                     w = h * _crop.aspect;
+  }
+  w = Math.min(w, _crop.canvW - x);
+  h = Math.min(h, _crop.canvH - y);
+  if(w > 2 && h > 2) _crop.box = { x, y, w, h };
+  cropDrawOverlay();
+}
+
+function cropDragEnd(e){ _crop.drag = null; }
+
+function _cropToCanvas(){
+  if(!_crop.img) return null;
+  const b = _crop.box;
+  const natX = Math.round(b.x * _crop.scaleX);
+  const natY = Math.round(b.y * _crop.scaleY);
+  const natW = Math.round(b.w * _crop.scaleX);
+  const natH = Math.round(b.h * _crop.scaleY);
+  const out = document.createElement('canvas');
+  out.width = natW; out.height = natH;
+  out.getContext('2d').drawImage(_crop.img, natX, natY, natW, natH, 0, 0, natW, natH);
+  return out;
+}
+
+function cropDownload(){
+  const out = _cropToCanvas();
+  if(!out){ showToast('No crop set'); return; }
+  out.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'cropped_print.jpg';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }, 'image/jpeg', 0.92);
+}
+
+function cropConfirm(){
+  const out = _cropToCanvas();
+  if(!out){ showToast('No crop set'); return; }
+  if(S._im) S._im._cropData = { x: _crop.box.x * _crop.scaleX, y: _crop.box.y * _crop.scaleY, w: _crop.box.w * _crop.scaleX, h: _crop.box.h * _crop.scaleY };
+  showToast('Crop saved — will be noted on the order');
+  closeCropTool();
+}
+
+function closeCropTool(){
+  $('crop-modal').classList.add('hidden');
+  const ov = $('crop-overlay');
+  if(ov){ const c = ov.getContext('2d'); c.clearRect(0,0,ov.width,ov.height); }
+  _crop.img = null;
+}
+
 function newSale(){
   S.cart = [];
   S.coupon = null;
@@ -3191,7 +3525,19 @@ function newSale(){
   S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set() };
   S.privatePeople = 1;
   S._im = null;
+  // Reset inner photo views so next sale starts fresh
+  try { apClearPhotos(); } catch(e){}
+  try { portraitClearPhotos(); } catch(e){}
+  try { ptClearPhoto(); } catch(e){}
+  // Reset search inputs
+  const apDate = $('ap-date-select'); if(apDate) apDate.value = '';
+  const apLoc = $('ap-loc-select'); if(apLoc) apLoc.value = '';
+  const apLocRow = $('ap-loc-row'); if(apLocRow) apLocRow.style.display = 'none';
+  const apRes = $('ap-results'); if(apRes) apRes.innerHTML = '';
+  const prInput = $('pr-search-input'); if(prInput) prInput.value = '';
+  const prRes = $('pr-results'); if(prRes) prRes.innerHTML = '';
   renderCart();
+  updateCartCustomerBar();
   showCatHome();
   showToast('Cart cleared — ready for new sale');
 }
