@@ -1112,6 +1112,12 @@ def _thumb_r2_key(r2_key: str) -> str:
         return "thumbs/v2/" + r2_key[len("images/"):]
     return "thumbs/v2/" + r2_key
 
+def _nowm_thumb_r2_key(r2_key: str) -> str:
+    """maps images/foo/bar.jpg → thumbs/nowm/foo/bar.jpg (no-watermark POS thumbnails)"""
+    if r2_key.startswith("images/"):
+        return "thumbs/nowm/" + r2_key[len("images/"):]
+    return "thumbs/nowm/" + r2_key
+
 @app.get("/api/photo")
 def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False)):
     """
@@ -1134,9 +1140,9 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
         if not key.startswith("images/"):
             return JSONResponse(status_code=400, content={"error": "Invalid path"})
         if os.getenv("R2_ENDPOINT_URL"):
-            # For thumbs without watermark: try pre-generated version first
-            if size == "thumb" and not nowm:
-                tkey = _thumb_r2_key(key)
+            # For thumbs: try pre-generated cached version first
+            if size == "thumb":
+                tkey = _nowm_thumb_r2_key(key) if nowm else _thumb_r2_key(key)
                 try:
                     obj = s3.get_object(Bucket=R2_BUCKET, Key=tkey)
                     buf = BytesIO(obj["Body"].read())
@@ -1157,13 +1163,14 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality, optimize=True)
 
-            # Cache the newly generated thumb to R2 for next time (watermarked only)
-            if size == "thumb" and not nowm:
+            # Cache the newly generated thumb to R2 for next time
+            if size == "thumb":
                 try:
+                    cache_key = _nowm_thumb_r2_key(key) if nowm else _thumb_r2_key(key)
                     buf.seek(0)
                     s3.put_object(
                         Bucket=R2_BUCKET,
-                        Key=_thumb_r2_key(key),
+                        Key=cache_key,
                         Body=buf.read(),
                         ContentType="image/jpeg",
                         CacheControl="public, max-age=31536000",
