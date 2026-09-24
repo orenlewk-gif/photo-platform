@@ -1924,15 +1924,11 @@ function custSearchSelect(idx){ /* search bar removed from modal */ }
 // ─── Customer directory ───────────────────────────────────────────────────────
 let _custDirPage = 0;
 const CUST_PAGE = 60;
+let _custDirQuery = '';
+let _custDirLoading = false;
 
-function custLoadAll(){
-  if(!S.customers || !S.customers.length){
-    try {
-      const raw = localStorage.getItem('pos_customers');
-      if(raw) S.customers = JSON.parse(raw);
-    } catch(e){}
-  }
-  custDirRender($('cust-dir-search') ? $('cust-dir-search').value : '');
+async function custLoadAll(){
+  custDirRender('');
 }
 
 function custImportCSV(){
@@ -1944,7 +1940,7 @@ function custLoadCSV(input){
   const file = input.files[0];
   if(!file) return;
   const reader = new FileReader();
-  reader.onload = function(e){
+  reader.onload = async function(e){
     const lines = e.target.result.split(/\r?\n/);
     if(!lines.length) return;
     const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
@@ -1969,11 +1965,20 @@ function custLoadCSV(input){
         zip:    (cols[zi]  || '').trim(),
       });
     }
-    S.customers = customers;
-    try { localStorage.setItem('pos_customers', JSON.stringify(customers)); } catch(e){}
-    custDirRender('');
+    showToast('Uploading customers...');
+    try {
+      const res = await fetch('/api/pos-customers', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(customers),
+      });
+      const result = await res.json();
+      showToast(`${result.count} customers saved`);
+    } catch(err){
+      showToast('Upload failed');
+    }
     if($('cust-dir-search')) $('cust-dir-search').value = '';
-    showToast(`${customers.length} customers loaded`);
+    custDirRender('');
     input.value = '';
   };
   reader.readAsText(file);
@@ -1992,46 +1997,47 @@ function custParseCSVRow(line){
   return result;
 }
 
+let _custDirTimer = null;
 function custDirSearch(q){
-  _custDirPage = 0;
-  custDirRender(q);
+  _custDirQuery = q;
+  clearTimeout(_custDirTimer);
+  _custDirTimer = setTimeout(() => custDirRender(q), 250);
 }
 
-function custDirRender(q){
+async function custDirRender(q){
   const el = $('cust-dir-list');
   if(!el) return;
-  const list = S.customers || [];
-  if(!list.length){
-    el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">No customers. Tap Import CSV to load your Square export.</div>';
-    return;
+  el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">Loading...</div>';
+  try {
+    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q||'')}`)
+    const data = await res.json();
+    const list = data.customers || [];
+    if(!list.length){
+      el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">No customers found. Tap Import CSV to load your Square export.</div>';
+      return;
+    }
+    el.innerHTML = list.map((c, i) => {
+      const meta = [c.email, c.phone].filter(Boolean).join(' · ');
+      return `<div class="cust-dir-row" data-cdi="${i}">
+        <div style="flex:1;min-width:0">
+          <div class="cust-dir-name">${escHtml(c.first)} ${escHtml(c.last)}</div>
+          ${meta ? `<div class="cust-dir-meta">${escHtml(meta)}</div>` : ''}
+        </div>
+        <button class="cust-dir-use">Use</button>
+      </div>`;
+    }).join('');
+    const total = data.total || list.length;
+    if(total > list.length){
+      el.innerHTML += `<div style="font-size:.75rem;color:var(--muted);text-align:center;padding:.4rem 0">${total - list.length} more — type to narrow</div>`;
+    }
+    el.querySelectorAll('[data-cdi]').forEach(row => {
+      const c = list[parseInt(row.dataset.cdi)];
+      row.querySelector('.cust-dir-use').addEventListener('click', (e) => { e.stopPropagation(); custDirSelectItem(c); });
+    });
+  } catch(err){
+    el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">Failed to load customers.</div>';
   }
-  const ql = (q || '').trim().toLowerCase();
-  const filtered = ql ? list.filter(c => {
-    const name = `${c.first} ${c.last}`.toLowerCase();
-    return name.includes(ql) || (c.email||'').toLowerCase().includes(ql);
-  }) : list;
-  const page = filtered.slice(0, (_custDirPage + 1) * CUST_PAGE);
-  const rows = page.map((c, i) => {
-    const meta = [c.email, c.phone].filter(Boolean).join(' · ');
-    return `<div class="cust-dir-row">
-      <div style="flex:1;min-width:0">
-        <div class="cust-dir-name">${escHtml(c.first)} ${escHtml(c.last)}</div>
-        ${meta ? `<div class="cust-dir-meta">${escHtml(meta)}</div>` : ''}
-      </div>
-      <button class="cust-dir-use" onclick="custDirSelect(${i})">Use</button>
-    </div>`;
-  }).join('');
-  const more = filtered.length > page.length
-    ? `<button onclick="_custDirPage++;custDirRender('${escHtml(ql)}')" style="width:100%;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:.45rem;font-size:.78rem;cursor:pointer;margin-top:.5rem">Show more (${filtered.length - page.length} remaining)</button>`
-    : '';
-  el.innerHTML = rows + more;
-  // Patch indices for correct selection after filter
-  el.querySelectorAll('.cust-dir-use').forEach((btn, i) => {
-    btn.onclick = () => custDirSelectItem(page[i]);
-  });
 }
-
-function custDirSelect(i){} // patched in render
 
 function custDirSelectItem(c){
   if(!c) return;
@@ -2051,31 +2057,39 @@ function custDirSelectItem(c){
   showToast(`${c.first} ${c.last} loaded`);
 }
 
+let _custAcTimer = null;
 function custAcSearch(){
-  const first = ($('cust-first').value || '').trim().toLowerCase();
-  const last  = ($('cust-last').value  || '').trim().toLowerCase();
-  const q = first || last;
+  const first = ($('cust-first').value || '').trim();
+  const last  = ($('cust-last').value  || '').trim();
+  const q = last || first;
+  const list = $('cust-ac-list');
+  if(!list || !q){ if(list) list.classList.remove('open'); return; }
+  clearTimeout(_custAcTimer);
+  _custAcTimer = setTimeout(() => _custAcFetch(q, first, last), 200);
+}
+
+async function _custAcFetch(q, first, last){
   const list = $('cust-ac-list');
   if(!list) return;
-  if(!q || !(S.customers||[]).length){ list.classList.remove('open'); return; }
-  const matches = (S.customers || []).filter(c => {
-    const fn = (c.first||'').toLowerCase(), ln = (c.last||'').toLowerCase();
-    return ln.startsWith(last) && (first ? fn.startsWith(first) : true);
-  }).slice(0, 8);
-  if(!matches.length){ list.classList.remove('open'); return; }
-  list.innerHTML = matches.map((c,i) => {
-    const meta = c.email || c.phone || '';
-    return `<div class="cust-ac-item" data-aci="${i}">
-      <div class="cust-ac-name">${escHtml(c.first)} ${escHtml(c.last)}</div>
-      ${meta ? `<div class="cust-ac-meta">${escHtml(meta)}</div>` : ''}
-    </div>`;
-  }).join('');
-  list.classList.add('open');
-  list.querySelectorAll('[data-aci]').forEach(el => {
-    const m = matches[parseInt(el.dataset.aci)];
-    el.addEventListener('mousedown', (e) => { e.preventDefault(); custAcSelect(m); });
-    el.addEventListener('touchstart', (e) => { e.preventDefault(); custAcSelect(m); }, {passive:false});
-  });
+  try {
+    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const matches = (data.customers || []).slice(0, 8);
+    if(!matches.length){ list.classList.remove('open'); return; }
+    list.innerHTML = matches.map((c,i) => {
+      const meta = c.email || c.phone || '';
+      return `<div class="cust-ac-item" data-aci="${i}">
+        <div class="cust-ac-name">${escHtml(c.first)} ${escHtml(c.last)}</div>
+        ${meta ? `<div class="cust-ac-meta">${escHtml(meta)}</div>` : ''}
+      </div>`;
+    }).join('');
+    list.classList.add('open');
+    list.querySelectorAll('[data-aci]').forEach(el => {
+      const m = matches[parseInt(el.dataset.aci)];
+      el.addEventListener('mousedown', (e) => { e.preventDefault(); custAcSelect(m); });
+      el.addEventListener('touchstart', (e) => { e.preventDefault(); custAcSelect(m); }, {passive:false});
+    });
+  } catch(e){ list.classList.remove('open'); }
 }
 
 function custAcSelect(c){

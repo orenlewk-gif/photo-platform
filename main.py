@@ -1882,6 +1882,42 @@ async def api_pos_recent_sales(limit: int = Query(50)):
     orders = _fetch_pos_orders()
     return {"orders": orders[:limit]}
 
+_customers_cache: dict = {"data": None}
+CUSTOMERS_KEY = "pos_data/customers.json"
+
+@app.get("/api/pos-customers")
+def api_pos_customers(q: str = Query("")):
+    """Search POS customer directory. Returns up to 60 matches."""
+    if _customers_cache["data"] is None:
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
+            _customers_cache["data"] = json.loads(obj["Body"].read())
+        except Exception:
+            _customers_cache["data"] = []
+    customers = _customers_cache["data"]
+    if not q:
+        return {"customers": customers[:60], "total": len(customers)}
+    ql = q.lower()
+    results = [
+        c for c in customers
+        if ql in f"{c.get('first','')} {c.get('last','')}".lower()
+        or ql in (c.get('email') or '').lower()
+    ]
+    return {"customers": results[:60], "total": len(results)}
+
+@app.post("/api/pos-customers")
+async def api_pos_customers_update(request: Request):
+    """Replace the customer directory from a JSON upload."""
+    body = await request.json()
+    customers = body if isinstance(body, list) else body.get("customers", [])
+    _customers_cache["data"] = customers
+    s3.put_object(
+        Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
+        Body=json.dumps(customers, ensure_ascii=False).encode(),
+        ContentType="application/json",
+    )
+    return {"ok": True, "count": len(customers)}
+
 @app.post("/api/pos-resend")
 async def api_pos_resend(request: Request):
     body = await request.json()
