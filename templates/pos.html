@@ -485,6 +485,23 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .shipping-info-val{font-size:.9rem;font-weight:500}
 .shipping-notice{font-size:.78rem;color:var(--muted);padding:.75rem;background:var(--surface2);border-radius:8px;line-height:1.5}
 
+/* ── Customer autocomplete ── */
+.cust-ac-wrap{position:relative}
+.cust-ac-list{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;z-index:600;max-height:200px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,.3);display:none}
+.cust-ac-list.open{display:block}
+.cust-ac-item{padding:.6rem 1rem;font-size:.85rem;cursor:pointer;border-bottom:1px solid var(--surface2)}
+.cust-ac-item:last-child{border-bottom:none}
+.cust-ac-item:active,.cust-ac-item:hover{background:var(--surface2)}
+.cust-ac-name{font-weight:600}
+.cust-ac-meta{font-size:.72rem;color:var(--muted);margin-top:.1rem}
+/* ── Customer directory tab ── */
+.cust-dir-search{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:.6rem .9rem;font-size:.9rem;outline:none;margin-bottom:.75rem;box-sizing:border-box}
+.cust-dir-search:focus{border-color:var(--accent)}
+.cust-dir-row{display:flex;align-items:center;justify-content:space-between;padding:.65rem .75rem;border-radius:8px;cursor:pointer;gap:.5rem}
+.cust-dir-row:active{background:var(--surface2)}
+.cust-dir-name{font-size:.88rem;font-weight:600}
+.cust-dir-meta{font-size:.72rem;color:var(--muted);margin-top:.1rem}
+.cust-dir-use{background:var(--surface2);border:1px solid var(--border);color:var(--accent);border-radius:6px;padding:.28rem .6rem;font-size:.7rem;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0}
 /* ── Customer Modal ── */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;
@@ -949,6 +966,19 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           </div>
         </div>
 
+        <!-- Customers tab -->
+        <div id="tab-customers" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+              <span>Customers</span>
+              <button onclick="custImportCSV()" style="background:var(--surface2);border:1px solid var(--border);color:var(--accent);border-radius:6px;padding:.25rem .65rem;font-size:.72rem;font-weight:600;cursor:pointer;font-family:var(--font)">Import CSV</button>
+            </div>
+            <input type="file" id="cust-csv-input" accept=".csv" style="display:none" onchange="custLoadCSV(this)">
+            <input type="text" class="cust-dir-search" placeholder="Search by name or email..." oninput="custDirSearch(this.value)" id="cust-dir-search">
+            <div id="cust-dir-list"></div>
+          </div>
+        </div>
+
       </div><!-- /content-scroll -->
       </div><!-- /cat-content -->
     </div><!-- /content-panel -->
@@ -1022,6 +1052,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <!-- Bottom utility bar -->
   <div class="bottom-bar">
     <button class="bottom-btn" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</button>
+    <button class="bottom-btn" data-tab="customers" onclick="openCategory('customers','Customers')">Customers</button>
     <button class="bottom-btn" onclick="lockPOS()">Lock</button>
   </div>
 
@@ -1046,13 +1077,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="modal-title">Customer Information</div>
     <div class="modal-body">
       <div class="field-row">
-        <div class="field-group">
+        <div class="field-group cust-ac-wrap">
           <div class="field-label">First Name</div>
-          <input type="text" id="cust-first" class="field-input" placeholder="First" autocomplete="given-name">
+          <input type="text" id="cust-first" class="field-input" placeholder="First" autocomplete="off"
+                 oninput="custAcSearch()" onfocus="custAcSearch()">
+          <div class="cust-ac-list" id="cust-ac-list"></div>
         </div>
         <div class="field-group">
           <div class="field-label">Last Name</div>
-          <input type="text" id="cust-last" class="field-input" placeholder="Last" autocomplete="family-name">
+          <input type="text" id="cust-last" class="field-input" placeholder="Last" autocomplete="off"
+                 oninput="custAcSearch()" onfocus="custAcSearch()">
         </div>
       </div>
       <div class="field-label">Email *</div>
@@ -1085,7 +1119,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 </div>
 
 <!-- ─── CROP TOOL MODAL ─── -->
-<div id="crop-modal" class="modal-overlay hidden" onclick="event.stopPropagation()" style="align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,.85)">
+<div id="crop-modal" class="modal-overlay hidden" onclick="event.stopPropagation()" style="align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,.85);z-index:350">
   <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:480px;display:flex;flex-direction:column;max-height:90vh">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid var(--border)">
       <div style="font-size:1rem;font-weight:700">Crop Photo</div>
@@ -1099,7 +1133,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
       </div>
       <div style="display:flex;gap:.5rem">
         <button onclick="cropReset()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.6rem;font-size:.85rem;cursor:pointer;font-family:var(--font)">Reset</button>
-        <button onclick="cropDownload()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--accent);border-radius:var(--radius);padding:.6rem;font-size:.85rem;font-weight:600;cursor:pointer;font-family:var(--font)">Download Crop</button>
+        <button onclick="cropRotate()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.6rem;font-size:.85rem;cursor:pointer;font-family:var(--font)">Rotate</button>
         <button onclick="cropConfirm()" style="flex:1;background:var(--accent);border:none;color:#0a1929;border-radius:var(--radius);padding:.6rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:var(--font)">Use Crop</button>
       </div>
     </div>
@@ -1197,6 +1231,7 @@ const S = {
 
   // Customer
   customer: { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' },
+  customers: [],
 
   // Action photos
   ap: { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData:[] },
@@ -1375,6 +1410,7 @@ function switchTab(tab){
   if(tab === 'frames' && !S.frames) loadFrames();
   if(tab === 'recent') loadRecentSales();
   if(tab === 'shipping') renderShipping();
+  if(tab === 'customers') custLoadAll();
 }
 
 // ─── Cart ────────────────────────────────────────────────────────────────────
@@ -1853,6 +1889,8 @@ function openCustomerModal(){
 
 function closeCustomerModal(){
   $('customer-modal').classList.add('hidden');
+  const acList = $('cust-ac-list');
+  if(acList) acList.classList.remove('open');
 }
 
 function modalBackdropClick(e){
@@ -1882,6 +1920,177 @@ function saveCustomerInfo(){
 // ─── Customer search (modal search removed — these are now stubs) ──────────────
 function custSearchType(val){ /* search bar removed from modal */ }
 function custSearchSelect(idx){ /* search bar removed from modal */ }
+
+// ─── Customer directory ───────────────────────────────────────────────────────
+let _custDirPage = 0;
+const CUST_PAGE = 60;
+
+function custLoadAll(){
+  if(!S.customers || !S.customers.length){
+    try {
+      const raw = localStorage.getItem('pos_customers');
+      if(raw) S.customers = JSON.parse(raw);
+    } catch(e){}
+  }
+  custDirRender($('cust-dir-search') ? $('cust-dir-search').value : '');
+}
+
+function custImportCSV(){
+  const inp = $('cust-csv-input');
+  if(inp) inp.click();
+}
+
+function custLoadCSV(input){
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    const lines = e.target.result.split(/\r?\n/);
+    if(!lines.length) return;
+    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
+    const idxOf = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
+    const fi = idxOf('First Name'), li = idxOf('Last Name'), ei = idxOf('Email Address');
+    const pi = idxOf('Phone Number'), si = idxOf('Street Address 1'), ci = idxOf('City');
+    const sti = idxOf('State'), zi = idxOf('Postal Code');
+    const customers = [];
+    for(let r = 1; r < lines.length; r++){
+      const cols = custParseCSVRow(lines[r]);
+      if(!cols || cols.length < 3) continue;
+      const first = (cols[fi] || '').trim();
+      const last  = (cols[li] || '').trim();
+      if(!first && !last) continue;
+      customers.push({
+        first, last,
+        email:  (cols[ei]  || '').trim(),
+        phone:  (cols[pi]  || '').replace(/^'+/,'').trim(),
+        street: (cols[si]  || '').trim(),
+        city:   (cols[ci]  || '').trim(),
+        state:  (cols[sti] || '').trim(),
+        zip:    (cols[zi]  || '').trim(),
+      });
+    }
+    S.customers = customers;
+    try { localStorage.setItem('pos_customers', JSON.stringify(customers)); } catch(e){}
+    custDirRender('');
+    if($('cust-dir-search')) $('cust-dir-search').value = '';
+    showToast(`${customers.length} customers loaded`);
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function custParseCSVRow(line){
+  const result = [];
+  let cur = '', inQ = false;
+  for(let i = 0; i < line.length; i++){
+    const c = line[i];
+    if(c === '"'){ inQ = !inQ; continue; }
+    if(c === ',' && !inQ){ result.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  result.push(cur);
+  return result;
+}
+
+function custDirSearch(q){
+  _custDirPage = 0;
+  custDirRender(q);
+}
+
+function custDirRender(q){
+  const el = $('cust-dir-list');
+  if(!el) return;
+  const list = S.customers || [];
+  if(!list.length){
+    el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">No customers. Tap Import CSV to load your Square export.</div>';
+    return;
+  }
+  const ql = (q || '').trim().toLowerCase();
+  const filtered = ql ? list.filter(c => {
+    const name = `${c.first} ${c.last}`.toLowerCase();
+    return name.includes(ql) || (c.email||'').toLowerCase().includes(ql);
+  }) : list;
+  const page = filtered.slice(0, (_custDirPage + 1) * CUST_PAGE);
+  const rows = page.map((c, i) => {
+    const meta = [c.email, c.phone].filter(Boolean).join(' · ');
+    return `<div class="cust-dir-row">
+      <div style="flex:1;min-width:0">
+        <div class="cust-dir-name">${escHtml(c.first)} ${escHtml(c.last)}</div>
+        ${meta ? `<div class="cust-dir-meta">${escHtml(meta)}</div>` : ''}
+      </div>
+      <button class="cust-dir-use" onclick="custDirSelect(${i})">Use</button>
+    </div>`;
+  }).join('');
+  const more = filtered.length > page.length
+    ? `<button onclick="_custDirPage++;custDirRender('${escHtml(ql)}')" style="width:100%;background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:.45rem;font-size:.78rem;cursor:pointer;margin-top:.5rem">Show more (${filtered.length - page.length} remaining)</button>`
+    : '';
+  el.innerHTML = rows + more;
+  // Patch indices for correct selection after filter
+  el.querySelectorAll('.cust-dir-use').forEach((btn, i) => {
+    btn.onclick = () => custDirSelectItem(page[i]);
+  });
+}
+
+function custDirSelect(i){} // patched in render
+
+function custDirSelectItem(c){
+  if(!c) return;
+  S.customer = { first: c.first, last: c.last, email: c.email||'', phone: c.phone||'', street: c.street||'', city: c.city||'', state: c.state||'', zip: c.zip||'' };
+  renderCart();
+  updateCartCustomerBar();
+  openCustomerModal();
+  // Fill customer modal fields
+  if($('cust-first'))  $('cust-first').value  = c.first  || '';
+  if($('cust-last'))   $('cust-last').value   = c.last   || '';
+  if($('cust-email'))  $('cust-email').value  = c.email  || '';
+  if($('cust-phone'))  $('cust-phone').value  = c.phone  || '';
+  if($('cust-street')) $('cust-street').value = c.street || '';
+  if($('cust-city'))   $('cust-city').value   = c.city   || '';
+  if($('cust-state'))  $('cust-state').value  = c.state  || '';
+  if($('cust-zip'))    $('cust-zip').value    = c.zip    || '';
+  showToast(`${c.first} ${c.last} loaded`);
+}
+
+function custAcSearch(){
+  const first = ($('cust-first').value || '').trim().toLowerCase();
+  const last  = ($('cust-last').value  || '').trim().toLowerCase();
+  const q = first || last;
+  const list = $('cust-ac-list');
+  if(!list) return;
+  if(!q || !(S.customers||[]).length){ list.classList.remove('open'); return; }
+  const matches = (S.customers || []).filter(c => {
+    const fn = (c.first||'').toLowerCase(), ln = (c.last||'').toLowerCase();
+    return ln.startsWith(last) && (first ? fn.startsWith(first) : true);
+  }).slice(0, 8);
+  if(!matches.length){ list.classList.remove('open'); return; }
+  list.innerHTML = matches.map((c,i) => {
+    const meta = c.email || c.phone || '';
+    return `<div class="cust-ac-item" data-aci="${i}">
+      <div class="cust-ac-name">${escHtml(c.first)} ${escHtml(c.last)}</div>
+      ${meta ? `<div class="cust-ac-meta">${escHtml(meta)}</div>` : ''}
+    </div>`;
+  }).join('');
+  list.classList.add('open');
+  list.querySelectorAll('[data-aci]').forEach(el => {
+    const m = matches[parseInt(el.dataset.aci)];
+    el.addEventListener('mousedown', (e) => { e.preventDefault(); custAcSelect(m); });
+    el.addEventListener('touchstart', (e) => { e.preventDefault(); custAcSelect(m); }, {passive:false});
+  });
+}
+
+function custAcSelect(c){
+  if(!c) return;
+  if($('cust-first'))  $('cust-first').value  = c.first  || '';
+  if($('cust-last'))   $('cust-last').value   = c.last   || '';
+  if($('cust-email'))  $('cust-email').value  = c.email  || '';
+  if($('cust-phone'))  $('cust-phone').value  = c.phone  || '';
+  if($('cust-street')) $('cust-street').value = c.street || '';
+  if($('cust-city'))   $('cust-city').value   = c.city   || '';
+  if($('cust-state'))  $('cust-state').value  = c.state  || '';
+  if($('cust-zip'))    $('cust-zip').value    = c.zip    || '';
+  const list = $('cust-ac-list');
+  if(list) list.classList.remove('open');
+}
 
 // ─── Action Photos ────────────────────────────────────────────────────────────
 async function loadApDates(){
@@ -2789,9 +2998,7 @@ function psmCrop(idx){
   const sizes = S.printSizes || [];
   const s = sizes[idx];
   if(!s || !_psm.photo.path) return;
-  // Open crop tool using item-modal state temporarily
-  S._im = { _photoPath: _psm.photo.path, label: s.label };
-  openCropTool();
+  openCropTool(_psm.photo.path, s.label);
 }
 
 function psmCustomSize(){
@@ -2841,8 +3048,7 @@ function psmAddToCart(){
     const idx = sizeIndices[0];
     const s = sizes[idx];
     _crop._cartId = _psmCropCartId;
-    S._im = { _photoPath: p.path, label: s ? s.label : '' };
-    setTimeout(() => openCropTool(), 200);
+    setTimeout(() => openCropTool(p.path, s ? s.label : ''), 200);
   }
 }
 
@@ -3868,17 +4074,18 @@ function lockPOS(){
 // ─── Photo Crop Tool ─────────────────────────────────────────────────────────
 const _crop = { img: null, aspect: null, drag: null, box: {x:0,y:0,w:0,h:0}, imgNatW:0, imgNatH:0, canvW:0, canvH:0, scaleX:1, scaleY:1 };
 
-function openCropTool(){
-  const im = S._im;
-  if(!im || !im._photoPath) return;
-  const aspect = _printAspect(im.label || '');
+function openCropTool(photoPath, printLabel){
+  const path  = photoPath  || (S._im && S._im._photoPath);
+  const label = printLabel || (S._im && S._im.label) || '';
+  if(!path) return;
+  const aspect = _printAspect(label);
   _crop.aspect = aspect;
   _crop.box = {x:0,y:0,w:0,h:0};
   _crop.drag = null;
-  $('crop-aspect-label').textContent = aspect ? `${im.label || 'Print'} — drag corners to resize · inside to move` : 'Drag to set crop area';
+  $('crop-aspect-label').textContent = aspect ? `${label || 'Print'} — drag corners to resize · inside to move` : 'Drag to set crop area';
   $('crop-modal').classList.remove('hidden');
 
-  const photoUrl = `/api/photo?path=${encodeURIComponent(im._photoPath)}&size=medium&nowm=1`;
+  const photoUrl = `/api/photo?path=${encodeURIComponent(path)}&size=medium&nowm=1`;
   const canvas = $('crop-canvas');
   const ctx = canvas.getContext('2d');
   const img = new Image();
@@ -3930,6 +4137,34 @@ function cropResetBox(){
 }
 
 function cropReset(){ cropResetBox(); cropDrawOverlay(); }
+
+function cropRotate(){
+  const img = _crop.img;
+  if(!img) return;
+  const off = document.createElement('canvas');
+  off.width  = img.naturalHeight;
+  off.height = img.naturalWidth;
+  const oc = off.getContext('2d');
+  oc.translate(off.width, 0);
+  oc.rotate(Math.PI / 2);
+  oc.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
+  const newImg = new Image();
+  newImg.onload = function(){
+    _crop.img = newImg;
+    const wrap = $('crop-canvas-wrap');
+    const maxW = wrap.clientWidth, maxH = Math.max(300, wrap.clientHeight - 10);
+    const scl = Math.min(maxW / newImg.naturalWidth, maxH / newImg.naturalHeight, 1);
+    const canvas = $('crop-canvas');
+    canvas.width  = Math.round(newImg.naturalWidth  * scl);
+    canvas.height = Math.round(newImg.naturalHeight * scl);
+    _crop.canvW = canvas.width; _crop.canvH = canvas.height;
+    _crop.scaleX = newImg.naturalWidth  / canvas.width;
+    _crop.scaleY = newImg.naturalHeight / canvas.height;
+    canvas.getContext('2d').drawImage(newImg, 0, 0, canvas.width, canvas.height);
+    cropResetBox(); cropDrawOverlay();
+  };
+  newImg.src = off.toDataURL('image/jpeg', 0.92);
+}
 
 function cropDrawOverlay(){
   const ov = $('crop-overlay');
@@ -4037,11 +4272,11 @@ function cropDragMove(e){
       nx = b0.x + b0.w - nw;
       ny = b0.y + b0.h - nh;
     }
-    // Clamp to canvas
-    if(nx < 0){ nw += nx; if(asp) nh = nw/asp; nx = 0; }
-    if(ny < 0){ nh += ny; if(asp) nw = nh*asp; ny = 0; }
-    if(nx + nw > cw) nw = cw - nx;
-    if(ny + nh > ch) nh = ch - ny;
+    // Clamp to canvas, preserving aspect ratio
+    if(nx < 0){ nw += nx; nx = 0; if(asp){ nh = nw/asp; } }
+    if(ny < 0){ nh += ny; ny = 0; if(asp){ nw = nh*asp; } }
+    if(nx + nw > cw){ nw = cw - nx; if(asp) nh = nw/asp; }
+    if(ny + nh > ch){ nh = ch - ny; if(asp) nw = nh*asp; }
     if(nw >= MIN && nh >= MIN) _crop.box = { x:nx, y:ny, w:nw, h:nh };
     cropDrawOverlay();
     return;
@@ -4127,6 +4362,13 @@ function newSale(){
   const apRes = $('ap-results'); if(apRes) apRes.innerHTML = '';
   const prInput = $('pr-search-input'); if(prInput) prInput.value = '';
   const prRes = $('pr-results'); if(prRes) prRes.innerHTML = '';
+  // Reset Prints photo search tab
+  _pt.date = ''; _pt.location = ''; _ptPhoto = { path:'', filename:'' };
+  const ptDate = $('pt-date-select'); if(ptDate) ptDate.value = '';
+  const ptLoc = $('pt-loc-select'); if(ptLoc) ptLoc.value = '';
+  const ptLocRow = $('pt-loc-row'); if(ptLocRow) ptLocRow.style.display = 'none';
+  const ptRes = $('pt-results'); if(ptRes) ptRes.innerHTML = '';
+  const ptPV = $('pt-photos-view'); if(ptPV) ptPV.classList.add('hidden');
   renderCart();
   updateCartCustomerBar();
   showCatHome();
