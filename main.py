@@ -922,18 +922,20 @@ def pos_families(date: str = Query(""), location: str = Query("")):
         ln = item.get("last_name", "").strip()
         grp = item.get("group", "").strip()
         name = ln or grp
+        key = name.lower() if name else "__flat__"
         if not name:
-            continue
-        key = name.lower()
-        if key not in families:
-            families[key] = {"name": name, "last_name": ln, "group": grp, "date": date, "location": location}
+            if "__flat__" not in families:
+                families["__flat__"] = {"name": "", "last_name": "", "group": "", "date": date, "location": location}
+        else:
+            if key not in families:
+                families[key] = {"name": name, "last_name": ln, "group": grp, "date": date, "location": location}
         if len(previews[key]) < 4:
             path = item.get("path", "")
             if path:
                 previews[key].append(path)
     results = [
         {**v, "previews": previews[k]}
-        for k, v in sorted(families.items())
+        for k, v in sorted(families.items(), key=lambda x: x[0] if x[0] != "__flat__" else "")
     ]
     return {"families": results}
 
