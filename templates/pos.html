@@ -1661,9 +1661,7 @@ async function _runCustBarSearch(q){
         </div>`;
       }).join('') + `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ Add new customer</div>`;
       drop.querySelectorAll('[data-cbi]').forEach(el => {
-        const pick = () => customerBarSelect(_custBarMatches[+el.dataset.cbi]);
-        el.addEventListener('mousedown', e => { e.preventDefault(); pick(); });
-        el.addEventListener('touchstart', e => { e.preventDefault(); pick(); }, {passive:false});
+        el.addEventListener('click', () => customerBarSelect(_custBarMatches[+el.dataset.cbi]));
       });
       drop.classList.add('open');
       if(addBtn) addBtn.style.display = 'none';
