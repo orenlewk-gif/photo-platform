@@ -1639,6 +1639,7 @@ function customerBarSearch(val){
   _custBarTimer = setTimeout(() => _runCustBarSearch(q), 280);
 }
 
+let _custBarMatches = [];
 async function _runCustBarSearch(q){
   const drop = $('cust-bar-dropdown');
   if(!drop) return;
@@ -1646,19 +1647,24 @@ async function _runCustBarSearch(q){
   try {
     const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`);
     const data = await res.json();
-    const list = data.customers || [];
-    if(list.length === 0){
+    _custBarMatches = data.customers || [];
+    if(_custBarMatches.length === 0){
       drop.innerHTML = `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ New customer: "${escHtml(q)}"</div>`;
       drop.classList.add('open');
       if(addBtn) addBtn.style.display = '';
     } else {
-      drop.innerHTML = list.slice(0,8).map(c => {
+      drop.innerHTML = _custBarMatches.slice(0,8).map((c, i) => {
         const meta = [c.email, c.phone].filter(Boolean).join(' · ');
-        return `<div class="cust-bar-item" onmousedown="event.preventDefault();customerBarSelect(${JSON.stringify(c).replace(/"/g,'&quot;')})">
+        return `<div class="cust-bar-item" data-cbi="${i}">
           <div class="cust-bar-item-name">${escHtml(c.first||'')} ${escHtml(c.last||'')}</div>
           ${meta ? `<div class="cust-bar-item-sub">${escHtml(meta)}</div>` : ''}
         </div>`;
       }).join('') + `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ Add new customer</div>`;
+      drop.querySelectorAll('[data-cbi]').forEach(el => {
+        const pick = () => customerBarSelect(_custBarMatches[+el.dataset.cbi]);
+        el.addEventListener('mousedown', e => { e.preventDefault(); pick(); });
+        el.addEventListener('touchstart', e => { e.preventDefault(); pick(); }, {passive:false});
+      });
       drop.classList.add('open');
       if(addBtn) addBtn.style.display = 'none';
     }
@@ -3305,7 +3311,9 @@ function renderItemModal(){
   } else if(im.type === 'cart_edit'){
     const canQty = !['action_photos','portrait'].includes(im.category);
     const canShip = ['prints','frames'].includes(im.category);
+    const canLogo = im.category === 'prints';
     if(canQty) body += _imQtyStepper(im.qty);
+    if(canLogo) body += _imLogoToggle(im._logo || false);
     if(canShip) body += _imShipToggle(im.ship);
 
     // Portrait: show thumbnails with per-photo logo toggle + print shortcut

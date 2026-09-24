@@ -1897,13 +1897,17 @@ def api_pos_customers(q: str = Query("")):
     customers = _customers_cache["data"]
     if not q:
         return {"customers": customers[:60], "total": len(customers)}
-    ql = q.lower()
-    results = [
-        c for c in customers
-        if c.get('first','').lower().startswith(ql)
-        or c.get('last','').lower().startswith(ql)
-        or ql in (c.get('email') or '').lower()
-    ]
+    ql = q.lower().strip()
+    parts = ql.split()
+    def matches(c):
+        fn = c.get('first','').lower()
+        ln = c.get('last','').lower()
+        em = (c.get('email') or '').lower()
+        if len(parts) >= 2:
+            return (fn.startswith(parts[0]) and ln.startswith(parts[1])) \
+                or (fn.startswith(parts[1]) and ln.startswith(parts[0]))
+        return fn.startswith(ql) or ln.startswith(ql) or ql in em
+    results = [c for c in customers if matches(c)]
     return {"customers": results[:60], "total": len(results)}
 
 @app.post("/api/pos-customers")
