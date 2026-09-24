@@ -1902,11 +1902,10 @@ def api_pos_customers(q: str = Query("")):
     def matches(c):
         fn = c.get('first','').lower()
         ln = c.get('last','').lower()
-        em = (c.get('email') or '').lower()
         if len(parts) >= 2:
             return (fn.startswith(parts[0]) and ln.startswith(parts[1])) \
                 or (fn.startswith(parts[1]) and ln.startswith(parts[0]))
-        return fn.startswith(ql) or ln.startswith(ql) or ql in em
+        return fn.startswith(ql) or ln.startswith(ql)
     results = [c for c in customers if matches(c)]
     return {"customers": results[:60], "total": len(results)}
 

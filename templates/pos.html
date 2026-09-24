@@ -99,7 +99,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .content-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .cart-panel{
   width:38%;max-width:360px;min-width:240px;
-  display:flex;flex-direction:column;overflow:hidden;
+  display:flex;flex-direction:column;overflow:visible;
   background:var(--surface);
 }
 .cart-header{
@@ -642,7 +642,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   font-size:.85rem;cursor:pointer;padding:0 .2rem;line-height:1;
 }
 .cust-bar-dropdown{
-  position:absolute;top:100%;left:0;right:0;z-index:200;
+  position:absolute;top:100%;left:0;right:0;z-index:600;
   background:var(--surface2);border:1px solid var(--border);
   border-top:none;border-radius:0 0 var(--radius) var(--radius);
   overflow:hidden;display:none;
@@ -998,8 +998,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
                onfocus="customerBarFocus()">
         <button class="cart-customer-clear-btn" id="cart-customer-clear" onclick="customerBarClear()" style="display:none">&#10005;</button>
         <button class="cart-customer-add-btn" id="cart-customer-add-btn" onclick="customerBarNew()" style="display:none">+ Add</button>
+        <div class="cust-bar-dropdown" id="cust-bar-dropdown"></div>
       </div>
-      <div class="cust-bar-dropdown" id="cust-bar-dropdown"></div>
 
       <!-- Cart section header -->
       <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
