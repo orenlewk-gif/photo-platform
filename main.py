@@ -1900,7 +1900,8 @@ def api_pos_customers(q: str = Query("")):
     ql = q.lower()
     results = [
         c for c in customers
-        if ql in f"{c.get('first','')} {c.get('last','')}".lower()
+        if c.get('first','').lower().startswith(ql)
+        or c.get('last','').lower().startswith(ql)
         or ql in (c.get('email') or '').lower()
     ]
     return {"customers": results[:60], "total": len(results)}

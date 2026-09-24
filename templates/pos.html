@@ -1118,28 +1118,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   </div>
 </div>
 
-<!-- ─── CROP TOOL MODAL ─── -->
-<div id="crop-modal" class="modal-overlay hidden" onclick="event.stopPropagation()" style="align-items:center;justify-content:center;padding:1rem;background:rgba(0,0,0,.85);z-index:350">
-  <div style="background:var(--surface);border-radius:var(--radius);width:100%;max-width:480px;display:flex;flex-direction:column;max-height:90vh">
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:.85rem 1.1rem;border-bottom:1px solid var(--border)">
-      <div style="font-size:1rem;font-weight:700">Crop Photo</div>
-      <button onclick="closeCropTool()" style="background:none;border:none;color:var(--muted);font-size:1.1rem;cursor:pointer;padding:.2rem .4rem">&#10005;</button>
-    </div>
-    <div style="padding:.75rem;overflow:hidden;flex:1;display:flex;flex-direction:column;gap:.5rem">
-      <div style="font-size:.75rem;color:var(--muted);text-align:center" id="crop-aspect-label">Drag to set crop area</div>
-      <div style="position:relative;overflow:hidden;background:#000;border-radius:8px;flex:1;min-height:0" id="crop-canvas-wrap">
-        <canvas id="crop-canvas" style="width:100%;height:100%;object-fit:contain;touch-action:none;cursor:crosshair;display:block"></canvas>
-        <canvas id="crop-overlay" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none"></canvas>
-      </div>
-      <div style="display:flex;gap:.5rem">
-        <button onclick="cropReset()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.6rem;font-size:.85rem;cursor:pointer;font-family:var(--font)">Reset</button>
-        <button onclick="cropRotate()" style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:var(--radius);padding:.6rem;font-size:.85rem;cursor:pointer;font-family:var(--font)">Rotate</button>
-        <button onclick="cropConfirm()" style="flex:1;background:var(--accent);border:none;color:#0a1929;border-radius:var(--radius);padding:.6rem;font-size:.85rem;font-weight:700;cursor:pointer;font-family:var(--font)">Use Crop</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- ─── ITEM MODAL ─── -->
 <div id="item-modal" class="modal-overlay hidden" onclick="itemModalBackdrop(event)">
   <div class="modal-sheet item-modal-sheet" onclick="event.stopPropagation()">
@@ -1660,47 +1638,45 @@ function customerBarSearch(val){
 async function _runCustBarSearch(q){
   const drop = $('cust-bar-dropdown');
   if(!drop) return;
-  // Search recent sales for name matches
-  if(!S.recentSales) await loadRecentSales();
-  const sales = S.recentSales || [];
-  const ql = q.toLowerCase();
-  const seen = new Set();
-  const matches = [];
-  sales.forEach(s => {
-    const name = ((s.name||'') + ' ' + (s.email||'')).toLowerCase();
-    const key = s.email || s.phone || s.name;
-    if(name.includes(ql) && !seen.has(key)){
-      seen.add(key);
-      matches.push(s);
-    }
-  });
   const addBtn = $('cart-customer-add-btn');
-  if(matches.length === 0){
+  try {
+    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const list = data.customers || [];
+    if(list.length === 0){
+      drop.innerHTML = `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ New customer: "${escHtml(q)}"</div>`;
+      drop.classList.add('open');
+      if(addBtn) addBtn.style.display = '';
+    } else {
+      drop.innerHTML = list.slice(0,8).map(c => {
+        const meta = [c.email, c.phone].filter(Boolean).join(' · ');
+        return `<div class="cust-bar-item" onmousedown="event.preventDefault();customerBarSelect(${JSON.stringify(c).replace(/"/g,'&quot;')})">
+          <div class="cust-bar-item-name">${escHtml(c.first||'')} ${escHtml(c.last||'')}</div>
+          ${meta ? `<div class="cust-bar-item-sub">${escHtml(meta)}</div>` : ''}
+        </div>`;
+      }).join('') + `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ Add new customer</div>`;
+      drop.classList.add('open');
+      if(addBtn) addBtn.style.display = 'none';
+    }
+  } catch(err){
     drop.innerHTML = `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ New customer: "${escHtml(q)}"</div>`;
     drop.classList.add('open');
-    if(addBtn) addBtn.style.display = '';
-  } else {
-    drop.innerHTML = matches.slice(0,5).map(s => `
-      <div class="cust-bar-item" onclick="customerBarSelect(${JSON.stringify(s).replace(/"/g,'&quot;')})">
-        <div class="cust-bar-item-name">${escHtml(s.name||'')}</div>
-        <div class="cust-bar-item-sub">${escHtml(s.email||'')} ${s.phone ? '&middot; '+escHtml(s.phone) : ''}</div>
-      </div>
-    `).join('') + `<div class="cust-bar-newbtn" onclick="customerBarNew()">+ Add new customer</div>`;
-    drop.classList.add('open');
-    if(addBtn) addBtn.style.display = 'none';
   }
 }
 
-function customerBarSelect(sale){
-  const nameParts = (sale.name||'').split(' ');
+function customerBarSelect(c){
   S.customer = {
-    first:  nameParts[0] || '',
-    last:   nameParts.slice(1).join(' ') || '',
-    email:  sale.email || '',
-    phone:  sale.phone || '',
-    street: sale.address || '',
-    city:'', state:'', zip:'',
+    first:  c.first  || '',
+    last:   c.last   || '',
+    email:  c.email  || '',
+    phone:  c.phone  || '',
+    street: c.street || c.address || '',
+    city:   c.city   || '',
+    state:  c.state  || '',
+    zip:    c.zip    || '',
   };
+  const inp = $('cart-customer-input');
+  if(inp){ inp.value = `${c.first||''} ${c.last||''}`.trim(); inp.style.color='var(--accent)'; inp.style.fontWeight='600'; }
   $('cust-bar-dropdown').classList.remove('open');
   updateCartCustomerBar();
   renderCart();
@@ -3008,13 +2984,6 @@ function psmToggleShip(){
   psmUpdateFooter();
 }
 
-function psmCrop(idx){
-  const sizes = S.printSizes || [];
-  const s = sizes[idx];
-  if(!s || !_psm.photo.path) return;
-  openCropTool(_psm.photo.path, s.label);
-}
-
 function psmCustomSize(){
   const p = _psm.photo;
   closePSM();
@@ -3030,8 +2999,6 @@ function psmAddToCart(){
   const sizeIndices = [..._psm.sizes].sort((a,b) => a-b);
   const ptCtx = [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
   // Ship is handled as a separate auto line item via ensureShipping(); don't embed in price
-  let _psmCropCartId = null;
-
   sizeIndices.forEach(idx => {
     const s = sizes[idx];
     if(!s) return;
@@ -3051,19 +3018,11 @@ function psmAddToCart(){
       photo_paths: [p.path],
     };
     cartAdd(cartItem);
-    if(!_psmCropCartId) _psmCropCartId = cartItem.id;
   });
   const n = sizeIndices.length;
   closePSM();
   renderCart();
   showToast(`${n} print${n!==1?'s':''} added`);
-  // Auto-open crop for single-size selection
-  if(n === 1 && _psmCropCartId){
-    const idx = sizeIndices[0];
-    const s = sizes[idx];
-    _crop._cartId = _psmCropCartId;
-    setTimeout(() => openCropTool(p.path, s ? s.label : ''), 200);
-  }
 }
 
 function printAddToCart(label, price){
@@ -3695,7 +3654,6 @@ function itemModalAddToCart(){
   };
   if(im.notes) cartItem.note = im.notes;
   if(im.type === 'print' && im._photoPath) cartItem.photo_paths = [im._photoPath];
-  if(im.type === 'print' && im._cropData) cartItem._cropData = im._cropData;
 
   cartAdd(cartItem);
   closeItemModal();
@@ -4085,276 +4043,6 @@ function lockPOS(){
   showScreen('s-pin');
 }
 
-// ─── Photo Crop Tool ─────────────────────────────────────────────────────────
-const _crop = { img: null, aspect: null, drag: null, box: {x:0,y:0,w:0,h:0}, imgNatW:0, imgNatH:0, canvW:0, canvH:0, scaleX:1, scaleY:1 };
-
-function openCropTool(photoPath, printLabel){
-  const path  = photoPath  || (S._im && S._im._photoPath);
-  const label = printLabel || (S._im && S._im.label) || '';
-  if(!path) return;
-  const aspect = _printAspect(label);
-  _crop.aspect = aspect;
-  _crop.box = {x:0,y:0,w:0,h:0};
-  _crop.drag = null;
-  $('crop-aspect-label').textContent = aspect ? `${label || 'Print'} — drag corners to resize · inside to move` : 'Drag to set crop area';
-  $('crop-modal').classList.remove('hidden');
-
-  const photoUrl = `/api/photo?path=${encodeURIComponent(path)}&size=medium&nowm=1`;
-  const canvas = $('crop-canvas');
-  const ctx = canvas.getContext('2d');
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.onload = function(){
-    _crop.imgNatW = img.naturalWidth;
-    _crop.imgNatH = img.naturalHeight;
-    const wrap = $('crop-canvas-wrap');
-    const maxW = wrap.clientWidth, maxH = Math.max(300, wrap.clientHeight - 10);
-    const scl = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight, 1);
-    canvas.width  = Math.round(img.naturalWidth  * scl);
-    canvas.height = Math.round(img.naturalHeight * scl);
-    _crop.canvW = canvas.width; _crop.canvH = canvas.height;
-    _crop.scaleX = img.naturalWidth  / canvas.width;
-    _crop.scaleY = img.naturalHeight / canvas.height;
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    _crop.img = img;
-    // Default box = full image with aspect lock
-    cropResetBox();
-    cropDrawOverlay();
-  };
-  img.onerror = () => showToast('Could not load photo for crop');
-  img.src = photoUrl;
-
-  // Touch/mouse events on the visible canvas
-  canvas.ontouchstart = canvas.onmousedown = cropDragStart;
-  canvas.ontouchmove  = canvas.onmousemove = cropDragMove;
-  canvas.ontouchend   = canvas.onmouseup   = cropDragEnd;
-}
-
-function _printAspect(label){
-  const m = label.match(/(\d+)[x×](\d+)/i);
-  if(!m) return null;
-  return parseInt(m[1]) / parseInt(m[2]);
-}
-
-function cropResetBox(){
-  const cw = _crop.canvW, ch = _crop.canvH;
-  const asp = _crop.aspect;
-  if(asp){
-    const canvAsp = cw / ch;
-    let bw, bh;
-    if(canvAsp > asp){ bh = ch; bw = ch * asp; }
-    else              { bw = cw; bh = cw / asp; }
-    _crop.box = { x: (cw - bw) / 2, y: (ch - bh) / 2, w: bw, h: bh };
-  } else {
-    _crop.box = { x: 0, y: 0, w: cw, h: ch };
-  }
-}
-
-function cropReset(){ cropResetBox(); cropDrawOverlay(); }
-
-function cropRotate(){
-  const img = _crop.img;
-  if(!img) return;
-  const off = document.createElement('canvas');
-  off.width  = img.naturalHeight;
-  off.height = img.naturalWidth;
-  const oc = off.getContext('2d');
-  oc.translate(off.width, 0);
-  oc.rotate(Math.PI / 2);
-  oc.drawImage(img, 0, 0, img.naturalWidth, img.naturalHeight);
-  const newImg = new Image();
-  newImg.onload = function(){
-    _crop.img = newImg;
-    const wrap = $('crop-canvas-wrap');
-    const maxW = wrap.clientWidth, maxH = Math.max(300, wrap.clientHeight - 10);
-    const scl = Math.min(maxW / newImg.naturalWidth, maxH / newImg.naturalHeight, 1);
-    const canvas = $('crop-canvas');
-    canvas.width  = Math.round(newImg.naturalWidth  * scl);
-    canvas.height = Math.round(newImg.naturalHeight * scl);
-    _crop.canvW = canvas.width; _crop.canvH = canvas.height;
-    _crop.scaleX = newImg.naturalWidth  / canvas.width;
-    _crop.scaleY = newImg.naturalHeight / canvas.height;
-    canvas.getContext('2d').drawImage(newImg, 0, 0, canvas.width, canvas.height);
-    cropResetBox(); cropDrawOverlay();
-  };
-  newImg.src = off.toDataURL('image/jpeg', 0.92);
-}
-
-function cropDrawOverlay(){
-  const ov = $('crop-overlay');
-  if(!ov) return;
-  const canvas = $('crop-canvas');
-  ov.width  = canvas.width;
-  ov.height = canvas.height;
-  ov.style.width  = canvas.style.width;
-  ov.style.height = canvas.style.height;
-  const ctx = ov.getContext('2d');
-  ctx.clearRect(0, 0, ov.width, ov.height);
-  ctx.fillStyle = 'rgba(0,0,0,.55)';
-  ctx.fillRect(0, 0, ov.width, ov.height);
-  const b = _crop.box;
-  ctx.clearRect(b.x, b.y, b.w, b.h);
-  ctx.strokeStyle = '#F5C430';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(b.x, b.y, b.w, b.h);
-  // Rule-of-thirds grid
-  ctx.strokeStyle = 'rgba(245,196,48,.4)';
-  ctx.lineWidth = 1;
-  for(let i=1;i<3;i++){
-    ctx.beginPath(); ctx.moveTo(b.x + b.w*i/3, b.y); ctx.lineTo(b.x + b.w*i/3, b.y+b.h); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(b.x, b.y + b.h*i/3); ctx.lineTo(b.x+b.w, b.y + b.h*i/3); ctx.stroke();
-  }
-  // Corner handles
-  ctx.fillStyle = '#F5C430';
-  [[b.x, b.y], [b.x+b.w, b.y], [b.x, b.y+b.h], [b.x+b.w, b.y+b.h]].forEach(([cx,cy]) => {
-    ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI*2); ctx.fill();
-  });
-}
-
-function _cropEventXY(e){
-  const canvas = $('crop-canvas');
-  const rect = canvas.getBoundingClientRect();
-  const touch = e.touches ? e.touches[0] : e;
-  const scaleX = canvas.width / rect.width;
-  const scaleY = canvas.height / rect.height;
-  return { x: (touch.clientX - rect.left) * scaleX, y: (touch.clientY - rect.top) * scaleY };
-}
-
-function cropDragStart(e){
-  e.preventDefault();
-  const pt = _cropEventXY(e);
-  const b = _crop.box;
-  const HIT = 22;
-  // Corner hit test
-  const corners = [
-    {name:'tl', x:b.x,    y:b.y},
-    {name:'tr', x:b.x+b.w,y:b.y},
-    {name:'bl', x:b.x,    y:b.y+b.h},
-    {name:'br', x:b.x+b.w,y:b.y+b.h},
-  ];
-  for(const c of corners){
-    if(Math.abs(pt.x - c.x) < HIT && Math.abs(pt.y - c.y) < HIT){
-      _crop.drag = { mode:'resize', corner:c.name, startPt:pt, box0:{...b} };
-      return;
-    }
-  }
-  // Inside box → move
-  if(pt.x >= b.x && pt.x <= b.x+b.w && pt.y >= b.y && pt.y <= b.y+b.h){
-    _crop.drag = { mode:'move', startPt:pt, box0:{...b} };
-    return;
-  }
-  // Outside → draw new
-  _crop.drag = { mode:'draw', startX:pt.x, startY:pt.y };
-}
-
-function cropDragMove(e){
-  if(!_crop.drag) return;
-  e.preventDefault();
-  const pt = _cropEventXY(e);
-  const d = _crop.drag;
-  const cw = _crop.canvW, ch = _crop.canvH;
-  const asp = _crop.aspect;
-  const MIN = 20;
-
-  if(d.mode === 'move'){
-    const dx = pt.x - d.startPt.x, dy = pt.y - d.startPt.y;
-    let nx = Math.max(0, Math.min(cw - d.box0.w, d.box0.x + dx));
-    let ny = Math.max(0, Math.min(ch - d.box0.h, d.box0.y + dy));
-    _crop.box = { x:nx, y:ny, w:d.box0.w, h:d.box0.h };
-    cropDrawOverlay();
-    return;
-  }
-
-  if(d.mode === 'resize'){
-    const b0 = d.box0;
-    const c = d.corner;
-    let nx = b0.x, ny = b0.y, nw = b0.w, nh = b0.h;
-    if(c === 'br'){
-      nw = Math.max(MIN, pt.x - b0.x);
-      nh = asp ? nw / asp : Math.max(MIN, pt.y - b0.y);
-    } else if(c === 'bl'){
-      nw = Math.max(MIN, b0.x + b0.w - pt.x);
-      nh = asp ? nw / asp : Math.max(MIN, pt.y - b0.y);
-      nx = b0.x + b0.w - nw;
-    } else if(c === 'tr'){
-      nw = Math.max(MIN, pt.x - b0.x);
-      nh = asp ? nw / asp : Math.max(MIN, b0.y + b0.h - pt.y);
-      ny = b0.y + b0.h - nh;
-    } else if(c === 'tl'){
-      nw = Math.max(MIN, b0.x + b0.w - pt.x);
-      nh = asp ? nw / asp : Math.max(MIN, b0.y + b0.h - pt.y);
-      nx = b0.x + b0.w - nw;
-      ny = b0.y + b0.h - nh;
-    }
-    // Clamp to canvas, preserving aspect ratio
-    if(nx < 0){ nw += nx; nx = 0; if(asp){ nh = nw/asp; } }
-    if(ny < 0){ nh += ny; ny = 0; if(asp){ nw = nh*asp; } }
-    if(nx + nw > cw){ nw = cw - nx; if(asp) nh = nw/asp; }
-    if(ny + nh > ch){ nh = ch - ny; if(asp) nw = nh*asp; }
-    if(nw >= MIN && nh >= MIN) _crop.box = { x:nx, y:ny, w:nw, h:nh };
-    cropDrawOverlay();
-    return;
-  }
-
-  // draw mode
-  let x = Math.min(d.startX, pt.x), y = Math.min(d.startY, pt.y);
-  let w = Math.abs(pt.x - d.startX), h = Math.abs(pt.y - d.startY);
-  if(asp && w > 0 && h > 0){
-    if(w / h > asp) h = w / asp;
-    else            w = h * asp;
-  }
-  w = Math.min(w, cw - x);
-  h = Math.min(h, ch - y);
-  if(w > 2 && h > 2) _crop.box = { x, y, w, h };
-  cropDrawOverlay();
-}
-
-function cropDragEnd(e){ _crop.drag = null; }
-
-function _cropToCanvas(){
-  if(!_crop.img) return null;
-  const b = _crop.box;
-  const natX = Math.round(b.x * _crop.scaleX);
-  const natY = Math.round(b.y * _crop.scaleY);
-  const natW = Math.round(b.w * _crop.scaleX);
-  const natH = Math.round(b.h * _crop.scaleY);
-  const out = document.createElement('canvas');
-  out.width = natW; out.height = natH;
-  out.getContext('2d').drawImage(_crop.img, natX, natY, natW, natH, 0, 0, natW, natH);
-  return out;
-}
-
-function cropDownload(){
-  const out = _cropToCanvas();
-  if(!out){ showToast('No crop set'); return; }
-  out.toBlob(blob => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'cropped_print.jpg';
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  }, 'image/jpeg', 0.92);
-}
-
-function cropConfirm(){
-  const out = _cropToCanvas();
-  if(!out){ showToast('No crop set'); return; }
-  const cd = { x: _crop.box.x * _crop.scaleX, y: _crop.box.y * _crop.scaleY, w: _crop.box.w * _crop.scaleX, h: _crop.box.h * _crop.scaleY };
-  if(S._im) S._im._cropData = cd;
-  if(_crop._cartId){
-    const cartItem = S.cart.find(i => i.id === _crop._cartId);
-    if(cartItem) cartItem._cropData = cd;
-  }
-  showToast('Crop saved — will be noted on the order');
-  closeCropTool();
-}
-
-function closeCropTool(){
-  $('crop-modal').classList.add('hidden');
-  const ov = $('crop-overlay');
-  if(ov){ const c = ov.getContext('2d'); c.clearRect(0,0,ov.width,ov.height); }
-  _crop.img = null;
-}
 
 function newSale(){
   S.cart = [];
