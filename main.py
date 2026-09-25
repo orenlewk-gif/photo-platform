@@ -3207,7 +3207,6 @@ async function copyLink(orderId, e) {{
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('orders',this)">Orders</button>
-    <button class="tab-btn" onclick="switchTab('reports',this)">Reports</button>
   </div>
   <div id="view-orders">
   <div class="loc-breakdown">
