@@ -406,8 +406,24 @@ html.embedded #layout{height:100vh}
       </div>
     </div><!-- /tab-presets -->
 
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Admin Tools</div>
+      <div class="section-desc">Manage upload locations, rename activities, and fix duplicate entries.</div>
+      <button class="btn btn-ghost" onclick="openActivities()" style="font-size:.85rem;padding:.45rem 1rem">Manage Locations / Activities</button>
+    </div>
+
   </div>
 </div>
+
+<script>
+function openActivities() {
+  if (window.parent !== window && typeof window.parent.openActivitiesView === 'function') {
+    window.parent.openActivitiesView();
+  } else {
+    window.location.href = '/admin/activities';
+  }
+}
+</script>
 
 <script>
 function toggleNg(name) {

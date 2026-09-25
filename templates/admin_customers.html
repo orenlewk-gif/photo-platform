@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Customers — Crystal Images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color:#fff}
+html.embedded #topbar,html.embedded #sidebar{display:none}
+html.embedded #layout{height:100vh}
+#topbar{height:46px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem;flex-shrink:0}
+#topbar h1{color:#F5C518;font-size:1rem;font-weight:700;margin-right:auto}
+#topbar a{color:rgba(255,255,255,.45);font-size:.82rem;text-decoration:none}
+#topbar a:hover{color:#fff}
+#layout{display:flex;height:calc(100vh - 46px)}
+#main{flex:1;overflow-y:auto;padding:2rem}
+.page-title{font-size:1.25rem;font-weight:700;color:#F5C518;margin-bottom:1.5rem}
+.toolbar{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
+.search-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:.52rem .85rem;color:#fff;font-size:.88rem;outline:none;
+  width:280px;transition:border-color .15s}
+.search-box::placeholder{color:rgba(255,255,255,.3)}
+.search-box:focus{border-color:#F5C518}
+.count-label{font-size:.8rem;color:rgba(255,255,255,.35);margin-left:auto}
+.table-wrap{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{padding:.65rem 1rem;font-size:.72rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.7px;color:rgba(255,255,255,.35);text-align:left;
+  border-bottom:1px solid rgba(255,255,255,.07);background:#071827}
+tbody tr{border-bottom:1px solid rgba(255,255,255,.05);transition:background .1s}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:rgba(255,255,255,.03)}
+td{padding:.65rem 1rem;font-size:.86rem;color:rgba(255,255,255,.85);vertical-align:middle}
+td.name{font-weight:600;color:#e8eaf0}
+td.email{color:rgba(255,255,255,.5);font-size:.82rem}
+.empty-state{padding:3rem;text-align:center;color:rgba(255,255,255,.3);font-size:.9rem}
+#toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
+  background:#1a3a1a;color:#6ee86e;border:1px solid rgba(110,232,110,.25);
+  border-radius:8px;padding:.55rem 1.2rem;font-size:.84rem;font-weight:600;
+  opacity:0;transition:opacity .2s;pointer-events:none;z-index:999}
+#toast.show{opacity:1}
+#toast.err{background:#3a1a1a;color:#e86e6e;border-color:rgba(232,110,110,.25)}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>Crystal Images — Dashboard</h1>
+  <a href="/admin/signout">Sign out</a>
+</div>
+<div id="layout">
+  <div id="main">
+    <div class="page-title">Customers</div>
+    <div class="toolbar">
+      <input type="text" class="search-box" id="search-input" placeholder="Search by name or email..." oninput="doSearch(this.value)">
+      <div class="count-label" id="count-label">Loading...</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+          </tr>
+        </thead>
+        <tbody id="customer-tbody">
+          <tr><td colspan="2" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+if (window.parent !== window) document.documentElement.classList.add('embedded');
+
+let allCustomers = [];
+let searchTimer = null;
+
+async function loadCustomers() {
+  try {
+    const r = await fetch('/api/pos-customers');
+    const d = await r.json();
+    allCustomers = d.customers || [];
+    updateCount(d.total ?? allCustomers.length);
+    render(allCustomers);
+  } catch(e) {
+    showToast('Failed to load customers', 'err');
+  }
+}
+
+function doSearch(q) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async () => {
+    if (!q.trim()) { render(allCustomers); updateCount(allCustomers.length); return; }
+    try {
+      const r = await fetch(`/api/pos-customers?q=${encodeURIComponent(q.trim())}`);
+      const d = await r.json();
+      render(d.customers || []);
+      updateCount(d.total ?? (d.customers||[]).length, true);
+    } catch(e) {}
+  }, 250);
+}
+
+function updateCount(n, isSearch) {
+  const label = document.getElementById('count-label');
+  if (isSearch) label.textContent = `${n} result${n!==1?'s':''}`;
+  else label.textContent = `${n} customer${n!==1?'s':''}`;
+}
+
+function render(list) {
+  const tbody = document.getElementById('customer-tbody');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No customers found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = list.map(c => {
+    const name = [c.first||'', c.last||''].filter(Boolean).join(' ') || '—';
+    const email = c.email || '—';
+    return `<tr>
+      <td class="name">${esc(name)}</td>
+      <td class="email">${esc(email)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function showToast(msg, type='show') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = type === 'err' ? 'err show' : 'show';
+  clearTimeout(t._tid);
+  t._tid = setTimeout(() => t.className = '', 2800);
+}
+
+loadCustomers();
+</script>
+</body>
+</html>

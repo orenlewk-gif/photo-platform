@@ -1106,6 +1106,25 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             result = dict(activities[act_key])
             result["combos"] = combos
             return result
+        # Fall back to item_list pricing_key when location has no direct pricing
+        if date:
+            try:
+                fm = _load_folder_meta()
+                fk = _folder_key(date, location.strip(), family.strip() if family else "")
+                item_list_name = fm.get(fk, {}).get("item_list", "")
+                if item_list_name:
+                    bundles_data = _load_items_bundles()
+                    bundle = next((b for b in bundles_data.get("bundles", [])
+                                   if b.get("name") == item_list_name), None)
+                    if bundle and bundle.get("pricing_key"):
+                        pk = bundle["pricing_key"]
+                        pk_act = next((k for k in activities if k.lower() == pk.lower()), None)
+                        if pk_act:
+                            result = dict(activities[pk_act])
+                            result["combos"] = combos
+                            return result
+            except Exception as e:
+                print(f"item_list pricing fallback error: {e}")
         return {"tiers": [], "combos": combos}
     return {"tiers": [], "combos": combos}
 
@@ -5343,6 +5362,12 @@ async def admin_activities_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/activities")
     return HTMLResponse(open("templates/admin_activities.html").read())
+
+@app.get("/admin/customers", response_class=HTMLResponse)
+async def admin_customers_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/customers")
+    return HTMLResponse(open("templates/admin_customers.html").read())
 
 
 @app.post("/api/admin/rename-activity")

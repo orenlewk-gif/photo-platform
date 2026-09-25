@@ -1648,7 +1648,8 @@ async function showGallery(date, location, family, ln, group) {
   const pricingDate = date             || photos[0]?.date       || '';
   const pricingFam  = family || group  || photos[0]?.last_name || '';
   let pricingUrl = `/api/pricing?location=${enc(pricingLoc)}`;
-  if (pricingDate && pricingFam) pricingUrl += `&date=${enc(pricingDate)}&family=${enc(pricingFam)}`;
+  if (pricingDate) pricingUrl += `&date=${enc(pricingDate)}`;
+  if (pricingFam) pricingUrl += `&family=${enc(pricingFam)}`;
   const pRes = await fetch(pricingUrl);
   const pricingFull = await pRes.json();
   if (pricingFull.combos) globalCombos = pricingFull.combos;

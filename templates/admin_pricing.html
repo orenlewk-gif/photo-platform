@@ -1047,6 +1047,7 @@ function renderItemsBundles(){
   if(!el) return;
   const bundles=itemsBundlesData.bundles||[];
   if(!bundles.length){ el.innerHTML='<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No items bundles yet.</div>'; return; }
+  const actKeys=Object.keys(pricingData?.activities||{});
   el.innerHTML=bundles.map((b,bi)=>`<div class="bundle-card">
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
       <input type="text" value="${esc(b.name||'')}" class="wide" oninput="bundleField(${bi},'name',this.value)" placeholder="Bundle name">
@@ -1058,6 +1059,14 @@ function renderItemsBundles(){
         <input type="checkbox" onchange="bundleItemToggle(${bi},'${opt.key}',this.checked)" ${(b.items||[]).includes(opt.key)?'checked':''}>
         ${esc(opt.label)}
       </label>`).join('')}
+    </div>
+    <div style="margin-top:.65rem;display:flex;align-items:center;gap:.6rem">
+      <span style="font-size:11px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px;white-space:nowrap">Digital pricing</span>
+      <select style="background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:.8rem;padding:.3rem .5rem;flex:1;max-width:220px" onchange="bundleField(${bi},'pricing_key',this.value)">
+        <option value="">None (use location name)</option>
+        ${actKeys.map(k=>`<option value="${esc(k)}" ${(b.pricing_key||'')=== k?'selected':''}>${esc(k)}</option>`).join('')}
+      </select>
+      <span style="font-size:.75rem;color:rgba(255,255,255,.28)">Used when folder location has no direct pricing</span>
     </div>
   </div>`).join('');
 }
