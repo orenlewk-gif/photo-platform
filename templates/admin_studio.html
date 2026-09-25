@@ -513,13 +513,13 @@ input[type=file]{display:none}
     </div>
 
     <!-- Pricing view (inline iframe) -->
-    <div id="pricing-view" style="display:none;flex:1;overflow:hidden">
-      <iframe id="pricing-frame" src="" style="width:100%;height:100%;border:none"></iframe>
+    <div id="pricing-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="pricing-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
     </div>
 
     <!-- Admin view (inline iframe) -->
-    <div id="admin-view" style="display:none;flex:1;overflow:hidden">
-      <iframe id="admin-frame" src="" style="width:100%;height:100%;border:none"></iframe>
+    <div id="admin-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="admin-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
     </div>
 
   </div>
@@ -1149,13 +1149,13 @@ function setView(view) {
 function openPricingView() {
   setView('pricing');
   const frame = document.getElementById('pricing-frame');
-  if (!frame.src) frame.src = '/admin/pricing';
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/pricing'; }
 }
 
 function openAdminView() {
   setView('admin');
   const frame = document.getElementById('admin-frame');
-  if (!frame.src) frame.src = '/admin/photographers';
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/photographers'; }
 }
 
 // ── Selection ──
