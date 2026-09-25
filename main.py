@@ -5574,6 +5574,12 @@ def admin_dashboard_page(request: Request):
         return RedirectResponse("/admin?next=/admin/dashboard")
     return HTMLResponse(open("templates/admin_studio.html").read())
 
+@app.get("/admin/dashboard/{section}", response_class=HTMLResponse)
+def admin_dashboard_section(request: Request, section: str):
+    if not _admin_authed(request):
+        return RedirectResponse(f"/admin?next=/admin/dashboard/{section}")
+    return HTMLResponse(open("templates/admin_studio.html").read())
+
 @app.get("/admin/studio")
 def admin_studio_redirect():
     return RedirectResponse("/admin/dashboard")

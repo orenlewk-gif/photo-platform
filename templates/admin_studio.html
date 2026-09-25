@@ -327,18 +327,18 @@ input[type=file]{display:none}
       <button id="upload-btn" onclick="showUploadView()">+ New Upload</button>
     </div>
     <div id="sidebar-nav">
-      <a href="/admin/dashboard" class="nav-link active-page">Dashboard</a>
+      <a onclick="openDashView()" class="nav-link" id="nav-dashboard" style="cursor:pointer">Dashboard</a>
       <a onclick="openPricingView()" class="nav-link" id="nav-pricing" style="cursor:pointer">Pricing</a>
       <a onclick="openAdminView()" class="nav-link" id="nav-admin" style="cursor:pointer">Admin</a>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
-      <a href="/admin/orders" class="nav-link">Orders</a>
-      <a href="/admin/links" class="nav-link">Links</a>
-      <a href="/admin/settings" class="nav-link">Settings</a>
-      <a href="/admin/activities" class="nav-link">Activities</a>
+      <a onclick="openOrdersView()" class="nav-link" id="nav-orders" style="cursor:pointer">Orders</a>
+      <a onclick="openLinksView()" class="nav-link" id="nav-links" style="cursor:pointer">Links</a>
+      <a onclick="openSettingsView()" class="nav-link" id="nav-settings" style="cursor:pointer">Settings</a>
+      <a onclick="openActivitiesView()" class="nav-link" id="nav-activities" style="cursor:pointer">Activities</a>
     </div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
-      <a href="/admin/trash" class="nav-link">Trash</a>
+      <a onclick="openTrashView()" class="nav-link" id="nav-trash" style="cursor:pointer">Trash</a>
     </div>
   </div>
 
@@ -522,6 +522,31 @@ input[type=file]{display:none}
       <iframe id="admin-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
     </div>
 
+    <!-- Orders view (inline iframe) -->
+    <div id="orders-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="orders-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
+    </div>
+
+    <!-- Links view (inline iframe) -->
+    <div id="links-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="links-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
+    </div>
+
+    <!-- Settings view (inline iframe) -->
+    <div id="settings-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="settings-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
+    </div>
+
+    <!-- Activities view (inline iframe) -->
+    <div id="activities-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="activities-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
+    </div>
+
+    <!-- Trash view (inline iframe) -->
+    <div id="trash-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="trash-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
+    </div>
+
   </div>
 </div>
 
@@ -658,6 +683,12 @@ async function loadUploadLocations() {
   setupInlineEdit();
   loadSidebar(); // fire and forget — sidebar populates in background
   loadItemLists();
+  // Restore section from URL path (e.g. /admin/dashboard/orders)
+  const urlSection = location.pathname.split('/')[3];
+  if (urlSection && _VIEW_URLS[urlSection]) {
+    _restoreView(urlSection);
+    return;
+  }
   const sp = new URLSearchParams(location.search);
   const od = sp.get('od'), ol = sp.get('ol'), of_ = sp.get('of');
   const dateParam = sp.get('date');
@@ -1127,35 +1158,92 @@ function setColCount(v) {
 }
 
 // ── View switcher ──
+const _ALL_VIEWS = ['upload','date','location','folder','pricing','admin','orders','links','settings','activities','trash'];
 function setView(view) {
-  document.getElementById('upload-view').style.display    = view==='upload'   ? 'flex'  : 'none';
-  document.getElementById('date-view').style.display      = view==='date'     ? 'flex'  : 'none';
-  document.getElementById('location-view').style.display  = view==='location' ? 'flex'  : 'none';
-  document.getElementById('folder-view').style.display    = view==='folder'   ? 'flex'  : 'none';
-  document.getElementById('pricing-view').style.display   = view==='pricing'  ? 'flex'  : 'none';
-  document.getElementById('admin-view').style.display     = view==='admin'    ? 'flex'  : 'none';
-  if (view==='date')     document.getElementById('date-view').style.flexDirection     = 'column';
-  if (view==='location') document.getElementById('location-view').style.flexDirection = 'column';
-  if (view==='folder')   document.getElementById('folder-view').style.flexDirection   = 'column';
-  if (view==='pricing')  document.getElementById('pricing-view').style.flexDirection  = 'column';
-  if (view==='admin')    document.getElementById('admin-view').style.flexDirection    = 'column';
-  // Update nav active state
+  _ALL_VIEWS.forEach(v => {
+    const el = document.getElementById(v + '-view');
+    if (el) el.style.display = 'none';
+  });
+  const target = document.getElementById(view + '-view');
+  if (target) { target.style.display = 'flex'; target.style.flexDirection = 'column'; }
   document.querySelectorAll('#sidebar-nav .nav-link').forEach(l => l.classList.remove('active-page'));
-  if (view==='pricing') document.getElementById('nav-pricing')?.classList.add('active-page');
-  else if (view==='admin') document.getElementById('nav-admin')?.classList.add('active-page');
-  else document.querySelector('#sidebar-nav a[href="/admin/dashboard"]')?.classList.add('active-page');
+  const navEl = document.getElementById('nav-' + view);
+  if (navEl) navEl.classList.add('active-page');
+  else document.getElementById('nav-dashboard')?.classList.add('active-page');
 }
 
+const _VIEW_URLS = {
+  pricing: '/admin/dashboard/pricing',
+  admin:   '/admin/dashboard/admin',
+  orders:  '/admin/dashboard/orders',
+  links:   '/admin/dashboard/links',
+  settings:'/admin/dashboard/settings',
+  activities:'/admin/dashboard/activities',
+  trash:   '/admin/dashboard/trash',
+};
+function _pushState(view) {
+  const url = _VIEW_URLS[view] || '/admin/dashboard';
+  if (location.pathname !== url) history.pushState({view}, '', url);
+}
+function _restoreView(view) {
+  switch(view) {
+    case 'pricing':    openPricingView();    break;
+    case 'admin':      openAdminView();      break;
+    case 'orders':     openOrdersView();     break;
+    case 'links':      openLinksView();      break;
+    case 'settings':   openSettingsView();   break;
+    case 'activities': openActivitiesView(); break;
+    case 'trash':      openTrashView();      break;
+    default:           showUploadView();     break;
+  }
+}
+window.addEventListener('popstate', e => _restoreView(e.state?.view || 'upload'));
+
+function openDashView() {
+  showUploadView();
+  _pushState('upload');
+}
 function openPricingView() {
   setView('pricing');
+  _pushState('pricing');
   const frame = document.getElementById('pricing-frame');
   if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/pricing'; }
 }
-
 function openAdminView() {
   setView('admin');
+  _pushState('admin');
   const frame = document.getElementById('admin-frame');
   if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/photographers'; }
+}
+function openOrdersView() {
+  setView('orders');
+  _pushState('orders');
+  const frame = document.getElementById('orders-frame');
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/orders'; }
+}
+function openLinksView() {
+  setView('links');
+  _pushState('links');
+  const frame = document.getElementById('links-frame');
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/links'; }
+}
+function openSettingsView() {
+  setView('settings');
+  _pushState('settings');
+  const frame = document.getElementById('settings-frame');
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/settings'; }
+}
+function openActivitiesView() {
+  setView('activities');
+  _pushState('activities');
+  const frame = document.getElementById('activities-frame');
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/activities'; }
+}
+function openTrashView() {
+  setView('trash');
+  _pushState('trash');
+  const frame = document.getElementById('trash-frame');
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/trash'; }
 }
 
 // ── Selection ──
