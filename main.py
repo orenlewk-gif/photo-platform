@@ -2706,7 +2706,22 @@ def admin_orders(request: Request, days: int = 30,
 
     import json as _json
     chart_script = '''<script>
+function toggleNg(name){
+  var el=document.getElementById('ng-'+name);
+  var arr=document.getElementById('ng-arr-'+name);
+  var hdr=arr&&arr.closest('.nav-group-hdr');
+  if(!el||!arr)return;
+  var open=el.classList.toggle('open');
+  arr.classList.toggle('open',open);
+  if(hdr)hdr.classList.toggle('open',open);
+}
+window._rptPinDone=false;window._pendingTabBtn=null;
 function switchTab(n,b){
+  if(n==='reports'&&!window._rptPinDone){
+    window._pendingTabBtn=b;
+    document.getElementById('rpt-pin-gate').style.display='flex';
+    return;
+  }
   document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active');});
   b.classList.add('active');
   document.getElementById('view-orders').style.display=n==='orders'?'':'none';
@@ -2928,6 +2943,14 @@ body{{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-hei
 .nav-link{{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}}
 .nav-link:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
 .nav-link.active{{background:rgba(245,197,24,.08);color:#F5C518}}
+.nav-sub{{padding-left:1.4rem!important;font-size:14px}}
+.nav-group-hdr{{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}}
+.nav-group-hdr:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
+.nav-group-hdr.open{{color:#e8eaf0}}
+.ng-arr{{font-size:10px;color:rgba(255,255,255,.3);transition:transform .15s;flex-shrink:0}}
+.ng-arr.open{{transform:rotate(90deg)}}
+.nav-children{{display:none}}
+.nav-children.open{{display:block}}
 #main{{flex:1;overflow-y:auto;padding:1.75rem 2rem}}
 .stats{{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}}
 .stat{{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.9rem 1.25rem;flex:1;min-width:130px}}
@@ -3024,14 +3047,21 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
     <div class="nav-sec-label">Admin</div>
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
     <a href="/admin/pricing" class="nav-link">Pricing</a>
-    <a href="/admin/activities" class="nav-link">Activities</a>
-    <a href="/admin/photographers" class="nav-link">Photographers</a>
+    <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
+      Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
+    </div>
+    <div class="nav-children" id="ng-adminsec">
+      <a href="/admin/photographers" class="nav-link nav-sub">Photographers</a>
+      <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
+      <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
+    </div>
+    <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/orders" class="nav-link active">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
     <a href="/admin/settings" class="nav-link">Settings</a>
+    <a href="/admin/activities" class="nav-link">Activities</a>
     <div id="sidebar-tree"></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
-      <a href="/admin/discount-codes" class="nav-link">Discount Codes</a>
       <a href="/admin/trash" class="nav-link">Trash</a>
     </div>
   </div>
@@ -3260,7 +3290,64 @@ async function copyLink(orderId, e) {{
   </div>
   </div>
 </div>
+
+<div id="rpt-pin-gate" style="position:fixed;inset:0;background:rgba(15,17,23,.97);z-index:10000;display:none;align-items:center;justify-content:center">
+  <div style="background:#1a1d27;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:2.4rem 2.8rem;text-align:center;width:300px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:.3rem">Crystal Images</div>
+    <div style="font-size:1.25rem;font-weight:700;color:#e8eaf0;margin-bottom:.2rem">Owner Area</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.38);margin-bottom:1.6rem">Enter your PIN to view reports</div>
+    <div id="rpt-pin-dots" style="display:flex;gap:.55rem;justify-content:center;margin-bottom:.5rem">
+      <div class="rpt-pd"></div><div class="rpt-pd"></div><div class="rpt-pd"></div><div class="rpt-pd"></div>
+    </div>
+    <div id="rpt-pin-err" style="font-size:12px;color:#f87171;height:1.1rem;margin-bottom:.75rem"></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">
+      <button class="rpb" onclick="rptPinKey('1')">1</button><button class="rpb" onclick="rptPinKey('2')">2</button><button class="rpb" onclick="rptPinKey('3')">3</button>
+      <button class="rpb" onclick="rptPinKey('4')">4</button><button class="rpb" onclick="rptPinKey('5')">5</button><button class="rpb" onclick="rptPinKey('6')">6</button>
+      <button class="rpb" onclick="rptPinKey('7')">7</button><button class="rpb" onclick="rptPinKey('8')">8</button><button class="rpb" onclick="rptPinKey('9')">9</button>
+      <button class="rpb rpbg" onclick="rptPinClear()">Clear</button><button class="rpb" onclick="rptPinKey('0')">0</button><button class="rpb rpbg" onclick="rptPinBack()">&#9003;</button>
+    </div>
+    <button onclick="document.getElementById('rpt-pin-gate').style.display='none'" style="margin-top:1rem;background:none;border:none;color:rgba(255,255,255,.3);font-size:.8rem;cursor:pointer">Cancel</button>
+  </div>
+</div>
+<style>
+.rpt-pd{{width:13px;height:13px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);transition:background .15s,border-color .15s;display:inline-block}}
+.rpt-pd.filled{{background:#F5C430;border-color:#F5C430}}
+.rpb{{background:#1e2330;border:1px solid rgba(255,255,255,.09);border-radius:9px;color:#e8eaf0;font-size:1.1rem;font-weight:500;padding:.72rem;cursor:pointer;transition:background .12s}}
+.rpb:hover{{background:#252d3e}}
+.rpb.rpbg{{background:transparent;border-color:rgba(255,255,255,.05);color:rgba(255,255,255,.4);font-size:.82rem}}
+</style>
+
 {chart_script}
+<script>
+var _rptPinVal='';
+function rptPinKey(k){{
+  if(_rptPinVal.length>=4)return;
+  _rptPinVal+=k;
+  _rptPinSync();
+  if(_rptPinVal.length===4)_rptPinSubmit();
+}}
+function rptPinBack(){{_rptPinVal=_rptPinVal.slice(0,-1);_rptPinSync();document.getElementById('rpt-pin-err').textContent='';}}
+function rptPinClear(){{_rptPinVal='';_rptPinSync();document.getElementById('rpt-pin-err').textContent='';}}
+function _rptPinSync(){{
+  var dots=document.querySelectorAll('#rpt-pin-dots .rpt-pd');
+  dots.forEach(function(d,i){{d.classList.toggle('filled',i<_rptPinVal.length);}});
+}}
+async function _rptPinSubmit(){{
+  try{{
+    var r=await fetch('/api/photographer/auth',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{pin:_rptPinVal}})}});
+    if(r.ok){{
+      document.getElementById('rpt-pin-gate').style.display='none';
+      window._rptPinDone=true;
+      if(window._pendingTabBtn){{switchTab('reports',window._pendingTabBtn);window._pendingTabBtn=null;}}
+    }}else{{document.getElementById('rpt-pin-err').textContent='Incorrect PIN';_rptPinVal='';_rptPinSync();}}
+  }}catch(e){{document.getElementById('rpt-pin-err').textContent='Error — try again';_rptPinVal='';_rptPinSync();}}
+}}
+document.addEventListener('keydown',function(e){{
+  if(document.getElementById('rpt-pin-gate').style.display==='none'||document.getElementById('rpt-pin-gate').style.display==='')return;
+  if(e.key>='0'&&e.key<='9')rptPinKey(e.key);
+  else if(e.key==='Backspace')rptPinBack();
+}});
+</script>
 </body></html>"""
     return HTMLResponse(html)
 
@@ -3876,6 +3963,8 @@ async def add_photographer(request: Request):
     p = {"id": str(uuid.uuid4())[:8], "name": name, "pin": pin,
          "default_location": body.get("default_location", ""),
          "file_prefix": body.get("file_prefix", "").strip().lower(),
+         "commission_type": body.get("commission_type", "hourly"),
+         "commission_rate": float(body.get("commission_rate", 0) or 0),
          "created_at": datetime.now(timezone.utc).isoformat()}
     photographers.append(p)
     _save_photographers(photographers)
@@ -3889,9 +3978,11 @@ async def update_photographer(pid: str, request: Request):
     photographers = _load_photographers()
     for p in photographers:
         if p["id"] == pid:
-            for field in ("name", "pin", "default_location", "file_prefix"):
+            for field in ("name", "pin", "default_location", "file_prefix", "commission_type"):
                 if field in body:
                     p[field] = body[field]
+            if "commission_rate" in body:
+                p["commission_rate"] = float(body["commission_rate"] or 0)
             _save_photographers(photographers)
             return {"photographer": p}
     return JSONResponse(status_code=404, content={"error": "Not found"})

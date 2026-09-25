@@ -37,6 +37,13 @@ body{background:#0f1117;color:#e8eaf0;font-family:'Segoe UI',sans-serif;min-heig
 .nav-link.active,.nav-link.active-page{background:rgba(245,197,24,.08);color:#F5C518}
 .nav-link.active-sec{color:#e8eaf0;background:rgba(255,255,255,.07)}
 .nav-sub{padding-left:1.6rem!important;font-size:14px}
+.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
+.nav-group-hdr:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
+.nav-group-hdr.open{color:#e8eaf0}
+.ng-arr{font-size:10px;color:rgba(255,255,255,.3);transition:transform .15s;flex-shrink:0}
+.ng-arr.open{transform:rotate(90deg)}
+.nav-children{display:none}
+.nav-children.open{display:block}
 #main{flex:1;overflow-y:auto;padding:1.5rem 2rem;max-width:1100px}
 h2{font-size:1.2rem;font-weight:600;margin-bottom:1.25rem;color:rgba(255,255,255,.9)}
 .section{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}
@@ -79,10 +86,50 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .section-pg{display:block}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
 .toast.show{opacity:1}
+#pin-gate{position:fixed;inset:0;background:#0f1117;z-index:10000;display:flex;align-items:center;justify-content:center}
+.pin-card{background:#1a1d27;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:2.4rem 2.8rem;text-align:center;width:300px}
+.pin-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:.3rem}
+.pin-title{font-size:1.25rem;font-weight:700;color:#e8eaf0;margin-bottom:.2rem}
+.pin-sub{font-size:13px;color:rgba(255,255,255,.38);margin-bottom:1.6rem}
+.pin-dots{display:flex;gap:.55rem;justify-content:center;margin-bottom:.5rem}
+.pin-dot{width:13px;height:13px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);transition:background .15s,border-color .15s}
+.pin-dot.filled{background:#F5C430;border-color:#F5C430}
+#pin-err{font-size:12px;color:#f87171;height:1.1rem;margin-bottom:.75rem}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.pin-btn{background:#1e2330;border:1px solid rgba(255,255,255,.09);border-radius:9px;color:#e8eaf0;font-size:1.1rem;font-weight:500;padding:.72rem;cursor:pointer;transition:background .12s}
+.pin-btn:hover{background:#252d3e}
+.pin-btn:active{background:#2d374d}
+.pin-btn.ghost{background:transparent;border-color:rgba(255,255,255,.05);color:rgba(255,255,255,.4);font-size:.82rem}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
 <body>
+<div id="pin-gate">
+  <div class="pin-card">
+    <div class="pin-eyebrow">Crystal Images</div>
+    <div class="pin-title">Owner Area</div>
+    <div class="pin-sub">Enter your PIN to continue</div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+    </div>
+    <div id="pin-err"></div>
+    <div class="pin-grid">
+      <button class="pin-btn" onclick="pinKey('1')">1</button>
+      <button class="pin-btn" onclick="pinKey('2')">2</button>
+      <button class="pin-btn" onclick="pinKey('3')">3</button>
+      <button class="pin-btn" onclick="pinKey('4')">4</button>
+      <button class="pin-btn" onclick="pinKey('5')">5</button>
+      <button class="pin-btn" onclick="pinKey('6')">6</button>
+      <button class="pin-btn" onclick="pinKey('7')">7</button>
+      <button class="pin-btn" onclick="pinKey('8')">8</button>
+      <button class="pin-btn" onclick="pinKey('9')">9</button>
+      <button class="pin-btn ghost" onclick="pinClear()">Clear</button>
+      <button class="pin-btn" onclick="pinKey('0')">0</button>
+      <button class="pin-btn ghost" onclick="pinBack()">&#9003;</button>
+    </div>
+  </div>
+</div>
+
 <div id="topbar">
   <span class="logo">Crystal Images — Admin</span>
   <a href="/admin/logout">Sign out</a>
@@ -92,10 +139,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
   <div class="nav-sec-label">Admin</div>
   <a href="/admin/dashboard" class="nav-link">Dashboard</a>
   <a href="/admin/pricing" class="nav-link">Pricing</a>
-  <div class="nav-link active-page" onclick="showSection('photographers')" style="cursor:pointer">Photographers</div>
-  <a onclick="showSection('timecards')" class="nav-link nav-sub" id="navsub-timecards">Timecards</a>
+  <div class="nav-group-hdr open" onclick="toggleNg('adminsec')">
+    Admin <span class="ng-arr open" id="ng-arr-adminsec">›</span>
+  </div>
+  <div class="nav-children open" id="ng-adminsec">
+    <div class="nav-link nav-sub" onclick="showSection('photographers')" style="cursor:pointer" id="navsub-photographers">Photographers</div>
+    <a onclick="showSection('timecards')" class="nav-link nav-sub" id="navsub-timecards">Commission</a>
+    <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
+  </div>
+  <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
   <a href="/admin/orders" class="nav-link">Orders</a>
-  <a href="/admin/discount-codes" class="nav-link">Discount Codes</a>
   <a href="/admin/links" class="nav-link">Links</a>
   <a href="/admin/settings" class="nav-link">Settings</a>
   <a href="/admin/activities" class="nav-link">Activities</a>
@@ -134,6 +187,19 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <option>Adventure Zip Line</option>
         </select>
       </div>
+      <div class="form-group" style="flex:0;min-width:130px">
+        <label>Commission Type</label>
+        <select id="newCommType">
+          <option value="hourly">Per Hour</option>
+          <option value="per_photo">Per Photo</option>
+          <option value="per_shift">Per Shift</option>
+          <option value="flat">Flat (custom)</option>
+        </select>
+      </div>
+      <div class="form-group" style="flex:0;min-width:100px">
+        <label>Rate ($)</label>
+        <input type="number" id="newCommRate" placeholder="0.00" min="0" step="0.01">
+      </div>
       <div class="form-group" style="flex:0;align-self:flex-end">
         <button class="btn btn-add" onclick="addPhotographer()">+ Add</button>
       </div>
@@ -146,7 +212,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
     <h2>Photographers</h2>
     <table>
       <thead>
-        <tr><th>Name</th><th>PIN</th><th>Prefix</th><th>Default Location</th><th>Actions</th></tr>
+        <tr><th>Name</th><th>PIN</th><th>Prefix</th><th>Default Location</th><th>Commission</th><th>Actions</th></tr>
       </thead>
       <tbody id="photoTable">
         <tr><td colspan="4" class="empty-row">Loading…</td></tr>
@@ -180,6 +246,16 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div class="toast" id="toast"></div>
 
 <script>
+function toggleNg(name) {
+  const el  = document.getElementById('ng-' + name);
+  const arr = document.getElementById('ng-arr-' + name);
+  const hdr = arr?.closest('.nav-group-hdr');
+  if (!el || !arr) return;
+  const open = el.classList.toggle('open');
+  arr.classList.toggle('open', open);
+  if (hdr) hdr.classList.toggle('open', open);
+}
+
 function showSection(name) {
   document.querySelectorAll('.section-pg').forEach(s => s.style.display = 'none');
   document.getElementById('sec-' + name).style.display = '';
@@ -190,12 +266,15 @@ function showSection(name) {
 
 let photographers = [];
 
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   const today = new Date().toISOString().split('T')[0];
   const monthAgo = new Date(Date.now() - 30*24*3600*1000).toISOString().split('T')[0];
   document.getElementById('commFrom').value = monthAgo;
   document.getElementById('commTo').value   = today;
-  loadPhotographers();
+  const _hash = location.hash.replace('#', '');
+  if (_hash === 'commission') showSection('timecards');
+  else showSection('photographers');
+  await loadPhotographers();
   loadCommission();
 });
 
@@ -216,12 +295,16 @@ function renderTable() {
     tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No photographers yet</td></tr>';
     return;
   }
-  tbody.innerHTML = photographers.map(p => `
+  const commLabel = {hourly:'$/hr',per_photo:'$/photo',per_shift:'$/shift',flat:'flat'};
+  tbody.innerHTML = photographers.map(p => {
+    const rate = p.commission_rate > 0 ? `$${parseFloat(p.commission_rate).toFixed(2)} ${commLabel[p.commission_type]||p.commission_type||''}` : '—';
+    return `
     <tr id="row_${p.id}">
       <td>${p.name}</td>
       <td class="pin-cell">${p.pin}</td>
       <td style="font-family:monospace;color:rgba(255,255,255,.5)">${p.file_prefix || '—'}</td>
       <td>${p.default_location || '—'}</td>
+      <td style="color:rgba(255,255,255,.6);font-size:.82rem">${rate}</td>
       <td class="actions">
         <button class="btn btn-edit" onclick="editRow('${p.id}')">Edit</button>
         <button class="btn btn-del" onclick="deletePhotographer('${p.id}')">Remove</button>
@@ -241,12 +324,21 @@ function renderTable() {
           <option ${p.default_location==='Adventure Zip Line'?'selected':''}>Adventure Zip Line</option>
         </select>
       </td>
+      <td>
+        <select id="ect_${p.id}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#fff;padding:.3rem .5rem;font-size:.8rem;width:100px">
+          <option value="hourly" ${(p.commission_type||'hourly')==='hourly'?'selected':''}>Per Hour</option>
+          <option value="per_photo" ${p.commission_type==='per_photo'?'selected':''}>Per Photo</option>
+          <option value="per_shift" ${p.commission_type==='per_shift'?'selected':''}>Per Shift</option>
+          <option value="flat" ${p.commission_type==='flat'?'selected':''}>Flat</option>
+        </select>
+        <input type="number" id="ecr_${p.id}" value="${p.commission_rate||0}" min="0" step="0.01" style="width:65px;margin-top:.25rem">
+      </td>
       <td class="actions">
         <button class="btn btn-add" onclick="saveEdit('${p.id}')">Save</button>
         <button class="btn btn-edit" onclick="cancelEdit('${p.id}')">Cancel</button>
       </td>
-    </tr>
-  `).join('');
+    </tr>`;
+  }).join('');
 }
 
 function editRow(id) {
@@ -263,12 +355,14 @@ async function saveEdit(id) {
   const pin    = document.getElementById('epin_'    + id).value.trim();
   const prefix = document.getElementById('eprefix_' + id).value.trim().toLowerCase();
   const loc    = document.getElementById('eloc_'    + id).value;
+  const commType = document.getElementById('ect_' + id)?.value || 'hourly';
+  const commRate = parseFloat(document.getElementById('ecr_' + id)?.value) || 0;
   if (!name || !pin) { showToast('Name and PIN required'); return; }
   try {
     await fetch(`/api/photographers/${id}`, {
       method: 'PUT',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, pin, default_location: loc, file_prefix: prefix})
+      body: JSON.stringify({name, pin, default_location: loc, file_prefix: prefix, commission_type: commType, commission_rate: commRate})
     });
     await loadPhotographers();
     showToast('Saved');
@@ -278,18 +372,20 @@ async function saveEdit(id) {
 }
 
 async function addPhotographer() {
-  const name   = document.getElementById('newName').value.trim();
-  const pin    = document.getElementById('newPin').value.trim();
-  const prefix = document.getElementById('newPrefix').value.trim().toLowerCase();
-  const loc    = document.getElementById('newLoc').value;
-  const errEl  = document.getElementById('addErr');
+  const name     = document.getElementById('newName').value.trim();
+  const pin      = document.getElementById('newPin').value.trim();
+  const prefix   = document.getElementById('newPrefix').value.trim().toLowerCase();
+  const loc      = document.getElementById('newLoc').value;
+  const commType = document.getElementById('newCommType').value;
+  const commRate = parseFloat(document.getElementById('newCommRate').value) || 0;
+  const errEl    = document.getElementById('addErr');
   errEl.style.display = 'none';
   if (!name || !pin) { errEl.textContent='Name and PIN required.'; errEl.style.display='block'; return; }
   try {
     const res = await fetch('/api/photographers', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, pin, default_location: loc, file_prefix: prefix})
+      body: JSON.stringify({name, pin, default_location: loc, file_prefix: prefix, commission_type: commType, commission_rate: commRate})
     });
     if (!res.ok) {
       const d = await res.json();
@@ -297,10 +393,12 @@ async function addPhotographer() {
       errEl.style.display = 'block';
       return;
     }
-    document.getElementById('newName').value   = '';
-    document.getElementById('newPin').value    = '';
-    document.getElementById('newPrefix').value = '';
-    document.getElementById('newLoc').value    = '';
+    document.getElementById('newName').value     = '';
+    document.getElementById('newPin').value      = '';
+    document.getElementById('newPrefix').value   = '';
+    document.getElementById('newLoc').value      = '';
+    document.getElementById('newCommType').value = 'hourly';
+    document.getElementById('newCommRate').value = '';
     await loadPhotographers();
     showToast('Photographer added');
   } catch(e) {
@@ -336,14 +434,45 @@ async function loadCommission() {
       return;
     }
 
-    grid.innerHTML = data.map(p => `
+    // Cross-reference commission rates from loaded photographers list
+    const rateMap = {};
+    photographers.forEach(ph => { rateMap[ph.name] = ph; });
+
+    let grandTotal = 0;
+    grid.innerHTML = data.map(p => {
+      const ph = rateMap[p.name] || {};
+      const commType = ph.commission_type || 'hourly';
+      const commRate = parseFloat(ph.commission_rate) || 0;
+      let commEarned = 0;
+      if (commRate > 0) {
+        if (commType === 'hourly')    commEarned = p.hours * commRate;
+        else if (commType === 'per_photo') commEarned = p.photos_uploaded * commRate;
+        else if (commType === 'per_shift') commEarned = p.shifts * commRate;
+        else if (commType === 'flat')  commEarned = commRate;
+      }
+      grandTotal += commEarned;
+      const rateLabel = commRate > 0 ? ` <span style="font-size:.72rem;color:rgba(255,255,255,.3)">($${commRate.toFixed(2)} ${commType.replace('_',' ')})</span>` : '';
+      return `
       <div class="stat-card" id="statcard_${slugPg(p.name)}" onclick="filterPhotog(this)" data-pname="${p.name.replace(/"/g,'&quot;')}">
         <div class="stat-name">${p.name}</div>
         <div class="stat-row"><span>Shifts</span><span>${p.shifts}</span></div>
         <div class="stat-row"><span>Hours</span><span>${p.hours.toFixed(2)}</span></div>
         <div class="stat-row"><span>Photos Uploaded</span><span>${p.photos_uploaded}</span></div>
-      </div>
-    `).join('');
+        <div class="stat-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:.4rem;padding-top:.4rem">
+          <span style="color:rgba(255,255,255,.5)">Commission${rateLabel}</span>
+          <span style="color:#F5C430;font-weight:600">${commRate > 0 ? '$'+commEarned.toFixed(2) : '—'}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Grand total card
+    if (data.length > 1 && grandTotal > 0) {
+      grid.innerHTML += `
+      <div class="stat-card" style="border-color:rgba(245,196,48,.2);background:rgba(245,196,48,.04)">
+        <div class="stat-name" style="color:#F5C430">Total Commission</div>
+        <div class="stat-row" style="margin-top:.5rem"><span style="color:rgba(255,255,255,.5)">All photographers</span><span style="color:#F5C430;font-weight:700;font-size:1.05rem">$${grandTotal.toFixed(2)}</span></div>
+      </div>`;
+    }
 
     // Clock records detail
     const clockHtml = data.map(p => {
@@ -591,6 +720,32 @@ function showToast(msg) {
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 2800);
 }
+
+// ── PIN gate ───────────────────────────────────────────────────────────────────
+let _pinVal = '';
+function pinKey(k){
+  if(_pinVal.length>=4) return;
+  _pinVal+=k;
+  _pinSync();
+  if(_pinVal.length===4) _pinSubmit();
+}
+function pinBack(){ _pinVal=_pinVal.slice(0,-1); _pinSync(); document.getElementById('pin-err').textContent=''; }
+function pinClear(){ _pinVal=''; _pinSync(); document.getElementById('pin-err').textContent=''; }
+function _pinSync(){
+  document.querySelectorAll('#pin-dots .pin-dot').forEach((d,i)=>d.classList.toggle('filled',i<_pinVal.length));
+}
+async function _pinSubmit(){
+  try{
+    const r=await fetch('/api/photographer/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:_pinVal})});
+    if(r.ok){ document.getElementById('pin-gate').style.display='none'; }
+    else{ document.getElementById('pin-err').textContent='Incorrect PIN'; _pinVal=''; _pinSync(); }
+  }catch(e){ document.getElementById('pin-err').textContent='Error — try again'; _pinVal=''; _pinSync(); }
+}
+document.addEventListener('keydown',function(e){
+  if(!document.getElementById('pin-gate')||document.getElementById('pin-gate').style.display==='none') return;
+  if(e.key>='0'&&e.key<='9') pinKey(e.key);
+  else if(e.key==='Backspace') pinBack();
+});
 </script>
 </div></div>
 </body>

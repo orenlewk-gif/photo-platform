@@ -111,6 +111,21 @@ input[type="text"].full{width:100%}
 #toast.show{opacity:1;background:#16a34a;color:#fff}
 #toast.err{opacity:1;background:#dc2626;color:#fff}
 
+/* ── PIN gate ── */
+#pin-gate{position:fixed;inset:0;background:#0f1117;z-index:10000;display:flex;align-items:center;justify-content:center}
+.pin-card{background:#1a1d27;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:2.4rem 2.8rem;text-align:center;width:300px}
+.pin-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:.3rem}
+.pin-title{font-size:1.25rem;font-weight:700;color:#e8eaf0;margin-bottom:.2rem}
+.pin-sub{font-size:13px;color:rgba(255,255,255,.38);margin-bottom:1.6rem}
+.pin-dots{display:flex;gap:.55rem;justify-content:center;margin-bottom:.5rem}
+.pin-dot{width:13px;height:13px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);transition:background .15s,border-color .15s}
+.pin-dot.filled{background:#F5C430;border-color:#F5C430}
+#pin-err{font-size:12px;color:#f87171;height:1.1rem;margin-bottom:.75rem}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem}
+.pin-btn{background:#1e2330;border:1px solid rgba(255,255,255,.09);border-radius:9px;color:#e8eaf0;font-size:1.1rem;font-weight:500;padding:.72rem;cursor:pointer;transition:background .12s}
+.pin-btn:hover{background:#252d3e}
+.pin-btn:active{background:#2d374d}
+.pin-btn.ghost{background:transparent;border-color:rgba(255,255,255,.05);color:rgba(255,255,255,.4);font-size:.82rem}
 /* ── Sidebar folder tree ── */
 #sidebar-tree{padding:.4rem 0}
 .st-date{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;font-size:.79rem;font-weight:600;color:rgba(255,255,255,.5);user-select:none}
@@ -132,6 +147,32 @@ input[type="text"].full{width:100%}
 </head>
 <body>
 
+<div id="pin-gate">
+  <div class="pin-card">
+    <div class="pin-eyebrow">Crystal Images</div>
+    <div class="pin-title">Owner Area</div>
+    <div class="pin-sub">Enter your PIN to continue</div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+    </div>
+    <div id="pin-err"></div>
+    <div class="pin-grid">
+      <button class="pin-btn" onclick="pinKey('1')">1</button>
+      <button class="pin-btn" onclick="pinKey('2')">2</button>
+      <button class="pin-btn" onclick="pinKey('3')">3</button>
+      <button class="pin-btn" onclick="pinKey('4')">4</button>
+      <button class="pin-btn" onclick="pinKey('5')">5</button>
+      <button class="pin-btn" onclick="pinKey('6')">6</button>
+      <button class="pin-btn" onclick="pinKey('7')">7</button>
+      <button class="pin-btn" onclick="pinKey('8')">8</button>
+      <button class="pin-btn" onclick="pinKey('9')">9</button>
+      <button class="pin-btn ghost" onclick="pinClear()">Clear</button>
+      <button class="pin-btn" onclick="pinKey('0')">0</button>
+      <button class="pin-btn ghost" onclick="pinBack()">&#9003;</button>
+    </div>
+  </div>
+</div>
+
 <div id="topbar">
   <span class="logo">Crystal Images — Admin</span>
   <a href="/admin/logout" class="signout">Sign out</a>
@@ -144,7 +185,10 @@ input[type="text"].full{width:100%}
     <div class="nav-sec-label">Admin</div>
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
 
-    <div class="nav-link active-page" style="cursor:default;font-size:14px;padding:.35rem .9rem .1rem">Pricing</div>
+    <div class="nav-group-hdr open" onclick="toggleNg('pricing')">
+      Pricing <span class="ng-arr open" id="ng-arr-pricing">›</span>
+    </div>
+    <div class="nav-children open" id="ng-pricing">
 
     <!-- Digital Options -->
     <div class="nav-group-hdr sub" onclick="toggleNg('digital')">
@@ -202,9 +246,17 @@ input[type="text"].full{width:100%}
 
     <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
     <a onclick="showSection('items-bundles')" class="nav-link nav-sub" id="navsub-items-bundles">Items Bundles</a>
+    </div><!-- /ng-pricing -->
 
     <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
-    <a href="/admin/photographers" class="nav-link">Photographers</a>
+    <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
+      Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
+    </div>
+    <div class="nav-children" id="ng-adminsec">
+      <a href="/admin/photographers" class="nav-link nav-sub">Photographers</a>
+      <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
+      <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
+    </div>
     <a href="/admin/orders" class="nav-link">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
     <a href="/admin/settings" class="nav-link">Settings</a>
@@ -1118,6 +1170,32 @@ if(_initHash && document.getElementById('sec-'+_initHash)){
 } else {
   navToSection('winter-action');
 }
+
+// ── PIN gate ───────────────────────────────────────────────────────────────────
+let _pinVal = '';
+function pinKey(k){
+  if(_pinVal.length>=4) return;
+  _pinVal+=k;
+  _pinSync();
+  if(_pinVal.length===4) _pinSubmit();
+}
+function pinBack(){ _pinVal=_pinVal.slice(0,-1); _pinSync(); document.getElementById('pin-err').textContent=''; }
+function pinClear(){ _pinVal=''; _pinSync(); document.getElementById('pin-err').textContent=''; }
+function _pinSync(){
+  document.querySelectorAll('#pin-dots .pin-dot').forEach((d,i)=>d.classList.toggle('filled',i<_pinVal.length));
+}
+async function _pinSubmit(){
+  try{
+    const r=await fetch('/api/photographer/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:_pinVal})});
+    if(r.ok){ document.getElementById('pin-gate').style.display='none'; }
+    else{ document.getElementById('pin-err').textContent='Incorrect PIN'; _pinVal=''; _pinSync(); }
+  }catch(e){ document.getElementById('pin-err').textContent='Error — try again'; _pinVal=''; _pinSync(); }
+}
+document.addEventListener('keydown',function(e){
+  if(!document.getElementById('pin-gate')||document.getElementById('pin-gate').style.display==='none') return;
+  if(e.key>='0'&&e.key<='9') pinKey(e.key);
+  else if(e.key==='Backspace') pinBack();
+});
 </script>
 </body>
 </html>
