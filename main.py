@@ -3052,14 +3052,7 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
       <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
       <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
     </div>
-    <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
-      Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
-    </div>
-    <div class="nav-children" id="ng-adminsec">
-      <a href="/admin/photographers" class="nav-link nav-sub">Photographers</a>
-      <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
-      <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
-    </div>
+    <a href="/admin/photographers" class="nav-link">Admin</a>
     <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/orders" class="nav-link active">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
@@ -4754,6 +4747,22 @@ async def api_set_group_size(request: Request):
     if fk not in folder_meta:
         folder_meta[fk] = {}
     folder_meta[fk]["group_size"] = group_size
+    _save_folder_meta(folder_meta)
+    return {"status": "ok"}
+
+@app.post("/api/admin/folder/set-item-list")
+async def api_set_folder_item_list(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    fk = body.get("folder_key")
+    item_list = body.get("item_list", "")
+    if not fk:
+        return JSONResponse(status_code=400, content={"error": "Missing folder_key"})
+    folder_meta = _load_folder_meta()
+    if fk not in folder_meta:
+        folder_meta[fk] = {}
+    folder_meta[fk]["item_list"] = item_list
     _save_folder_meta(folder_meta)
     return {"status": "ok"}
 

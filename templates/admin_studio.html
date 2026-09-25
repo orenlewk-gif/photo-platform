@@ -332,17 +332,10 @@ input[type=file]{display:none}
         Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
       </div>
       <div class="nav-children" id="ng-pricing">
-        <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
+        <a onclick="openPricingView()" class="nav-link nav-sub" style="cursor:pointer">Photo Pricing</a>
         <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
       </div>
-      <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
-        Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
-      </div>
-      <div class="nav-children" id="ng-adminsec">
-        <a href="/admin/photographers" class="nav-link nav-sub">Photographers</a>
-        <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
-        <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
-      </div>
+      <a href="/admin/photographers" class="nav-link">Admin</a>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
       <a href="/admin/orders" class="nav-link">Orders</a>
       <a href="/admin/links" class="nav-link">Links</a>
@@ -378,6 +371,13 @@ input[type=file]{display:none}
         <div id="folder-name-field" style="display:none" class="field">
           <label>Folder Name (last name / group)</label>
           <input id="upload-folder-name" placeholder="e.g. Smith" autocomplete="off">
+        </div>
+
+        <div class="field" style="margin-top:.6rem">
+          <label>Item List <span style="color:rgba(255,255,255,.3);font-weight:400">(optional)</span></label>
+          <select id="upload-item-list" style="background:#1a1d27;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#e8eaf0;padding:.42rem .65rem;font-size:13px;width:100%;max-width:300px;outline:none">
+            <option value="">None</option>
+          </select>
         </div>
 
         <div id="drop-zone">
@@ -518,6 +518,11 @@ input[type=file]{display:none}
       </div>
     </div>
 
+    <!-- Pricing view (inline iframe) -->
+    <div id="pricing-view" style="display:none;flex:1;overflow:hidden">
+      <iframe id="pricing-frame" src="" style="width:100%;height:100%;border:none"></iframe>
+    </div>
+
   </div>
 </div>
 
@@ -653,6 +658,7 @@ async function loadUploadLocations() {
   setupDropZone();
   setupInlineEdit();
   loadSidebar(); // fire and forget — sidebar populates in background
+  loadItemLists();
   const sp = new URLSearchParams(location.search);
   const od = sp.get('od'), ol = sp.get('ol'), of_ = sp.get('of');
   const dateParam = sp.get('date');
@@ -678,6 +684,32 @@ async function loadZipTiers() {
     zipTiers = d.tiers || [];
   } catch(e) { zipTiers = []; }
   return zipTiers;
+}
+
+// ── Item Lists ──
+async function loadItemLists() {
+  try {
+    const d = await fetch('/api/items-bundles').then(r => r.json());
+    const sel = document.getElementById('upload-item-list');
+    const bundles = d.bundles || [];
+    while (sel.options.length > 1) sel.remove(1);
+    for (const b of bundles) {
+      const opt = document.createElement('option');
+      opt.value = b.name;
+      opt.textContent = b.name;
+      sel.appendChild(opt);
+    }
+  } catch(e) {}
+}
+
+async function setFolderItemList(date, location, folder, itemList) {
+  if (!itemList) return;
+  const fk = `${date}|${location}|${folder}`;
+  await fetch('/api/admin/folder/set-item-list', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({folder_key: fk, item_list: itemList})
+  }).catch(() => {});
 }
 
 // ── Sidebar ──
@@ -1101,9 +1133,17 @@ function setView(view) {
   document.getElementById('date-view').style.display      = view==='date'     ? 'flex'  : 'none';
   document.getElementById('location-view').style.display  = view==='location' ? 'flex'  : 'none';
   document.getElementById('folder-view').style.display    = view==='folder'   ? 'flex'  : 'none';
+  document.getElementById('pricing-view').style.display   = view==='pricing'  ? 'flex'  : 'none';
   if (view==='date')     document.getElementById('date-view').style.flexDirection     = 'column';
   if (view==='location') document.getElementById('location-view').style.flexDirection = 'column';
   if (view==='folder')   document.getElementById('folder-view').style.flexDirection   = 'column';
+  if (view==='pricing')  document.getElementById('pricing-view').style.flexDirection  = 'column';
+}
+
+function openPricingView() {
+  setView('pricing');
+  const frame = document.getElementById('pricing-frame');
+  if (!frame.src) frame.src = '/admin/pricing';
 }
 
 // ── Selection ──
@@ -1943,6 +1983,8 @@ async function startUpload() {
     const poses=getPoseGroupsForUpload();
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys,poses})});
+    const poseItemList = document.getElementById('upload-item-list').value;
+    if (poseItemList) await setFolderItemList(date, location, folder, poseItemList);
     const succeeded=done-failed;
     if (failed) {
       label.textContent=`Done — ${succeeded} uploaded, ${failed} failed`;
@@ -2017,6 +2059,8 @@ async function startUpload() {
     if (!keys?.length) continue;
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys})});
+    const selectedItemList = document.getElementById('upload-item-list').value;
+    if (selectedItemList) await setFolderItemList(date, location, folder, selectedItemList);
     if (isZip) {
       const gs = getUploadGroupSize(fi);
       if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
