@@ -21,13 +21,13 @@ a{color:inherit;text-decoration:none}
 /* ── Sidebar ── */
 #sidebar{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);overflow-y:auto}
 .nav-sec-label{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
-.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;transition:background .12s,color .12s}
+.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.55);cursor:pointer;transition:background .12s,color .12s}
 .nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
-.nav-link.active-page{color:#F5C430;background:rgba(245,197,24,.08)}
+.nav-link.active-page{color:#F5C430;background:rgba(245,197,24,.09);box-shadow:inset 3px 0 0 #F5C430}
 .nav-link.active-sec{color:#e8eaf0;background:rgba(255,255,255,.07)}
 .nav-sub{padding-left:1.4rem;font-size:14px}
 .nav-sub2{padding-left:2.2rem;font-size:13px}
-.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
+.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
 .nav-group-hdr:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
 .nav-group-hdr.open{color:#e8eaf0}
 .nav-group-hdr.sub{padding-left:1.4rem;font-size:14px}
@@ -150,7 +150,7 @@ input[type="text"].full{width:100%}
 <div id="pin-gate">
   <div class="pin-card">
     <div class="pin-eyebrow">Crystal Images</div>
-    <div class="pin-title">Owner Area</div>
+    <div class="pin-title">Admin Area</div>
     <div class="pin-sub">Enter your PIN to continue</div>
     <div class="pin-dots" id="pin-dots">
       <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
@@ -182,7 +182,6 @@ input[type="text"].full{width:100%}
 
   <!-- Sidebar -->
   <div id="sidebar">
-    <div class="nav-sec-label">Admin</div>
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
 
     <div class="nav-group-hdr open" onclick="toggleNg('pricing')">
@@ -248,7 +247,6 @@ input[type="text"].full{width:100%}
     <a onclick="showSection('items-bundles')" class="nav-link nav-sub" id="navsub-items-bundles">Items Bundles</a>
     </div><!-- /ng-pricing -->
 
-    <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
       Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
     </div>
@@ -257,6 +255,7 @@ input[type="text"].full{width:100%}
       <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
       <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
     </div>
+    <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/orders" class="nav-link">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
     <a href="/admin/settings" class="nav-link">Settings</a>

@@ -32,12 +32,12 @@ body{background:#0f1117;color:#e8eaf0;font-family:'Segoe UI',sans-serif;min-heig
 .stat-card:hover{border-color:rgba(255,255,255,.18)!important}
 .stat-card.selected{border-color:#F5C518!important;background:rgba(245,197,24,.1)!important;box-shadow:0 0 0 1px rgba(245,197,24,.3)}
 .nav-sec-label{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
-.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}
+.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.55);text-decoration:none;transition:background .12s,color .12s}
 .nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
-.nav-link.active,.nav-link.active-page{background:rgba(245,197,24,.08);color:#F5C518}
+.nav-link.active,.nav-link.active-page{background:rgba(245,197,24,.09);color:#F5C430;box-shadow:inset 3px 0 0 #F5C430}
 .nav-link.active-sec{color:#e8eaf0;background:rgba(255,255,255,.07)}
 .nav-sub{padding-left:1.6rem!important;font-size:14px}
-.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
+.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
 .nav-group-hdr:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
 .nav-group-hdr.open{color:#e8eaf0}
 .ng-arr{font-size:10px;color:rgba(255,255,255,.3);transition:transform .15s;flex-shrink:0}
@@ -107,7 +107,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="pin-gate">
   <div class="pin-card">
     <div class="pin-eyebrow">Crystal Images</div>
-    <div class="pin-title">Owner Area</div>
+    <div class="pin-title">Admin Area</div>
     <div class="pin-sub">Enter your PIN to continue</div>
     <div class="pin-dots" id="pin-dots">
       <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
@@ -136,9 +136,14 @@ tr:hover td{background:rgba(255,255,255,.02)}
 </div>
 <div id="layout">
 <div id="sidebar">
-  <div class="nav-sec-label">Admin</div>
   <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-  <a href="/admin/pricing" class="nav-link">Pricing</a>
+  <div class="nav-group-hdr" onclick="toggleNg('pricing')">
+    Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
+  </div>
+  <div class="nav-children" id="ng-pricing">
+    <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
+    <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
+  </div>
   <div class="nav-group-hdr open" onclick="toggleNg('adminsec')">
     Admin <span class="ng-arr open" id="ng-arr-adminsec">›</span>
   </div>

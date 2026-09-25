@@ -2940,11 +2940,11 @@ body{{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-hei
 .st-sub:hover{{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}}
 .st-cnt{{font-size:.66rem;color:rgba(255,255,255,.22)}}
 .nav-sec-label{{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}}
-.nav-link{{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);text-decoration:none;transition:background .12s,color .12s}}
+.nav-link{{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.55);text-decoration:none;transition:background .12s,color .12s}}
 .nav-link:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
-.nav-link.active{{background:rgba(245,197,24,.08);color:#F5C518}}
+.nav-link.active{{background:rgba(245,197,24,.09);color:#F5C430;box-shadow:inset 3px 0 0 #F5C430}}
 .nav-sub{{padding-left:1.4rem!important;font-size:14px}}
-.nav-group-hdr{{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}}
+.nav-group-hdr{{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}}
 .nav-group-hdr:hover{{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}}
 .nav-group-hdr.open{{color:#e8eaf0}}
 .ng-arr{{font-size:10px;color:rgba(255,255,255,.3);transition:transform .15s;flex-shrink:0}}
@@ -3044,9 +3044,14 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 </div>
 <div id="layout">
   <div id="sidebar">
-    <div class="nav-sec-label">Admin</div>
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-    <a href="/admin/pricing" class="nav-link">Pricing</a>
+    <div class="nav-group-hdr" onclick="toggleNg('pricing')">
+      Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
+    </div>
+    <div class="nav-children" id="ng-pricing">
+      <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
+      <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
+    </div>
     <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
       Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
     </div>
@@ -3294,7 +3299,7 @@ async function copyLink(orderId, e) {{
 <div id="rpt-pin-gate" style="position:fixed;inset:0;background:rgba(15,17,23,.97);z-index:10000;display:none;align-items:center;justify-content:center">
   <div style="background:#1a1d27;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:2.4rem 2.8rem;text-align:center;width:300px">
     <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:.3rem">Crystal Images</div>
-    <div style="font-size:1.25rem;font-weight:700;color:#e8eaf0;margin-bottom:.2rem">Owner Area</div>
+    <div style="font-size:1.25rem;font-weight:700;color:#e8eaf0;margin-bottom:.2rem">Admin Area</div>
     <div style="font-size:13px;color:rgba(255,255,255,.38);margin-bottom:1.6rem">Enter your PIN to view reports</div>
     <div id="rpt-pin-dots" style="display:flex;gap:.55rem;justify-content:center;margin-bottom:.5rem">
       <div class="rpt-pd"></div><div class="rpt-pd"></div><div class="rpt-pd"></div><div class="rpt-pd"></div>
