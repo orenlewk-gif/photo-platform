@@ -178,6 +178,8 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 .btn-sel-all,.btn-sel-none{background:none;border:1px solid rgba(255,255,255,.12);
   color:rgba(255,255,255,.45);border-radius:6px;padding:.22rem .6rem;font-size:.75rem;cursor:pointer}
 .btn-sel-all:hover,.btn-sel-none:hover{color:#fff;border-color:rgba(255,255,255,.3)}
+html.embedded #topbar,html.embedded #sidebar{display:none}
+html.embedded #layout{height:100vh}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
@@ -191,21 +193,8 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
   <div id="sidebar">
     <div id="sidebar-nav">
       <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-      <div class="nav-group-hdr" onclick="toggleNg('pricing')">
-        Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
-      </div>
-      <div class="nav-children" id="ng-pricing">
-        <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
-        <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
-      </div>
-      <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
-        Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
-      </div>
-      <div class="nav-children" id="ng-adminsec">
-        <a href="/admin/photographers" class="nav-link nav-sub">Photographers</a>
-        <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
-        <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
-      </div>
+      <a href="/admin/pricing" class="nav-link">Pricing</a>
+      <a href="/admin/photographers" class="nav-link">Admin</a>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
       <a href="/admin/orders" class="nav-link">Orders</a>
       <a href="/admin/links" class="nav-link">Links</a>
@@ -817,5 +806,6 @@ async function applyBulkPreset() {
   }
 }
 </script>
+<script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 </body>
 </html>

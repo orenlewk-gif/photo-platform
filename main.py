@@ -3035,6 +3035,8 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 .rp-sub{{font-size:.75rem;color:rgba(255,255,255,.3);margin-top:2px}}
 .rpt-loading{{padding:2.5rem;text-align:center;color:rgba(255,255,255,.35);font-size:.9rem;display:none}}
 .rpt-empty{{padding:1.2rem 0;color:rgba(255,255,255,.3);font-size:.85rem}}
+html.embedded #topbar,html.embedded #sidebar{{display:none}}
+html.embedded #layout{{height:100vh}}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head><body>
@@ -3045,13 +3047,7 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 <div id="layout">
   <div id="sidebar">
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-    <div class="nav-group-hdr" onclick="toggleNg('pricing')">
-      Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
-    </div>
-    <div class="nav-children" id="ng-pricing">
-      <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
-      <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
-    </div>
+    <a href="/admin/pricing" class="nav-link">Pricing</a>
     <a href="/admin/photographers" class="nav-link">Admin</a>
     <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/orders" class="nav-link active">Orders</a>
@@ -3346,6 +3342,7 @@ document.addEventListener('keydown',function(e){{
   else if(e.key==='Backspace')rptPinBack();
 }});
 </script>
+<script>if(window.parent!==window)document.documentElement.classList.add('embedded');</script>
 </body></html>"""
     return HTMLResponse(html)
 
@@ -4006,6 +4003,38 @@ def photographer_commission(request: Request,
     photographers = _load_photographers()
     records       = _load_clock_records()
     pending_meta  = _load_pending_meta()
+    # Revenue by photographer prefix
+    prefix_map = {}  # prefix (3-char lower) -> photographer id
+    for p in photographers:
+        pfx = p.get("file_prefix", "").strip().lower()
+        if pfx:
+            prefix_map[pfx] = p["id"]
+    rev_by_pid: dict[str, float] = {p["id"]: 0.0 for p in photographers}
+    try:
+        wc_orders = _fetch_wc_orders_all(after=date_from, before=date_to)
+        pos_orders = _fetch_pos_orders(after=date_from, before=date_to)
+        for o in wc_orders:
+            row = _order_row(o)
+            fnames = (row.get("filenames") or "").split(",")
+            for f in fnames:
+                f = f.strip()
+                if len(f) >= 3:
+                    pid_match = prefix_map.get(f[:3].lower())
+                    if pid_match and pid_match in rev_by_pid:
+                        rev_by_pid[pid_match] += float(row.get("total", 0))
+                        break
+        for o in pos_orders:
+            row = _pos_order_row(o)
+            fnames = (row.get("filenames") or "").split(",")
+            for f in fnames:
+                f = f.strip()
+                if len(f) >= 3:
+                    pid_match = prefix_map.get(f[:3].lower())
+                    if pid_match and pid_match in rev_by_pid:
+                        rev_by_pid[pid_match] += float(row.get("total", 0))
+                        break
+    except Exception:
+        pass
     result = []
     for p in photographers:
         pid    = p["id"]
@@ -4025,6 +4054,7 @@ def photographer_commission(request: Request,
             "id": pid, "name": p["name"],
             "shifts": len(shifts), "hours": round(hours, 2),
             "photos_uploaded": len(uploads),
+            "revenue": round(rev_by_pid.get(pid, 0.0), 2),
             "clock_records": shifts,
         })
     return {"commission": result, "date_from": date_from, "date_to": date_to}

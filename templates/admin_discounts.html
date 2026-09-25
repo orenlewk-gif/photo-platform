@@ -151,6 +151,8 @@ select option{background:#0a1e2e;color:#fff}
 
 .empty-state{text-align:center;padding:4rem 2rem;color:rgba(255,255,255,.25)}
 .empty-state svg{opacity:.15;margin-bottom:1rem}
+html.embedded #topbar,html.embedded #sidebar{display:none}
+html.embedded #layout{height:100vh}
 </style>
 </head>
 <body>
@@ -161,17 +163,10 @@ select option{background:#0a1e2e;color:#fff}
 <div id="layout">
   <div id="sidebar">
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-    <div class="nav-group-hdr" onclick="toggleNg('pricing')">
-      Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
-    </div>
-    <div class="nav-children" id="ng-pricing">
-      <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
-      <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
-    </div>
+    <a href="/admin/pricing" class="nav-link active-page">Pricing</a>
     <a href="/admin/photographers" class="nav-link">Admin</a>
     <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/orders" class="nav-link">Orders</a>
-    <a href="/admin/discount-codes" class="nav-link active-page">Discount Codes</a>
     <a href="/admin/links" class="nav-link">Links</a>
     <a href="/admin/settings" class="nav-link">Settings</a>
     <a href="/admin/activities" class="nav-link">Activities</a>
@@ -824,5 +819,6 @@ function showToast(msg, type='') {
 
 load();
 </script>
+<script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 </body>
 </html>

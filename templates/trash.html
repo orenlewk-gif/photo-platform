@@ -76,6 +76,8 @@ body{background:#0f1117;color:#e8eaf0;font-family:'Segoe UI',sans-serif;min-heig
 .empty-icon{font-size:3rem}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;transition:opacity .3s;opacity:0}
 .toast.show{opacity:1}
+html.embedded #topbar,html.embedded #sidebar{display:none}
+html.embedded #layout{height:100vh}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
@@ -87,21 +89,8 @@ body{background:#0f1117;color:#e8eaf0;font-family:'Segoe UI',sans-serif;min-heig
 <div id="layout">
 <div id="sidebar">
   <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-  <div class="nav-group-hdr" onclick="toggleNg('pricing')">
-    Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
-  </div>
-  <div class="nav-children" id="ng-pricing">
-    <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
-    <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
-  </div>
-  <div class="nav-group-hdr" onclick="toggleNg('adminsec')">
-    Admin <span class="ng-arr" id="ng-arr-adminsec">›</span>
-  </div>
-  <div class="nav-children" id="ng-adminsec">
-    <a href="/admin/photographers" class="nav-link nav-sub">Photographers</a>
-    <a href="/admin/photographers#commission" class="nav-link nav-sub">Commission</a>
-    <a href="/admin/orders?tab=reports" class="nav-link nav-sub">Reports</a>
-  </div>
+  <a href="/admin/pricing" class="nav-link">Pricing</a>
+  <a href="/admin/photographers" class="nav-link">Admin</a>
   <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
   <a href="/admin/orders" class="nav-link">Orders</a>
   <a href="/admin/links" class="nav-link">Links</a>
@@ -323,6 +312,7 @@ function showToast(msg) {
   }catch(e){}
 })();
 </script>
+<script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 </div></div>
 </body>
 </html>

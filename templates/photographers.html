@@ -104,6 +104,31 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .pin-btn:hover{background:#252d3e}
 .pin-btn:active{background:#2d374d}
 .pin-btn.ghost{background:transparent;border-color:rgba(255,255,255,.05);color:rgba(255,255,255,.4);font-size:.82rem}
+html.embedded #topbar,html.embedded #sidebar{display:none}
+html.embedded #layout{height:100vh}
+.rpt-section{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:1.25rem}
+.rpt-title{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.9rem}
+.rpt-bar-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.55rem;font-size:.82rem}
+.rpt-bar-label{width:180px;flex-shrink:0;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rpt-bar-val{width:160px;flex-shrink:0;color:#e2e8f0;text-align:right}
+.rpt-bar-cnt{color:rgba(255,255,255,.35);font-size:.75rem;margin-left:.5rem}
+.rpt-controls{display:flex;gap:1rem;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap}
+.rpt-qbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.38rem .85rem;font-size:.82rem;cursor:pointer;transition:all .15s}
+.rpt-qbtn:hover{background:rgba(255,255,255,.1);color:#fff}
+.rpt-qbtn.active{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.3);color:#F5C518}
+.rpt-custom{display:flex;gap:.5rem;align-items:center}
+.rpt-custom input[type=date]{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.36rem .65rem;border-radius:6px;font-size:.82rem}
+.rpt-custom button{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.25);color:#F5C518;padding:.36rem .85rem;border-radius:6px;font-size:.82rem;cursor:pointer}
+.rpt-custom button:hover{background:rgba(245,197,24,.22)}
+.rpt-sum{display:flex;gap:.85rem;margin-bottom:1.25rem;flex-wrap:wrap}
+.rpt-stat{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.85rem 1.1rem;flex:1;min-width:120px}
+.rpl{font-size:10px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.rpv{font-size:1.22rem;font-weight:700;color:#F5C518}
+.rpv-red{color:#f87171}
+.rpv-grn{color:#4ade80}
+.rp-sub{font-size:.75rem;color:rgba(255,255,255,.3);margin-top:2px}
+.rpt-loading{padding:2.5rem;text-align:center;color:rgba(255,255,255,.35);font-size:.9rem;display:none}
+.rpt-empty{color:rgba(255,255,255,.3);font-size:.85rem;padding:1rem 0}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
@@ -141,13 +166,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="layout">
 <div id="sidebar">
   <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-  <div class="nav-group-hdr" onclick="toggleNg('pricing')">
-    Pricing <span class="ng-arr" id="ng-arr-pricing">›</span>
-  </div>
-  <div class="nav-children" id="ng-pricing">
-    <a href="/admin/pricing" class="nav-link nav-sub">Photo Pricing</a>
-    <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
-  </div>
+  <a href="/admin/pricing" class="nav-link">Pricing</a>
   <a href="/admin/photographers" class="nav-link active-page">Admin</a>
   <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
   <a href="/admin/orders" class="nav-link">Orders</a>
@@ -164,7 +183,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
 <div id="admin-tabs">
   <button class="admin-tab active" id="tab-photographers" onclick="showSection('photographers')">Photographers</button>
   <button class="admin-tab" id="tab-timecards" onclick="showSection('timecards')">Commission</button>
-  <a href="/admin/orders?tab=reports" class="admin-tab">Reports</a>
+  <button class="admin-tab" id="tab-reports" onclick="showSection('reports')">Reports</button>
 </div>
 
 <div id="sec-photographers" class="section-pg">
@@ -202,6 +221,7 @@ tr:hover td{background:rgba(255,255,255,.02)}
           <option value="per_photo">Per Photo</option>
           <option value="per_shift">Per Shift</option>
           <option value="flat">Flat (custom)</option>
+          <option value="per_sale_pct">% of Sales</option>
         </select>
       </div>
       <div class="form-group" style="flex:0;min-width:100px">
@@ -249,6 +269,39 @@ tr:hover td{background:rgba(255,255,255,.02)}
   </div>
 </div><!-- /sec-timecards -->
 
+<div id="sec-reports" class="section-pg" style="display:none">
+  <div class="rpt-controls">
+    <div style="display:flex;gap:.4rem;flex-wrap:wrap">
+      <button class="rpt-qbtn active" onclick="setRptRange(30,this)">30D</button>
+      <button class="rpt-qbtn" onclick="setRptRange(90,this)">90D</button>
+      <button class="rpt-qbtn" onclick="setRptRange(365,this)">12M</button>
+      <button class="rpt-qbtn" onclick="setRptAllTime(this)">All Time</button>
+    </div>
+    <div class="rpt-custom">
+      <input type="date" id="rpt-from" />
+      <span style="color:rgba(255,255,255,.3);font-size:.82rem">to</span>
+      <input type="date" id="rpt-to" />
+      <button onclick="applyRptCustom()">Apply</button>
+    </div>
+  </div>
+  <div id="rpt-loading" class="rpt-loading">Loading&hellip;</div>
+  <div id="rpt-content" style="display:none">
+    <div id="rpt-sum" class="rpt-sum"></div>
+    <div class="rpt-section">
+      <div class="rpt-title">Revenue Over Time &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">gold = gross &nbsp; green = net</span></div>
+      <div id="chart-time"></div>
+    </div>
+    <div class="rpt-section">
+      <div class="rpt-title">Revenue by Activity &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">gold = gross &nbsp; green = net</span></div>
+      <div id="chart-act"></div>
+    </div>
+    <div class="rpt-section">
+      <div class="rpt-title">Revenue by Day of Week &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">weekend highlighted</span></div>
+      <div id="chart-dow"></div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /main -->
 
 <div class="toast" id="toast"></div>
@@ -270,6 +323,7 @@ function showSection(name) {
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
   const tab = document.getElementById('tab-' + name);
   if (tab) tab.classList.add('active');
+  if (name === 'reports' && !window._rptLoaded) loadReports();
 }
 
 let photographers = [];
@@ -303,7 +357,7 @@ function renderTable() {
     tbody.innerHTML = '<tr><td colspan="4" class="empty-row">No photographers yet</td></tr>';
     return;
   }
-  const commLabel = {hourly:'$/hr',per_photo:'$/photo',per_shift:'$/shift',flat:'flat'};
+  const commLabel = {hourly:'$/hr',per_photo:'$/photo',per_shift:'$/shift',flat:'flat',per_sale_pct:'% sales'};
   tbody.innerHTML = photographers.map(p => {
     const rate = p.commission_rate > 0 ? `$${parseFloat(p.commission_rate).toFixed(2)} ${commLabel[p.commission_type]||p.commission_type||''}` : '—';
     return `
@@ -338,6 +392,7 @@ function renderTable() {
           <option value="per_photo" ${p.commission_type==='per_photo'?'selected':''}>Per Photo</option>
           <option value="per_shift" ${p.commission_type==='per_shift'?'selected':''}>Per Shift</option>
           <option value="flat" ${p.commission_type==='flat'?'selected':''}>Flat</option>
+          <option value="per_sale_pct" ${p.commission_type==='per_sale_pct'?'selected':''}>% of Sales</option>
         </select>
         <input type="number" id="ecr_${p.id}" value="${p.commission_rate||0}" min="0" step="0.01" style="width:65px;margin-top:.25rem">
       </td>
@@ -453,19 +508,23 @@ async function loadCommission() {
       const commRate = parseFloat(ph.commission_rate) || 0;
       let commEarned = 0;
       if (commRate > 0) {
-        if (commType === 'hourly')    commEarned = p.hours * commRate;
+        if (commType === 'hourly')         commEarned = p.hours * commRate;
         else if (commType === 'per_photo') commEarned = p.photos_uploaded * commRate;
         else if (commType === 'per_shift') commEarned = p.shifts * commRate;
-        else if (commType === 'flat')  commEarned = commRate;
+        else if (commType === 'flat')      commEarned = commRate;
+        else if (commType === 'per_sale_pct') commEarned = (p.revenue || 0) * commRate / 100;
       }
       grandTotal += commEarned;
-      const rateLabel = commRate > 0 ? ` <span style="font-size:.72rem;color:rgba(255,255,255,.3)">($${commRate.toFixed(2)} ${commType.replace('_',' ')})</span>` : '';
+      const rateLabel = commRate > 0 ? (commType === 'per_sale_pct'
+        ? ` <span style="font-size:.72rem;color:rgba(255,255,255,.3)">(${commRate}% of sales)</span>`
+        : ` <span style="font-size:.72rem;color:rgba(255,255,255,.3)">($${commRate.toFixed(2)} ${commType.replace('_',' ')})</span>`) : '';
       return `
       <div class="stat-card" id="statcard_${slugPg(p.name)}" onclick="filterPhotog(this)" data-pname="${p.name.replace(/"/g,'&quot;')}">
         <div class="stat-name">${p.name}</div>
         <div class="stat-row"><span>Shifts</span><span>${p.shifts}</span></div>
         <div class="stat-row"><span>Hours</span><span>${p.hours.toFixed(2)}</span></div>
         <div class="stat-row"><span>Photos Uploaded</span><span>${p.photos_uploaded}</span></div>
+        ${(p.revenue != null) ? `<div class="stat-row"><span>Revenue</span><span>$${p.revenue.toFixed(2)}</span></div>` : ''}
         <div class="stat-row" style="border-top:1px solid rgba(255,255,255,.06);margin-top:.4rem;padding-top:.4rem">
           <span style="color:rgba(255,255,255,.5)">Commission${rateLabel}</span>
           <span style="color:#F5C430;font-weight:600">${commRate > 0 ? '$'+commEarned.toFixed(2) : '—'}</span>
@@ -754,6 +813,130 @@ document.addEventListener('keydown',function(e){
   if(e.key>='0'&&e.key<='9') pinKey(e.key);
   else if(e.key==='Backspace') pinBack();
 });
+</script>
+<script>
+if (window.parent !== window) document.documentElement.classList.add('embedded');
+window._rptDays=30;window._rptFrom='';window._rptTo='';window._rptAllTime=0;window._rptLoaded=false;
+function setRptRange(days,btn){
+  document.querySelectorAll('.rpt-qbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  window._rptDays=days;window._rptFrom='';window._rptTo='';window._rptAllTime=0;
+  loadReports();
+}
+function setRptAllTime(btn){
+  document.querySelectorAll('.rpt-qbtn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  window._rptAllTime=1;window._rptFrom='';window._rptTo='';
+  loadReports();
+}
+function applyRptCustom(){
+  const from=document.getElementById('rpt-from').value;
+  const to=document.getElementById('rpt-to').value;
+  if(!from||!to)return;
+  document.querySelectorAll('.rpt-qbtn').forEach(b=>b.classList.remove('active'));
+  window._rptFrom=from;window._rptTo=to;window._rptAllTime=0;
+  loadReports();
+}
+async function loadReports(){
+  window._rptLoaded=true;
+  const loading=document.getElementById('rpt-loading');
+  const content=document.getElementById('rpt-content');
+  loading.style.display='block';loading.textContent='Loading…';content.style.display='none';
+  let qs='';
+  if(window._rptAllTime)qs='all_time=1';
+  else if(window._rptFrom&&window._rptTo)qs='date_from='+window._rptFrom+'&date_to='+window._rptTo;
+  else qs='days='+window._rptDays;
+  try{
+    const res=await fetch('/api/admin/reports?'+qs);
+    if(!res.ok)throw new Error();
+    const d=await res.json();
+    loading.style.display='none';content.style.display='block';
+    renderRpt(d);
+  }catch(e){
+    loading.textContent='Failed to load reports.';
+  }
+}
+function renderRpt(d){
+  const s=d.summary;
+  const feeRate=s.revenue>0?(s.fees/s.revenue*100).toFixed(1)+'%':'—';
+  const netMarg=s.revenue>0?(s.net/s.revenue*100).toFixed(1)+'%':'—';
+  document.getElementById('rpt-sum').innerHTML=
+    rptCard('Orders',s.orders,'','')+
+    rptCard('Gross Revenue','$'+s.revenue.toFixed(2),'','')+
+    rptCard('Stripe Fees','-$'+s.fees.toFixed(2),'rpv-red',feeRate+' of gross')+
+    rptCard('Net Revenue','$'+s.net.toFixed(2),'rpv-grn',netMarg+' margin')+
+    rptCard('Avg Order','$'+s.avg_order.toFixed(2),'','');
+  const useM=d.daily.length>60;
+  drawRevTime(document.getElementById('chart-time'),useM?d.monthly:d.daily,!useM);
+  drawActBars(document.getElementById('chart-act'),d.by_activity);
+  drawDowBars(document.getElementById('chart-dow'),d.by_dow);
+}
+function rptCard(label,val,valCls,sub){
+  return '<div class="rpt-stat"><div class="rpl">'+label+'</div><div class="rpv '+(valCls||'')+'">'+val+'</div>'+(sub?'<div class="rp-sub">'+sub+'</div>':'')+'</div>';
+}
+function drawRevTime(el,data,isDaily){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data for this period.</div>';return;}
+  const W=720,H=220,Pl=68,Pt=25,Pr=20,Pb=40,iW=W-Pl-Pr,iH=H-Pt-Pb;
+  let maxV=0;data.forEach(d=>{if(d.revenue>maxV)maxV=d.revenue;});
+  if(!maxV){el.innerHTML='<div class="rpt-empty">No revenue in this period.</div>';return;}
+  const n=data.length,bSlot=iW/Math.max(n,1),bW=Math.max(2,bSlot-Math.max(2,bSlot*.2));
+  let grid='',bars='',xLab='';
+  for(let i=0;i<=4;i++){
+    const v=(maxV/4)*i,y=Pt+iH-(v/maxV)*iH;
+    grid+='<line x1="'+Pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-Pr)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
+    const lbl=v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':v.toFixed(0);
+    grid+='<text x="'+(Pl-6)+'" y="'+(y+4).toFixed(1)+'" font-size="10" fill="rgba(255,255,255,.38)" text-anchor="end">$'+lbl+'</text>';
+  }
+  data.forEach((d,i)=>{
+    const cx=Pl+i*bSlot+bSlot/2,x=cx-bW/2;
+    const gH=(d.revenue/maxV)*iH,nH=d.net!=null?(d.net/maxV)*iH:0,base=Pt+iH;
+    bars+='<rect x="'+x.toFixed(1)+'" y="'+(base-gH).toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+gH.toFixed(1)+'" fill="rgba(245,197,24,.4)" rx="2"/>';
+    if(nH>0)bars+='<rect x="'+x.toFixed(1)+'" y="'+(base-nH).toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+nH.toFixed(1)+'" fill="#4ade80" rx="2" opacity=".75"/>';
+  });
+  const step=Math.max(1,Math.ceil(n/8));
+  data.forEach((d,i)=>{
+    if(i%step===0){
+      const lbl=isDaily?(d.date||'').slice(5):(d.month||'');
+      xLab+='<text x="'+(Pl+i*bSlot+bSlot/2).toFixed(1)+'" y="'+(H-6)+'" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="middle">'+lbl+'</text>';
+    }
+  });
+  const leg='<rect x="'+Pl+'" y="7" width="10" height="7" fill="rgba(245,197,24,.4)" rx="1"/><text x="'+(Pl+13)+'" y="14" font-size="9" fill="rgba(255,255,255,.45)">Gross</text><rect x="'+(Pl+50)+'" y="7" width="10" height="7" fill="#4ade80" rx="1" opacity=".75"/><text x="'+(Pl+63)+'" y="14" font-size="9" fill="rgba(255,255,255,.45)">Net</text>';
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%">'+grid+bars+leg+xLab+'</svg>';
+}
+function drawActBars(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data.</div>';return;}
+  let maxV=0;data.forEach(d=>{if(d.revenue>maxV)maxV=d.revenue;});
+  if(!maxV){el.innerHTML='<div class="rpt-empty">No revenue data.</div>';return;}
+  el.innerHTML=data.slice(0,15).map(d=>{
+    const gPct=(d.revenue/maxV*100).toFixed(1),nPct=(d.net/maxV*100).toFixed(1);
+    return '<div class="rpt-bar-row"><div class="rpt-bar-label">'+d.name+'</div>'
+      +'<div style="flex:1;position:relative;height:18px;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden">'
+      +'<div style="position:absolute;left:0;top:0;height:100%;width:'+gPct+'%;background:rgba(245,197,24,.4);border-radius:4px"></div>'
+      +'<div style="position:absolute;left:0;top:3px;height:calc(100% - 6px);width:'+nPct+'%;background:#4ade80;border-radius:3px;opacity:.75"></div></div>'
+      +'<div class="rpt-bar-val">$'+d.revenue.toFixed(0)+'<span class="rpt-bar-cnt">'+d.orders+' order'+(d.orders!==1?'s':'')+'</span></div></div>';
+  }).join('');
+}
+function drawDowBars(el,data){
+  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data.</div>';return;}
+  let maxV=0;data.forEach(d=>{if(d.revenue>maxV)maxV=d.revenue;});
+  const W=520,H=160,Pl=52,Pt=18,Pr=20,Pb=30,iW=W-Pl-Pr,iH=H-Pt-Pb,bSlot=iW/data.length,bW=Math.max(2,bSlot-8);
+  let bars='',xLab='',grid='';
+  for(let i=0;i<=3;i++){
+    const v=maxV?(maxV/3)*i:0,y=Pt+iH-(maxV&&v?v/maxV:0)*iH;
+    grid+='<line x1="'+Pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-Pr)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
+    const lbl=v>=1000?(v/1000).toFixed(0)+'k':v.toFixed(0);
+    grid+='<text x="'+(Pl-4)+'" y="'+(y+4).toFixed(1)+'" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="end">$'+lbl+'</text>';
+  }
+  data.forEach((d,i)=>{
+    const cx=Pl+i*bSlot+bSlot/2,x=cx-bW/2;
+    const h=maxV?(d.revenue/maxV)*iH:0,y=Pt+iH-h;
+    const col=(d.day==='Sat'||d.day==='Sun')?'#F5C518':'rgba(245,197,24,.55)';
+    bars+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+Math.max(h,0).toFixed(1)+'" fill="'+col+'" rx="2"/>';
+    if(d.orders>0)bars+='<text x="'+cx.toFixed(1)+'" y="'+(y-4).toFixed(1)+'" font-size="8" fill="rgba(255,255,255,.35)" text-anchor="middle">'+d.orders+'</text>';
+    xLab+='<text x="'+cx.toFixed(1)+'" y="'+(H-4)+'" font-size="9" fill="rgba(255,255,255,.4)" text-anchor="middle">'+d.day+'</text>';
+  });
+  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:520px">'+grid+bars+xLab+'</svg>';
+}
 </script>
 </div></div>
 </body>
