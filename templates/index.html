@@ -1961,10 +1961,11 @@ function togglePoseSingle(globalIdx, color) {
 
 function updatePoseCart() {
   const { fullPoses, singles, total } = calcPortraitTotal();
-  const count = fullPoses + singles;
+  const poseCount  = fullPoses + singles;
+  const printCount = printCart.length;
   const cartBar = document.getElementById('cart-bar');
   if (!cartBar) return;
-  if (count === 0) {
+  if (poseCount === 0 && printCount === 0) {
     cartBar.classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
     return;
@@ -1972,12 +1973,13 @@ function updatePoseCart() {
   cartBar.classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
   const parts = [];
-  if (fullPoses) parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''}`);
-  if (singles)   parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
+  if (fullPoses)   parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''}`);
+  if (singles)     parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
+  if (printCount)  parts.push(`${printCount} print${printCount !== 1 ? 's' : ''}`);
   document.getElementById('cart-count-text').textContent = parts.join(' + ');
-  document.getElementById('cart-price-text').textContent = `$${total.toFixed(2)}`;
+  const printTotal = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  document.getElementById('cart-price-text').textContent = `$${(total + printTotal).toFixed(2)}`;
   updateHeaderCartBtn();
-  // Portrait mode: adjust cart bar buttons
   const saBtn  = document.getElementById('cart-select-all-btn');
   const viewBtn = document.getElementById('cart-view-btn');
   const clearBtn = document.getElementById('cart-clear-btn');
@@ -2110,10 +2112,30 @@ function renderPoseCartView() {
     </div>`;
   });
 
+  // Prints
+  printCart.forEach((p, pi) => {
+    const photo = allPhotos[p.photoIdx];
+    const frameLabel = p.frame && p.frame !== 'No Frame' ? ` · ${p.frame}` : '';
+    html += `<div style="padding:.6rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-weight:700;font-size:.92rem">${p.size} Print${frameLabel}</div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${esc(photo?.filename || '')}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem">
+          <div style="font-weight:700;color:#F5C518">$${(p.price + p.framePrice).toFixed(2)}</div>
+          <button onclick="printCart.splice(${pi},1);renderPoseCartView();updatePoseCart()" style="background:none;border:none;color:rgba(255,255,255,.35);cursor:pointer;font-size:.85rem;padding:0" title="Remove">&times;</button>
+        </div>
+      </div>
+    </div>`;
+  });
+
   if (!html) { body.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:1rem 0">No poses selected yet.</p>'; return; }
+  const printTotal = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
+  const grandTotal = total + printTotal;
   html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.8rem 0 0">
     <div style="font-weight:700">Total</div>
-    <div style="font-size:1.1rem;font-weight:700;color:#F5C518">$${total.toFixed(2)}</div>
+    <div style="font-size:1.1rem;font-weight:700;color:#F5C518">$${grandTotal.toFixed(2)}</div>
   </div>
   <div style="font-size:.75rem;color:rgba(255,255,255,.35);text-align:right;margin-top:3px">Taxes are calculated at the next step</div>`;
   body.innerHTML = html;
@@ -3947,8 +3969,17 @@ let frameModalGalleryIdx = 0;
 // ── Quick Shop ──
 function openQuickShop(i) {
   const photo       = allPhotos[i];
-  // Half-price prints only if THIS specific photo has been selected as a digital
-  const hasDigitals = selectedPhotos.has(i);
+  // Half-price prints if photo selected as digital, or if its pose has been purchased
+  let hasDigitals = selectedPhotos.has(i);
+  if (!hasDigitals && _poseData) {
+    const filename = photo.filename || photo.path.split('/').pop();
+    const poseIdx = _poseData.poses.findIndex(p => (p.files||[]).includes(filename));
+    if (poseIdx >= 0) {
+      const color = _poseData.poses[poseIdx].color || '';
+      hasDigitals = _poseState[color] === 'pose' ||
+                    (_poseState[color] instanceof Set && _poseState[color].has(i));
+    }
+  }
 
   const photoEl = document.getElementById('qs-photo');
   if (imgCache[photo.path]) {
