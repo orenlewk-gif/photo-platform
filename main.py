@@ -575,7 +575,14 @@ def _server_digital_price(album: dict, order_date: str) -> float:
     activities = pricing.get("activities", {})
     act_key = next((k for k in activities if k.lower() == loc_lower), None)
     if act_key:
-        p = _price_from_tiers(activities[act_key].get("tiers", []), count)
+        act = activities[act_key]
+        if "per_photo" in act or "all_photos" in act:
+            per   = float(act.get("per_photo", 0))
+            all_p = float(act.get("all_photos", 0))
+            if count == 1 and per:
+                return per
+            return all_p if all_p else per * count
+        p = _price_from_tiers(act.get("tiers", []), count)
         if p is not None:
             return p
 
@@ -1847,9 +1854,14 @@ POS_PRODUCTS_KEY = "meta/pos_products.json"
 def _load_pos_products():
     try:
         obj = s3.get_object(Bucket=R2_BUCKET, Key=POS_PRODUCTS_KEY)
-        return json.loads(obj["Body"].read())
+        d = json.loads(obj["Body"].read())
     except Exception:
-        return {"base_area": [], "mats": []}
+        d = {}
+    d.setdefault("base_area", [])
+    d.setdefault("mats", [])
+    d.setdefault("base_area_tiers", [])
+    d.setdefault("satin_black_frames", [])
+    return d
 
 def _save_pos_products(d):
     s3.put_object(Bucket=R2_BUCKET, Key=POS_PRODUCTS_KEY,
@@ -5930,6 +5942,64 @@ def admin_pricing_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/pricing")
     return HTMLResponse(open("templates/admin_pricing.html").read())
+
+# ── PRIVATE SESSION PRICING ───────────────────────────────────────────────────
+PRIVATE_SESSION_PRICING_KEY = "meta/private_session_pricing.json"
+
+_PRIVATE_SESSION_DEFAULT = [
+    {"label": "Private On Mountain Shoot", "type": "private_people", "basePrice": 550},
+    {"label": "Private Portrait Session",  "type": "private_fixed",  "basePrice": 550},
+    {"label": "Proposal",                  "type": "private_fixed",  "basePrice": 550},
+]
+
+def _load_private_session_pricing():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRIVATE_SESSION_PRICING_KEY)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return {"sessions": list(_PRIVATE_SESSION_DEFAULT)}
+
+def _save_private_session_pricing(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=PRIVATE_SESSION_PRICING_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+
+@app.get("/api/private-session-pricing")
+def api_get_private_session_pricing():
+    return _load_private_session_pricing()
+
+@app.post("/api/admin/private-session-pricing")
+async def api_save_private_session_pricing(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_private_session_pricing(body)
+    return {"ok": True}
+
+# ── ITEMS BUNDLES ─────────────────────────────────────────────────────────────
+ITEMS_BUNDLES_KEY = "meta/items_bundles.json"
+
+def _load_items_bundles():
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=ITEMS_BUNDLES_KEY)
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return {"bundles": []}
+
+def _save_items_bundles(d):
+    s3.put_object(Bucket=R2_BUCKET, Key=ITEMS_BUNDLES_KEY,
+                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+
+@app.get("/api/items-bundles")
+def api_get_items_bundles():
+    return _load_items_bundles()
+
+@app.post("/api/admin/items-bundles")
+async def api_save_items_bundles(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    _save_items_bundles(body)
+    return {"ok": True}
 
 
 # ─────────────────────────────────────────

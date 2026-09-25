@@ -20,27 +20,22 @@ a{color:inherit;text-decoration:none}
 
 /* ── Sidebar ── */
 #sidebar{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);overflow-y:auto}
-#sidebar-tree{padding:.4rem 0}
-.st-date{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;font-size:.79rem;font-weight:600;color:rgba(255,255,255,.5);user-select:none}
-.st-date:hover{background:rgba(255,255,255,.04);color:#fff}
-.st-arr{font-size:.55rem;transition:transform .15s;color:rgba(255,255,255,.22);flex-shrink:0}
-.st-date.st-open .st-arr{transform:rotate(90deg)}
-.st-locs{display:none}
-.st-date.st-open+.st-locs{display:block}
-.st-loc{padding:.3rem .85rem .3rem 1.5rem;font-size:.76rem;color:rgba(255,255,255,.42);cursor:pointer;display:flex;align-items:center;gap:.35rem}
-.st-loc:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.8)}
-.st-loc.st-open .st-arr{transform:rotate(90deg)}
-.st-subs{display:none}
-.st-loc.st-open+.st-subs{display:block}
-.st-sub{padding:.27rem .85rem .27rem 2.5rem;font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-radius:4px;margin:0 .3rem}
-.st-sub:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}
-.st-cnt{font-size:.66rem;color:rgba(255,255,255,.22)}
 .nav-sec-label{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
 .nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;transition:background .12s,color .12s}
 .nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
-.nav-link.active-page{color:#F5C518;background:rgba(245,197,24,.08)}
+.nav-link.active-page{color:#F5C430;background:rgba(245,197,24,.08)}
 .nav-link.active-sec{color:#e8eaf0;background:rgba(255,255,255,.07)}
-.nav-sub{padding-left:1.6rem;font-size:14px}
+.nav-sub{padding-left:1.4rem;font-size:14px}
+.nav-sub2{padding-left:2.2rem;font-size:13px}
+.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:15px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
+.nav-group-hdr:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
+.nav-group-hdr.open{color:#e8eaf0}
+.nav-group-hdr.sub{padding-left:1.4rem;font-size:14px}
+.nav-group-hdr.sub2{padding-left:2.2rem;font-size:13px}
+.ng-arr{font-size:10px;color:rgba(255,255,255,.3);transition:transform .15s;flex-shrink:0}
+.ng-arr.open{transform:rotate(90deg)}
+.nav-children{display:none}
+.nav-children.open{display:block}
 
 /* ── Main content ── */
 #main{flex:1;overflow-y:auto;padding:2rem 2.5rem;max-width:920px}
@@ -48,6 +43,7 @@ a{color:inherit;text-decoration:none}
 .section.active{display:block}
 h1{font-size:22px;font-weight:700;margin-bottom:.3rem}
 .subtitle{color:rgba(255,255,255,.4);font-size:13px;margin-bottom:1.75rem}
+h2{font-size:17px;font-weight:600;margin-bottom:.25rem;margin-top:2rem}
 
 /* ── Cards ── */
 .card{background:#1a1d27;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:1.4rem 1.6rem;margin-bottom:1.4rem}
@@ -62,6 +58,7 @@ tr:last-child td{border-bottom:none}
 input[type="number"],input[type="text"]{background:#252836;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#e8eaf0;padding:.3rem .55rem;font-size:13px;width:88px;outline:none;transition:border-color .15s}
 input[type="number"]:focus,input[type="text"]:focus{border-color:#63b3ed}
 input[type="text"].wide{width:175px}
+input[type="text"].full{width:100%}
 .dollar{color:rgba(255,255,255,.3);margin-right:2px;font-size:12px}
 
 /* ── Buttons ── */
@@ -82,29 +79,54 @@ input[type="text"].wide{width:175px}
 .toggle.on::after{left:17px}
 .toggle-label{font-size:12px;color:rgba(255,255,255,.5)}
 
-/* ── Activity blocks ── */
-.act-block{background:#12161f;border:1px solid rgba(255,255,255,.06);border-radius:8px;margin-bottom:.7rem;overflow:hidden}
-.act-header{display:flex;align-items:center;gap:.75rem;padding:.7rem 1rem;cursor:pointer}
-.act-name{font-weight:600;font-size:13px;flex:1}
-.act-badge{font-size:10px;font-weight:600;letter-spacing:.5px;padding:.18rem .5rem;border-radius:4px;text-transform:uppercase}
-.act-badge.default{background:rgba(99,179,237,.12);color:#63b3ed}
-.act-badge.custom{background:rgba(52,211,153,.12);color:#34d399}
-.act-badge.zip{background:rgba(245,197,24,.12);color:#F5C518}
-.act-body{padding:.8rem 1rem 1rem;border-top:1px solid rgba(255,255,255,.06);display:none}
-.act-body.open{display:block}
-.act-chevron{font-size:12px;color:rgba(255,255,255,.3);transition:transform .2s}
-.act-chevron.open{transform:rotate(90deg)}
-
 /* ── Combo cards ── */
 .combo-card{background:#12161f;border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:.9rem 1rem;margin-bottom:.6rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
 .combo-add-form{background:#12161f;border:1px dashed rgba(255,255,255,.1);border-radius:8px;padding:1rem;margin-top:.75rem;display:none}
 .field-row{display:flex;align-items:center;gap:.5rem;margin-bottom:.55rem;flex-wrap:wrap}
 .field-row label{font-size:12px;color:rgba(255,255,255,.45);min-width:95px}
 
+/* ── Session cards ── */
+.session-item{background:#12161f;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:.8rem 1rem;margin-bottom:.5rem;display:grid;grid-template-columns:1fr 140px 100px 36px;gap:.5rem;align-items:center}
+.session-item-new{display:grid;grid-template-columns:1fr 140px 100px;gap:.5rem;align-items:center;margin-bottom:.5rem}
+
+/* ── Group tiers ── */
+.tier-item{background:#12161f;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:.7rem 1rem;margin-bottom:.45rem;display:grid;grid-template-columns:1fr 120px 36px;gap:.5rem;align-items:center}
+.tier-item-new{display:grid;grid-template-columns:1fr 120px;gap:.5rem;align-items:center;margin-bottom:.45rem}
+
+/* ── Bundle checklist ── */
+.bundle-editor{background:#12161f;border:1px dashed rgba(255,255,255,.1);border-radius:8px;padding:1.1rem;margin-top:.75rem;display:none}
+.bundle-card{background:#12161f;border:1px solid rgba(255,255,255,.07);border-radius:8px;padding:.85rem 1rem;margin-bottom:.55rem}
+.bundle-card-title{font-weight:600;font-size:13px;margin-bottom:.4rem}
+.bundle-items-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.3rem}
+.bundle-item-tag{background:rgba(63,131,248,.12);border:1px solid rgba(63,131,248,.25);color:#93c5fd;padding:.18rem .55rem;border-radius:5px;font-size:11px;font-weight:500}
+.check-item{display:flex;align-items:center;gap:.5rem;padding:.3rem 0;font-size:13px;cursor:pointer}
+.check-item input{accent-color:#3b82f6;width:14px;height:14px}
+
+/* ── Flat price row ── */
+.flat-price-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem;flex-wrap:wrap}
+.flat-price-label{font-size:13px;color:rgba(255,255,255,.65);min-width:170px}
+
 /* ── Toast ── */
 #toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}
 #toast.show{opacity:1;background:#16a34a;color:#fff}
 #toast.err{opacity:1;background:#dc2626;color:#fff}
+
+/* ── Sidebar folder tree ── */
+#sidebar-tree{padding:.4rem 0}
+.st-date{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;font-size:.79rem;font-weight:600;color:rgba(255,255,255,.5);user-select:none}
+.st-date:hover{background:rgba(255,255,255,.04);color:#fff}
+.st-arr{font-size:.55rem;transition:transform .15s;color:rgba(255,255,255,.22);flex-shrink:0}
+.st-date.st-open .st-arr{transform:rotate(90deg)}
+.st-locs{display:none}
+.st-date.st-open+.st-locs{display:block}
+.st-loc{padding:.3rem .85rem .3rem 1.5rem;font-size:.76rem;color:rgba(255,255,255,.42);cursor:pointer;display:flex;align-items:center;gap:.35rem}
+.st-loc:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.8)}
+.st-loc.st-open .st-arr{transform:rotate(90deg)}
+.st-subs{display:none}
+.st-loc.st-open+.st-subs{display:block}
+.st-sub{padding:.27rem .85rem .27rem 2.5rem;font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-radius:4px;margin:0 .3rem}
+.st-sub:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}
+.st-cnt{font-size:.66rem;color:rgba(255,255,255,.22)}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
@@ -121,20 +143,73 @@ input[type="text"].wide{width:175px}
   <div id="sidebar">
     <div class="nav-sec-label">Admin</div>
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
-    <div class="nav-link active-page" style="cursor:default">Pricing</div>
-    <a onclick="showSection('digital')" class="nav-link nav-sub active-sec" id="navsub-digital">Digital Tiers</a>
-    <a onclick="showSection('combos')" class="nav-link nav-sub" id="navsub-combos">Bundle Deals</a>
-    <a onclick="showSection('prints')" class="nav-link nav-sub" id="navsub-prints">Print &amp; Shipping</a>
-    <a onclick="showSection('portrait')" class="nav-link nav-sub" id="navsub-portrait">Portrait Poses</a>
-    <a onclick="showSection('seasons')" class="nav-link nav-sub" id="navsub-seasons">Seasons</a>
+
+    <div class="nav-link active-page" style="cursor:default;font-size:14px;padding:.35rem .9rem .1rem">Pricing</div>
+
+    <!-- Digital Options -->
+    <div class="nav-group-hdr sub" onclick="toggleNg('digital')">
+      Digital Options <span class="ng-arr" id="ng-arr-digital">›</span>
+    </div>
+    <div class="nav-children" id="ng-digital">
+      <div class="nav-group-hdr sub2" onclick="toggleNg('action')">
+        Action Photos <span class="ng-arr" id="ng-arr-action">›</span>
+      </div>
+      <div class="nav-children" id="ng-action">
+        <a onclick="showSection('winter-action')" class="nav-link nav-sub2" id="navsub-winter-action">Winter Action</a>
+        <a onclick="showSection('zip')" class="nav-link nav-sub2" id="navsub-zip">Zip Line</a>
+        <a onclick="showSection('mountain-biking')" class="nav-link nav-sub2" id="navsub-mountain-biking">Mountain Biking</a>
+        <a onclick="showSection('dirt-days')" class="nav-link nav-sub2" id="navsub-dirt-days">Dirt Days</a>
+      </div>
+      <div class="nav-group-hdr sub2" onclick="toggleNg('portrait')">
+        Portrait Photos <span class="ng-arr" id="ng-arr-portrait">›</span>
+      </div>
+      <div class="nav-children" id="ng-portrait">
+        <a onclick="showSection('winter-portraits')" class="nav-link nav-sub2" id="navsub-winter-portraits">Winter Portraits</a>
+        <a onclick="showSection('summer-portraits')" class="nav-link nav-sub2" id="navsub-summer-portraits">Summer Portraits</a>
+      </div>
+    </div>
+
+    <!-- Prints -->
+    <div class="nav-group-hdr sub" onclick="toggleNg('prints')">
+      Prints <span class="ng-arr" id="ng-arr-prints">›</span>
+    </div>
+    <div class="nav-children" id="ng-prints">
+      <a onclick="showSection('prints')" class="nav-link nav-sub2" id="navsub-prints">Prints</a>
+      <a onclick="showSection('mats')" class="nav-link nav-sub2" id="navsub-mats">Mats</a>
+    </div>
+
+    <!-- Frames -->
+    <div class="nav-group-hdr sub" onclick="toggleNg('frames')">
+      Frames <span class="ng-arr" id="ng-arr-frames">›</span>
+    </div>
+    <div class="nav-children" id="ng-frames">
+      <a onclick="showSection('big-sky-frames')" class="nav-link nav-sub2" id="navsub-big-sky-frames">Big Sky Rustic</a>
+      <a onclick="showSection('satin-frames')" class="nav-link nav-sub2" id="navsub-satin-frames">Satin Black</a>
+    </div>
+
+    <a onclick="showSection('shipping')" class="nav-link nav-sub" id="navsub-shipping">Shipping</a>
+    <a onclick="showSection('private-sessions')" class="nav-link nav-sub" id="navsub-private-sessions">Private Sessions</a>
     <a onclick="showSection('base-area')" class="nav-link nav-sub" id="navsub-base-area">Base Area</a>
-    <a onclick="showSection('mats')" class="nav-link nav-sub" id="navsub-mats">Mats</a>
+
+    <!-- Bundles -->
+    <div class="nav-group-hdr sub" onclick="toggleNg('bundles')">
+      Bundles <span class="ng-arr" id="ng-arr-bundles">›</span>
+    </div>
+    <div class="nav-children" id="ng-bundles">
+      <a onclick="showSection('create-bundle')" class="nav-link nav-sub2" id="navsub-create-bundle">Create Bundle</a>
+      <a onclick="showSection('all-bundles')" class="nav-link nav-sub2" id="navsub-all-bundles">All Bundles</a>
+    </div>
+
+    <a href="/admin/discount-codes" class="nav-link nav-sub">Discount Codes</a>
+    <a onclick="showSection('items-bundles')" class="nav-link nav-sub" id="navsub-items-bundles">Items Bundles</a>
+
+    <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/photographers" class="nav-link">Photographers</a>
     <a href="/admin/orders" class="nav-link">Orders</a>
-    <a href="/admin/discount-codes" class="nav-link">Discount Codes</a>
     <a href="/admin/links" class="nav-link">Links</a>
     <a href="/admin/settings" class="nav-link">Settings</a>
     <a href="/admin/activities" class="nav-link">Activities</a>
+
     <div id="sidebar-tree"></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
       <a href="/admin/trash" class="nav-link">Trash</a>
@@ -144,95 +219,93 @@ input[type="text"].wide{width:175px}
   <!-- Main content -->
   <div id="main">
 
-    <!-- ── Digital Tiers ── -->
-    <div id="sec-digital" class="section active">
-      <h1>Digital Tiers</h1>
-      <p class="subtitle">Pricing customers see when buying digital downloads.</p>
-
+    <!-- ── Winter Action ── -->
+    <div id="sec-winter-action" class="section">
+      <h1>Winter Action</h1>
+      <p class="subtitle">Per-photo and all-photos price for Winter Action folders.</p>
       <div class="card">
-        <h3>Activity Pricing</h3>
-        <p class="hint">Override pricing per activity. Toggle "Use Default" off to set custom tiers.</p>
-        <div id="activity-list"></div>
-        <div class="btn-row" style="margin-top:.4rem">
-          <button class="btn btn-primary btn-sm" onclick="saveDigital()">Save All Activities</button>
+        <div class="flat-price-row">
+          <span class="flat-price-label">Price per photo</span>
+          <span class="dollar">$</span>
+          <input type="number" id="wa-per-photo" min="0" step="0.01" style="width:90px" value="25">
         </div>
-      </div>
-
-    </div>
-
-    <!-- ── Bundle Deals ── -->
-    <div id="sec-combos" class="section">
-      <h1>Bundle Deals</h1>
-      <p class="subtitle">Discount when customers buy from multiple activities in one order.</p>
-      <div class="card">
-        <div id="combos-list"></div>
+        <div class="flat-price-row">
+          <span class="flat-price-label">All photos from folder</span>
+          <span class="dollar">$</span>
+          <input type="number" id="wa-all-photos" min="0" step="0.01" style="width:90px" value="115">
+        </div>
         <div class="btn-row">
-          <button class="btn btn-ghost btn-sm" onclick="toggleAddCombo()">+ Add Bundle</button>
-        </div>
-        <div id="combo-add-form" class="combo-add-form">
-          <div class="field-row"><label>Activity 1</label><input type="text" id="ca-loc1" class="wide" placeholder="e.g. Mountain Biking"></div>
-          <div class="field-row"><label>Activity 2</label><input type="text" id="ca-loc2" class="wide" placeholder="e.g. Lone Peak Portraits"></div>
-          <div class="field-row"><label>Min photos each</label><input type="number" id="ca-min" value="1" min="1" style="width:70px"></div>
-          <div class="field-row"><label>Bundle price</label><span class="dollar">$</span><input type="number" id="ca-price" value="150" min="1"></div>
-          <div class="field-row"><label>Label</label><input type="text" id="ca-label" class="wide" placeholder="e.g. Adventure Bundle"></div>
-          <div class="btn-row">
-            <button class="btn btn-primary btn-sm" onclick="addCombo()">Add Bundle</button>
-            <button class="btn btn-ghost btn-sm" onclick="toggleAddCombo()">Cancel</button>
-          </div>
+          <button class="btn btn-primary btn-sm" onclick="saveWinterAction()">Save</button>
         </div>
       </div>
     </div>
 
-    <!-- ── Print & Shipping ── -->
-    <div id="sec-prints" class="section">
-      <h1>Print &amp; Shipping</h1>
-      <p class="subtitle">Prices and shipping rates for unframed and framed prints.</p>
+    <!-- ── Zip Line ── -->
+    <div id="sec-zip" class="section">
+      <h1>Zip Line Pricing</h1>
+      <p class="subtitle">Group-size pricing for Adventure Zip and Adventure Zip Line.</p>
       <div class="card">
         <table>
-          <thead><tr><th>Size</th><th>Price</th><th>Unframed Ship</th><th>Framed Ship</th></tr></thead>
-          <tbody id="print-sizes-body"></tbody>
+          <thead><tr><th>Group Size</th><th>1 Photo</th><th>2 Photos</th><th>3 Photos</th><th>All Photos</th><th></th></tr></thead>
+          <tbody id="zip-tiers-body"></tbody>
         </table>
-        <div class="field-row" style="margin-top:1rem">
-          <label style="min-width:auto;white-space:nowrap">Free shipping at</label>
-          <input type="number" id="free-ship-input" value="3" min="1" style="width:58px">
-          <label style="min-width:auto">or more unframed prints</label>
-        </div>
         <div class="btn-row">
-          <button class="btn btn-primary btn-sm" onclick="savePrints()">Save</button>
+          <button class="btn btn-ghost btn-sm" onclick="addZipTier()">+ Add Group Size</button>
+          <button class="btn btn-primary btn-sm" onclick="saveZip()">Save Zip Pricing</button>
         </div>
       </div>
     </div>
 
-    <!-- ── Portrait Pose Pricing ── -->
-    <div id="sec-portrait" class="section">
-      <h1>Portrait Pose Pricing</h1>
-      <p class="subtitle">Pricing for winter on-mountain portrait sessions with pose groupings. Applies when a folder has XMP color-label pose data.</p>
+    <!-- ── Mountain Biking ── -->
+    <div id="sec-mountain-biking" class="section">
+      <h1>Mountain Biking</h1>
+      <p class="subtitle">Custom pricing tiers for Mountain Biking folders.</p>
       <div class="card">
-        <div class="field-row">
-          <label>Single photo price</label>
+        <div id="act-editor-mountain-biking"></div>
+        <div class="btn-row" style="margin-top:.5rem">
+          <button class="btn btn-primary btn-sm" onclick="saveDigital()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Dirt Days ── -->
+    <div id="sec-dirt-days" class="section">
+      <h1>Dirt Days</h1>
+      <p class="subtitle">Custom pricing tiers for Dirt Days folders.</p>
+      <div class="card">
+        <div id="act-editor-dirt-days"></div>
+        <div class="btn-row" style="margin-top:.5rem">
+          <button class="btn btn-primary btn-sm" onclick="saveDigital()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Winter Portraits ── -->
+    <div id="sec-winter-portraits" class="section">
+      <h1>Winter Portraits</h1>
+      <p class="subtitle">Pricing for on-mountain portrait sessions with pose groupings. Applies when a folder has XMP color-label pose data.</p>
+      <div class="card">
+        <div class="flat-price-row" style="margin-bottom:1rem">
+          <span class="flat-price-label">Single photo price</span>
           <span class="dollar">$</span>
           <input type="number" id="pp-single" min="0" step="0.01" style="width:80px" value="40">
-          <span style="color:rgba(255,255,255,.4);font-size:.8rem">per individual photo (any pose)</span>
+          <span style="color:rgba(255,255,255,.4);font-size:.8rem">per individual photo</span>
         </div>
-        <div style="margin-top:1.2rem">
-          <label style="display:block;margin-bottom:.5rem;color:rgba(255,255,255,.6);font-size:.8rem;text-transform:uppercase;letter-spacing:1px">Full pose prices (per pose, based on number of poses purchased)</label>
-          <table style="width:auto">
-            <thead><tr><th>Poses purchased</th><th>Price per pose</th></tr></thead>
-            <tbody id="pp-tiers-body"></tbody>
-          </table>
-          <button class="btn btn-sm" style="margin-top:.6rem" onclick="addPoseTier()">+ Add tier</button>
-        </div>
+        <div style="margin-bottom:.5rem;color:rgba(255,255,255,.6);font-size:.8rem;text-transform:uppercase;letter-spacing:1px">Full pose prices (per pose)</div>
+        <table style="width:auto">
+          <thead><tr><th>Poses purchased</th><th>Price per pose</th><th></th></tr></thead>
+          <tbody id="pp-tiers-body"></tbody>
+        </table>
+        <button class="btn btn-sm" style="margin-top:.6rem" onclick="addPoseTier()">+ Add tier</button>
         <div style="margin-top:.8rem;padding:.6rem .8rem;background:rgba(245,197,24,.06);border:1px solid rgba(245,197,24,.18);border-radius:8px;font-size:.8rem;color:rgba(255,255,255,.55)">
-          Example: tiers [65, 57.50, 50] → 1 pose = $65, 2 poses = $57.50 each, 3+ poses = $50 each (last tier repeats for all higher counts).
+          Example: tiers [65, 57.50, 50] — 1 pose = $65, 2 poses = $57.50 each, 3+ poses = $50 each.
         </div>
         <div class="btn-row" style="margin-top:1rem">
           <button class="btn btn-primary btn-sm" onclick="savePortraitPricing()">Save</button>
         </div>
       </div>
-
-      <!-- Portrait Locations -->
-      <h2 style="margin-top:2rem">Portrait Locations</h2>
-      <p class="subtitle">Locations that use last-name sub-folders and trigger pose detection. Add, edit, or remove any location — changes take effect immediately with no code deploy.</p>
+      <h2 style="margin-top:1.5rem">Portrait Locations</h2>
+      <p class="subtitle" style="margin-bottom:1rem">Locations that use last-name sub-folders and trigger pose detection.</p>
       <div class="card">
         <div id="portrait-locs-list"></div>
         <button class="btn btn-sm" style="margin-top:.6rem" onclick="addPortraitLoc()">+ Add location</button>
@@ -242,36 +315,38 @@ input[type="text"].wide{width:175px}
       </div>
     </div>
 
-    <!-- ── Seasons ── -->
-    <div id="sec-seasons" class="section">
-      <h1>Seasons</h1>
-      <p class="subtitle">Map date ranges to seasons to set the pricing mode (summer vs. winter) for all content on those dates.</p>
+    <!-- ── Summer Portraits ── -->
+    <div id="sec-summer-portraits" class="section">
+      <h1>Summer Portraits</h1>
+      <p class="subtitle">Shared pricing for Lone Peak Portraits, Explorer Gondola, and Ramcharger Portraits. Saving here updates all three simultaneously.</p>
       <div class="card">
-        <div id="seasons-list"></div>
-        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addSeason()">+ Add season</button>
-        <div class="btn-row" style="margin-top:1rem">
-          <button class="btn btn-primary btn-sm" onclick="saveSeasons()">Save seasons</button>
+        <div class="hint" style="margin-bottom:1rem">Set pricing tiers below. Toggle "Use Default" off to define custom tiers.</div>
+        <div id="summer-portrait-editor"></div>
+        <div class="btn-row" style="margin-top:.6rem">
+          <button class="btn btn-primary btn-sm" onclick="saveSummerPortraits()">Save All Three Locations</button>
         </div>
       </div>
     </div>
 
-    <!-- ── BASE AREA ── -->
-    <div id="sec-base-area" class="section">
-      <h1>Base Area</h1>
-      <p class="subtitle">Custom products shown on the Base Area tab of the POS. Click + Add Item to create a new product, then save.</p>
+    <!-- ── Prints ── -->
+    <div id="sec-prints" class="section">
+      <h1>Prints</h1>
+      <p class="subtitle">Print sizes and prices (excluding shipping — edit that in Shipping).</p>
       <div class="card">
-        <div id="base-area-list"></div>
-        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPosProduct('base_area')">+ Add Item</button>
-        <div class="btn-row" style="margin-top:1rem">
-          <button class="btn btn-primary btn-sm" onclick="savePosProducts()">Save</button>
+        <table>
+          <thead><tr><th>Size</th><th>Price</th></tr></thead>
+          <tbody id="print-sizes-body"></tbody>
+        </table>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="savePrints()">Save</button>
         </div>
       </div>
     </div>
 
-    <!-- ── MATS ── -->
+    <!-- ── Mats ── -->
     <div id="sec-mats" class="section">
       <h1>Mats</h1>
-      <p class="subtitle">Custom mat products shown on the Mats tab of the POS.</p>
+      <p class="subtitle">Mat options shown on the Mats tab of the POS.</p>
       <div class="card">
         <div id="mats-list"></div>
         <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPosProduct('mats')">+ Add Item</button>
@@ -281,296 +356,690 @@ input[type="text"].wide{width:175px}
       </div>
     </div>
 
+    <!-- ── Big Sky Rustic Frames ── -->
+    <div id="sec-big-sky-frames" class="section">
+      <h1>Big Sky Rustic Frames</h1>
+      <p class="subtitle">Frames synced from WooCommerce. Prices are managed in WC. Frame photos are stored locally in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/</code>.</p>
+      <div class="card">
+        <div id="frames-display"></div>
+      </div>
+    </div>
+
+    <!-- ── Satin Black Frames ── -->
+    <div id="sec-satin-frames" class="section">
+      <h1>Satin Black Frames</h1>
+      <p class="subtitle">Satin Black frame options shown on the Frames tab of the POS.</p>
+      <div class="card">
+        <div id="satin-frames-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPosProduct('satin_black_frames')">+ Add Frame</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePosProducts()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Shipping ── -->
+    <div id="sec-shipping" class="section">
+      <h1>Shipping</h1>
+      <p class="subtitle">Shipping rates per print size for unframed and framed orders.</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Size</th><th>Unframed Ship</th><th>Framed Ship</th></tr></thead>
+          <tbody id="ship-sizes-body"></tbody>
+        </table>
+        <div class="field-row" style="margin-top:1rem">
+          <label style="min-width:auto;white-space:nowrap">Free shipping at</label>
+          <input type="number" id="free-ship-input" value="3" min="1" style="width:58px">
+          <label style="min-width:auto">or more unframed prints</label>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="saveShipping()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Private Sessions ── -->
+    <div id="sec-private-sessions" class="section">
+      <h1>Private Sessions</h1>
+      <p class="subtitle">Session options shown on the Private Session tab of the POS. Drag to reorder.</p>
+      <div class="card">
+        <div id="private-sessions-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPrivateSession()">+ Add Session</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePrivateSessions()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Base Area ── -->
+    <div id="sec-base-area" class="section">
+      <h1>Base Area</h1>
+      <p class="subtitle">Group session tiers and custom products shown on the Base Area tab of the POS.</p>
+      <h2 style="margin-top:0;margin-bottom:.5rem;font-size:15px;color:rgba(255,255,255,.65)">Group Tiers</h2>
+      <div class="card">
+        <div id="base-area-tiers-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addBaseAreaTier()">+ Add Tier</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePosProducts()">Save</button>
+        </div>
+      </div>
+      <h2 style="margin-bottom:.5rem;font-size:15px;color:rgba(255,255,255,.65)">Custom Products</h2>
+      <div class="card">
+        <div id="base-area-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addPosProduct('base_area')">+ Add Item</button>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="savePosProducts()">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Create Bundle ── -->
+    <div id="sec-create-bundle" class="section">
+      <h1>Create Bundle</h1>
+      <p class="subtitle">Discount when customers buy from multiple activities in one order.</p>
+      <div class="card">
+        <div class="field-row"><label>Activity 1</label><input type="text" id="ca-loc1" class="wide" placeholder="e.g. Mountain Biking"></div>
+        <div class="field-row"><label>Activity 2</label><input type="text" id="ca-loc2" class="wide" placeholder="e.g. Lone Peak Portraits"></div>
+        <div class="field-row"><label>Min photos each</label><input type="number" id="ca-min" value="1" min="1" style="width:70px"></div>
+        <div class="field-row"><label>Bundle price</label><span class="dollar">$</span><input type="number" id="ca-price" value="150" min="1"></div>
+        <div class="field-row"><label>Label</label><input type="text" id="ca-label" class="wide" placeholder="e.g. Adventure Bundle"></div>
+        <div class="btn-row">
+          <button class="btn btn-primary btn-sm" onclick="addCombo()">Add Bundle</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── All Bundles ── -->
+    <div id="sec-all-bundles" class="section">
+      <h1>All Bundles</h1>
+      <p class="subtitle">Active bundle deals.</p>
+      <div class="card">
+        <div id="combos-list"></div>
+      </div>
+    </div>
+
+    <!-- ── Items Bundles ── -->
+    <div id="sec-items-bundles" class="section">
+      <h1>Items Bundles</h1>
+      <p class="subtitle">Define named bundles of purchasable item categories. Assign a bundle to a folder at upload to make those items available in that gallery.</p>
+      <div class="card">
+        <div id="items-bundles-list"></div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:.8rem" onclick="toggleBundleEditor()">+ New Bundle</button>
+        <div id="bundle-editor" class="bundle-editor">
+          <div class="field-row" style="margin-bottom:.75rem">
+            <label style="min-width:80px">Bundle name</label>
+            <input type="text" id="ib-name" class="wide" placeholder="e.g. Action Photos">
+          </div>
+          <div style="font-size:12px;color:rgba(255,255,255,.45);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.8px">Include items</div>
+          <div id="ib-checks"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary btn-sm" onclick="saveNewBundle()">Add Bundle</button>
+            <button class="btn btn-ghost btn-sm" onclick="toggleBundleEditor()">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:.25rem">
+        <button class="btn btn-primary btn-sm" onclick="saveItemsBundles()">Save All</button>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /layout -->
 
 <div id="toast"></div>
 
 <script>
-// ── State ─────────────────────────────────────────────────────────────────────
-let pricingData    = null;
-let zipData        = null;
-let printData      = null;
+// ── Constants ──────────────────────────────────────────────────────────────────
+const SUMMER_PORTRAIT_LOCS = ['Lone Peak Portraits', 'Explorer Gondola', 'Ramcharger Portraits'];
+const BUNDLE_ITEM_OPTIONS = [
+  {key:'digital_action',   label:'Action Photos (Digital)'},
+  {key:'digital_portrait', label:'Portrait Photos (Digital)'},
+  {key:'prints',           label:'Prints'},
+  {key:'mats',             label:'Mats'},
+  {key:'frames_rustic',    label:'Big Sky Rustic Frames'},
+  {key:'frames_satin',     label:'Satin Black Frames'},
+  {key:'private_sessions', label:'Private Sessions'},
+  {key:'base_area',        label:'Base Area'},
+];
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let pricingData         = null;
+let zipData             = null;
+let printData           = null;
 let portraitPricingData = null;
-let seasonsData         = [];
 let portraitLocsData    = [];
-let posProductsData     = { base_area: [], mats: [] };
+let posProductsData     = {base_area:[],mats:[],base_area_tiers:[],satin_black_frames:[]};
+let privateSessionData  = {sessions:[]};
+let itemsBundlesData    = {bundles:[]};
 
-const isZipAct = n => n.includes('zip');
-
-// ── Boot ──────────────────────────────────────────────────────────────────────
+// ── Boot ───────────────────────────────────────────────────────────────────────
 Promise.all([
   fetch('/api/admin/pricing').then(r=>r.json()),
   fetch('/api/zip-pricing').then(r=>r.json()),
   fetch('/api/print-pricing').then(r=>r.json()),
   fetch('/api/portrait-pricing').then(r=>r.json()),
-  fetch('/api/seasons').then(r=>r.json()),
   fetch('/api/admin/portrait-locations').then(r=>r.json()),
   fetch('/api/pos-products').then(r=>r.json()),
-]).then(([pd, zd, ppd, portd, sesd, pld, posp]) => {
+  fetch('/api/private-session-pricing').then(r=>r.json()),
+  fetch('/api/items-bundles').then(r=>r.json()),
+]).then(([pd,zd,ppd,portd,pld,posp,psd,ibd])=>{
   pricingData         = pd;
   zipData             = zd;
   printData           = ppd;
   portraitPricingData = portd;
-  seasonsData         = sesd.seasons || [];
   portraitLocsData    = pld.locations || [];
-  posProductsData     = posp || { base_area: [], mats: [] };
+  posProductsData     = posp || {base_area:[],mats:[],base_area_tiers:[],satin_black_frames:[]};
+  privateSessionData  = psd || {sessions:[]};
+  itemsBundlesData    = ibd || {bundles:[]};
   renderAll();
-}).catch(e => { console.error('Pricing load error:', e); showToast('Load error: '+e, 'err'); });
+}).catch(e=>{ console.error('Load error:',e); showToast('Load error: '+e,'err'); });
 
-function renderAll() {
-  renderActivities();
+function renderAll(){
   renderZip();
-  renderCombos();
-  renderPrints();
+  renderActEditor('Mountain Biking','act-editor-mountain-biking');
+  renderActEditor('Dirt Days','act-editor-dirt-days');
+  renderSummerPortraitEditor();
   renderPortraitPricing();
   renderPortraitLocs();
-  renderSeasons();
-  renderPosProducts('base_area');
-  renderPosProducts('mats');
+  renderPrints();
+  renderShipping();
+  renderPosProducts('mats','mats-list');
+  renderPosProducts('satin_black_frames','satin-frames-list');
+  renderBaseAreaTiers();
+  renderPosProducts('base_area','base-area-list');
+  renderPrivateSessions();
+  renderCombos();
+  renderItemsBundles();
+  renderBigSkyFrames();
+  renderWinterAction();
+  renderItemsBundleChecks();
 }
 
-// ── Section nav ───────────────────────────────────────────────────────────────
-function showSection(name) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('[id^="navsub-"]').forEach(l => l.classList.remove('active-sec'));
-  document.getElementById('sec-'+name).classList.add('active');
-  const sub = document.getElementById('navsub-'+name);
-  if (sub) sub.classList.add('active-sec');
+// ── Nav ────────────────────────────────────────────────────────────────────────
+function toggleNg(name){
+  const el  = document.getElementById('ng-'+name);
+  const arr = document.getElementById('ng-arr-'+name);
+  const hdr = arr?.closest('.nav-group-hdr');
+  if(!el||!arr) return;
+  const open = el.classList.toggle('open');
+  arr.classList.toggle('open', open);
+  if(hdr) hdr.classList.toggle('open', open);
 }
 
-const _initHash = location.hash.replace('#','');
-if (_initHash && document.getElementById('sec-'+_initHash)) showSection(_initHash);
-
-// ── Tier rows ─────────────────────────────────────────────────────────────────
-function tierRow(t, i, prefix) {
-  const isMax = !!t.max;
-  return `<tr>
-    <td><input type="text" value="${esc(t.label)}" style="width:130px" oninput="tierField('${prefix}',${i},'label',this.value)"></td>
-    <td>${t.count==='all'
-      ? '<span style="color:rgba(255,255,255,.4);font-size:12px">All</span>'
-      : `<input type="number" value="${t.count}" min="1" style="width:58px" oninput="tierField('${prefix}',${i},'count',+this.value)">`}
-    </td>
-    <td><span class="dollar">$</span><input type="number" value="${t.price}" min="0" oninput="tierField('${prefix}',${i},'price',+this.value)"></td>
-    <td><div class="toggle-wrap" onclick="toggleMax('${prefix}',${i})">
-      <div class="toggle ${isMax?'on':''}"></div>
-      <span class="toggle-label">${isMax?'Yes':''}</span>
-    </div></td>
-    <td><button class="btn btn-danger btn-sm" onclick="removeTier('${prefix}',${i})">✕</button></td>
-  </tr>`;
+function showSection(name){
+  document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('[id^="navsub-"]').forEach(l=>l.classList.remove('active-sec'));
+  const sec = document.getElementById('sec-'+name);
+  if(sec) sec.classList.add('active');
+  const lnk = document.getElementById('navsub-'+name);
+  if(lnk) lnk.classList.add('active-sec');
 }
 
-function tierField(prefix, i, field, val) { getTierList(prefix)[i][field] = val; }
-
-function toggleMax(prefix, i) {
-  const t = getTierList(prefix)[i];
-  if (t) { t.max = !t.max; renderAll(); }
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function slugId(s){ return String(s||'').replace(/[^a-zA-Z0-9]/g,'-'); }
+let _tt;
+function showToast(msg,type='show'){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.className=type;
+  clearTimeout(_tt); _tt=setTimeout(()=>t.className='',2800);
 }
 
-function removeTier(prefix, i) {
-  getTierList(prefix).splice(i,1);
-  renderAll();
+// ── Winter Action ──────────────────────────────────────────────────────────────
+function renderWinterAction(){
+  if(!pricingData) return;
+  const wa = (pricingData.activities||{})['Winter Action'] || {};
+  const perEl = document.getElementById('wa-per-photo');
+  const allEl = document.getElementById('wa-all-photos');
+  if(perEl) perEl.value = wa.per_photo ?? 25;
+  if(allEl) allEl.value = wa.all_photos ?? 115;
 }
 
-function getTierList(prefix) {
-  const name = prefix.replace(/^act-/,'');
-  return pricingData.activities?.[name]?.tiers || [];
+async function saveWinterAction(){
+  if(!pricingData) return;
+  if(!pricingData.activities) pricingData.activities = {};
+  pricingData.activities['Winter Action'] = {
+    per_photo:  parseFloat(document.getElementById('wa-per-photo').value) || 25,
+    all_photos: parseFloat(document.getElementById('wa-all-photos').value) || 115,
+  };
+  await saveDigital();
 }
 
-// ── Activity Pricing ──────────────────────────────────────────────────────────
-function renderActivities() {
-  if (!pricingData) return;
+// ── Activity Tier Editor (Mountain Biking / Dirt Days) ─────────────────────────
+function renderActEditor(actName, containerId){
+  if(!pricingData) return;
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  if(!pricingData.activities) pricingData.activities = {};
+  if(!pricingData.activities[actName]) pricingData.activities[actName] = {tiers:[]};
+  const tiers = pricingData.activities[actName].tiers || [];
+  if(!tiers.length){
+    el.innerHTML = `<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.75rem">No tiers yet. Click + Add Tier.</p>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" onclick="addActTierFor('${esc(actName)}','${containerId}')">+ Add Tier</button>
+      </div>`;
+    return;
+  }
+  el.innerHTML = `<table>
+    <thead><tr><th>Tier Name</th><th>Photos</th><th>Price</th><th></th></tr></thead>
+    <tbody>
+      ${tiers.map((t,i)=>`<tr>
+        <td><input type="text" value="${esc(t.label||'')}" style="width:130px" oninput="actField('${esc(actName)}',${i},'label',this.value)"></td>
+        <td>${t.count==='all'?'<span style="color:rgba(255,255,255,.4);font-size:12px">All</span>':`<input type="number" value="${t.count}" min="1" style="width:58px" oninput="actField('${esc(actName)}',${i},'count',+this.value)">`}</td>
+        <td><span class="dollar">$</span><input type="number" value="${t.price}" min="0" oninput="actField('${esc(actName)}',${i},'price',+this.value)"></td>
+        <td><button class="btn btn-danger btn-sm" onclick="removeActTier('${esc(actName)}','${containerId}',${i})">&#10005;</button></td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  <div class="btn-row">
+    <button class="btn btn-ghost btn-sm" onclick="addActTierFor('${esc(actName)}','${containerId}')">+ Add Tier</button>
+  </div>`;
+}
+
+function actField(actName,i,field,val){
+  const tiers = pricingData?.activities?.[actName]?.tiers;
+  if(tiers&&tiers[i]) tiers[i][field]=val;
+}
+
+function addActTierFor(actName,containerId){
+  if(!pricingData.activities[actName]) pricingData.activities[actName]={tiers:[]};
+  const tiers = pricingData.activities[actName].tiers;
+  const hasAll = tiers.some(t=>t.count==='all');
+  if(!hasAll) tiers.push({label:'All',count:'all',price:90});
+  else tiers.push({label:'New Tier',count:1,price:25});
+  renderActEditor(actName,containerId);
+}
+
+function removeActTier(actName,containerId,i){
+  pricingData?.activities?.[actName]?.tiers?.splice(i,1);
+  renderActEditor(actName,containerId);
+}
+
+async function saveDigital(){
+  try{
+    const r=await fetch('/api/admin/pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pricingData)});
+    if(!r.ok) throw new Error(await r.text());
+    showToast('Saved');
+  }catch(e){ showToast('Save failed: '+e,'err'); }
+}
+
+// ── Summer Portraits ───────────────────────────────────────────────────────────
+function renderSummerPortraitEditor(){
+  if(!pricingData) return;
+  const el = document.getElementById('summer-portrait-editor');
+  if(!el) return;
+  const loc = SUMMER_PORTRAIT_LOCS[0];
   const acts = pricingData.activities || {};
-  const container = document.getElementById('activity-list');
-  const nonZip = Object.entries(acts).filter(([name]) => !isZipAct(name.toLowerCase()));
-  let html = nonZip.length ? nonZip.map(([name, cfg]) => {
-    const useDefault = cfg.use_default !== false && (!cfg.tiers || !cfg.tiers.length);
-    const badge = useDefault ? '<span class="act-badge default">Default</span>' : '<span class="act-badge custom">Custom</span>';
-    return `<div class="act-block">
-      <div class="act-header" onclick="toggleAct('${esc(name)}')">
-        <span class="act-name">${esc(name)}</span>
-        ${badge}
-        <span class="act-chevron" id="chevron-${slugId(name)}">›</span>
-      </div>
-      <div class="act-body" id="actbody-${slugId(name)}">
-        <div class="toggle-wrap" style="margin-bottom:.9rem" onclick="toggleUseDefault('${esc(name)}')">
-          <div class="toggle ${useDefault?'on':''}" id="usetoggle-${slugId(name)}"></div>
-          <span class="toggle-label">Use default pricing</span>
-        </div>
-        <div id="ctiers-${slugId(name)}" style="display:${useDefault?'none':'block'}">
-          <table>
-            <thead><tr><th>Tier Name</th><th>Photos</th><th>Price</th><th>Max?</th><th></th></tr></thead>
-            <tbody>${(cfg.tiers||[]).map((t,i)=>tierRow(t,i,'act-'+name)).join('')}</tbody>
-          </table>
-          <div class="btn-row">
-            <button class="btn btn-ghost btn-sm" onclick="addActTier('${esc(name)}')">+ Add Tier</button>
-          </div>
-        </div>
-        <div class="btn-row" style="margin-top:.6rem">
-          <button class="btn btn-danger btn-sm" onclick="deleteActivity('${esc(name)}')">Remove Activity</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('') : '<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.5rem">No custom activities yet.</p>';
-
-  html += `<div class="act-block">
-    <div class="act-header" onclick="toggleAct('zip-line')">
-      <span class="act-name">Zip Line Group Pricing</span>
-      <span class="act-badge zip">Group Size</span>
-      <span class="act-chevron" id="chevron-zip-line">›</span>
+  const srcAct = acts[loc] || acts[SUMMER_PORTRAIT_LOCS[1]] || acts[SUMMER_PORTRAIT_LOCS[2]] || {tiers:[]};
+  const useDefault = srcAct.use_default !== false && (!srcAct.tiers || !srcAct.tiers.length);
+  const tiers = srcAct.tiers || [];
+  el.innerHTML = `
+    <div class="toggle-wrap" style="margin-bottom:.9rem" onclick="toggleSummerDefault()">
+      <div class="toggle ${useDefault?'on':''}" id="summer-use-toggle"></div>
+      <span class="toggle-label">Use default pricing</span>
     </div>
-    <div class="act-body" id="actbody-zip-line">
-      <p class="hint" style="margin-bottom:.75rem">Applies to Adventure Zip and Adventure Zip Line. Priced per group size, not per photo count.</p>
+    <div id="summer-tiers-wrap" style="display:${useDefault?'none':'block'}">
       <table>
-        <thead><tr><th>Group Size</th><th>1 Photo</th><th>2 Photos</th><th>3 Photos</th><th>All Photos</th><th></th></tr></thead>
-        <tbody id="zip-tiers-body"></tbody>
+        <thead><tr><th>Tier Name</th><th>Photos</th><th>Price</th><th></th></tr></thead>
+        <tbody>
+          ${tiers.map((t,i)=>`<tr>
+            <td><input type="text" value="${esc(t.label||'')}" style="width:130px" oninput="summerTierField(${i},'label',this.value)"></td>
+            <td>${t.count==='all'?'<span style="color:rgba(255,255,255,.4);font-size:12px">All</span>':`<input type="number" value="${t.count}" min="1" style="width:58px" oninput="summerTierField(${i},'count',+this.value)">`}</td>
+            <td><span class="dollar">$</span><input type="number" value="${t.price}" min="0" oninput="summerTierField(${i},'price',+this.value)"></td>
+            <td><button class="btn btn-danger btn-sm" onclick="removeSummerTier(${i})">&#10005;</button></td>
+          </tr>`).join('')}
+        </tbody>
       </table>
       <div class="btn-row">
-        <button class="btn btn-ghost btn-sm" onclick="addZipTier()">+ Add Group Size</button>
-        <button class="btn btn-primary btn-sm" onclick="saveZip()">Save Zip Pricing</button>
+        <button class="btn btn-ghost btn-sm" onclick="addSummerTier()">+ Add Tier</button>
       </div>
-    </div>
-  </div>`;
-
-  container.innerHTML = html;
-  renderZip();
+    </div>`;
 }
 
-function toggleAct(name) {
-  const body = document.getElementById('actbody-'+slugId(name));
-  const chev = document.getElementById('chevron-'+slugId(name));
-  body?.classList.toggle('open');
-  chev?.classList.toggle('open');
+function _getSummerTiers(){
+  const acts = pricingData?.activities || {};
+  const loc = SUMMER_PORTRAIT_LOCS.find(l=>acts[l]) || SUMMER_PORTRAIT_LOCS[0];
+  if(!acts[loc]) acts[loc]={tiers:[]};
+  return acts[loc].tiers || [];
 }
 
-function toggleUseDefault(name) {
-  const cfg = pricingData.activities[name];
-  if (!cfg) return;
-  const wasDefault = cfg.use_default !== false && (!cfg.tiers || !cfg.tiers.length);
-  cfg.use_default = wasDefault ? false : true;
-  if (!cfg.tiers) cfg.tiers = [];
-  renderActivities();
-  setTimeout(() => {
-    document.getElementById('actbody-'+slugId(name))?.classList.add('open');
-    document.getElementById('chevron-'+slugId(name))?.classList.add('open');
-  }, 0);
+function summerTierField(i,field,val){ _getSummerTiers()[i][field]=val; }
+
+function addSummerTier(){
+  const tiers = _getSummerTiers();
+  const hasAll = tiers.some(t=>t.count==='all');
+  if(!hasAll) tiers.push({label:'All',count:'all',price:90});
+  else tiers.push({label:'New Tier',count:1,price:25});
+  renderSummerPortraitEditor();
 }
 
-function addActTier(name) {
-  const cfg = pricingData.activities[name];
-  if (!cfg) return;
-  if (!cfg.tiers) cfg.tiers = [];
-  cfg.tiers.push({label:'New Tier', count:1, price:25});
-  renderActivities();
-  setTimeout(() => {
-    document.getElementById('actbody-'+slugId(name))?.classList.add('open');
-    document.getElementById('chevron-'+slugId(name))?.classList.add('open');
-  }, 0);
+function removeSummerTier(i){
+  _getSummerTiers().splice(i,1);
+  renderSummerPortraitEditor();
 }
 
-function deleteActivity(name) {
-  if (!confirm(`Remove "${name}" from pricing? This only removes the pricing config.`)) return;
-  delete pricingData.activities[name];
-  renderActivities();
+function toggleSummerDefault(){
+  if(!pricingData) return;
+  const acts = pricingData.activities || {};
+  const loc = SUMMER_PORTRAIT_LOCS.find(l=>acts[l]) || SUMMER_PORTRAIT_LOCS[0];
+  if(!acts[loc]) acts[loc]={tiers:[]};
+  const curr = acts[loc].use_default !== false && (!acts[loc].tiers || !acts[loc].tiers.length);
+  acts[loc].use_default = curr ? false : true;
+  if(!acts[loc].tiers) acts[loc].tiers = [];
+  renderSummerPortraitEditor();
 }
 
-async function saveDigital() {
-  try {
-    // Ensure no default pricing is ever saved — each activity must have its own pricing
-    if (pricingData.default) pricingData.default = {tiers: []};
-    const r = await fetch('/api/admin/pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(pricingData)});
-    if (!r.ok) throw new Error(await r.text());
-    showToast('Saved');
-  } catch(e) { showToast('Save failed: '+e, 'err'); }
+async function saveSummerPortraits(){
+  if(!pricingData) return;
+  const acts = pricingData.activities || {};
+  const src = acts[SUMMER_PORTRAIT_LOCS.find(l=>acts[l]) || SUMMER_PORTRAIT_LOCS[0]] || {tiers:[]};
+  SUMMER_PORTRAIT_LOCS.forEach(loc=>{ acts[loc] = {...src}; });
+  pricingData.activities = acts;
+  await saveDigital();
 }
 
-// ── Zip Pricing ───────────────────────────────────────────────────────────────
-function renderZip() {
-  if (!zipData) return;
+// ── Zip Pricing ────────────────────────────────────────────────────────────────
+function renderZip(){
+  if(!zipData) return;
   const tiers = zipData.tiers || [];
-  document.getElementById('zip-tiers-body').innerHTML = tiers.map((t,i) => `<tr>
+  document.getElementById('zip-tiers-body').innerHTML = tiers.map((t,i)=>`<tr>
     <td><input type="text" value="${t.people!=null?t.people:''}" placeholder="e.g. 6+" style="width:60px" oninput="zipField(${i},'people',this.value)"> <span style="font-size:11px;color:rgba(255,255,255,.3)">ppl</span></td>
     <td><span class="dollar">$</span><input type="number" value="${t.one_photo!=null?t.one_photo:''}" min="0" oninput="zipField(${i},'one_photo',+this.value)"></td>
     <td><span class="dollar">$</span><input type="number" value="${t.two_photos!=null?t.two_photos:''}" min="0" oninput="zipField(${i},'two_photos',+this.value)"></td>
     <td><span class="dollar">$</span><input type="number" value="${t.three_photos!=null?t.three_photos:''}" min="0" oninput="zipField(${i},'three_photos',+this.value)"></td>
     <td><span class="dollar">$</span><input type="number" value="${t.all_photos!=null?t.all_photos:''}" min="0" oninput="zipField(${i},'all_photos',+this.value)"></td>
-    <td><button class="btn btn-danger btn-sm" onclick="removeZipTier(${i})">✕</button></td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeZipTier(${i})">&#10005;</button></td>
   </tr>`).join('');
 }
-
-function zipField(i, field, val) { if (zipData.tiers[i]) zipData.tiers[i][field] = val; }
-function addZipTier() {
-  if (!zipData.tiers) zipData.tiers = [];
-  zipData.tiers.push({people:'', one_photo:'', two_photos:'', three_photos:'', all_photos:''});
-  renderZip();
-}
-function removeZipTier(i) { zipData.tiers.splice(i,1); renderZip(); }
-async function saveZip() {
-  try {
-    const r = await fetch('/api/zip-pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(zipData)});
-    if (!r.ok) throw new Error(await r.text());
+function zipField(i,field,val){ if(zipData.tiers[i]) zipData.tiers[i][field]=val; }
+function addZipTier(){ if(!zipData.tiers) zipData.tiers=[]; zipData.tiers.push({people:'',one_photo:'',two_photos:'',three_photos:'',all_photos:''}); renderZip(); }
+function removeZipTier(i){ zipData.tiers.splice(i,1); renderZip(); }
+async function saveZip(){
+  try{
+    const r=await fetch('/api/zip-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(zipData)});
+    if(!r.ok) throw new Error(await r.text());
     showToast('Zip pricing saved');
-  } catch(e) { showToast('Save failed: '+e, 'err'); }
+  }catch(e){ showToast('Save failed: '+e,'err'); }
 }
 
-// ── Combos ────────────────────────────────────────────────────────────────────
-function renderCombos() {
-  if (!pricingData) return;
-  const combos = pricingData.combos || [];
-  const list = document.getElementById('combos-list');
-  list.innerHTML = combos.length ? combos.map((c,i) => `<div class="combo-card">
-    <div style="flex:1;font-weight:600;font-size:13px">${esc(c.locations?.join(' + ') || '')}${c.min_photos?` <span style="font-size:11px;color:rgba(255,255,255,.35)">(${c.min_photos}+ each)</span>`:''}</div>
-    <div>${c.label?`<span style="font-size:12px;color:rgba(255,255,255,.4)">${esc(c.label)} </span>`:''}
-    <span style="color:#34d399;font-size:13px">$${c.price}</span></div>
-    <button class="btn btn-danger btn-sm" onclick="removeCombo(${i})">✕</button>
-  </div>`).join('') : '<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.5rem">No bundle deals active.</p>';
+// ── Portrait Pose Pricing ──────────────────────────────────────────────────────
+function renderPortraitPricing(){
+  if(!portraitPricingData) return;
+  document.getElementById('pp-single').value = portraitPricingData.single_photo ?? 40;
+  const tiers = portraitPricingData.pose_tiers || [65,57.5,50];
+  document.getElementById('pp-tiers-body').innerHTML = tiers.map((price,i)=>{
+    const label = i===tiers.length-1 ? `${i+1}+ poses` : `${i+1} pose${i>0?'s':''}`;
+    return `<tr>
+      <td style="color:rgba(255,255,255,.6)">${label}</td>
+      <td><span class="dollar">$</span><input type="number" class="pp-tier-input" value="${price}" min="0" step="0.01" style="width:80px" data-idx="${i}"></td>
+      <td><button class="btn btn-sm" style="padding:.2rem .5rem;font-size:.75rem" onclick="removePoseTier(${i})">&#10005;</button></td>
+    </tr>`;
+  }).join('');
+}
+function addPoseTier(){ if(!portraitPricingData) return; const t=portraitPricingData.pose_tiers||[]; t.push(t.length?t[t.length-1]:50); portraitPricingData.pose_tiers=t; renderPortraitPricing(); }
+function removePoseTier(idx){ if(!portraitPricingData) return; const t=portraitPricingData.pose_tiers||[]; if(t.length<=1)return; t.splice(idx,1); portraitPricingData.pose_tiers=t; renderPortraitPricing(); }
+async function savePortraitPricing(){
+  const single=parseFloat(document.getElementById('pp-single').value)||40;
+  const tiers=Array.from(document.querySelectorAll('.pp-tier-input')).map(inp=>parseFloat(inp.value)||0);
+  const payload={single_photo:single,pose_tiers:tiers};
+  const r=await fetch('/api/admin/portrait-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  if(r.ok){ portraitPricingData=payload; showToast('Portrait pricing saved'); } else showToast('Save failed','err');
 }
 
-function toggleAddCombo() {
-  const f = document.getElementById('combo-add-form');
-  f.style.display = f.style.display === 'none' || !f.style.display ? 'block' : 'none';
+// ── Portrait Locations ─────────────────────────────────────────────────────────
+function renderPortraitLocs(){
+  const el=document.getElementById('portrait-locs-list');
+  if(!el) return;
+  if(!portraitLocsData.length){ el.innerHTML='<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No locations yet.</div>'; return; }
+  el.innerHTML=portraitLocsData.map((l,i)=>`<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.3rem">
+    <input type="text" value="${esc(l)}" style="flex:1" onchange="updatePortraitLoc(${i},this.value)">
+    <button class="btn btn-sm" style="padding:.2rem .5rem" onclick="removePortraitLoc(${i})">&#10005;</button>
+  </div>`).join('');
+}
+function addPortraitLoc(){ portraitLocsData=[...portraitLocsData,'']; renderPortraitLocs(); }
+function updatePortraitLoc(i,val){ portraitLocsData[i]=val.toLowerCase().trim(); }
+function removePortraitLoc(i){ portraitLocsData.splice(i,1); renderPortraitLocs(); }
+async function savePortraitLocs(){
+  const r=await fetch('/api/admin/portrait-locations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({locations:portraitLocsData})});
+  if(r.ok){ const d=await r.json(); portraitLocsData=d.locations; showToast('Portrait locations saved'); } else showToast('Save failed','err');
 }
 
-function addCombo() {
-  const loc1 = document.getElementById('ca-loc1').value.trim();
-  const loc2 = document.getElementById('ca-loc2').value.trim();
-  const min  = +document.getElementById('ca-min').value || 1;
-  const price = +document.getElementById('ca-price').value;
-  const label = document.getElementById('ca-label').value.trim();
-  if (!loc1 || !loc2 || !price) { showToast('Fill in activities and price','err'); return; }
-  if (!pricingData.combos) pricingData.combos = [];
-  pricingData.combos.push({locations:[loc1,loc2], min_photos:min, price, label});
-  renderCombos();
-  toggleAddCombo();
-  saveDigital();
-}
-
-function removeCombo(i) { pricingData.combos.splice(i,1); renderCombos(); saveDigital(); }
-
-// ── Print & Shipping ──────────────────────────────────────────────────────────
-function renderPrints() {
-  if (!printData) return;
-  document.getElementById('print-sizes-body').innerHTML = (printData.sizes||[]).map((s,i) => `<tr>
+// ── Prints ─────────────────────────────────────────────────────────────────────
+function renderPrints(){
+  if(!printData) return;
+  document.getElementById('print-sizes-body').innerHTML=(printData.sizes||[]).map((s,i)=>`<tr>
     <td><input type="text" value="${esc(s.label)}" style="width:85px" oninput="printField(${i},'label',this.value)"></td>
     <td><span class="dollar">$</span><input type="number" value="${s.price||''}" min="0" oninput="printField(${i},'price',+this.value)"></td>
-    <td><span class="dollar">$</span><input type="number" value="${s.ship_print||''}" min="0" oninput="printField(${i},'ship_print',+this.value)"></td>
-    <td><span class="dollar">$</span><input type="number" value="${s.ship_framed||''}" min="0" oninput="printField(${i},'ship_framed',+this.value)"></td>
   </tr>`).join('');
-  document.getElementById('free-ship-input').value = printData.free_ship_threshold ?? 3;
 }
-
-function printField(i, field, val) { if (printData.sizes[i]) printData.sizes[i][field] = val; }
-
-async function savePrints() {
-  printData.free_ship_threshold = +document.getElementById('free-ship-input').value || 3;
-  try {
-    const r = await fetch('/api/admin/print-pricing', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(printData)});
-    if (!r.ok) throw new Error(await r.text());
+function printField(i,field,val){ if(printData.sizes[i]) printData.sizes[i][field]=val; }
+async function savePrints(){
+  try{
+    const r=await fetch('/api/admin/print-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(printData)});
+    if(!r.ok) throw new Error(await r.text());
     showToast('Print pricing saved');
-  } catch(e) { showToast('Save failed: '+e, 'err'); }
+  }catch(e){ showToast('Save failed: '+e,'err'); }
 }
 
-// ── Sidebar tree ──────────────────────────────────────────────────────────────
+// ── Shipping ───────────────────────────────────────────────────────────────────
+function renderShipping(){
+  if(!printData) return;
+  document.getElementById('ship-sizes-body').innerHTML=(printData.sizes||[]).map((s,i)=>`<tr>
+    <td style="color:rgba(255,255,255,.6)">${esc(s.label)}</td>
+    <td><span class="dollar">$</span><input type="number" value="${s.ship_print||''}" min="0" oninput="shipField(${i},'ship_print',+this.value)"></td>
+    <td><span class="dollar">$</span><input type="number" value="${s.ship_framed||''}" min="0" oninput="shipField(${i},'ship_framed',+this.value)"></td>
+  </tr>`).join('');
+  document.getElementById('free-ship-input').value=printData.free_ship_threshold??3;
+}
+function shipField(i,field,val){ if(printData.sizes[i]) printData.sizes[i][field]=val; }
+async function saveShipping(){
+  printData.free_ship_threshold=+document.getElementById('free-ship-input').value||3;
+  try{
+    const r=await fetch('/api/admin/print-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(printData)});
+    if(!r.ok) throw new Error(await r.text());
+    showToast('Shipping rates saved');
+  }catch(e){ showToast('Save failed: '+e,'err'); }
+}
+
+// ── POS Products (Mats / Satin Black Frames / Base Area custom) ────────────────
+function renderPosProducts(cat,listId){
+  const el=document.getElementById(listId);
+  if(!el) return;
+  const items=posProductsData[cat]||[];
+  if(!items.length){ el.innerHTML='<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No items yet.</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Name</th><th>Price</th><th>Description (optional)</th><th></th></tr></thead><tbody>
+    ${items.map((item,i)=>`<tr>
+      <td><input type="text" class="wide" value="${esc(item.name||'')}" oninput="posProductField('${cat}',${i},'name',this.value)" placeholder="Name"></td>
+      <td><span class="dollar">$</span><input type="number" value="${item.price||0}" min="0" step="0.01" oninput="posProductField('${cat}',${i},'price',parseFloat(this.value)||0)"></td>
+      <td><input type="text" class="wide" value="${esc(item.description||'')}" oninput="posProductField('${cat}',${i},'description',this.value)" placeholder="Optional"></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removePosProduct('${cat}','${listId}',${i})">&#10005;</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+function posProductField(cat,i,field,val){ if(!posProductsData[cat]) posProductsData[cat]=[]; if(posProductsData[cat][i]) posProductsData[cat][i][field]=val; }
+function addPosProduct(cat){
+  if(!posProductsData[cat]) posProductsData[cat]=[];
+  posProductsData[cat].push({name:'',price:0,description:''});
+  const listId = cat==='mats'?'mats-list':cat==='satin_black_frames'?'satin-frames-list':cat==='base_area'?'base-area-list':'';
+  if(listId) renderPosProducts(cat,listId);
+}
+function removePosProduct(cat,listId,i){ posProductsData[cat].splice(i,1); renderPosProducts(cat,listId); }
+async function savePosProducts(){
+  const r=await fetch('/api/admin/pos-products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(posProductsData)});
+  if(r.ok) showToast('Saved'); else showToast('Save failed','err');
+}
+
+// ── Base Area Group Tiers ──────────────────────────────────────────────────────
+function renderBaseAreaTiers(){
+  const el=document.getElementById('base-area-tiers-list');
+  if(!el) return;
+  const tiers=posProductsData.base_area_tiers||[];
+  if(!tiers.length){ el.innerHTML='<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No tiers yet. Click + Add Tier below.</div>'; return; }
+  el.innerHTML=`<table><thead><tr><th>Label</th><th>Price</th><th></th></tr></thead><tbody>
+    ${tiers.map((t,i)=>`<tr>
+      <td><input type="text" class="wide" value="${esc(t.label||'')}" oninput="baseTierField(${i},'label',this.value)" placeholder="e.g. 4-8 People"></td>
+      <td><span class="dollar">$</span><input type="number" value="${t.price||0}" min="0" oninput="baseTierField(${i},'price',parseFloat(this.value)||0)"></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeBaseTier(${i})">&#10005;</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+function baseTierField(i,field,val){ if(!posProductsData.base_area_tiers) posProductsData.base_area_tiers=[]; if(posProductsData.base_area_tiers[i]) posProductsData.base_area_tiers[i][field]=val; }
+function addBaseAreaTier(){ if(!posProductsData.base_area_tiers) posProductsData.base_area_tiers=[]; posProductsData.base_area_tiers.push({label:'',price:0}); renderBaseAreaTiers(); }
+function removeBaseTier(i){ posProductsData.base_area_tiers.splice(i,1); renderBaseAreaTiers(); }
+
+// ── Private Sessions ───────────────────────────────────────────────────────────
+const PRIVATE_TYPES = [
+  {value:'private_fixed',  label:'Fixed price'},
+  {value:'private_people', label:'Per person'},
+  {value:'private_custom', label:'Custom (enter at POS)'},
+];
+
+function renderPrivateSessions(){
+  const el=document.getElementById('private-sessions-list');
+  if(!el) return;
+  const sessions=privateSessionData.sessions||[];
+  if(!sessions.length){ el.innerHTML='<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No sessions. Click + Add Session below.</div>'; return; }
+  el.innerHTML=sessions.map((s,i)=>`<div class="session-item">
+    <input type="text" class="full" value="${esc(s.label)}" oninput="privField(${i},'label',this.value)" placeholder="Session name">
+    <select onchange="privField(${i},'type',this.value)" style="background:#252836;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#e8eaf0;padding:.3rem .4rem;font-size:12px;width:140px;outline:none">
+      ${PRIVATE_TYPES.map(t=>`<option value="${t.value}"${s.type===t.value?' selected':''}>${t.label}</option>`).join('')}
+    </select>
+    <div style="display:flex;align-items:center;gap:3px"><span class="dollar">$</span><input type="number" value="${s.basePrice||0}" min="0" style="width:88px" oninput="privField(${i},'basePrice',parseFloat(this.value)||0)"></div>
+    <button class="btn btn-danger btn-sm" onclick="removePrivSession(${i})">&#10005;</button>
+  </div>`).join('');
+}
+
+function privField(i,field,val){ if(privateSessionData.sessions[i]) privateSessionData.sessions[i][field]=val; }
+function addPrivateSession(){ if(!privateSessionData.sessions) privateSessionData.sessions=[]; privateSessionData.sessions.push({label:'',type:'private_fixed',basePrice:0}); renderPrivateSessions(); }
+function removePrivSession(i){ privateSessionData.sessions.splice(i,1); renderPrivateSessions(); }
+async function savePrivateSessions(){
+  const r=await fetch('/api/admin/private-session-pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(privateSessionData)});
+  if(r.ok) showToast('Private sessions saved'); else showToast('Save failed','err');
+}
+
+// ── Combos ─────────────────────────────────────────────────────────────────────
+function renderCombos(){
+  if(!pricingData) return;
+  const combos=pricingData.combos||[];
+  const list=document.getElementById('combos-list');
+  if(!list) return;
+  list.innerHTML=combos.length?combos.map((c,i)=>`<div class="combo-card">
+    <div style="flex:1;font-weight:600;font-size:13px">${esc(c.locations?.join(' + ')||'')}${c.min_photos?` <span style="font-size:11px;color:rgba(255,255,255,.35)">(${c.min_photos}+ each)</span>`:''}</div>
+    <div>${c.label?`<span style="font-size:12px;color:rgba(255,255,255,.4)">${esc(c.label)} </span>`:''}
+    <span style="color:#34d399;font-size:13px">$${c.price}</span></div>
+    <button class="btn btn-danger btn-sm" onclick="removeCombo(${i})">&#10005;</button>
+  </div>`).join(''):'<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.5rem">No bundle deals active.</p>';
+}
+
+function addCombo(){
+  const loc1=document.getElementById('ca-loc1').value.trim();
+  const loc2=document.getElementById('ca-loc2').value.trim();
+  const min=+document.getElementById('ca-min').value||1;
+  const price=+document.getElementById('ca-price').value;
+  const label=document.getElementById('ca-label').value.trim();
+  if(!loc1||!loc2||!price){ showToast('Fill in activities and price','err'); return; }
+  if(!pricingData.combos) pricingData.combos=[];
+  pricingData.combos.push({locations:[loc1,loc2],min_photos:min,price,label});
+  renderCombos();
+  showSection('all-bundles');
+  saveDigital();
+}
+function removeCombo(i){ pricingData.combos.splice(i,1); renderCombos(); saveDigital(); }
+
+// ── Big Sky Frames (display only) ──────────────────────────────────────────────
+async function renderBigSkyFrames(){
+  const el=document.getElementById('frames-display');
+  if(!el) return;
+  el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">Loading frames...</p>';
+  try{
+    const r=await fetch('/api/frames');
+    if(!r.ok) throw new Error('WooCommerce unavailable');
+    const d=await r.json();
+    const frames=d.frames||[];
+    if(!frames.length){ el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">No frames returned from WooCommerce.</p>'; return; }
+    el.innerHTML=`<table>
+      <thead><tr><th>Size</th><th>Landscape price</th><th>Portrait price</th><th>Stock</th></tr></thead>
+      <tbody>
+        ${frames.map(f=>{
+          const lp=f.landscape?.price||'—';
+          const pp=f.portrait?.price||'—';
+          const st=f.landscape?.stock_status||f.portrait?.stock_status||'—';
+          return `<tr>
+            <td>${esc(f.size)}</td>
+            <td>${lp!=='—'?'$':''} ${esc(lp)}</td>
+            <td>${pp!=='—'?'$':''} ${esc(pp)}</td>
+            <td><span style="color:${st==='instock'?'#34d399':'#f87171'};font-size:12px">${esc(st)}</span></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <p style="color:rgba(255,255,255,.35);font-size:12px;margin-top:.5rem">To change prices, update WooCommerce directly. To update frame photos, place files in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/frame_{size}_{landscape|portrait}.jpg</code>.</p>`;
+  }catch(e){ el.innerHTML=`<p style="color:rgba(255,255,255,.35);font-size:13px">Could not load frame data: ${esc(e.message||String(e))}</p>`; }
+}
+
+// ── Items Bundles ──────────────────────────────────────────────────────────────
+function renderItemsBundleChecks(){
+  const el=document.getElementById('ib-checks');
+  if(!el) return;
+  el.innerHTML=BUNDLE_ITEM_OPTIONS.map(opt=>`<label class="check-item">
+    <input type="checkbox" id="ib-chk-${opt.key}" value="${opt.key}">
+    ${esc(opt.label)}
+  </label>`).join('');
+}
+
+function renderItemsBundles(){
+  const el=document.getElementById('items-bundles-list');
+  if(!el) return;
+  const bundles=itemsBundlesData.bundles||[];
+  if(!bundles.length){ el.innerHTML='<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No items bundles yet.</div>'; return; }
+  el.innerHTML=bundles.map((b,bi)=>`<div class="bundle-card">
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+      <input type="text" value="${esc(b.name||'')}" class="wide" oninput="bundleField(${bi},'name',this.value)" placeholder="Bundle name">
+      <button class="btn btn-danger btn-sm" onclick="removeBundle(${bi})">Remove</button>
+    </div>
+    <div style="margin-top:.5rem;font-size:11px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px">Items</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.25rem;margin-top:.25rem">
+      ${BUNDLE_ITEM_OPTIONS.map(opt=>`<label class="check-item" style="margin-right:.75rem">
+        <input type="checkbox" onchange="bundleItemToggle(${bi},'${opt.key}',this.checked)" ${(b.items||[]).includes(opt.key)?'checked':''}>
+        ${esc(opt.label)}
+      </label>`).join('')}
+    </div>
+  </div>`).join('');
+}
+
+function bundleField(bi,field,val){ if(itemsBundlesData.bundles[bi]) itemsBundlesData.bundles[bi][field]=val; }
+function bundleItemToggle(bi,key,checked){
+  const b=itemsBundlesData.bundles[bi];
+  if(!b) return;
+  if(!b.items) b.items=[];
+  if(checked&&!b.items.includes(key)) b.items.push(key);
+  else if(!checked) b.items=b.items.filter(k=>k!==key);
+}
+function removeBundle(bi){ itemsBundlesData.bundles.splice(bi,1); renderItemsBundles(); }
+
+function toggleBundleEditor(){
+  const el=document.getElementById('bundle-editor');
+  const open=el.style.display==='none'||!el.style.display||el.style.display==='';
+  el.style.display=open?'block':'none';
+  if(open){ document.getElementById('ib-name').value=''; document.querySelectorAll('[id^="ib-chk-"]').forEach(c=>c.checked=false); }
+}
+
+function saveNewBundle(){
+  const name=document.getElementById('ib-name').value.trim();
+  if(!name){ showToast('Enter a bundle name','err'); return; }
+  const items=Array.from(document.querySelectorAll('[id^="ib-chk-"]:checked')).map(c=>c.value);
+  if(!itemsBundlesData.bundles) itemsBundlesData.bundles=[];
+  itemsBundlesData.bundles.push({name,items});
+  renderItemsBundles();
+  toggleBundleEditor();
+}
+
+async function saveItemsBundles(){
+  const r=await fetch('/api/admin/items-bundles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(itemsBundlesData)});
+  if(r.ok) showToast('Items bundles saved'); else showToast('Save failed','err');
+}
+
+// ── Sidebar folder tree ────────────────────────────────────────────────────────
 (async function(){
   try{
     const r=await fetch('/api/admin/folders');
@@ -587,11 +1056,11 @@ async function savePrints() {
     if(!dates.length||!el)return;
     let h='';
     for(const date of dates){
-      h+=`<div class="st-date" onclick="location.href='/admin/dashboard?date='+encodeURIComponent('${date}')"><span class="st-arr">▶</span>${date}</div><div class="st-locs">`;
+      h+=`<div class="st-date" onclick="location.href='/admin/dashboard?date='+encodeURIComponent('${date}')"><span class="st-arr">&#9654;</span>${date}</div><div class="st-locs">`;
       for(const[loc,subs]of Object.entries(tree[date])){
         const hasSubs=subs.some(f=>f.name);
         if(hasSubs){
-          h+=`<div class="st-loc" onclick="this.classList.toggle('st-open')"><span class="st-arr">▶</span>${loc}</div><div class="st-subs">`;
+          h+=`<div class="st-loc" onclick="this.classList.toggle('st-open')"><span class="st-arr">&#9654;</span>${loc}</div><div class="st-subs">`;
           for(const f of subs){
             if(!f.name)continue;
             const u='/admin/dashboard?od='+encodeURIComponent(f.date)+'&ol='+encodeURIComponent(f.location)+'&of='+encodeURIComponent(f.name);
@@ -612,206 +1081,42 @@ async function savePrints() {
   }catch(e){}
 })();
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function slugId(s) { return String(s).replace(/[^a-zA-Z0-9]/g,'-'); }
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// ── Hash routing ───────────────────────────────────────────────────────────────
+const _sectionMap = {
+  'winter-action':    ['digital','action'],
+  'zip':              ['digital','action'],
+  'mountain-biking':  ['digital','action'],
+  'dirt-days':        ['digital','action'],
+  'winter-portraits': ['digital','portrait'],
+  'summer-portraits': ['digital','portrait'],
+  'prints':           ['prints'],
+  'mats':             ['prints'],
+  'big-sky-frames':   ['frames'],
+  'satin-frames':     ['frames'],
+  'shipping':         [],
+  'private-sessions': [],
+  'base-area':        [],
+  'create-bundle':    ['bundles'],
+  'all-bundles':      ['bundles'],
+  'items-bundles':    [],
+};
 
-let _tt;
-// ── Portrait Pose Pricing ─────────────────────────────────────────────────────
-function renderPortraitPricing() {
-  if (!portraitPricingData) return;
-  document.getElementById('pp-single').value = portraitPricingData.single_photo ?? 40;
-  const tiers = portraitPricingData.pose_tiers || [65, 57.5, 50];
-  const tbody = document.getElementById('pp-tiers-body');
-  tbody.innerHTML = tiers.map((price, i) => {
-    const label = i === tiers.length - 1
-      ? `${i + 1}+ poses`
-      : `${i + 1} pose${i > 0 ? 's' : ''}`;
-    return `<tr>
-      <td style="color:rgba(255,255,255,.6)">${label}</td>
-      <td><span class="dollar">$</span><input type="number" class="pp-tier-input" value="${price}" min="0" step="0.01" style="width:80px" data-idx="${i}"></td>
-      <td><button class="btn btn-sm" style="padding:.2rem .5rem;font-size:.75rem" onclick="removePoseTier(${i})">✕</button></td>
-    </tr>`;
-  }).join('');
-}
-
-function addPoseTier() {
-  if (!portraitPricingData) return;
-  const tiers = portraitPricingData.pose_tiers || [];
-  tiers.push(tiers.length ? tiers[tiers.length - 1] : 50);
-  portraitPricingData.pose_tiers = tiers;
-  renderPortraitPricing();
-}
-
-function removePoseTier(idx) {
-  if (!portraitPricingData) return;
-  const tiers = portraitPricingData.pose_tiers || [];
-  if (tiers.length <= 1) return;
-  tiers.splice(idx, 1);
-  portraitPricingData.pose_tiers = tiers;
-  renderPortraitPricing();
-}
-
-async function savePortraitPricing() {
-  const single = parseFloat(document.getElementById('pp-single').value) || 40;
-  const tierInputs = document.querySelectorAll('.pp-tier-input');
-  const tiers = Array.from(tierInputs).map(inp => parseFloat(inp.value) || 0);
-  const payload = { single_photo: single, pose_tiers: tiers };
-  const r = await fetch('/api/admin/portrait-pricing', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+function navToSection(name){
+  const parents = _sectionMap[name] || [];
+  parents.forEach(p => {
+    const el  = document.getElementById('ng-'+p);
+    const arr = document.getElementById('ng-arr-'+p);
+    const hdr = arr?.closest('.nav-group-hdr');
+    if(el && !el.classList.contains('open')){ el.classList.add('open'); if(arr) arr.classList.add('open'); if(hdr) hdr.classList.add('open'); }
   });
-  if (r.ok) {
-    portraitPricingData = payload;
-    showToast('Portrait pricing saved');
-  } else {
-    showToast('Save failed', 'err');
-  }
+  showSection(name);
 }
 
-// ── Portrait Locations ────────────────────────────────────────────────────────
-function renderPortraitLocs() {
-  const el = document.getElementById('portrait-locs-list');
-  if (!el) return;
-  if (!portraitLocsData.length) {
-    el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No locations yet.</div>';
-    return;
-  }
-  el.innerHTML = portraitLocsData.map((l, i) =>
-    `<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.3rem">
-      <input type="text" value="${l}" style="flex:1" onchange="updatePortraitLoc(${i}, this.value)">
-      <button class="btn btn-sm" style="padding:.2rem .5rem" onclick="removePortraitLoc(${i})">✕</button>
-    </div>`
-  ).join('');
-}
-
-function addPortraitLoc() {
-  portraitLocsData = [...portraitLocsData, ''];
-  renderPortraitLocs();
-}
-
-function updatePortraitLoc(i, val) {
-  portraitLocsData[i] = val.toLowerCase().trim();
-}
-
-function removePortraitLoc(i) {
-  portraitLocsData.splice(i, 1);
-  renderPortraitLocs();
-}
-
-async function savePortraitLocs() {
-  const r = await fetch('/api/admin/portrait-locations', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({locations: portraitLocsData}),
-  });
-  if (r.ok) { const d = await r.json(); portraitLocsData = d.locations; showToast('Portrait locations saved'); }
-  else showToast('Save failed', 'err');
-}
-
-// ── Seasons ───────────────────────────────────────────────────────────────────
-function renderSeasons() {
-  const el = document.getElementById('seasons-list');
-  if (!seasonsData.length) {
-    el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No seasons yet.</div>';
-    return;
-  }
-  el.innerHTML = seasonsData.map((s, i) => `
-    <div style="display:grid;grid-template-columns:1fr 120px 120px 160px auto;gap:.5rem;align-items:center;margin-bottom:.5rem">
-      <input type="text" value="${s.name||''}" placeholder="Season name" oninput="seasonsData[${i}].name=this.value" style="min-width:0">
-      <input type="date" value="${s.start||''}" oninput="seasonsData[${i}].start=this.value">
-      <input type="date" value="${s.end||''}" oninput="seasonsData[${i}].end=this.value">
-      <select onchange="seasonsData[${i}].pricing_mode=this.value">
-        <option value="summer" ${s.pricing_mode==='summer'?'selected':''}>Summer pricing</option>
-        <option value="winter" ${s.pricing_mode==='winter'?'selected':''}>Winter (portrait poses)</option>
-      </select>
-      <button class="btn btn-sm" style="padding:.2rem .5rem" onclick="removeSeason(${i})">✕</button>
-    </div>`).join('');
-}
-
-function addSeason() {
-  seasonsData.push({ name: '', start: '', end: '', pricing_mode: 'summer' });
-  renderSeasons();
-}
-
-function removeSeason(i) {
-  seasonsData.splice(i, 1);
-  renderSeasons();
-}
-
-async function saveSeasons() {
-  const r = await fetch('/api/admin/seasons', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ seasons: seasonsData }),
-  });
-  if (r.ok) showToast('Seasons saved');
-  else showToast('Save failed', 'err');
-}
-
-function showToast(msg, type='show') {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.className = type;
-  clearTimeout(_tt); _tt = setTimeout(()=>t.className='', 2800);
-}
-
-// ── POS Products (Base Area / Mats) ──────────────────────────────────────────
-function renderPosProducts(cat) {
-  const elId = cat === 'base_area' ? 'base-area-list' : 'mats-list';
-  const el = document.getElementById(elId);
-  if (!el) return;
-  const items = posProductsData[cat] || [];
-  if (!items.length) {
-    el.innerHTML = '<div style="color:rgba(255,255,255,.35);font-size:.85rem;padding:.5rem 0">No items yet. Click + Add Item below.</div>';
-    return;
-  }
-  el.innerHTML = `
-    <table>
-      <thead><tr>
-        <th>Name</th>
-        <th>Price</th>
-        <th>Description (optional)</th>
-        <th></th>
-      </tr></thead>
-      <tbody>
-        ${items.map((item, i) => `
-          <tr>
-            <td><input type="text" class="wide" value="${esc(item.name||'')}" oninput="posProductField('${cat}',${i},'name',this.value)" placeholder="Item name"></td>
-            <td><span class="dollar">$</span><input type="number" value="${item.price||0}" min="0" step="0.01" oninput="posProductField('${cat}',${i},'price',parseFloat(this.value)||0)"></td>
-            <td><input type="text" class="wide" value="${esc(item.description||'')}" oninput="posProductField('${cat}',${i},'description',this.value)" placeholder="Optional"></td>
-            <td><button class="btn btn-danger btn-sm" onclick="removePosProduct('${cat}',${i})">✕</button></td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-}
-
-function posProductField(cat, i, field, val) {
-  if (!posProductsData[cat]) posProductsData[cat] = [];
-  if (posProductsData[cat][i]) posProductsData[cat][i][field] = val;
-}
-
-function addPosProduct(cat) {
-  if (!posProductsData[cat]) posProductsData[cat] = [];
-  posProductsData[cat].push({ name: '', price: 0, description: '' });
-  renderPosProducts(cat);
-}
-
-function removePosProduct(cat, i) {
-  posProductsData[cat].splice(i, 1);
-  renderPosProducts(cat);
-}
-
-async function savePosProducts() {
-  const r = await fetch('/api/admin/pos-products', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(posProductsData),
-  });
-  if (r.ok) showToast('Saved');
-  else showToast('Save failed', 'err');
+const _initHash = location.hash.replace('#','');
+if(_initHash && document.getElementById('sec-'+_initHash)){
+  navToSection(_initHash);
+} else {
+  navToSection('winter-action');
 }
 </script>
 </body>

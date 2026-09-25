@@ -866,22 +866,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-base-area" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Base Area</div>
-            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Base Area — 4–8 People',desc:'',basePrice:200,category:'base_area'})">
-              <div class="private-card-name">4–8 People</div>
-              <div class="private-card-hint">$200 &rsaquo;</div>
-            </div>
-            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Base Area — Up to 15 People',desc:'',basePrice:300,category:'base_area'})">
-              <div class="private-card-name">Up to 15 People</div>
-              <div class="private-card-hint">$300 &rsaquo;</div>
-            </div>
-            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Base Area — 15+ People',desc:'',basePrice:375,category:'base_area'})">
-              <div class="private-card-name">15+ People</div>
-              <div class="private-card-hint">$375 &rsaquo;</div>
-            </div>
+            <div id="base-area-tiers"></div>
             <div class="private-card" onclick="openItemModal({type:'private_custom',label:'Base Area — Custom',desc:'',basePrice:0,category:'base_area'})">
               <div class="private-card-name">Custom Pricing</div>
               <div class="private-card-hint">Tap to enter price &rsaquo;</div>
             </div>
+            <div id="base-area-grid" class="product-grid" style="margin-top:.75rem"></div>
+            <p id="base-area-empty" class="hidden" style="font-size:.82rem;color:var(--muted)">No custom items configured.</p>
           </div>
         </div>
 
@@ -889,19 +880,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-private" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Private Sessions</div>
-
-            <div class="private-card" onclick="openItemModal({type:'private_people',label:'Private On Mountain Shoot',desc:'',basePrice:550,category:'private'})">
-              <div class="private-card-name">Private On Mountain Shoot</div>
-              <div class="private-card-hint">Tap to configure &rsaquo;</div>
-            </div>
-            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Private Portrait Session',desc:'',basePrice:550,category:'private'})">
-              <div class="private-card-name">Private Portrait Session</div>
-              <div class="private-card-hint">Tap to configure &rsaquo;</div>
-            </div>
-            <div class="private-card" onclick="openItemModal({type:'private_fixed',label:'Proposal',desc:'',basePrice:550,category:'private'})">
-              <div class="private-card-name">Proposal</div>
-              <div class="private-card-hint">$550 &rsaquo;</div>
-            </div>
+            <div id="private-sessions-list"></div>
             <div class="private-card" onclick="openItemModal({type:'private_custom',label:'Custom Private Session',desc:'',basePrice:0,category:'private'})">
               <div class="private-card-name">Custom Private Session</div>
               <div class="private-card-hint">Tap to configure &rsaquo;</div>
@@ -940,8 +919,11 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <!-- Frames tab -->
         <div id="tab-frames" class="tab-panel">
           <div class="panel-pad">
-            <div class="section-title">Frames</div>
+            <div class="section-title">Big Sky Rustic Frames</div>
             <div id="frames-list" class="print-size-list"></div>
+            <div class="section-title" style="margin-top:1.1rem">Satin Black Frames</div>
+            <div id="satin-frames-grid" class="product-grid"></div>
+            <p id="satin-frames-empty" class="hidden" style="font-size:.82rem;color:var(--muted)">No Satin Black frames configured. Add them from the admin panel.</p>
           </div>
         </div>
 
@@ -1233,6 +1215,8 @@ const S = {
   frames: null,
   products: null,
   recentSales: null,
+  privateSessions: [],
+  actionPricing: {per_photo: 25, all_photos: 115},
 
   // Pending (Square redirect recovery)
   pendingOrder: null,
@@ -2297,11 +2281,14 @@ function apAddToCart(){
   const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || ''));
   const totalPhotos = S.ap.photos.length;
   const selectedCount = selectedKeys.length;
-  const basePrice = Math.min(selectedCount * 25, 115);
+  const ap = S.actionPricing || {per_photo:25, all_photos:115};
+  const perPhoto  = ap.per_photo  || 25;
+  const allPhotos = ap.all_photos || 115;
   const isAll = selectedCount === totalPhotos && totalPhotos > 0;
-  const priceDetail = isAll ? `All ${selectedCount} photos · $115 package`
-    : basePrice === 115 ? `${selectedCount} photos · $115 (capped)`
-    : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · $25 each`;
+  const basePrice = isAll ? allPhotos : Math.min(selectedCount * perPhoto, allPhotos);
+  const priceDetail = isAll ? `All ${selectedCount} photos · ${fmt(allPhotos)} package`
+    : basePrice === allPhotos ? `${selectedCount} photos · ${fmt(allPhotos)} (capped)`
+    : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · ${fmt(perPhoto)} each`;
   const detail = [priceDetail, f.date || '', f.location || ''].filter(Boolean).join(' · ');
   cartAdd({
     category: 'action_photos',
@@ -3091,14 +3078,80 @@ function renderFrames(){
   }).join('');
 }
 
-// ─── Custom products (Base Area, Mats) ────────────────────────────────────────
+// ─── Custom products (Base Area, Mats, Satin Frames) ─────────────────────────
 async function loadProducts(){
   try {
     const res = await fetch('/api/pos-products');
     S.products = await res.json();
+    renderBaseAreaTiers();
     renderBaseArea();
     renderMats();
+    renderSatinFrames();
   } catch(e){}
+}
+
+async function loadPrivateSessions(){
+  try {
+    const res = await fetch('/api/private-session-pricing');
+    const d = await res.json();
+    S.privateSessions = d.sessions || [];
+    renderPrivateSessions();
+  } catch(e){}
+}
+
+async function loadActionPricing(){
+  try {
+    const res = await fetch('/api/pricing');
+    const d = await res.json();
+    const wa = (d.activities || {})['Winter Action'];
+    if(wa && (wa.per_photo || wa.all_photos)){
+      S.actionPricing = {per_photo: wa.per_photo || 25, all_photos: wa.all_photos || 115};
+    }
+  } catch(e){}
+}
+
+function renderPrivateSessions(){
+  const list = $('private-sessions-list');
+  if(!list) return;
+  const sessions = S.privateSessions || [];
+  if(!sessions.length){ list.innerHTML = ''; return; }
+  list.innerHTML = sessions.map((s, i) => {
+    const hint = (s.type === 'private_custom' || s.type === 'private_people')
+      ? 'Tap to configure &rsaquo;'
+      : `${fmt(s.basePrice || 0)} &rsaquo;`;
+    return `<div class="private-card" data-psi="${i}">
+      <div class="private-card-name">${escHtml(s.label || '')}</div>
+      <div class="private-card-hint">${hint}</div>
+    </div>`;
+  }).join('');
+  list.querySelectorAll('[data-psi]').forEach(el => {
+    el.addEventListener('click', () => {
+      const s = S.privateSessions[+el.dataset.psi];
+      if(s) openItemModal({type:s.type, label:s.label, desc:'', basePrice:s.basePrice||0, category:'private'});
+    });
+  });
+}
+
+function renderBaseAreaTiers(){
+  const container = $('base-area-tiers');
+  if(!container) return;
+  const tiers = (S.products || {}).base_area_tiers || [];
+  if(!tiers.length){ container.innerHTML = ''; return; }
+  container.innerHTML = tiers.map((t, i) => `
+    <div class="private-card" data-bati="${i}">
+      <div class="private-card-name">${escHtml(t.label || '')}</div>
+      <div class="private-card-hint">${fmt(t.price || 0)} &rsaquo;</div>
+    </div>`).join('');
+  container.querySelectorAll('[data-bati]').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = ((S.products||{}).base_area_tiers||[])[+el.dataset.bati];
+      if(t) openItemModal({type:'private_fixed', label:`Base Area — ${t.label}`, desc:'', basePrice:t.price||0, category:'base_area'});
+    });
+  });
+}
+
+function renderSatinFrames(){
+  renderProductGrid((S.products||{}).satin_black_frames, 'satin-frames-grid', 'satin-frames-empty', 'frames');
 }
 
 function renderProductGrid(items, gridId, emptyId, category){
@@ -3121,6 +3174,7 @@ function renderProductGrid(items, gridId, emptyId, category){
 
 function renderBaseArea(){
   renderProductGrid((S.products||{}).base_area, 'base-area-grid', 'base-area-empty', 'base_area');
+  renderBaseAreaTiers();
 }
 
 function renderMats(){
@@ -4098,6 +4152,8 @@ async function loadPortraitPricing(){
 function initMainPOS(){
   loadPortraitPricing();
   loadProducts();
+  loadPrivateSessions();
+  loadActionPricing();
   renderCart();
   updateCartCustomerBar();
   updateSavedCartsBadge();
