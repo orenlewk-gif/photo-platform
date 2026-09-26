@@ -485,6 +485,19 @@ except Exception:
     else:
         print("No local pricing.json found, starting with empty pricing in R2.")
 
+# Seed Winter Action flags (time_search + clip) as presets
+try:
+    _wp = _load_pricing()
+    _wa = _wp.setdefault("activities", {}).setdefault("Winter Action", {})
+    _wf = _wa.setdefault("flags", {})
+    if not _wf.get("time_search") or not _wf.get("clip"):
+        _wf["time_search"] = True
+        _wf["clip"]        = True
+        _save_pricing(_wp)
+        print("Seeded time_search + clip flags for Winter Action.")
+except Exception as _we:
+    print(f"Warning: could not seed Winter Action flags: {_we}")
+
 
 # ─────────────────────────────────────────
 # RATE LIMITER

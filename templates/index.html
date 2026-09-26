@@ -113,6 +113,28 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
   color:rgba(255,255,255,0.45); font-size:0.8rem; white-space:nowrap;
 }
 .size-slider-wrap span { font-size:1rem; }
+
+/* Time filter bar */
+.time-filter-bar {
+  display:flex; align-items:center; gap:.9rem; flex:1; min-width:200px;
+}
+.tf-label { font-size:.75rem; color:rgba(255,255,255,.4); letter-spacing:.5px; white-space:nowrap; }
+.tf-track {
+  flex:1; height:4px; background:rgba(255,255,255,.12); border-radius:2px;
+  position:relative; cursor:pointer; min-width:80px;
+}
+.tf-fill {
+  position:absolute; height:100%; background:var(--accent,#F5C430);
+  border-radius:2px; pointer-events:none;
+}
+.tf-handle {
+  position:absolute; width:14px; height:14px; border-radius:50%;
+  background:var(--accent,#F5C430); top:50%; transform:translate(-50%,-50%);
+  cursor:grab; touch-action:none; z-index:2; box-shadow:0 0 0 2px rgba(0,0,0,.4);
+}
+.tf-handle:active { cursor:grabbing; }
+.tf-range { font-size:.75rem; color:rgba(255,255,255,.55); white-space:nowrap; min-width:110px; }
+
 input[type="range"] {
   -webkit-appearance:none; appearance:none;
   width:100px; height:4px;
@@ -1719,6 +1741,15 @@ async function showGallery(date, location, family, ln, group) {
         <input type="range" id="size-slider" min="1" max="4" value="3" />
         <span>⊞</span>
       </div>
+      <div class="time-filter-bar" id="time-filter-bar" style="display:none">
+        <span class="tf-label">TIME</span>
+        <div class="tf-track" id="tf-track">
+          <div class="tf-fill" id="tf-fill"></div>
+          <div class="tf-handle" id="tf-h0" title="Drag to set start"></div>
+          <div class="tf-handle" id="tf-h1" title="Drag to set end"></div>
+        </div>
+        <span class="tf-range" id="tf-range">All photos</span>
+      </div>
     </div>
     <div class="gallery" id="gallery"></div>`;
 
@@ -1729,11 +1760,123 @@ async function showGallery(date, location, family, ln, group) {
     if (card) card.classList.add('selected');
   });
   updateCart();
+  if (currentPricing?.flags?.time_search) initTimeFilter(photos);
   el.querySelector('#size-slider').addEventListener('input', function() {
     const cols    = [6, 5, 4, 3][parseInt(this.value) - 1];
     const gallery = document.getElementById('gallery');
     if (gallery) justifyLayout(gallery, allPhotos, cols);
   });
+}
+
+// ── Time Filter ────────────────────────────────────────────────────────────────
+let _tfTimes  = [];   // parsed minutes-since-midnight per photo (or index if no times)
+let _tfMin    = 0;
+let _tfMax    = 1;
+
+function _parsePhotoMinutes(filename) {
+  // Try common camera timestamp patterns: HHMMSS as 6 consecutive digits
+  const m = filename.match(/[_\-\s](\d{2})(\d{2})(\d{2})(?:[_\.\-\s]|$)/);
+  if (m) {
+    const h = parseInt(m[1], 10), mn = parseInt(m[2], 10), s = parseInt(m[3], 10);
+    if (h < 24 && mn < 60 && s < 60) return h * 60 + mn + s / 60;
+  }
+  // Try YYYYMMDD_HHMMSS
+  const m2 = filename.match(/\d{8}[_\-](\d{2})(\d{2})(\d{2})/);
+  if (m2) {
+    const h = parseInt(m2[1], 10), mn = parseInt(m2[2], 10);
+    if (h < 24 && mn < 60) return h * 60 + mn;
+  }
+  return null;
+}
+
+function _fmtMinutes(m) {
+  const h = Math.floor(m / 60), mn = Math.round(m % 60);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const hd = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hd}:${String(mn).padStart(2,'0')} ${ampm}`;
+}
+
+function initTimeFilter(photos) {
+  const bar = document.getElementById('time-filter-bar');
+  if (!bar || !photos.length) return;
+
+  // Try to parse real times from filenames
+  const parsed = photos.map(p => _parsePhotoMinutes(p.filename || p.path.split('/').pop()));
+  const hasRealTimes = parsed.filter(Boolean).length > photos.length * 0.5;
+
+  if (hasRealTimes) {
+    _tfTimes = parsed.map((t, i) => t !== null ? t : (i / (photos.length - 1 || 1)) * 60 + (parsed.find(Boolean) || 600));
+  } else {
+    // Fall back to photo index as proxy for time position
+    _tfTimes = photos.map((_, i) => i);
+  }
+  _tfMin = _tfTimes[0];
+  _tfMax = _tfTimes[_tfTimes.length - 1];
+
+  let lo = 0, hi = 1;  // 0–1 fractions
+
+  function updateFill() {
+    document.getElementById('tf-fill').style.left  = (lo * 100) + '%';
+    document.getElementById('tf-fill').style.width = ((hi - lo) * 100) + '%';
+    document.getElementById('tf-h0').style.left = (lo * 100) + '%';
+    document.getElementById('tf-h1').style.left = (hi * 100) + '%';
+
+    const loVal = _tfMin + lo * (_tfMax - _tfMin);
+    const hiVal = _tfMin + hi * (_tfMax - _tfMin);
+    const loIdx = _tfTimes.findIndex(t => t >= loVal);
+    const hiIdx = [..._tfTimes].reverse().findIndex(t => t <= hiVal);
+    const actualHiIdx = hiIdx === -1 ? _tfTimes.length - 1 : _tfTimes.length - 1 - hiIdx;
+    const shown = _tfTimes.filter(t => t >= loVal && t <= hiVal).length;
+
+    if (lo === 0 && hi === 1) {
+      document.getElementById('tf-range').textContent = 'All photos';
+    } else if (hasRealTimes) {
+      document.getElementById('tf-range').textContent = `${_fmtMinutes(loVal)} – ${_fmtMinutes(hiVal)}`;
+    } else {
+      document.getElementById('tf-range').textContent = `${shown} of ${photos.length} photos`;
+    }
+
+    // Show/hide cards
+    const loValF = _tfMin + lo * (_tfMax - _tfMin);
+    const hiValF = _tfMin + hi * (_tfMax - _tfMin);
+    document.querySelectorAll('.thumb-card').forEach(card => {
+      const idx = parseInt(card.dataset.idx, 10);
+      const t   = _tfTimes[idx];
+      card.style.display = (t >= loValF && t <= hiValF) ? '' : 'none';
+    });
+    const visibleCount = _tfTimes.filter((t, i) => t >= loValF && t <= hiValF).length;
+    const rc = document.getElementById('results-count');
+    if (rc) rc.textContent = lo === 0 && hi === 1
+      ? `${photos.length} photo${photos.length !== 1 ? 's' : ''}`
+      : `${visibleCount} of ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
+  }
+
+  function makeDraggable(handle, isHi) {
+    let dragging = false;
+    const track = document.getElementById('tf-track');
+    const onMove = e => {
+      if (!dragging) return;
+      const rect = track.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      let frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (isHi) { hi = Math.max(lo + 0.01, frac); }
+      else       { lo = Math.min(hi - 0.01, frac); }
+      updateFill();
+    };
+    const onUp = () => { dragging = false; };
+    handle.addEventListener('mousedown',  e => { dragging = true; e.preventDefault(); });
+    handle.addEventListener('touchstart', e => { dragging = true; }, {passive:true});
+    document.addEventListener('mousemove',  onMove);
+    document.addEventListener('touchmove',  onMove, {passive:true});
+    document.addEventListener('mouseup',    onUp);
+    document.addEventListener('touchend',   onUp);
+  }
+
+  makeDraggable(document.getElementById('tf-h0'), false);
+  makeDraggable(document.getElementById('tf-h1'), true);
+
+  bar.style.display = '';
+  updateFill();
 }
 
 // ── Portrait Pose Gallery ──────────────────────────────────────────────────────
