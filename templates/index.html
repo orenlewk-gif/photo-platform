@@ -2251,7 +2251,10 @@ function renderThumbs(photos) {
 // ── Photo selection ──
 function getMaxSelectionLimit() {
   if (!currentPricing?.tiers) return null;
-  const maxTiers = currentPricing.tiers.filter(t => t.max).sort((a, b) => b.count - a.count);
+  // Only numeric-count max tiers count as a selection cap; "all" tiers are price caps only
+  const maxTiers = currentPricing.tiers
+    .filter(t => t.max && typeof t.count === 'number')
+    .sort((a, b) => b.count - a.count);
   return maxTiers.length ? maxTiers[0].count : null;
 }
 
