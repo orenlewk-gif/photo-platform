@@ -3756,13 +3756,23 @@ def get_all_clock_records(request: Request):
     return {"records": records, "photographers": photographers}
 
 # ── Upload ──
+_PORTRAIT_CATEGORY_NAMES = {"summer portraits", "winter portraits"}
+
 @app.get("/api/upload/locations")
 def api_upload_locations():
     """Public list of locations available in the upload tool — portrait + activities."""
     _load_portrait_locations()
     pricing = _load_pricing()
     activity_names = sorted(pricing.get("activities", {}).keys(), key=str.lower)
-    portrait_names = sorted(PORTRAIT_LOCATIONS, key=str.lower)
+    # Start with the static portrait locations set
+    portrait_set = set(l.lower() for l in PORTRAIT_LOCATIONS)
+    # Also include any activities grouped under portrait-type categories
+    for cat in pricing.get("activity_categories", []):
+        if cat.get("name", "").strip().lower() in _PORTRAIT_CATEGORY_NAMES:
+            for act in cat.get("acts", []):
+                if act.strip():
+                    portrait_set.add(act.strip().lower())
+    portrait_names = sorted(portrait_set, key=str.lower)
     return {
         "portrait": portrait_names,
         "activities": activity_names,

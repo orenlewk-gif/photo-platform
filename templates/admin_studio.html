@@ -368,13 +368,6 @@ input[type=file]{display:none}
           <input id="upload-folder-name" placeholder="e.g. Smith" autocomplete="off">
         </div>
 
-        <div class="field" style="margin-top:.6rem">
-          <label>Item List</label>
-          <select id="upload-item-list">
-            <option value="">None</option>
-          </select>
-        </div>
-
         <div id="drop-zone">
           <div class="dz-icon">📁</div>
           <div>Drop folders or photos here</div>
@@ -688,7 +681,6 @@ async function loadUploadLocations() {
   setupDropZone();
   setupInlineEdit();
   loadSidebar(); // fire and forget — sidebar populates in background
-  loadItemLists();
   // Restore section from URL path (e.g. /admin/dashboard/orders)
   const urlSection = location.pathname.split('/')[3];
   if (urlSection && _VIEW_URLS[urlSection]) {
@@ -720,22 +712,6 @@ async function loadZipTiers() {
     zipTiers = d.tiers || [];
   } catch(e) { zipTiers = []; }
   return zipTiers;
-}
-
-// ── Item Lists ──
-async function loadItemLists() {
-  try {
-    const d = await fetch('/api/items-bundles').then(r => r.json());
-    const sel = document.getElementById('upload-item-list');
-    const bundles = d.bundles || [];
-    while (sel.options.length > 1) sel.remove(1);
-    for (const b of bundles) {
-      const opt = document.createElement('option');
-      opt.value = b.name;
-      opt.textContent = b.name;
-      sel.appendChild(opt);
-    }
-  } catch(e) {}
 }
 
 async function setFolderItemList(date, location, folder, itemList) {
@@ -2097,8 +2073,6 @@ async function startUpload() {
     const poses=getPoseGroupsForUpload();
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys,poses})});
-    const poseItemList = document.getElementById('upload-item-list').value;
-    if (poseItemList) await setFolderItemList(date, location, folder, poseItemList);
     const succeeded=done-failed;
     if (failed) {
       label.textContent=`Done — ${succeeded} uploaded, ${failed} failed`;
@@ -2173,8 +2147,6 @@ async function startUpload() {
     if (!keys?.length) continue;
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys})});
-    const selectedItemList = document.getElementById('upload-item-list').value;
-    if (selectedItemList) await setFolderItemList(date, location, folder, selectedItemList);
     if (isZip) {
       const gs = getUploadGroupSize(fi);
       if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
