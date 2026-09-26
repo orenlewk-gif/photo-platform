@@ -48,11 +48,11 @@ a{color:inherit;text-decoration:none}
 
 /* Activity list */
 .act-table{width:100%;max-width:900px}
-.act-header-row{display:grid;grid-template-columns:1fr 90px 90px 90px 24px;gap:.5rem;padding:.35rem 1rem;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.28);border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:.3rem}
-.act-wrap{margin-bottom:.45rem}
-.act-row{display:grid;grid-template-columns:1fr 90px 90px 90px 24px;gap:.5rem;align-items:center;padding:.7rem 1rem;border-radius:8px;background:#1a1d27;border:1px solid rgba(255,255,255,.06);cursor:pointer;transition:border-color .15s,border-radius .1s}
+.act-header-row{display:grid;grid-template-columns:1fr 90px 90px 90px 24px;gap:.5rem;padding:.35rem 1rem;font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.28);border-bottom:1px solid rgba(255,255,255,.06);margin-bottom:.5rem}
+.act-wrap{margin-bottom:.3rem}
+.act-row{display:grid;grid-template-columns:1fr 90px 90px 90px 24px;gap:.5rem;align-items:center;padding:.65rem 1rem .65rem 2rem;border-radius:7px;background:#1a1d27;border:1px solid rgba(255,255,255,.06);cursor:pointer;transition:border-color .15s,border-radius .1s}
 .act-row:hover{border-color:rgba(255,255,255,.15)}
-.act-row.open{border-color:rgba(255,255,255,.18);border-radius:8px 8px 0 0;border-bottom-color:transparent}
+.act-row.open{border-color:rgba(255,255,255,.18);border-radius:7px 7px 0 0;border-bottom-color:transparent}
 .act-name{font-weight:600;font-size:13px;color:#e8eaf0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .act-badge{font-size:10px;font-weight:700;letter-spacing:.5px;padding:.22rem .6rem;border-radius:5px;text-transform:uppercase}
 .badge-custom{background:rgba(52,211,153,.12);color:#34d399}
@@ -62,6 +62,18 @@ a{color:inherit;text-decoration:none}
 .act-stat{font-size:13px;color:rgba(255,255,255,.5)}
 .act-chev{font-size:11px;color:rgba(255,255,255,.28);text-align:right;transition:transform .18s}
 .act-row.open .act-chev{transform:rotate(90deg)}
+
+/* Category grouping */
+.cat-section{margin-bottom:.75rem}
+.cat-row{display:grid;grid-template-columns:1fr 90px 90px 90px 24px;gap:.5rem;align-items:center;padding:.55rem 1rem;border-radius:7px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);cursor:pointer;margin-bottom:.3rem;transition:background .12s}
+.cat-row:hover{background:rgba(255,255,255,.05)}
+.cat-name{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.5)}
+.cat-stat{font-size:12px;color:rgba(255,255,255,.3)}
+.cat-chev{font-size:11px;color:rgba(255,255,255,.25);text-align:right;transition:transform .18s}
+.cat-chev.open{transform:rotate(90deg)}
+.cat-children{display:none;padding-left:0}
+.cat-children.open{display:block}
+.cat-empty{font-size:12px;color:rgba(255,255,255,.2);padding:.5rem 1rem .8rem 2rem}
 .empty-state{color:rgba(255,255,255,.3);font-size:13px;padding:2rem 0;text-align:center}
 
 /* Expandable detail panel */
@@ -237,6 +249,15 @@ html.embedded #layout{height:100vh}
 <div id="toast"></div>
 
 <script>
+// ── Category groupings (parent → child activities) ──────────────────────────
+const DEFAULT_CATEGORIES = [
+  {name:'Zip Lines',        acts:['Adventure Zip','Nature Zip']},
+  {name:'Mountain Biking',  acts:['Mountain Biking','Dirt Days']},
+  {name:'Summer Portraits', acts:['Lone Peak Portraits','Explorer Gondola','Ramcharger Portraits']},
+  {name:'Winter Portraits', acts:[]},
+  {name:'Winter Action',    acts:['Mr K Action']},
+];
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 const ALL_ITEMS = [
   {key:'action_digital',    label:'Action Photos (Digital)'},
@@ -333,35 +354,88 @@ function buildItems() {
   return items.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function badgeFor(name, cfg) {
-  const lc = name.toLowerCase();
-  if (lc.includes('zip'))   return {label:'Zip',        cls:'badge-zip'};
-  if (!cfg)                  return {label:'No Pricing', cls:'badge-none'};
-  if (cfg.use_default !== false && (!cfg.tiers || !cfg.tiers.length))
-                             return {label:'Default',    cls:'badge-default'};
-  return                           {label:'Custom',     cls:'badge-custom'};
+function renderList() {
+  const all    = buildItems();
+  const byName = Object.fromEntries(all.map(it => [it.name, it]));
+
+  if (!pricingData.activity_categories || !pricingData.activity_categories.length) {
+    pricingData.activity_categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  }
+  const cats = pricingData.activity_categories;
+
+  const categorized = new Set();
+  let html = '';
+
+  for (const cat of cats) {
+    const catActs = (cat.acts || []).filter(Boolean);
+    let totalGal = 0, totalPh = 0;
+    for (const n of catActs) {
+      const it = byName[n];
+      if (it) { totalGal += it.galleries; totalPh += it.photos; }
+    }
+    const csid = slugId(cat.name);
+    html += `
+<div class="cat-section" id="catsec-${csid}">
+  <div class="cat-row" onclick="toggleCat('${esc(cat.name)}')">
+    <span class="cat-name">${esc(cat.name)}</span>
+    <span class="cat-stat">${catActs.length} act.</span>
+    <span class="cat-stat">${totalGal}</span>
+    <span class="cat-stat">${totalPh.toLocaleString()}</span>
+    <span class="cat-chev open" id="cchev-${csid}">›</span>
+  </div>
+  <div class="cat-children open" id="catchildren-${csid}">
+    ${catActs.map(n => actRowHtml(byName[n] || {name:n,cfg:null,galleries:0,photos:0,groupCount:0})).join('')}
+    ${catActs.length === 0 ? '<div class="cat-empty">No activities added yet</div>' : ''}
+  </div>
+</div>`;
+    catActs.forEach(n => categorized.add(n));
+  }
+
+  const uncat = all.filter(it => !categorized.has(it.name));
+  if (uncat.length) {
+    const totalGal = uncat.reduce((s,it)=>s+it.galleries,0);
+    const totalPh  = uncat.reduce((s,it)=>s+it.photos,0);
+    html += `
+<div class="cat-section" id="catsec-x-other">
+  <div class="cat-row" onclick="toggleCat('x-other')">
+    <span class="cat-name" style="color:rgba(255,255,255,.3)">Uncategorized</span>
+    <span class="cat-stat">${uncat.length} act.</span>
+    <span class="cat-stat">${totalGal}</span>
+    <span class="cat-stat">${totalPh.toLocaleString()}</span>
+    <span class="cat-chev open" id="cchev-x-other">›</span>
+  </div>
+  <div class="cat-children open" id="catchildren-x-other">
+    ${uncat.map(it => actRowHtml(it)).join('')}
+  </div>
+</div>`;
+  }
+
+  document.getElementById('act-list-body').innerHTML = html || '<div class="empty-state">No activities found.</div>';
 }
 
-function renderList() {
-  const items = buildItems();
-  if (!items.length) {
-    document.getElementById('act-list-body').innerHTML = '<div class="empty-state">No activities found.</div>';
-    return;
-  }
-  document.getElementById('act-list-body').innerHTML = items.map(item => {
-    const {name, cfg, galleries, photos, groupCount} = item;
-    const {label, cls} = badgeFor(name, cfg);
-    const sid = slugId(name);
-    return `<div class="act-wrap" id="wrap-${sid}">
-      <div class="act-row" id="row-${sid}" onclick="toggleDetail('${esc(name)}')">
-        <span class="act-name">${esc(name)}</span>
-        <span class="act-stat">${groupCount ? `<span class="act-badge ${cls}">${groupCount} loc</span>` : `<span class="act-badge badge-none">—</span>`}</span>
-        <span class="act-stat">${galleries}</span>
-        <span class="act-stat">${photos.toLocaleString()}</span>
-        <span class="act-chev">›</span>
-      </div>
-    </div>`;
-  }).join('');
+function toggleCat(catName) {
+  const csid = slugId(catName);
+  const ch   = document.getElementById('catchildren-' + csid);
+  const chev = document.getElementById('cchev-' + csid);
+  if (!ch) return;
+  const open = ch.classList.toggle('open');
+  if (chev) chev.classList.toggle('open', open);
+}
+
+function actRowHtml(item) {
+  const {name, cfg, galleries, photos, groupCount} = item;
+  const sid = slugId(name);
+  const locs = groupCount ? `<span class="act-badge badge-custom">${groupCount} loc</span>`
+                           : `<span class="act-badge badge-none">—</span>`;
+  return `<div class="act-wrap" id="wrap-${sid}">
+    <div class="act-row" id="row-${sid}" onclick="toggleDetail('${esc(name)}')">
+      <span class="act-name">${esc(name)}</span>
+      <span class="act-stat">${locs}</span>
+      <span class="act-stat">${galleries}</span>
+      <span class="act-stat">${photos.toLocaleString()}</span>
+      <span class="act-chev">›</span>
+    </div>
+  </div>`;
 }
 
 // ── Detail panel ───────────────────────────────────────────────────────────────
@@ -492,6 +566,11 @@ async function saveActivityConfig(actName) {
 
   pricingData.activities[actName].items  = items;
   pricingData.activities[actName].flags  = flags;
+
+  // Always persist the category structure too
+  if (!pricingData.activity_categories || !pricingData.activity_categories.length) {
+    pricingData.activity_categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  }
 
   try {
     const r = await fetch('/api/admin/pricing', {
