@@ -720,14 +720,7 @@ def get_subfolders(date: str, location: str):
         step = n / 4
         return [photos[int(i * step)] for i in range(4)]
 
-    loc_lower = location.strip().lower()
-    is_portrait = loc_lower in PORTRAIT_LOCATIONS
-    if not is_portrait:
-        for cat in _load_pricing().get("activity_categories", []):
-            if cat.get("name", "").strip().lower() in _PORTRAIT_CATEGORY_NAMES:
-                if loc_lower in [a.strip().lower() for a in (cat.get("acts") or [])]:
-                    is_portrait = True
-                    break
+    is_portrait = _is_portrait_location(location)
     subfolders = {}
     for item in data:
         if item.get("draft"):
@@ -3765,6 +3758,17 @@ def get_all_clock_records(request: Request):
 # ── Upload ──
 _PORTRAIT_CATEGORY_NAMES = {"summer portraits", "winter portraits"}
 
+def _is_portrait_location(location: str) -> bool:
+    """Return True if location is a portrait-type location (hardcoded set, R2 list, or portrait-category activity)."""
+    loc_lower = location.strip().lower()
+    if loc_lower in PORTRAIT_LOCATIONS:
+        return True
+    for cat in _load_pricing().get("activity_categories", []):
+        if cat.get("name", "").strip().lower() in _PORTRAIT_CATEGORY_NAMES:
+            if loc_lower in [a.strip().lower() for a in (cat.get("acts") or [])]:
+                return True
+    return False
+
 @app.get("/api/upload/locations")
 def api_upload_locations():
     """Public list of locations available in the upload tool — portrait + activities."""
@@ -5086,7 +5090,7 @@ async def admin_upload_index(request: Request):
     poses    = body.get("poses", None)  # from UI pose assignment; None means use XMP detection
     if not date or not location or not keys:
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
-    is_portrait = location.lower() in PORTRAIT_LOCATIONS
+    is_portrait = _is_portrait_location(location)
     existing    = {item["path"] for item in data}
     added       = 0
     location = clean_location(location)
