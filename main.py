@@ -495,15 +495,10 @@ try:
         _wf["time_search"] = True
         _wf["clip"]        = True
         _dirty = True
-    # Migrate per_photo/all_photos → tiers, or seed defaults if tiers absent
-    if "per_photo" in _wa and "tiers" not in _wa:
-        _per  = float(_wa.get("per_photo", 25))
-        _allp = _wa.get("all_photos")
-        _wa["tiers"] = [{"label": "1 Photo", "count": 1, "price": _per}]
-        if _allp:
-            _wa["tiers"].append({"label": "All Photos", "count": "all", "price": float(_allp), "max": True})
-        _dirty = True
-    elif not _wa.get("tiers"):
+    # Ensure the all-photos cap tier always exists (guards against stale admin saves)
+    _tiers = list(_wa.get("tiers") or [])
+    _has_cap = any(t.get("count") == "all" and t.get("max") for t in _tiers)
+    if not _has_cap:
         _wa["tiers"] = [
             {"label": "1 Photo",    "count": 1,     "price": 25},
             {"label": "All Photos", "count": "all", "price": 115, "max": True},

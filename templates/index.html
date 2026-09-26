@@ -134,6 +134,7 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 }
 .tf-handle:active { cursor:grabbing; }
 .tf-range { font-size:.75rem; color:rgba(255,255,255,.55); white-space:nowrap; min-width:110px; }
+.tf-time-lbl { position:absolute; top:14px; font-size:10px; color:rgba(255,255,255,.4); white-space:nowrap; transform:translateX(-50%); pointer-events:none; }
 
 input[type="range"] {
   -webkit-appearance:none; appearance:none;
@@ -1373,7 +1374,11 @@ function calcPriceFor(count, pricing) {
   if (!pricing || !pricing.tiers || count === 0) return 0;
   const tiers      = pricing.tiers;
   const allTier    = tiers.find(t => t.count === 'all');
-  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => {
+    if (a.count === 'all') return 1;
+    if (b.count === 'all') return -1;
+    return a.count - b.count;
+  });
   const singleTier = tiers.find(t => t.count === 1);
   const singleUnit = singleTier ? singleTier.price : 25;
   let best = count * singleUnit;
@@ -1385,7 +1390,7 @@ function calcPriceFor(count, pricing) {
     if (cost < best) best = cost;
   }
   if (maxTiers.length) {
-    const cap = maxTiers.find(t => count <= t.count);
+    const cap = maxTiers.find(t => t.count === 'all' || count <= t.count);
     if (cap && cap.price < best) best = cap.price;
   } else if (allTier && best > allTier.price) {
     best = allTier.price;
@@ -1747,6 +1752,8 @@ async function showGallery(date, location, family, ln, group) {
           <div class="tf-fill" id="tf-fill"></div>
           <div class="tf-handle" id="tf-h0" title="Drag to set start"></div>
           <div class="tf-handle" id="tf-h1" title="Drag to set end"></div>
+          <span class="tf-time-lbl" id="tf-lo-label"></span>
+          <span class="tf-time-lbl" id="tf-hi-label"></span>
         </div>
         <span class="tf-range" id="tf-range">All photos</span>
       </div>
@@ -1823,6 +1830,13 @@ function initTimeFilter(photos) {
 
     const loVal = _tfMin + lo * (_tfMax - _tfMin);
     const hiVal = _tfMin + hi * (_tfMax - _tfMin);
+
+    if (hasRealTimes) {
+      const loLbl = document.getElementById('tf-lo-label');
+      const hiLbl = document.getElementById('tf-hi-label');
+      if (loLbl) { loLbl.style.left = (lo * 100) + '%'; loLbl.textContent = _fmtMinutes(loVal); }
+      if (hiLbl) { hiLbl.style.left = (hi * 100) + '%'; hiLbl.textContent = _fmtMinutes(hiVal); }
+    }
     const loIdx = _tfTimes.findIndex(t => t >= loVal);
     const hiIdx = [..._tfTimes].reverse().findIndex(t => t <= hiVal);
     const actualHiIdx = hiIdx === -1 ? _tfTimes.length - 1 : _tfTimes.length - 1 - hiIdx;
@@ -2686,7 +2700,11 @@ function calcPrice(count) {
   const total = allPhotos.length;
 
   const allTier  = tiers.find(t => t.count === 'all');
-  const maxTiers = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+  const maxTiers = tiers.filter(t => t.max).sort((a, b) => {
+    if (a.count === 'all') return 1;
+    if (b.count === 'all') return -1;
+    return a.count - b.count;
+  });
   const singleTier = tiers.find(t => t.count === 1);
   const singleUnit = singleTier ? singleTier.price : 25;
 
@@ -2705,9 +2723,9 @@ function calcPrice(count) {
     if (cost < best) best = cost;
   }
 
-  // Cap with the smallest max tier that covers this count
+  // Cap with the smallest max tier that covers this count; count:"all" always applies
   if (maxTiers.length) {
-    const cap = maxTiers.find(t => count <= t.count);
+    const cap = maxTiers.find(t => t.count === 'all' || count <= t.count);
     if (cap && cap.price < best) best = cap.price;
   } else if (allTier && best > allTier.price) {
     best = allTier.price;
