@@ -1116,13 +1116,27 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                     bundles_data = _load_items_bundles()
                     bundle = next((b for b in bundles_data.get("bundles", [])
                                    if b.get("name") == item_list_name), None)
-                    if bundle and bundle.get("pricing_key"):
-                        pk = bundle["pricing_key"]
-                        pk_act = next((k for k in activities if k.lower() == pk.lower()), None)
-                        if pk_act:
-                            result = dict(activities[pk_act])
-                            result["combos"] = combos
-                            return result
+                    if bundle:
+                        pk = bundle.get("pricing_key", "")
+                        if not pk:
+                            # Auto-derive: strip trailing "Photos/Photo/Images/Portraits" from name
+                            bname = bundle.get("name", "")
+                            import re as _re
+                            candidates = [bname] + [
+                                _re.sub(r'\s+(Photos?|Images?|Portraits?)\s*$', '', bname, flags=_re.IGNORECASE).strip()
+                            ]
+                            for candidate in candidates:
+                                pk_act = next((k for k in activities if k.lower() == candidate.lower()), None)
+                                if pk_act:
+                                    result = dict(activities[pk_act])
+                                    result["combos"] = combos
+                                    return result
+                        else:
+                            pk_act = next((k for k in activities if k.lower() == pk.lower()), None)
+                            if pk_act:
+                                result = dict(activities[pk_act])
+                                result["combos"] = combos
+                                return result
             except Exception as e:
                 print(f"item_list pricing fallback error: {e}")
         return {"tiers": [], "combos": combos}
