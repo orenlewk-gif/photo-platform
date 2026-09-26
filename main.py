@@ -1136,8 +1136,15 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                 all_p = result.get("all_photos")
                 tiers = [{"label": "1 Photo", "count": 1, "price": per}]
                 if all_p:
-                    tiers.append({"label": "All Photos", "count": "all", "price": float(all_p), "max": True})
+                    tiers.append({"label": "All Photos", "count": 999, "price": float(all_p), "max": True})
                 result["tiers"] = tiers
+            # If tiers is empty but flags indicate an action gallery, inject defaults inline
+            # (guards against stale empty-tiers state in R2 without requiring a restart)
+            if not result.get("tiers") and result.get("flags", {}).get("time_search"):
+                result["tiers"] = [
+                    {"label": "1 Photo",    "count": 1,   "price": 25},
+                    {"label": "All Photos", "count": 999, "price": 115, "max": True},
+                ]
             return result
 
         act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
