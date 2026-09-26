@@ -2687,6 +2687,7 @@ function updateHeaderCartBtn() {
 }
 
 function updateCart() {
+  if (_poseData) { updateHeaderCartBtn(); return; }
   recalcPrintPrices();
   const count      = selectedPhotos.size;
   const printCount = printCart.length;
