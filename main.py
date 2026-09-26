@@ -1106,12 +1106,28 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             result = dict(activities[act_key])
             result["combos"] = combos
             return result
-        # Fall back to item_list pricing_key when location has no direct pricing
+        # Fall back to activity_groups — explicit location→activity mapping
+        activity_groups = pricing.get("activity_groups", {})
+        for act_name, group_locs in activity_groups.items():
+            if location.strip().lower() in [l.lower() for l in group_locs]:
+                pk_act = next((k for k in activities if k.lower() == act_name.lower()), None)
+                if pk_act:
+                    result = dict(activities[pk_act])
+                    result["combos"] = combos
+                    return result
+        # Fall back to item_list name when location has no direct pricing
         if date:
             try:
                 fm = _load_folder_meta()
                 fk = _folder_key(date, location.strip(), family.strip() if family else "")
                 item_list_name = fm.get(fk, {}).get("item_list", "")
+                if not item_list_name:
+                    # Try prefix match when family is not in the request
+                    prefix = f"{date}|{location.strip()}|"
+                    for k, v in fm.items():
+                        if k.startswith(prefix) and v.get("item_list"):
+                            item_list_name = v["item_list"]
+                            break
                 if item_list_name:
                     bundles_data = _load_items_bundles()
                     bundle = next((b for b in bundles_data.get("bundles", [])
@@ -1119,11 +1135,9 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                     if bundle:
                         pk = bundle.get("pricing_key", "")
                         if not pk:
-                            # Auto-derive: strip trailing "Photos/Photo/Images/Portraits" from name
                             bname = bundle.get("name", "")
-                            import re as _re
                             candidates = [bname] + [
-                                _re.sub(r'\s+(Photos?|Images?|Portraits?)\s*$', '', bname, flags=_re.IGNORECASE).strip()
+                                re.sub(r'\s+(Photos?|Images?|Portraits?)\s*$', '', bname, flags=re.IGNORECASE).strip()
                             ]
                             for candidate in candidates:
                                 pk_act = next((k for k in activities if k.lower() == candidate.lower()), None)
@@ -6099,6 +6113,24 @@ async def api_rebuild_poses(request: Request):
     fm    = _load_folder_meta()
     poses = fm.get(fk, {}).get("poses", [])
     return {"ok": True, "poses_found": len(poses), "photos_scanned": len(all_keys)}
+
+@app.get("/api/admin/activity-groups")
+def api_activity_groups_get(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    pricing = _load_pricing()
+    return {"activity_groups": pricing.get("activity_groups", {})}
+
+@app.post("/api/admin/activity-groups")
+async def api_activity_groups_save(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    groups = body.get("activity_groups", {})
+    pricing = _load_pricing()
+    pricing["activity_groups"] = groups
+    _save_pricing(pricing)
+    return {"status": "ok"}
 
 @app.get("/api/admin/pricing")
 def api_admin_pricing_get(request: Request):

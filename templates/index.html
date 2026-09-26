@@ -1696,6 +1696,8 @@ async function showGallery(date, location, family, ln, group) {
     updateCart();
     return;
   }
+  _poseData = null;
+  _lastClickedIdx = null;
 
   el.innerHTML = `
     <div class="gallery-header">
@@ -2209,7 +2211,7 @@ function renderThumbs(photos) {
     // Select-check click: toggle selection
     card.querySelector('.select-check').addEventListener('click', e => {
       e.stopPropagation();
-      toggleSelect(i);
+      toggleSelect(i, e);
     });
 
     // Shop button click: open quick shop modal
@@ -2255,19 +2257,35 @@ function showToast(msg) {
   el._t = setTimeout(() => { el.style.opacity = '0'; }, 2500);
 }
 
-function toggleSelect(i) {
-  if (selectedPhotos.has(i)) {
-    selectedPhotos.delete(i);
-  } else {
-    const limit = getMaxSelectionLimit();
-    if (limit && selectedPhotos.size >= limit) {
-      showToast(`Maximum ${limit} photos for this activity`);
-      return;
+let _lastClickedIdx = null;
+function toggleSelect(i, e) {
+  const limit = getMaxSelectionLimit();
+  if (e?.shiftKey && _lastClickedIdx !== null && _lastClickedIdx !== i) {
+    const lo = Math.min(_lastClickedIdx, i), hi = Math.max(_lastClickedIdx, i);
+    const adding = !selectedPhotos.has(i);
+    for (let j = lo; j <= hi; j++) {
+      if (adding) {
+        if (!limit || selectedPhotos.size < limit) selectedPhotos.add(j);
+      } else {
+        selectedPhotos.delete(j);
+      }
+      const c = document.querySelector(`.thumb-card[data-idx="${j}"]`);
+      if (c) c.classList.toggle('selected', selectedPhotos.has(j));
     }
-    selectedPhotos.add(i);
+  } else {
+    if (selectedPhotos.has(i)) {
+      selectedPhotos.delete(i);
+    } else {
+      if (limit && selectedPhotos.size >= limit) {
+        showToast(`Maximum ${limit} photos for this activity`);
+        return;
+      }
+      selectedPhotos.add(i);
+    }
+    const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
+    if (card) card.classList.toggle('selected', selectedPhotos.has(i));
   }
-  const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
-  if (card) card.classList.toggle('selected', selectedPhotos.has(i));
+  _lastClickedIdx = i;
   updateCart();
 }
 
@@ -3043,7 +3061,7 @@ function buildSizeOptions(currentSizeIdx, photoIdx) {
   const halfPrice = photoIdx != null ? selectedPhotos.has(photoIdx) : false;
   return PRINT_SIZES.map((s, si) => {
     const price = halfPrice ? s.price / 2 : s.price;
-    return `<option value="${si}" ${si === currentSizeIdx ? 'selected' : ''}>${s.label} — $${price}</option>`;
+    return `<option value="${si}" ${si === currentSizeIdx ? 'selected' : ''}>${s.label} — $${price.toFixed(2)}</option>`;
   }).join('');
 }
 
@@ -3734,12 +3752,11 @@ function _initDesktopLoupe() {
     // rx/ry: cursor position within image (0–1), used for background
     const rx = Math.max(0, Math.min(1, (e.clientX - imgRect.left)  / imgRect.width));
     const ry = Math.max(0, Math.min(1, (e.clientY - imgRect.top)   / imgRect.height));
-    // lx/ly: cursor position within the containing block, used for loupe placement
+    // lx/ly: loupe centered on cursor
     const cx = e.clientX - wrapRect.left;
     const cy = e.clientY - wrapRect.top;
-    let lx = cx + 18;
-    let ly = cy - SZ / 2;
-    if (lx + SZ > wrapRect.width) lx = cx - SZ - 18;
+    const lx = cx - SZ / 2;
+    const ly = cy - SZ / 2;
     loupe.style.left = Math.max(0, Math.min(wrapRect.width  - SZ, lx)) + 'px';
     loupe.style.top  = Math.max(0, Math.min(wrapRect.height - SZ, ly)) + 'px';
     const bgW = imgRect.width * ZOOM, bgH = imgRect.height * ZOOM;
@@ -4050,7 +4067,7 @@ function openQuickShop(i) {
       <span class="qs-row-label">${s.label} Print</span>
       <div class="qs-row-prices">
         ${wasHtml}
-        <span class="qs-price">$${sale}</span>
+        <span class="qs-price">$${sale.toFixed(2)}</span>
         <button class="qs-add-btn" onclick="addPrint(${i}, ${si}, ${sale})">Add</button>
       </div>
     </div>`;

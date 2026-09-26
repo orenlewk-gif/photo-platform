@@ -107,6 +107,16 @@ input[type="text"]:focus{border-color:#F5C518}
 .pricing-opt.selected .opt-text{color:#e8eaf0}
 .btn-row{display:flex;gap:.6rem;margin-top:1.1rem}
 
+/* Location groups section */
+.groups-section{padding:.75rem 1.2rem 1rem;border-top:1px solid rgba(255,255,255,.07)}
+.groups-label{font-size:11px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.55rem}
+.groups-tags{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem;min-height:24px}
+.group-tag{display:inline-flex;align-items:center;gap:.35rem;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3);border-radius:5px;padding:.22rem .55rem;font-size:12px;color:#F5C518}
+.group-tag-remove{background:none;border:none;color:rgba(245,197,24,.5);cursor:pointer;font-size:14px;line-height:1;padding:0;transition:color .12s}
+.group-tag-remove:hover{color:#F5C518}
+.group-add-row{display:flex;gap:.5rem;align-items:center}
+.group-add-row input{flex:1;max-width:280px;background:#1e2330;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#e8eaf0;padding:.38rem .7rem;font-size:12px;outline:none;transition:border-color .15s}
+.group-add-row input:focus{border-color:#F5C518}
 /* Toast */
 #toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}
 #toast.show{opacity:1;background:#16a34a;color:#fff}
@@ -119,7 +129,7 @@ html.embedded #layout{height:100vh}
 <body>
 
 <div id="topbar">
-  <span class="logo">Crystal Images — Admin</span>
+  <span class="logo">Crystal Images — Dashboard</span>
   <a href="/admin/logout" class="signout">Sign out</a>
 </div>
 
@@ -214,18 +224,21 @@ function toggleNg(name) {
   arr.classList.toggle('open', open);
   if (hdr) hdr.classList.toggle('open', open);
 }
-let pricingData = null;
-let allFolders  = [];
-let _actType    = 'standard';
+let pricingData    = null;
+let allFolders     = [];
+let activityGroups = {};
+let _actType       = 'standard';
 
 async function loadData() {
   try {
-    const [pr, fr] = await Promise.all([
+    const [pr, fr, gr] = await Promise.all([
       fetch('/api/admin/pricing').then(r => r.json()),
       fetch('/api/admin/folders').then(r => r.json()),
+      fetch('/api/admin/activity-groups').then(r => r.json()),
     ]);
-    pricingData = pr;
-    allFolders  = fr.folders || [];
+    pricingData    = pr;
+    allFolders     = fr.folders || [];
+    activityGroups = gr.activity_groups || {};
     renderList();
   } catch(e) {
     document.getElementById('act-list-body').innerHTML = '<div class="empty-state">Failed to load — try refreshing</div>';
@@ -324,6 +337,11 @@ function toggleDetail(name) {
       }).join('')
     : '<div class="gallery-empty">No galleries yet</div>';
 
+  const groupedLocs = activityGroups[name] || [];
+  const groupTagsHtml = groupedLocs.map(loc =>
+    `<span class="group-tag">${esc(loc)}<button class="group-tag-remove" onclick="removeFromGroup('${esc(name)}','${esc(loc)}')">×</button></span>`
+  ).join('') || '<span style="font-size:12px;color:rgba(255,255,255,.25)">No locations grouped yet</span>';
+
   const detail = document.createElement('div');
   detail.className = 'act-detail';
   detail.id = detId;
@@ -339,6 +357,14 @@ function toggleDetail(name) {
     <div class="gallery-section">
       <div class="gallery-label">Galleries (${myFolders.length})</div>
       <div class="gallery-rows">${galleryRows}</div>
+    </div>
+  </div>
+  <div class="groups-section">
+    <div class="groups-label">Location Groups — folders at these locations use ${esc(name)} pricing automatically</div>
+    <div class="groups-tags" id="gtags-${sid}">${groupTagsHtml}</div>
+    <div class="group-add-row">
+      <input type="text" id="gadd-${sid}" placeholder="Location name (e.g. Mr K Action)" onkeydown="if(event.key==='Enter')addToGroup('${esc(name)}')">
+      <button class="btn btn-ghost btn-sm" onclick="addToGroup('${esc(name)}')">+ Add</button>
     </div>
   </div>`;
   wrap.appendChild(detail);
@@ -425,6 +451,53 @@ async function createActivity() {
   } catch(e) {
     showToast('Save failed: ' + e, 'err');
   }
+}
+
+async function addToGroup(actName) {
+  const sid  = slugId(actName);
+  const inp  = document.getElementById('gadd-' + sid);
+  const loc  = inp ? inp.value.trim() : '';
+  if (!loc) return;
+  if (!activityGroups[actName]) activityGroups[actName] = [];
+  if (activityGroups[actName].some(l => l.toLowerCase() === loc.toLowerCase())) {
+    showToast('Location already in this group', 'err'); return;
+  }
+  activityGroups[actName].push(loc);
+  await saveGroups(actName);
+  if (inp) inp.value = '';
+  refreshGroupTags(actName);
+}
+
+async function removeFromGroup(actName, loc) {
+  if (!activityGroups[actName]) return;
+  activityGroups[actName] = activityGroups[actName].filter(l => l !== loc);
+  if (!activityGroups[actName].length) delete activityGroups[actName];
+  await saveGroups(actName);
+  refreshGroupTags(actName);
+}
+
+async function saveGroups(actName) {
+  try {
+    const r = await fetch('/api/admin/activity-groups', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({activity_groups: activityGroups}),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    showToast('Saved');
+  } catch(e) {
+    showToast('Save failed: ' + e, 'err');
+  }
+}
+
+function refreshGroupTags(actName) {
+  const sid  = slugId(actName);
+  const el   = document.getElementById('gtags-' + sid);
+  if (!el) return;
+  const locs = activityGroups[actName] || [];
+  el.innerHTML = locs.map(loc =>
+    `<span class="group-tag">${esc(loc)}<button class="group-tag-remove" onclick="removeFromGroup('${esc(actName)}','${esc(loc)}')">×</button></span>`
+  ).join('') || '<span style="font-size:12px;color:rgba(255,255,255,.25)">No locations grouped yet</span>';
 }
 
 function slugId(s) { return String(s).replace(/[^a-zA-Z0-9]/g, '-'); }
