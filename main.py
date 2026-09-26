@@ -485,18 +485,35 @@ except Exception:
     else:
         print("No local pricing.json found, starting with empty pricing in R2.")
 
-# Seed Winter Action flags (time_search + clip) as presets
+# Seed Winter Action defaults (tiers + flags) if missing
 try:
-    _wp = _load_pricing()
-    _wa = _wp.setdefault("activities", {}).setdefault("Winter Action", {})
-    _wf = _wa.setdefault("flags", {})
+    _wp  = _load_pricing()
+    _wa  = _wp.setdefault("activities", {}).setdefault("Winter Action", {})
+    _wf  = _wa.setdefault("flags", {})
+    _dirty = False
     if not _wf.get("time_search") or not _wf.get("clip"):
         _wf["time_search"] = True
         _wf["clip"]        = True
+        _dirty = True
+    # Migrate per_photo/all_photos → tiers, or seed defaults if tiers absent
+    if "per_photo" in _wa and "tiers" not in _wa:
+        _per  = float(_wa.get("per_photo", 25))
+        _allp = _wa.get("all_photos")
+        _wa["tiers"] = [{"label": "1 Photo", "count": 1, "price": _per}]
+        if _allp:
+            _wa["tiers"].append({"label": "All Photos", "count": "all", "price": float(_allp), "max": True})
+        _dirty = True
+    elif not _wa.get("tiers"):
+        _wa["tiers"] = [
+            {"label": "1 Photo",    "count": 1,     "price": 25},
+            {"label": "All Photos", "count": "all", "price": 115, "max": True},
+        ]
+        _dirty = True
+    if _dirty:
         _save_pricing(_wp)
-        print("Seeded time_search + clip flags for Winter Action.")
+        print("Seeded Winter Action defaults (tiers + flags).")
 except Exception as _we:
-    print(f"Warning: could not seed Winter Action flags: {_we}")
+    print(f"Warning: could not seed Winter Action defaults: {_we}")
 
 
 # ─────────────────────────────────────────
