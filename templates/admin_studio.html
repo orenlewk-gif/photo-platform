@@ -109,6 +109,13 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #upload-action-btn:hover:not(:disabled){background:#f0bc00}
 
 /* ── Pose Assignment Panel ── */
+#batch-header{margin-bottom:.75rem}
+.batch-progress-label{font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:.35rem}
+.batch-family-name{font-size:1.15rem;font-weight:700;color:#e8eaf0;margin-bottom:.6rem}
+.batch-family-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.batch-fam-chip{font-size:.7rem;padding:.2rem .5rem;border-radius:4px;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.38);background:rgba(255,255,255,.04)}
+.batch-fam-chip.done{background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.25);color:rgba(74,222,128,.75)}
+.batch-fam-chip.current{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.35);color:#f5c518;font-weight:700}
 #pose-assign-panel{margin-bottom:.85rem}
 .pose-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem}
 .pose-header-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.38)}
@@ -389,6 +396,8 @@ input[type=file]{display:none}
 
         <div id="detected-folders"></div>
 
+        <div id="batch-header" style="display:none"></div>
+
         <div id="pose-assign-panel" style="display:none"></div>
 
         <div id="upload-progress">
@@ -661,6 +670,8 @@ const POSE_COLORS = ['#e53e3e','#ecc94b','#48bb78','#4299e1','#ed8936','#9f7aea'
 let poseFiles = [];        // sorted File[] in pose mode
 let poseObjURLs = [];      // blob URLs parallel to poseFiles
 let poseSelection = new Set(); // indices currently selected
+let _batchQueue  = [];     // [{name, files}] for multi-family portrait batch
+let _batchCursor = -1;     // index into _batchQueue; -1 = not in batch mode
 let poseGroups = [];       // [{color, label, indices: Set}]
 let poseLastClick = -1;    // for shift-click range
 function _isPoseMode() { return poseFiles.length > 0; }
@@ -1738,7 +1749,11 @@ function showUploadView() {
   currentFolder=null; currentLocation=null;
   renderTree();
   setView('upload');
+  _batchQueue=[]; _batchCursor=-1;
+  document.getElementById('batch-header').style.display='none';
+  document.getElementById('drop-zone').style.display='';
   uploadFolders=[]; looseFiles=[];
+  clearPoseState();
   renderDetectedFolders(); updateUploadBtn();
 }
 
@@ -1763,9 +1778,7 @@ function handleFolderInput(files) {
     if (!uploadFolders.find(f => f.name === name)) uploadFolders.push({name, files: fls});
   }
   if (_currentLocationIsPortrait()) {
-    const allFiles = uploadFolders.flatMap(f => f.files);
-    initPoseAssign(allFiles);
-    updateUploadBtn();
+    initBatchUpload(uploadFolders);
   } else {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
@@ -1776,8 +1789,7 @@ function handleFileInput(files) {
   uploadFolders = [];
   looseFiles = [...files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name));
   if (_currentLocationIsPortrait()) {
-    initPoseAssign(looseFiles);
-    updateUploadBtn();
+    initBatchUpload([{name:'', files:looseFiles}]);
   } else {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
@@ -1799,9 +1811,8 @@ async function handleDrop(e) {
     for (const fe of files) { const f=await new Promise(r=>fe.file(r)); if(/\.(jpg|jpeg|png)$/i.test(f.name)) looseFiles.push(f); }
   }
   if (_currentLocationIsPortrait()) {
-    const allFiles = [...uploadFolders.flatMap(f=>f.files), ...looseFiles];
-    initPoseAssign(allFiles);
-    updateUploadBtn();
+    const folders = uploadFolders.length ? uploadFolders : [{name:'', files:looseFiles}];
+    initBatchUpload(folders);
   } else {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
@@ -1842,6 +1853,48 @@ function clearPoseState() {
   const panel = document.getElementById('pose-assign-panel');
   panel.style.display = 'none';
   panel.innerHTML = '';
+}
+
+function esc2(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function initBatchUpload(folders) {
+  _batchQueue  = folders.filter(f => f.files && f.files.length);
+  _batchCursor = -1;
+  if (!_batchQueue.length) return;
+  loadBatchFamily(0);
+}
+
+function loadBatchFamily(idx) {
+  _batchCursor = idx;
+  const fam = _batchQueue[idx];
+  document.getElementById('upload-folder-name').value = fam.name || '';
+  document.getElementById('drop-zone').style.display        = 'none';
+  document.getElementById('folder-name-field').style.display = 'none';
+  document.getElementById('detected-folders').style.display  = 'none';
+  initPoseAssign(fam.files);
+  renderBatchHeader();
+  updateUploadBtn();
+}
+
+function renderBatchHeader() {
+  const el = document.getElementById('batch-header');
+  if (_batchCursor < 0 || !_batchQueue.length) { el.style.display = 'none'; return; }
+  const total = _batchQueue.length;
+  const cur   = _batchCursor;
+  const name  = _batchQueue[cur].name || 'Unnamed';
+  let inner = '';
+  if (total > 1) {
+    const chips = _batchQueue.map((f,i) => {
+      const cls = i < cur ? 'done' : i === cur ? 'current' : '';
+      const label = esc2(f.name || 'Unnamed');
+      return `<span class="batch-fam-chip ${cls}">${label}${i < cur ? ' ✓' : ''}</span>`;
+    }).join('');
+    inner += `<div class="batch-progress-label">Family ${cur+1} of ${total}</div>`;
+    inner += `<div class="batch-family-list">${chips}</div>`;
+  }
+  inner += `<div class="batch-family-name">${esc2(name)}</div>`;
+  el.innerHTML = inner;
+  el.style.display = '';
 }
 
 function initPoseAssign(files) {
@@ -2059,11 +2112,18 @@ async function renderDetectedFolders() {
 }
 function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); }
 function updateUploadBtn() {
+  const btn = document.getElementById('upload-action-btn');
   if (_isPoseMode()) {
-    // Portrait pose mode: need at least 1 pose group with files
-    document.getElementById('upload-action-btn').disabled = poseGroups.length === 0;
+    btn.disabled = poseGroups.length === 0;
+    if (_batchCursor >= 0 && _batchQueue.length > 1) {
+      const isLast = _batchCursor === _batchQueue.length - 1;
+      btn.textContent = isLast ? 'Upload & Finish' : 'Upload & Next →';
+    } else {
+      btn.textContent = 'Upload';
+    }
     return;
   }
+  btn.textContent = 'Upload';
   const hasFiles = uploadFolders.length || looseFiles.length;
   let valid = !!hasFiles;
   if (hasFiles && _isZipUpload() && uploadFolders.length) {
@@ -2121,13 +2181,36 @@ async function startUpload() {
     }
     _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard);
     await loadSidebar();
-    const capturedFolder=folder;
-    clearPoseState();
-    document.getElementById('detected-folders').style.display='';
-    uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
-    btn.disabled=false;
-    setTimeout(()=>openFolder(date,location,capturedFolder),400);
-    setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
+
+    if (_batchCursor >= 0 && _batchQueue.length > 0) {
+      const nextIdx = _batchCursor + 1;
+      if (nextIdx < _batchQueue.length) {
+        const remaining = _batchQueue.length - nextIdx;
+        label.textContent = `${esc2(_batchQueue[_batchCursor].name)} done — ${remaining} famil${remaining===1?'y':'ies'} left`;
+        setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; }, 1100);
+        setTimeout(()=>loadBatchFamily(nextIdx), 1300);
+        btn.disabled=false;
+      } else {
+        const total = _batchQueue.length;
+        label.textContent = `All ${total} ${total===1?'family':'families'} uploaded`;
+        showToast(`All ${total} ${total===1?'family':'families'} uploaded — review then Push Live`);
+        _batchQueue=[]; _batchCursor=-1;
+        document.getElementById('batch-header').style.display='none';
+        document.getElementById('drop-zone').style.display='';
+        clearPoseState();
+        uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
+        btn.disabled=false;
+        setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
+      }
+    } else {
+      const capturedFolder=folder;
+      clearPoseState();
+      document.getElementById('detected-folders').style.display='';
+      uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
+      btn.disabled=false;
+      setTimeout(()=>openFolder(date,location,capturedFolder),400);
+      setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
+    }
     return;
   }
 
