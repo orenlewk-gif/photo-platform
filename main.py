@@ -1291,6 +1291,60 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+_folder_times_cache: dict = {}  # in-memory cache: (date, location) → {filename: minutes}
+
+@app.get("/api/folder-times")
+def get_folder_times(date: str = Query(...), location: str = Query(...)):
+    """Return EXIF capture times (minutes since midnight) for photos in a time-search folder.
+    Reads first 128KB of each R2 object for EXIF data; caches result in memory."""
+    cache_key = (date, location.strip().lower())
+    if cache_key in _folder_times_cache:
+        return {"times": _folder_times_cache[cache_key]}
+
+    loc_lower = location.strip().lower()
+    paths = [
+        item["path"] for item in data
+        if not item.get("draft")
+        and item.get("date") == date
+        and (item.get("location") or "").strip().lower() == loc_lower
+    ]
+
+    times: dict = {}
+    EXIF_DATETIME_ORIGINAL = 36867
+    EXIF_DATETIME          = 306
+
+    for path in paths:
+        fname = os.path.basename(path)
+        try:
+            key = to_r2_key(path)
+            if os.getenv("R2_ENDPOINT_URL"):
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=key, Range="bytes=0-131071")
+                buf = BytesIO(obj["Body"].read())
+            else:
+                if not os.path.exists(path):
+                    continue
+                with open(path, "rb") as f:
+                    buf = BytesIO(f.read(131072))
+            img  = Image.open(buf)
+            exif = img._getexif()
+            if exif:
+                dt_str = exif.get(EXIF_DATETIME_ORIGINAL) or exif.get(EXIF_DATETIME)
+                if dt_str:
+                    parts = str(dt_str).split(" ")
+                    if len(parts) >= 2:
+                        t = parts[1].split(":")
+                        if len(t) >= 2:
+                            h, m = int(t[0]), int(t[1])
+                            if 0 <= h < 24 and 0 <= m < 60:
+                                times[fname] = h * 60 + m
+        except Exception:
+            pass
+
+    if times:
+        _folder_times_cache[cache_key] = times
+    return {"times": times}
+
+
 @app.get("/api/admin/photo")
 def admin_get_photo(request: Request, path: str, size: str = Query("thumb")):
     """Admin-only photo endpoint — no watermark. Caches to admin_thumbs/ in R2."""
