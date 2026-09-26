@@ -2835,22 +2835,20 @@ function updateCart() {
   const printCount = printCart.length;
   updateHeaderCartBtn();
 
-  // Include all saved folders in totals (not just current)
+  // Include other saved folders in price total only (not for bar visibility)
   let otherPhotos = 0;
   let otherPrice  = 0;
-  let otherHasPoses = false;
   Object.entries(folderCarts).forEach(([key, fc]) => {
     if (key === currentFolderKey) return;
     const n = fc.selectedPaths?.length || 0;
-    const poseCount = fc.poseState ? Object.keys(fc.poseState).length : 0;
-    otherPhotos += n + poseCount;
-    if (poseCount > 0) otherHasPoses = true;
+    otherPhotos += n;
     const p = fc.pricing || pricingCache[fc.location];
     otherPrice  += calcPriceFor(n, p);
   });
   const totalPhotoCount = count + otherPhotos;
 
-  if (totalPhotoCount === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
+  // Bottom bar is current-folder-only: hide if nothing selected here
+  if (count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
     document.getElementById('print-upsell-banner').classList.remove('show');
@@ -2878,9 +2876,7 @@ function updateCart() {
   // Fallback when current folder is empty but other folders have items
   const countText = summary.length > 0
     ? summary.join(' + ') + ' selected'
-    : otherHasPoses
-      ? `${totalPhotoCount} item${totalPhotoCount!==1?'s':''} saved in cart`
-      : `${totalPhotoCount} photo${totalPhotoCount!==1?'s':''} in cart`;
+    : `${totalPhotoCount} photo${totalPhotoCount!==1?'s':''} in cart`;
   document.getElementById('cart-count-text').textContent = countText;
   document.getElementById('cart-price-text').textContent = `$${total}`;
   const saBtn = document.getElementById('cart-select-all-btn');
