@@ -1101,20 +1101,30 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             return result
     if location:
         activities = pricing.get("activities", {})
+
+        def _act_result(act_data):
+            """Return activity pricing in tiers format, converting per_photo/all_photos if needed."""
+            result = dict(act_data)
+            result["combos"] = combos
+            if "per_photo" in result and "tiers" not in result:
+                per   = float(result.get("per_photo", 25))
+                all_p = result.get("all_photos")
+                tiers = [{"label": "1 Photo", "count": 1, "price": per}]
+                if all_p:
+                    tiers.append({"label": "All Photos", "count": "all", "price": float(all_p), "max": True})
+                result["tiers"] = tiers
+            return result
+
         act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
         if act_key:
-            result = dict(activities[act_key])
-            result["combos"] = combos
-            return result
+            return _act_result(activities[act_key])
         # Fall back to activity_groups — explicit location→activity mapping
         activity_groups = pricing.get("activity_groups", {})
         for act_name, group_locs in activity_groups.items():
             if location.strip().lower() in [l.lower() for l in group_locs]:
                 pk_act = next((k for k in activities if k.lower() == act_name.lower()), None)
                 if pk_act:
-                    result = dict(activities[pk_act])
-                    result["combos"] = combos
-                    return result
+                    return _act_result(activities[pk_act])
         # Fall back to item_list name when location has no direct pricing
         if date:
             try:
@@ -1142,15 +1152,11 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                             for candidate in candidates:
                                 pk_act = next((k for k in activities if k.lower() == candidate.lower()), None)
                                 if pk_act:
-                                    result = dict(activities[pk_act])
-                                    result["combos"] = combos
-                                    return result
+                                    return _act_result(activities[pk_act])
                         else:
                             pk_act = next((k for k in activities if k.lower() == pk.lower()), None)
                             if pk_act:
-                                result = dict(activities[pk_act])
-                                result["combos"] = combos
-                                return result
+                                return _act_result(activities[pk_act])
             except Exception as e:
                 print(f"item_list pricing fallback error: {e}")
         return {"tiers": [], "combos": combos}

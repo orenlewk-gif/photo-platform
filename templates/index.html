@@ -1307,13 +1307,14 @@ function getFolderKey(date, location, family, group) {
 function saveCurrentFolder() {
   if (!currentFolderKey) return;
   const photos = [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean);
-  if (!photos.length && !printCart.length && !lockedTier) {
+  const hasPose = _poseData && Object.keys(_poseState).length > 0;
+  if (!photos.length && !printCart.length && !lockedTier && !hasPose) {
     // Nothing here — remove stale entry so the cart view stays clean
     delete folderCarts[currentFolderKey];
     return;
   }
   if (currentPricing) pricingCache[currentLocation] = currentPricing;
-  folderCarts[currentFolderKey] = {
+  const entry = {
     selectedPaths:  photos.map(p => p.path),
     selectedPhotos: photos,   // full objects needed for cart-view thumbnails
     lockedTier:     lockedTier ? { ...lockedTier } : null,
@@ -1322,6 +1323,12 @@ function saveCurrentFolder() {
     location:       currentLocation,
     label:          currentFolderLabel,
   };
+  if (hasPose) {
+    const ser = {};
+    for (const [c, v] of Object.entries(_poseState)) ser[c] = v === 'pose' ? 'pose' : [...v];
+    entry.poseState = ser;
+  }
+  folderCarts[currentFolderKey] = entry;
 }
 
 // Restore a folder's state (or start fresh) when entering a gallery
@@ -1772,6 +1779,11 @@ function calcPortraitTotal() {
 function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, loc, fam) {
   _poseData  = poseData;
   _poseState = {};
+  // Restore saved pose selections if returning to this folder
+  const savedPs = folderCarts[currentFolderKey]?.poseState;
+  if (savedPs) {
+    for (const [c, v] of Object.entries(savedPs)) _poseState[c] = Array.isArray(v) ? new Set(v) : v;
+  }
   _poseDate  = date; _poseLoc = loc; _poseFam = fam;
 
   const previewBanner = poseData.preview_only
@@ -2261,6 +2273,8 @@ let _lastClickedIdx = null;
 function toggleSelect(i, e) {
   const limit = getMaxSelectionLimit();
   if (e?.shiftKey && _lastClickedIdx !== null && _lastClickedIdx !== i) {
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     const lo = Math.min(_lastClickedIdx, i), hi = Math.max(_lastClickedIdx, i);
     const adding = !selectedPhotos.has(i);
     for (let j = lo; j <= hi; j++) {

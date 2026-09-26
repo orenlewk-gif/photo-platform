@@ -229,20 +229,11 @@ input[type="text"].full{width:100%}
     <!-- ── Winter Action ── -->
     <div id="sec-winter-action" class="section">
       <h1>Winter Action</h1>
-      <p class="subtitle">Per-photo and all-photos price for Winter Action folders.</p>
+      <p class="subtitle">Custom pricing tiers for Winter Action folders.</p>
       <div class="card">
-        <div class="flat-price-row">
-          <span class="flat-price-label">Price per photo</span>
-          <span class="dollar">$</span>
-          <input type="number" id="wa-per-photo" min="0" step="0.01" style="width:90px" value="25">
-        </div>
-        <div class="flat-price-row">
-          <span class="flat-price-label">All photos from folder</span>
-          <span class="dollar">$</span>
-          <input type="number" id="wa-all-photos" min="0" step="0.01" style="width:90px" value="115">
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-primary btn-sm" onclick="saveWinterAction()">Save</button>
+        <div id="act-editor-winter-action"></div>
+        <div class="btn-row" style="margin-top:.5rem">
+          <button class="btn btn-primary btn-sm" onclick="saveDigital()">Save</button>
         </div>
       </div>
     </div>
@@ -546,6 +537,7 @@ function renderAll(){
   renderZip();
   renderActEditor('Mountain Biking','act-editor-mountain-biking');
   renderActEditor('Dirt Days','act-editor-dirt-days');
+  migrateAndRenderWinterAction();
   renderSummerPortraitEditor();
   renderPortraitPricing();
   renderPortraitLocs();
@@ -558,7 +550,6 @@ function renderAll(){
   renderPrivateSessions();
   renderCombos();
   renderBigSkyFrames();
-  renderWinterAction();
   renderItemsBundles();
   renderItemsBundleChecks();
   showPricingGroup('digital');
@@ -641,23 +632,24 @@ function showToast(msg,type='show'){
 }
 
 // ── Winter Action ──────────────────────────────────────────────────────────────
-function renderWinterAction(){
-  if(!pricingData) return;
-  const wa = (pricingData.activities||{})['Winter Action'] || {};
-  const perEl = document.getElementById('wa-per-photo');
-  const allEl = document.getElementById('wa-all-photos');
-  if(perEl) perEl.value = wa.per_photo ?? 25;
-  if(allEl) allEl.value = wa.all_photos ?? 115;
-}
-
-async function saveWinterAction(){
+function migrateAndRenderWinterAction(){
   if(!pricingData) return;
   if(!pricingData.activities) pricingData.activities = {};
-  pricingData.activities['Winter Action'] = {
-    per_photo:  parseFloat(document.getElementById('wa-per-photo').value) || 25,
-    all_photos: parseFloat(document.getElementById('wa-all-photos').value) || 115,
-  };
-  await saveDigital();
+  const wa = pricingData.activities['Winter Action'];
+  if(!wa){
+    pricingData.activities['Winter Action'] = {tiers:[
+      {label:'1 Photo',   count:1,     price:25},
+      {label:'All Photos',count:'all', price:115}
+    ]};
+  } else if(wa.per_photo !== undefined && !wa.tiers){
+    const per = parseFloat(wa.per_photo) || 25;
+    const all = parseFloat(wa.all_photos) || 115;
+    pricingData.activities['Winter Action'] = {tiers:[
+      {label:'1 Photo',   count:1,     price:per},
+      {label:'All Photos',count:'all', price:all}
+    ]};
+  }
+  renderActEditor('Winter Action','act-editor-winter-action');
 }
 
 // ── Activity Tier Editor (Mountain Biking / Dirt Days) ─────────────────────────
