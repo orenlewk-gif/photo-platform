@@ -4754,7 +4754,7 @@ def _update_folder_poses(date: str, location: str, folder: str, r2_keys: list[st
     if fk not in fm:
         fm[fk] = {}
     fm[fk]["poses"]      = poses
-    fm[fk].setdefault("poses_live", False)
+    fm[fk].setdefault("poses_live", True)
     _save_folder_meta(fm)
 
 def _write_folder_poses_from_ui(date: str, location: str, folder: str, poses: list):
@@ -4775,7 +4775,7 @@ def _write_folder_poses_from_ui(date: str, location: str, folder: str, poses: li
     if fk not in fm:
         fm[fk] = {}
     fm[fk]["poses"] = formatted
-    fm[fk].setdefault("poses_live", False)
+    fm[fk].setdefault("poses_live", True)
     _save_folder_meta(fm)
 
 def _folder_key(date, location, last_name):
