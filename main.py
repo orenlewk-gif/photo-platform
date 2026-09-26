@@ -720,7 +720,14 @@ def get_subfolders(date: str, location: str):
         step = n / 4
         return [photos[int(i * step)] for i in range(4)]
 
-    is_portrait = location.lower() in PORTRAIT_LOCATIONS
+    loc_lower = location.strip().lower()
+    is_portrait = loc_lower in PORTRAIT_LOCATIONS
+    if not is_portrait:
+        for cat in _load_pricing().get("activity_categories", []):
+            if cat.get("name", "").strip().lower() in _PORTRAIT_CATEGORY_NAMES:
+                if loc_lower in [a.strip().lower() for a in (cat.get("acts") or [])]:
+                    is_portrait = True
+                    break
     subfolders = {}
     for item in data:
         if item.get("draft"):
