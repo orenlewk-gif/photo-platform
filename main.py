@@ -1142,8 +1142,8 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             # (guards against stale empty-tiers state in R2 without requiring a restart)
             if not result.get("tiers") and result.get("flags", {}).get("time_search"):
                 result["tiers"] = [
-                    {"label": "1 Photo",    "count": 1,   "price": 25},
-                    {"label": "All Photos", "count": 999, "price": 115, "max": True},
+                    {"label": "1 Photo",    "count": 1,  "price": 25},
+                    {"label": "All Photos", "count": 30, "price": 115, "max": True},
                 ]
             return result
 
