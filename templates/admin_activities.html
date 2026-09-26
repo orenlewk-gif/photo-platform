@@ -63,6 +63,12 @@ a{color:inherit;text-decoration:none}
 .act-chev{font-size:11px;color:rgba(255,255,255,.28);text-align:right;transition:transform .18s}
 .act-row.open .act-chev{transform:rotate(90deg)}
 
+/* Add-location form (per tab) */
+.cat-add-row{margin-top:.75rem;padding-top:.5rem}
+.cat-add-form{display:flex;align-items:center;gap:.5rem;margin-top:.4rem;flex-wrap:wrap}
+.cat-add-form input{flex:1;min-width:180px;background:#1e2330;border:1px solid rgba(255,255,255,.12);border-radius:7px;color:#e8eaf0;padding:.38rem .7rem;font-size:12px;outline:none;transition:border-color .15s}
+.cat-add-form input:focus{border-color:#F5C518}
+
 /* Category tabs */
 .act-tabs-bar{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:1rem;flex-wrap:wrap}
 .act-tab{background:none;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.45);font-size:13px;font-weight:500;padding:.55rem 1.1rem;cursor:pointer;transition:color .12s,border-color .12s;white-space:nowrap;margin-bottom:-1px;font-family:inherit}
@@ -190,21 +196,10 @@ html.embedded #layout{height:100vh}
     <div id="list-view">
       <div class="page-header">
         <h1>Activities</h1>
-        <div style="display:flex;gap:.6rem;align-items:center">
-          <button class="btn btn-ghost" id="fix-btn" onclick="fixDuplicates()" title="Normalizes all location names and removes duplicate photo entries">Fix Duplicates</button>
-          <button class="btn btn-primary" onclick="showCreate()">+ New Activity</button>
-        </div>
+        <button class="btn btn-primary" onclick="showCreate()">+ New Activity</button>
       </div>
-      <div id="fix-notice" style="display:none;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;font-size:13px;color:#f87171"></div>
 
       <div class="act-table">
-        <div class="act-header-row">
-          <span>Activity</span>
-          <span>Locations</span>
-          <span>Galleries</span>
-          <span>Photos</span>
-          <span></span>
-        </div>
         <div id="act-list-body">
           <div class="empty-state">Loading…</div>
         </div>
@@ -388,11 +383,23 @@ function renderList() {
     ).join('')
   }</div>`;
 
+  const CAT_ADD_LOCATION = ['Winter Portraits', 'Winter Action'];
+
   const panelsHtml = tabData.map(t => {
     const actsHtml = t.acts.length
       ? t.acts.map(it => actRowHtml(it)).join('')
       : '<div class="cat-empty">No activities added yet</div>';
-    return `<div class="act-tab-panel${t.name === firstTab ? ' active' : ''}" data-cat="${esc(t.name)}">${actsHtml}</div>`;
+    const sid = slugId(t.name);
+    const addHtml = CAT_ADD_LOCATION.includes(t.name) ? `
+      <div class="cat-add-row">
+        <button class="btn btn-ghost btn-sm" onclick="showAddLocation('${esc(t.name)}')">+ Add Location</button>
+        <div class="cat-add-form" id="cat-add-form-${sid}" style="display:none">
+          <input type="text" id="cat-add-inp-${sid}" placeholder="Location name…" onkeydown="if(event.key==='Enter')createLocationInCat('${esc(t.name)}')">
+          <button class="btn btn-primary btn-sm" onclick="createLocationInCat('${esc(t.name)}')">Create</button>
+          <button class="btn btn-ghost btn-sm" onclick="hideAddLocation('${esc(t.name)}')">Cancel</button>
+        </div>
+      </div>` : '';
+    return `<div class="act-tab-panel${t.name === firstTab ? ' active' : ''}" data-cat="${esc(t.name)}">${actsHtml}${addHtml}</div>`;
   }).join('');
 
   document.getElementById('act-list-body').innerHTML = tabsHtml + panelsHtml;
@@ -406,6 +413,61 @@ function selectTab(catName) {
   document.querySelectorAll('.act-tab-panel').forEach(p => {
     p.classList.toggle('active', p.dataset.cat === catName);
   });
+}
+
+function showAddLocation(catName) {
+  const sid = slugId(catName);
+  const form = document.getElementById('cat-add-form-' + sid);
+  if (form) { form.style.display = 'flex'; document.getElementById('cat-add-inp-' + sid)?.focus(); }
+}
+function hideAddLocation(catName) {
+  const sid = slugId(catName);
+  const form = document.getElementById('cat-add-form-' + sid);
+  if (form) form.style.display = 'none';
+  const inp = document.getElementById('cat-add-inp-' + sid);
+  if (inp) inp.value = '';
+}
+async function createLocationInCat(catName) {
+  const sid = slugId(catName);
+  const inp = document.getElementById('cat-add-inp-' + sid);
+  const name = inp ? inp.value.trim() : '';
+  if (!name) { showToast('Enter a location name', 'err'); return; }
+  if (!pricingData) return;
+  if (!pricingData.activities) pricingData.activities = {};
+  if (pricingData.activities[name]) { showToast(`"${name}" already exists`, 'err'); return; }
+
+  if (catName === 'Winter Action') {
+    pricingData.activities[name] = {
+      use_default: false,
+      tiers: [
+        {label: '1 Photo',    count: 1,     price: 25},
+        {label: 'All Photos', count: 'all', price: 115, max: true},
+      ],
+      items: ['action_digital'],
+      flags: {time_search: true, clip: true},
+    };
+  } else {
+    pricingData.activities[name] = {use_default: false, tiers: [], items: ['portrait_digital'], flags: {}};
+  }
+
+  if (!pricingData.activity_categories || !pricingData.activity_categories.length) {
+    pricingData.activity_categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  }
+  const cat = pricingData.activity_categories.find(c => c.name === catName);
+  if (cat) { if (!cat.acts) cat.acts = []; if (!cat.acts.includes(name)) cat.acts.push(name); }
+
+  try {
+    const r = await fetch('/api/admin/pricing', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pricingData),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    showToast(`"${name}" created`);
+    hideAddLocation(catName);
+    await loadData();
+  } catch(e) {
+    showToast('Save failed: ' + e, 'err');
+  }
 }
 
 function actRowHtml(item) {
