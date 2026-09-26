@@ -282,6 +282,11 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
   color:rgba(255,255,255,.75);font-size:.72rem;text-align:center;padding:3px 4px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 
+/* ── Context menu ── */
+#card-ctx-menu{position:fixed;background:#0c1f30;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.3rem 0;z-index:9999;min-width:148px;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+.ctx-item{padding:.45rem .9rem;font-size:.8rem;color:rgba(255,255,255,.8);cursor:pointer;white-space:nowrap}
+.ctx-item:hover{background:rgba(255,255,255,.08)}
+
 /* ── Move modal ── */
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;
   display:none;align-items:center;justify-content:center}
@@ -590,6 +595,11 @@ input[type=file]{display:none}
   </div>
 </div>
 
+<!-- Card context menu -->
+<div id="card-ctx-menu" style="display:none">
+  <div class="ctx-item" onclick="moveFromContext()">Move Folder…</div>
+</div>
+
 <!-- Create Link modal -->
 <div class="modal-overlay" id="create-link-modal" onclick="closeCreateLinkModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()" style="width:400px">
@@ -693,6 +703,15 @@ async function loadUploadLocations() {
         opt.textContent = cat.name;
         catSel.appendChild(opt);
       }
+    }
+    // Populate Move modal location dropdown with all known locations
+    const moveLoc = document.getElementById('move-location');
+    if (moveLoc && d.categories) {
+      const allLocs = [...new Set([
+        ...(d.portrait || []),
+        ...d.categories.flatMap(c => c.acts || []),
+      ])].sort((a,b) => a.localeCompare(b, undefined, {sensitivity:'base'}));
+      moveLoc.innerHTML = allLocs.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('');
     }
   } catch(e) {}
 }
@@ -998,7 +1017,10 @@ function showLocationOverview(date, loc, subs) {
     const img = f.preview_url
       ? `<img class="loc-card-img" src="${f.preview_url}" loading="lazy" alt="${esc(name)}" onerror="this.style.display='none'">`
       : `<div class="loc-card-img"></div>`;
-    return `<div class="loc-card" onclick="openFolderByKey('${escAttr(f.folder_key)}')">
+    return `<div class="loc-card"
+      data-date="${escAttr(date)}" data-loc="${escAttr(loc)}" data-folder="${escAttr(name)}"
+      onclick="openFolderByKey('${escAttr(f.folder_key)}')"
+      oncontextmenu="cardContextMenu(event,this)">
       ${img}
       <div class="loc-card-body">
         <div class="loc-card-name">${esc(name)}</div>
@@ -1653,9 +1675,39 @@ async function commitNameEdit() {
   cancelNameEdit();
 }
 
+// ── Context menu ──
+let _ctxCard = null, _ctxMoveFolder = null;
+
+function cardContextMenu(e, el) {
+  e.preventDefault();
+  _ctxCard = el;
+  const menu = document.getElementById('card-ctx-menu');
+  menu.style.display = 'block';
+  const x = Math.min(e.clientX, window.innerWidth - 160);
+  const y = Math.min(e.clientY, window.innerHeight - 60);
+  menu.style.left = x + 'px';
+  menu.style.top  = y + 'px';
+}
+function hideCtxMenu() {
+  document.getElementById('card-ctx-menu').style.display = 'none';
+  _ctxCard = null;
+}
+document.addEventListener('click', () => { if (_ctxCard) hideCtxMenu(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') hideCtxMenu(); });
+
+function moveFromContext() {
+  hideCtxMenu();
+  if (!_ctxCard) return;
+  _ctxMoveFolder = { date: _ctxCard.dataset.date, location: _ctxCard.dataset.loc, folder: _ctxCard.dataset.folder };
+  document.getElementById('move-date').value = _ctxMoveFolder.date;
+  document.getElementById('move-location').value = _ctxMoveFolder.location;
+  document.getElementById('move-modal-overlay').classList.add('open');
+}
+
 // ── Move modal ──
 function openMoveModal() {
   if (!currentFolder) return;
+  _ctxMoveFolder = null;
   document.getElementById('move-date').value = currentFolder.date;
   document.getElementById('move-location').value = currentFolder.location;
   document.getElementById('move-modal-overlay').classList.add('open');
@@ -1665,21 +1717,28 @@ function closeMoveModal(e) {
     document.getElementById('move-modal-overlay').classList.remove('open');
 }
 async function doMove() {
-  if (!currentFolder) return;
+  const src = currentFolder || _ctxMoveFolder;
+  if (!src) return;
   const newDate = document.getElementById('move-date').value;
   const newLoc  = document.getElementById('move-location').value;
   if (!newDate||!newLoc) { showToast('Select date and location','error'); return; }
   const btn = document.getElementById('move-ok-btn');
   btn.disabled=true; btn.textContent='Moving…';
-  const {date,location,folder} = currentFolder;
+  const {date,location,folder} = src;
   const res = await fetch('/api/admin/folder/move',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({date,location,folder,new_date:newDate,new_location:newLoc})});
   btn.disabled=false; btn.textContent='Move Folder';
   document.getElementById('move-modal-overlay').classList.remove('open');
   if (res.ok) {
     showToast('Folder moved');
-    currentFolder={...currentFolder,date:newDate,location:newLoc};
-    await loadSidebar(); await loadFolderPhotos();
+    _ctxMoveFolder = null;
+    if (currentFolder) {
+      currentFolder={...currentFolder,date:newDate,location:newLoc};
+      await loadSidebar(); await loadFolderPhotos();
+    } else {
+      await loadSidebar();
+      openLocationClick(date, location);
+    }
   } else showToast('Move failed','error');
 }
 
