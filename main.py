@@ -3764,18 +3764,25 @@ def api_upload_locations():
     _load_portrait_locations()
     pricing = _load_pricing()
     activity_names = sorted(pricing.get("activities", {}).keys(), key=str.lower)
-    # Start with the static portrait locations set
     portrait_set = set(l.lower() for l in PORTRAIT_LOCATIONS)
-    # Also include any activities grouped under portrait-type categories
-    for cat in pricing.get("activity_categories", []):
-        if cat.get("name", "").strip().lower() in _PORTRAIT_CATEGORY_NAMES:
-            for act in cat.get("acts", []):
-                if act.strip():
-                    portrait_set.add(act.strip().lower())
-    portrait_names = sorted(portrait_set, key=str.lower)
+
+    # Build category list for the layered upload UI
+    raw_cats = pricing.get("activity_categories", [])
+    categories = []
+    for cat in raw_cats:
+        name = cat.get("name", "")
+        acts = [a for a in (cat.get("acts") or []) if a]
+        active = cat.get("active", True)
+        categories.append({"name": name, "acts": acts, "active": active})
+        # Portrait-type categories also expand the portrait detection set
+        if name.strip().lower() in _PORTRAIT_CATEGORY_NAMES:
+            for act in acts:
+                portrait_set.add(act.strip().lower())
+
     return {
-        "portrait": portrait_names,
+        "portrait":   sorted(portrait_set, key=str.lower),
         "activities": activity_names,
+        "categories": categories,
     }
 
 @app.post("/api/upload/presign")

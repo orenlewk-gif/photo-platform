@@ -356,13 +356,18 @@ input[type=file]{display:none}
             <input type="date" id="upload-date">
           </div>
           <div class="field">
-            <label>Location</label>
-            <input id="upload-location" list="loc-list" placeholder="e.g. Adventure Zip" autocomplete="off">
-            <datalist id="loc-list">
-            </datalist>
+            <label>Activity Group</label>
+            <select id="upload-category" onchange="onUploadCategoryChange()">
+              <option value="">Select group…</option>
+            </select>
           </div>
         </div>
-
+        <div class="field" id="upload-location-wrap" style="display:none;margin-top:.6rem">
+          <label>Location</label>
+          <select id="upload-location" onchange="renderDetectedFolders();updateUploadBtn()">
+            <option value="">Select location…</option>
+          </select>
+        </div>
         <div id="folder-name-field" style="display:none" class="field">
           <label>Folder Name (last name / group)</label>
           <input id="upload-folder-name" placeholder="e.g. Smith" autocomplete="off">
@@ -660,23 +665,47 @@ let poseGroups = [];       // [{color, label, indices: Set}]
 let poseLastClick = -1;    // for shift-click range
 function _isPoseMode() { return poseFiles.length > 0; }
 
+let _uploadCategories = [];
+
 async function loadUploadLocations() {
   try {
     const d = await fetch('/api/upload/locations').then(r => r.json());
     if (d.portrait) PORTRAIT_LOCS = new Set(d.portrait.map(l => l.toLowerCase()));
-    const dl = document.getElementById('loc-list');
-    if (dl) {
-      dl.innerHTML = '';
-      (d.portrait || []).forEach(l => { const o = document.createElement('option'); o.value = l.replace(/\b\w/g, c => c.toUpperCase()); dl.appendChild(o); });
-      (d.activities || []).forEach(l => { const o = document.createElement('option'); o.value = l.replace(/\b\w/g, c => c.toUpperCase()); dl.appendChild(o); });
+    _uploadCategories = d.categories || [];
+    const catSel = document.getElementById('upload-category');
+    if (catSel) {
+      catSel.innerHTML = '<option value="">Select group…</option>';
+      for (const cat of _uploadCategories) {
+        if (cat.active === false) continue;
+        const opt = document.createElement('option');
+        opt.value = cat.name;
+        opt.textContent = cat.name;
+        catSel.appendChild(opt);
+      }
     }
   } catch(e) {}
+}
+
+function onUploadCategoryChange() {
+  const catName = document.getElementById('upload-category').value;
+  const cat = _uploadCategories.find(c => c.name === catName);
+  const wrap = document.getElementById('upload-location-wrap');
+  const locSel = document.getElementById('upload-location');
+  locSel.innerHTML = '<option value="">Select location…</option>';
+  if (!cat) { wrap.style.display = 'none'; clearPoseState(); renderDetectedFolders(); updateUploadBtn(); return; }
+  for (const loc of (cat.acts || [])) {
+    const opt = document.createElement('option');
+    opt.value = loc; opt.textContent = loc;
+    locSel.appendChild(opt);
+  }
+  if (cat.acts?.length === 1) locSel.value = cat.acts[0];
+  wrap.style.display = '';
+  clearPoseState(); renderDetectedFolders(); updateUploadBtn();
 }
 
 // ── Init ──
 (async function() {
   document.getElementById('upload-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('upload-location').addEventListener('input', () => { renderDetectedFolders(); updateUploadBtn(); });
   loadUploadLocations();
   setupDropZone();
   setupInlineEdit();
@@ -1963,6 +1992,15 @@ function assignToNewPose() {
   renderPosePanel();
   updateUploadBtn();
 }
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+  if (!poseFiles.length || !poseSelection.size) return;
+  e.preventDefault();
+  assignToNewPose();
+});
 
 function activatePosePill(gi) {
   if (!poseSelection.size) return;
