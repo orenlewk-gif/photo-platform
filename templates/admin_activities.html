@@ -63,17 +63,14 @@ a{color:inherit;text-decoration:none}
 .act-chev{font-size:11px;color:rgba(255,255,255,.28);text-align:right;transition:transform .18s}
 .act-row.open .act-chev{transform:rotate(90deg)}
 
-/* Category grouping */
-.cat-section{margin-bottom:.75rem}
-.cat-row{display:grid;grid-template-columns:1fr 90px 90px 90px 24px;gap:.5rem;align-items:center;padding:.55rem 1rem;border-radius:7px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);cursor:pointer;margin-bottom:.3rem;transition:background .12s}
-.cat-row:hover{background:rgba(255,255,255,.05)}
-.cat-name{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.5)}
-.cat-stat{font-size:12px;color:rgba(255,255,255,.3)}
-.cat-chev{font-size:11px;color:rgba(255,255,255,.25);text-align:right;transition:transform .18s}
-.cat-chev.open{transform:rotate(90deg)}
-.cat-children{display:none;padding-left:0}
-.cat-children.open{display:block}
-.cat-empty{font-size:12px;color:rgba(255,255,255,.2);padding:.5rem 1rem .8rem 2rem}
+/* Category tabs */
+.act-tabs-bar{display:flex;gap:0;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:1rem;flex-wrap:wrap}
+.act-tab{background:none;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.45);font-size:13px;font-weight:500;padding:.55rem 1.1rem;cursor:pointer;transition:color .12s,border-color .12s;white-space:nowrap;margin-bottom:-1px;font-family:inherit}
+.act-tab:hover{color:rgba(255,255,255,.75)}
+.act-tab.active{color:#F5C518;border-bottom-color:#F5C518}
+.act-tab-panel{display:none}
+.act-tab-panel.active{display:block}
+.cat-empty{font-size:12px;color:rgba(255,255,255,.2);padding:.5rem 0 .8rem}
 .empty-state{color:rgba(255,255,255,.3);font-size:13px;padding:2rem 0;text-align:center}
 
 /* Expandable detail panel */
@@ -266,8 +263,6 @@ const ALL_ITEMS = [
   {key:'mats',              label:'Mats'},
   {key:'big_sky_frames',    label:'Big Sky Rustic Frames'},
   {key:'satin_black_frames',label:'Satin Black Frames'},
-  {key:'private_sessions',  label:'Private Sessions'},
-  {key:'base_area',         label:'Base Area'},
 ];
 
 const ALL_FLAGS = [
@@ -280,6 +275,7 @@ let pricingData    = null;
 let allFolders     = [];
 let activityGroups = {};
 let _actType       = 'standard';
+let _activeTab     = null;
 
 // ── Data loading ──────────────────────────────────────────────────────────────
 async function loadData() {
@@ -364,62 +360,52 @@ function renderList() {
   const cats = pricingData.activity_categories;
 
   const categorized = new Set();
-  let html = '';
+  const tabData = [];
 
   for (const cat of cats) {
     const catActs = (cat.acts || []).filter(Boolean);
-    let totalGal = 0, totalPh = 0;
-    for (const n of catActs) {
-      const it = byName[n];
-      if (it) { totalGal += it.galleries; totalPh += it.photos; }
-    }
-    const csid = slugId(cat.name);
-    html += `
-<div class="cat-section" id="catsec-${csid}">
-  <div class="cat-row" onclick="toggleCat('${esc(cat.name)}')">
-    <span class="cat-name">${esc(cat.name)}</span>
-    <span class="cat-stat">${catActs.length} act.</span>
-    <span class="cat-stat">${totalGal}</span>
-    <span class="cat-stat">${totalPh.toLocaleString()}</span>
-    <span class="cat-chev open" id="cchev-${csid}">›</span>
-  </div>
-  <div class="cat-children open" id="catchildren-${csid}">
-    ${catActs.map(n => actRowHtml(byName[n] || {name:n,cfg:null,galleries:0,photos:0,groupCount:0})).join('')}
-    ${catActs.length === 0 ? '<div class="cat-empty">No activities added yet</div>' : ''}
-  </div>
-</div>`;
     catActs.forEach(n => categorized.add(n));
+    tabData.push({
+      name: cat.name,
+      acts: catActs.map(n => byName[n] || {name:n,cfg:null,galleries:0,photos:0,groupCount:0}),
+    });
   }
 
   const uncat = all.filter(it => !categorized.has(it.name));
-  if (uncat.length) {
-    const totalGal = uncat.reduce((s,it)=>s+it.galleries,0);
-    const totalPh  = uncat.reduce((s,it)=>s+it.photos,0);
-    html += `
-<div class="cat-section" id="catsec-x-other">
-  <div class="cat-row" onclick="toggleCat('x-other')">
-    <span class="cat-name" style="color:rgba(255,255,255,.3)">Uncategorized</span>
-    <span class="cat-stat">${uncat.length} act.</span>
-    <span class="cat-stat">${totalGal}</span>
-    <span class="cat-stat">${totalPh.toLocaleString()}</span>
-    <span class="cat-chev open" id="cchev-x-other">›</span>
-  </div>
-  <div class="cat-children open" id="catchildren-x-other">
-    ${uncat.map(it => actRowHtml(it)).join('')}
-  </div>
-</div>`;
+  if (uncat.length) tabData.push({name: 'Uncategorized', acts: uncat});
+
+  if (!tabData.length) {
+    document.getElementById('act-list-body').innerHTML = '<div class="empty-state">No activities found.</div>';
+    return;
   }
 
-  document.getElementById('act-list-body').innerHTML = html || '<div class="empty-state">No activities found.</div>';
+  const firstTab = (_activeTab && tabData.some(t => t.name === _activeTab))
+    ? _activeTab : tabData[0].name;
+
+  const tabsHtml = `<div class="act-tabs-bar">${
+    tabData.map(t =>
+      `<button class="act-tab${t.name === firstTab ? ' active' : ''}" onclick="selectTab('${esc(t.name)}')">${esc(t.name)}</button>`
+    ).join('')
+  }</div>`;
+
+  const panelsHtml = tabData.map(t => {
+    const actsHtml = t.acts.length
+      ? t.acts.map(it => actRowHtml(it)).join('')
+      : '<div class="cat-empty">No activities added yet</div>';
+    return `<div class="act-tab-panel${t.name === firstTab ? ' active' : ''}" data-cat="${esc(t.name)}">${actsHtml}</div>`;
+  }).join('');
+
+  document.getElementById('act-list-body').innerHTML = tabsHtml + panelsHtml;
 }
 
-function toggleCat(catName) {
-  const csid = slugId(catName);
-  const ch   = document.getElementById('catchildren-' + csid);
-  const chev = document.getElementById('cchev-' + csid);
-  if (!ch) return;
-  const open = ch.classList.toggle('open');
-  if (chev) chev.classList.toggle('open', open);
+function selectTab(catName) {
+  _activeTab = catName;
+  document.querySelectorAll('.act-tab').forEach(t => {
+    t.classList.toggle('active', t.textContent === catName);
+  });
+  document.querySelectorAll('.act-tab-panel').forEach(p => {
+    p.classList.toggle('active', p.dataset.cat === catName);
+  });
 }
 
 function actRowHtml(item) {
