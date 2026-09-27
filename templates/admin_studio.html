@@ -2221,7 +2221,7 @@ async function renderDetectedFolders() {
     fnField.style.display='none';
   } else if (looseFiles.length) {
     html=`<div class="det-folder"><span class="fname">${looseFiles.length} photo${looseFiles.length!==1?'s':''} selected</span></div>`;
-    fnField.style.display='block';
+    fnField.style.display = _currentLocationIsPortrait() ? 'block' : 'none';
   }
   el.innerHTML=html;
 }
