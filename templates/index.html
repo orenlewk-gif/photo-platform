@@ -2185,6 +2185,7 @@ function togglePosePurchase(color, poseIdx) {
   });
   const galleryEl = document.getElementById(`pose-gallery-${poseIdx}`);
   if (galleryEl) galleryEl.classList.toggle('pose-full-selected', isNowSelected);
+  recalcPrintPrices();
   updatePoseHeaders();
   updatePoseCart();
 }
@@ -2201,6 +2202,7 @@ function togglePoseSingle(globalIdx, color) {
   const isSel = (_poseState[color] instanceof Set) && _poseState[color].has(globalIdx);
   const card = document.querySelector(`.thumb-card[data-idx="${globalIdx}"]`);
   if (card) card.classList.toggle('selected', isSel);
+  recalcPrintPrices();
   updatePoseCart();
 }
 
@@ -2224,7 +2226,7 @@ function updatePoseCart() {
   document.getElementById('cart-count-text').textContent = parts.join(' + ');
   const printTotal = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
   const digiLogoFee = _digitalLogoPhotos.size * LOGO_FEE;
-  document.getElementById('cart-price-text').textContent = `$${(total + digiLogoFee + printTotal).toFixed(2)}`;
+  document.getElementById('cart-price-text').textContent = `$${(total + digiLogoFee + printTotal + calcShipping()).toFixed(2)}`;
   updateHeaderCartBtn();
   const saBtn  = document.getElementById('cart-select-all-btn');
   const viewBtn = document.getElementById('cart-view-btn');
@@ -2266,17 +2268,22 @@ function closePoseCartView() {
 }
 function clearPoseCart() {
   _poseState = {};
+  printCart.splice(0);
+  frameCart.splice(0);
+  _digitalLogoPhotos.clear();
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.querySelectorAll('.pose-gallery.pose-full-selected').forEach(g => g.classList.remove('pose-full-selected'));
   updatePoseHeaders();
-  updatePoseCart(); // also resets cart bar + header count
+  updatePoseCart();
 }
 function _fpOpenPosePhotos(label, photos) {
   document.getElementById('fp-title').textContent = `${label} — ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
-  document.getElementById('fp-grid').innerHTML = photos.map(p => {
+  const thumbsHtml = photos.map(p => {
     const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
-    return `<img src="${src}" alt="${p.filename || ''}" loading="lazy" />`;
+    const logoOn = _digitalLogoPhotos.has(p.path);
+    return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
   }).join('');
+  document.getElementById('fp-grid').innerHTML = `<div class="cartview-photo-grid">${thumbsHtml}</div>`;
   document.getElementById('fp-overlay').classList.add('open');
 }
 function openPosePhotosModalByIdx(pi) {
@@ -2393,7 +2400,14 @@ function renderPoseCartView() {
       <button class="cv-logo-remove" onclick="_digitalLogoPhotos.clear();renderPoseCartView();updatePoseCart()" title="Remove all">×</button>
     </div>`;
   }
-  const grandTotal = total + digiLogoFee + printTotal;
+  const shipping = calcShipping();
+  if (shipping > 0) {
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;font-size:.85rem;color:rgba(255,255,255,.55)">
+      <div>Shipping</div>
+      <div>$${shipping.toFixed(2)}</div>
+    </div>`;
+  }
+  const grandTotal = total + digiLogoFee + printTotal + shipping;
   html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:.8rem 0 0">
     <div style="font-weight:700">Total</div>
     <div style="font-size:1.1rem;font-weight:700;color:#F5C518">$${grandTotal.toFixed(2)}</div>
@@ -2910,10 +2924,34 @@ function getUpsellMsg(count) {
 }
 
 function recalcPrintPrices() {
-  const selectedPaths = new Set([...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean));
+  let photoColorMap = null;
+  if (_poseData) {
+    photoColorMap = {};
+    for (const pose of (_poseData.poses || [])) {
+      for (const fname of (pose.files || [])) {
+        photoColorMap[fname] = pose.color || '';
+      }
+    }
+  }
+  const selectedPaths = _poseData
+    ? null
+    : new Set([...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean));
   printCart.forEach(p => {
     const base = PRINT_SIZES[p.sizeIdx].price;
-    const isSelected = p.photoPath ? selectedPaths.has(p.photoPath) : selectedPhotos.has(p.photoIdx);
+    let isSelected;
+    if (_poseData && photoColorMap) {
+      const photo = allPhotos[p.photoIdx];
+      const fname = photo ? (photo.filename || photo.path.split('/').pop()) : null;
+      const color = fname != null ? photoColorMap[fname] : null;
+      if (color != null) {
+        const poseState = _poseState[color];
+        isSelected = poseState === 'pose' || (poseState instanceof Set && poseState.has(p.photoIdx));
+      } else {
+        isSelected = false;
+      }
+    } else {
+      isSelected = p.photoPath ? selectedPaths.has(p.photoPath) : selectedPhotos.has(p.photoIdx);
+    }
     const halfPrice = isSelected ? base / 2 : base;
     p.price = halfPrice + (p._logo ? (p._logoPrice || LOGO_FEE) : 0);
   });
@@ -2938,7 +2976,7 @@ function updateHeaderCartBtn() {
 }
 
 function updateCart() {
-  if (_poseData) { updateHeaderCartBtn(); return; }
+  if (_poseData) { updatePoseCart(); return; }
   recalcPrintPrices();
   const count      = selectedPhotos.size;
   const printCount = printCart.length;
