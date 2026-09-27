@@ -264,13 +264,13 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* Watermark overlay */
-.thumb-card .watermark {
+.watermark {
   position:absolute; inset:0; z-index:3;
   display:flex; align-items:center; justify-content:center;
   pointer-events:none;
 }
 @media(hover:none) and (pointer:coarse) {
-  .thumb-card .watermark {
+  .watermark {
     background-image: url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png');
     background-size: 60%, 42%, 38%;
     background-position: center, 12% 18%, 88% 82%;
@@ -299,7 +299,7 @@ input[type="range"]::-webkit-slider-thumb {
 .qs-overlay.open { display:flex; }
 .qs-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,.1); border-radius:16px; max-width:660px; width:100%; max-height:88vh; overflow:hidden; box-shadow:0 28px 80px rgba(0,0,0,.75); display:flex; flex-direction:row; }
 /* Photo panel — left side */
-.qs-photo-panel { width:44%; flex-shrink:0; display:flex; flex-direction:column; background:#060f18; border-radius:16px 0 0 16px; overflow:hidden; }
+.qs-photo-panel { width:44%; flex-shrink:0; display:flex; flex-direction:column; background:#060f18; border-radius:16px 0 0 16px; overflow:hidden; position:relative; }
 .qs-photo { display:block; width:100%; flex:1; object-fit:cover; min-height:180px; }
 .qs-photo-meta { padding:.55rem .85rem; background:rgba(0,0,0,.5); border-top:1px solid rgba(255,255,255,.06); flex-shrink:0; }
 .qs-filename { font-size:.68rem; color:rgba(255,255,255,.38); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:block; }
@@ -1215,6 +1215,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   <div class="qs-modal">
     <div class="qs-photo-panel">
       <img class="qs-photo" id="qs-photo" src="" alt="" />
+      <div class="watermark"></div>
       <div class="qs-photo-meta">
         <span class="qs-filename" id="qs-filename"></span>
       </div>
