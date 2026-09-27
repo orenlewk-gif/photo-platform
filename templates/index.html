@@ -459,6 +459,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .cart-summary { display:flex; align-items:center; gap:1rem; }
 .cart-count-text { font-weight:600; font-size:0.95rem; }
 .cart-price-tag {
+  display:none;
   background:rgba(242,201,76,0.15); border:1px solid rgba(242,201,76,0.45);
   color:#F5C518; font-weight:700; font-size:1.15rem;
   padding:3px 16px; border-radius:20px;
@@ -551,6 +552,8 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .fp-close { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff; border-radius:50%; width:32px; height:32px; font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 .fp-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; overflow-y:auto; }
 .fp-grid img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:7px; display:block; }
+.fp-photo-grid .cartview-thumb { width:110px; height:110px; }
+@media (max-width:600px) { .fp-photo-grid .cartview-thumb { width:90px; height:90px; } }
 .cartview-print-row {
   display:flex; align-items:center; justify-content:space-between;
   padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06);
@@ -2283,7 +2286,7 @@ function _fpOpenPosePhotos(label, photos) {
     const logoOn = _digitalLogoPhotos.has(p.path);
     return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
   }).join('');
-  document.getElementById('fp-grid').innerHTML = `<div class="cartview-photo-grid" style="grid-column:1/-1">${thumbsHtml}</div>`;
+  document.getElementById('fp-grid').innerHTML = `<div class="cartview-photo-grid fp-photo-grid" style="grid-column:1/-1">${thumbsHtml}</div>`;
   document.getElementById('fp-overlay').classList.add('open');
 }
 function openPosePhotosModalByIdx(pi) {
