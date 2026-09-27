@@ -533,8 +533,9 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   line-height:1;
 }
 .cartview-thumb .cv-remove:hover { background:#e53e3e; }
-.cv-logo-btn { position:absolute; bottom:0; left:0; right:0; z-index:5; background:rgba(0,0,0,.72); border:none; color:rgba(255,255,255,.42); font-size:.58rem; font-weight:700; padding:3px 0; text-align:center; cursor:pointer; font-family:'DM Sans',sans-serif; letter-spacing:.06em; text-transform:uppercase; transition:background .15s, color .15s; }
+.cv-logo-btn { position:absolute; bottom:0; left:0; right:0; z-index:5; background:rgba(0,0,0,.72); border:none; color:rgba(255,255,255,.42); font-size:.58rem; font-weight:700; padding:3px 0; text-align:center; cursor:pointer; font-family:'DM Sans',sans-serif; letter-spacing:.06em; text-transform:uppercase; transition:background .15s, color .15s; touch-action:manipulation; }
 .cv-logo-btn.active { background:rgba(245,197,24,.3); color:#F5C518; }
+@media (max-width:768px) { .cv-logo-btn { padding:7px 0; font-size:.6rem; } }
 .cv-more-badge {
   display:flex; align-items:center; justify-content:center;
   width:76px; height:76px; border-radius:8px; flex-shrink:0;
