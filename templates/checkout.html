@@ -324,6 +324,17 @@
   <a class="co-back" href="/" id="back-link">← Back to photos</a>
 </header>
 
+<!-- ── Bundle upsell notice ── -->
+<div id="bundle-upsell" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:9999;align-items:center;justify-content:center;padding:1.5rem">
+  <div style="background:#0e2a3a;border:1px solid rgba(255,255,255,.12);border-radius:16px;max-width:480px;width:100%;padding:2rem;text-align:center">
+    <div id="bundle-upsell-msg" style="font-size:1rem;color:rgba(255,255,255,.9);line-height:1.6;margin-bottom:1.5rem"></div>
+    <div style="display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap">
+      <a id="bundle-upsell-back" href="/" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.8);padding:.65rem 1.4rem;border-radius:8px;font-size:.9rem;font-weight:600;text-decoration:none;cursor:pointer">Continue Shopping</a>
+      <button onclick="dismissBundleUpsell()" style="background:#F5C518;border:none;color:#0c2336;padding:.65rem 1.4rem;border-radius:8px;font-size:.9rem;font-weight:700;cursor:pointer">Continue to Checkout</button>
+    </div>
+  </div>
+</div>
+
 <div class="co-page">
   <h1>Checkout</h1>
 
@@ -502,6 +513,7 @@
 let cartData      = null;
 let appliedCoupon = null;
 let globalCombos  = [];     // combo deals loaded from /api/pricing
+let globalActivityGroups = {};  // {groupName: [location, ...]} for bundle matching
 
 let PRINT_SHIPPING = [8, 8, 13, 13];
 let FRAME_SHIPPING = [15, 15, 25, 50];
@@ -583,7 +595,10 @@ window.addEventListener('DOMContentLoaded', () => {
     renderSummary();
   }).catch(()=>{});
   fetch('/api/pricing').then(r => r.json()).then(d => {
-    if (d.combos) { globalCombos = d.combos; renderSummary(); }
+    if (d.combos) globalCombos = d.combos;
+    if (d.activity_groups) globalActivityGroups = d.activity_groups;
+    renderSummary();
+    checkBundleUpsell();
   }).catch(() => {});
   if (cartData.portrait_poses?.length || cartData.portrait_singles?.length) {
     fetch('/api/portrait-pricing').then(r=>r.json()).then(pp => {
@@ -667,27 +682,53 @@ async function loadThumbs() {
 
 // ── Shared combo price helper ─────────────────────────────────────────────
 // Returns {folderKey -> adjustedPrice} when a combo deal is active, else {}.
+function _comboGroupFolders(fc, groups) {
+  // For each group name, find folder keys whose location belongs to that group
+  const result = {};
+  for (const g of groups) {
+    const gLocs = new Set((globalActivityGroups[g] || []).map(l => l.toLowerCase()));
+    result[g] = Object.entries(fc)
+      .filter(([, f]) => (f.selectedPhotos?.length || 0) > 0 && gLocs.has((f.location || '').toLowerCase()))
+      .map(([k]) => k);
+  }
+  return result;
+}
+
 function calcComboAdjPrices(fc) {
   const comboAdjPrices = {};
   for (const combo of globalCombos) {
-    const locs    = combo.locations || [];
-    const minEach = combo.min_each  || 1;
-    const locCounts = {};
-    const comboKeys = [];
+    const groups = combo.activity_groups || [];
+    const pctOff = combo.pct_off;
+
+    if (groups.length && pctOff != null) {
+      // New format: activity_groups + pct_off
+      const groupFolders = _comboGroupFolders(fc, groups);
+      if (!groups.every(g => groupFolders[g]?.length)) continue;
+      groups.forEach(g => {
+        groupFolders[g].forEach(k => {
+          const n = fc[k].selectedPhotos?.length || 0;
+          const base = calcPriceFor(n, fc[k].pricing);
+          comboAdjPrices[k] = Math.round(base * (1 - pctOff / 100) * 100) / 100;
+        });
+      });
+      break;
+    }
+
+    // Legacy format: locations + flat price
+    const locs = combo.locations || [];
+    const minEach = combo.min_each || 1;
+    if (!locs.length || combo.price == null) continue;
+    const locCounts = {}, comboKeys = [];
     Object.entries(fc).forEach(([key, folder]) => {
-      const n   = folder.selectedPhotos?.length || 0;
+      const n = folder.selectedPhotos?.length || 0;
       const loc = folder.location || '';
-      if (n && locs.includes(loc)) {
-        locCounts[loc] = (locCounts[loc] || 0) + n;
-        comboKeys.push(key);
-      }
+      if (n && locs.includes(loc)) { locCounts[loc] = (locCounts[loc] || 0) + n; comboKeys.push(key); }
     });
     if (comboKeys.length && locs.every(loc => (locCounts[loc] || 0) >= minEach)) {
       const share = Math.round((combo.price / comboKeys.length) * 100) / 100;
       comboKeys.forEach((k, i) => {
-        comboAdjPrices[k] = (i === comboKeys.length - 1)
-          ? Math.round((combo.price - share * (comboKeys.length - 1)) * 100) / 100
-          : share;
+        comboAdjPrices[k] = i === comboKeys.length - 1
+          ? Math.round((combo.price - share * (comboKeys.length - 1)) * 100) / 100 : share;
       });
       break;
     }
@@ -945,6 +986,35 @@ function toggleShipping() {
 
 function toggleMobileSummary() {
   document.getElementById('summary-inner').classList.toggle('open');
+}
+
+// ── Bundle upsell notice ──────────────────────────────────────────────────────
+function checkBundleUpsell() {
+  const el = document.getElementById('bundle-upsell');
+  if (!el || !globalCombos.length) return;
+  const fc = cartData?.folderCarts || {};
+  for (const combo of globalCombos) {
+    const groups = combo.activity_groups || [];
+    const pctOff = combo.pct_off;
+    if (!groups.length || pctOff == null) continue;
+    const groupFolders = _comboGroupFolders(fc, groups);
+    const present = groups.filter(g => groupFolders[g]?.length);
+    const missing = groups.filter(g => !groupFolders[g]?.length);
+    if (present.length > 0 && missing.length > 0) {
+      const missingLabel = missing.join(' or ');
+      const msg = `Did you get any <strong>${missingLabel}</strong> photos taken?<br>
+        Add them to your cart and receive <strong>${pctOff}% off your order!</strong>`;
+      document.getElementById('bundle-upsell-msg').innerHTML = msg;
+      const backLink = document.getElementById('bundle-upsell-back');
+      if (backLink) backLink.href = cartData.returnUrl || '/';
+      el.style.display = 'flex';
+      return;
+    }
+  }
+}
+function dismissBundleUpsell() {
+  const el = document.getElementById('bundle-upsell');
+  if (el) el.style.display = 'none';
 }
 
 // ── Place Order ──────────────────────────────────────────────────────────────

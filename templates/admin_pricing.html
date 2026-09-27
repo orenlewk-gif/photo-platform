@@ -222,6 +222,7 @@ input[type="text"].full{width:100%}
       <button class="pr-tab" id="ptab-base-area" onclick="showSection('base-area')">Base Area</button>
       <button class="pr-tab" id="ptab-bundles" onclick="showPricingGroup('bundles')">Bundles</button>
       <button class="pr-tab" id="ptab-logo-addon" onclick="showSection('logo-addon')">Logo Add-on</button>
+      <a class="pr-tab" href="/admin/discount-codes">Discount Codes</a>
     </div>
     <div id="pr-tabs-sub" class="pr-tabs-row"></div>
   </div>
@@ -434,12 +435,11 @@ input[type="text"].full{width:100%}
     <!-- ── Create Bundle ── -->
     <div id="sec-create-bundle" class="section">
       <h1>Create Bundle</h1>
-      <p class="subtitle">Discount when customers buy from multiple activities in one order.</p>
+      <p class="subtitle">Automatically apply a percentage discount when a customer has photos from both activity groups in their cart.</p>
       <div class="card">
-        <div class="field-row"><label>Activity 1</label><input type="text" id="ca-loc1" class="wide" placeholder="e.g. Mountain Biking"></div>
-        <div class="field-row"><label>Activity 2</label><input type="text" id="ca-loc2" class="wide" placeholder="e.g. Lone Peak Portraits"></div>
-        <div class="field-row"><label>Min photos each</label><input type="number" id="ca-min" value="1" min="1" style="width:70px"></div>
-        <div class="field-row"><label>Bundle price</label><span class="dollar">$</span><input type="number" id="ca-price" value="150" min="1"></div>
+        <div class="field-row"><label>Activity Group 1</label><select id="ca-grp1" class="wide"><option value="">— select group —</option></select></div>
+        <div class="field-row"><label>Activity Group 2</label><select id="ca-grp2" class="wide"><option value="">— select group —</option></select></div>
+        <div class="field-row"><label>% Off</label><input type="number" id="ca-pct" value="10" min="1" max="100" style="width:70px"><span style="margin-left:.4rem;color:rgba(255,255,255,.45);font-size:13px">% applied to both groups when both are in cart</span></div>
         <div class="field-row"><label>Label</label><input type="text" id="ca-label" class="wide" placeholder="e.g. Adventure Bundle"></div>
         <div class="btn-row">
           <button class="btn btn-primary btn-sm" onclick="addCombo()">Add Bundle</button>
@@ -503,8 +503,13 @@ let portraitLocsData    = [];
 let posProductsData     = {base_area:[],mats:[],base_area_tiers:[],satin_black_frames:[]};
 let privateSessionData  = {sessions:[]};
 let itemsBundlesData    = {bundles:[]};
+let _actGroupNames      = [];  // activity group names for bundle dropdowns
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
+fetch('/api/activity-groups').then(r=>r.json()).then(d=>{
+  _actGroupNames = Object.keys(d.activity_groups || {}).sort();
+  _renderBundleGroupSelects();
+}).catch(()=>{});
 Promise.all([
   fetch('/api/admin/pricing').then(r=>r.json()),
   fetch('/api/zip-pricing').then(r=>r.json()),
@@ -542,9 +547,8 @@ function renderAll(){
   renderPosProducts('base_area','base-area-list');
   renderPrivateSessions();
   renderCombos();
+  _renderBundleGroupSelects();
   renderBigSkyFrames();
-  renderItemsBundles();
-  renderItemsBundleChecks();
   // Logo add-on fee
   const logoInput = document.getElementById('logo-fee-input');
   if(logoInput && typeof pricingData.logo_fee === 'number') logoInput.value = pricingData.logo_fee;
@@ -961,28 +965,41 @@ async function savePrivateSessions(){
 }
 
 // ── Combos ─────────────────────────────────────────────────────────────────────
+function _renderBundleGroupSelects(){
+  ['ca-grp1','ca-grp2'].forEach(id=>{
+    const sel=document.getElementById(id);
+    if(!sel) return;
+    const cur=sel.value;
+    sel.innerHTML='<option value="">— select group —</option>'+_actGroupNames.map(n=>`<option value="${esc(n)}"${n===cur?' selected':''}>${esc(n)}</option>`).join('');
+  });
+}
+
 function renderCombos(){
   if(!pricingData) return;
   const combos=pricingData.combos||[];
   const list=document.getElementById('combos-list');
   if(!list) return;
-  list.innerHTML=combos.length?combos.map((c,i)=>`<div class="combo-card">
-    <div style="flex:1;font-weight:600;font-size:13px">${esc(c.locations?.join(' + ')||'')}${c.min_photos?` <span style="font-size:11px;color:rgba(255,255,255,.35)">(${c.min_photos}+ each)</span>`:''}</div>
-    <div>${c.label?`<span style="font-size:12px;color:rgba(255,255,255,.4)">${esc(c.label)} </span>`:''}
-    <span style="color:#34d399;font-size:13px">$${c.price}</span></div>
-    <button class="btn btn-danger btn-sm" onclick="removeCombo(${i})">&#10005;</button>
-  </div>`).join(''):'<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.5rem">No bundle deals active.</p>';
+  list.innerHTML=combos.length?combos.map((c,i)=>{
+    const groups=(c.activity_groups||c.locations||[]).join(' + ');
+    const discount=c.pct_off!=null?`${c.pct_off}% off`:(c.price?`$${c.price} flat`:'');
+    return `<div class="combo-card">
+      <div style="flex:1;font-weight:600;font-size:13px">${esc(groups)}</div>
+      <div>${c.label?`<span style="font-size:12px;color:rgba(255,255,255,.4)">${esc(c.label)} </span>`:''}
+      <span style="color:#34d399;font-size:13px">${esc(discount)}</span></div>
+      <button class="btn btn-danger btn-sm" onclick="removeCombo(${i})">&#10005;</button>
+    </div>`;
+  }).join(''):'<p style="color:rgba(255,255,255,.35);font-size:13px;margin-bottom:.5rem">No bundle deals active.</p>';
 }
 
 function addCombo(){
-  const loc1=document.getElementById('ca-loc1').value.trim();
-  const loc2=document.getElementById('ca-loc2').value.trim();
-  const min=+document.getElementById('ca-min').value||1;
-  const price=+document.getElementById('ca-price').value;
+  const grp1=document.getElementById('ca-grp1').value.trim();
+  const grp2=document.getElementById('ca-grp2').value.trim();
+  const pct=+document.getElementById('ca-pct').value;
   const label=document.getElementById('ca-label').value.trim();
-  if(!loc1||!loc2||!price){ showToast('Fill in activities and price','err'); return; }
+  if(!grp1||!grp2||!pct){ showToast('Select both activity groups and a discount %','err'); return; }
+  if(grp1===grp2){ showToast('Choose two different groups','err'); return; }
   if(!pricingData.combos) pricingData.combos=[];
-  pricingData.combos.push({locations:[loc1,loc2],min_photos:min,price,label});
+  pricingData.combos.push({activity_groups:[grp1,grp2],pct_off:pct,label});
   renderCombos();
   showSection('all-bundles');
   saveDigital();

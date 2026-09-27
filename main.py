@@ -1116,6 +1116,7 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                 print(f"zip pricing lookup error: {e}")
     pricing = _load_pricing()
     combos = pricing.get("combos", [])
+    _activity_groups = pricing.get("activity_groups", {})
     if location and date:
         date_overrides = pricing.get("date_overrides", {})
         date_ov = date_overrides.get(date, {})
@@ -1123,6 +1124,7 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
         if ov_key:
             result = dict(date_ov[ov_key])
             result["combos"] = combos
+            result["activity_groups"] = _activity_groups
             return result
     if location:
         activities = pricing.get("activities", {})
@@ -1131,6 +1133,7 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
             """Return activity pricing in tiers format, converting per_photo/all_photos if needed."""
             result = dict(act_data)
             result["combos"] = combos
+            result["activity_groups"] = _activity_groups
             if "per_photo" in result and "tiers" not in result:
                 per   = float(result.get("per_photo", 25))
                 all_p = result.get("all_photos")
@@ -1191,8 +1194,8 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                                 return _act_result(activities[pk_act])
             except Exception as e:
                 print(f"item_list pricing fallback error: {e}")
-        return {"tiers": [], "combos": combos}
-    return {"tiers": [], "combos": combos}
+        return {"tiers": [], "combos": combos, "activity_groups": _activity_groups}
+    return {"tiers": [], "combos": combos, "activity_groups": _activity_groups}
 
 
 def to_r2_key(path: str) -> str:
