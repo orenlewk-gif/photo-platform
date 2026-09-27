@@ -1293,13 +1293,27 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
 
 _folder_times_cache: dict = {}  # in-memory cache: (date, location) → {filename: minutes}
 
+def _times_r2_key(date: str, location: str) -> str:
+    slug = location.strip().lower().replace(" ", "-")
+    return f"meta/times/{date}/{slug}.json"
+
 @app.get("/api/folder-times")
 def get_folder_times(date: str = Query(...), location: str = Query(...)):
     """Return EXIF capture times (minutes since midnight) for photos in a time-search folder.
-    Reads first 128KB of each R2 object for EXIF data; caches result in memory."""
+    Checks upload-time cache first, then a persisted R2 key, then reads EXIF from each photo."""
     cache_key = (date, location.strip().lower())
     if cache_key in _folder_times_cache:
         return {"times": _folder_times_cache[cache_key]}
+
+    # Check persisted times written during upload (avoids per-photo R2 reads on cold start)
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=_times_r2_key(date, location))
+        persisted = json.loads(obj["Body"].read())
+        if persisted:
+            _folder_times_cache[cache_key] = persisted
+            return {"times": persisted}
+    except Exception:
+        pass
 
     loc_lower = location.strip().lower()
     paths = [
@@ -5088,6 +5102,7 @@ async def admin_upload_index(request: Request):
     folder   = body.get("folder", "").strip()
     keys     = body.get("keys", [])
     poses    = body.get("poses", None)  # from UI pose assignment; None means use XMP detection
+    times    = body.get("times", {})   # {filename: minutes_since_midnight} from client EXIF read
     if not date or not location or not keys:
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
     is_portrait = _is_portrait_location(location)
@@ -5114,6 +5129,20 @@ async def admin_upload_index(request: Request):
             _write_folder_poses_from_ui(date, location, folder, poses)
         else:
             _update_folder_poses(date, location, folder, keys)
+    if times:
+        # Only persist times for locations that have time_search enabled
+        _pricing = _load_pricing()
+        _loc_cfg = _pricing.get("activities", {}).get(location, {})
+        if _loc_cfg.get("flags", {}).get("time_search"):
+            cache_key = (date, location.strip().lower())
+            merged = dict(_folder_times_cache.get(cache_key) or {})
+            merged.update(times)
+            _folder_times_cache[cache_key] = merged
+            try:
+                s3.put_object(Bucket=R2_BUCKET, Key=_times_r2_key(date, location),
+                              Body=json.dumps(merged).encode(), ContentType="application/json")
+            except Exception:
+                pass
     return {"indexed": added, "date": date, "location": location, "folder": folder}
 
 @app.post("/api/admin/reindex-folder")

@@ -238,6 +238,14 @@ input[type="range"]::-webkit-slider-thumb {
   .card-fname { display:none; }
 }
 
+/* Time badge — top-left, always visible when EXIF time is known */
+.card-time {
+  position:absolute; top:6px; left:6px; z-index:4;
+  background:rgba(0,0,0,.62); color:rgba(255,255,255,.92);
+  font-size:.64rem; font-weight:700; letter-spacing:.03em;
+  padding:2px 6px; border-radius:4px; pointer-events:none;
+}
+
 .select-check {
   width:26px; height:26px; border-radius:50%; flex-shrink:0;
   background:rgba(0,0,0,0.55); border:2px solid rgba(255,255,255,0.55);
@@ -1772,6 +1780,20 @@ function _fmtMinutes(m) {
   return `${hd}:${String(mn).padStart(2,'0')} ${ampm}`;
 }
 
+function _stampCardTimes(photoTimes) {
+  document.querySelectorAll('.thumb-card[data-idx]').forEach(card => {
+    const t = photoTimes[parseInt(card.dataset.idx, 10)];
+    if (t == null) return;
+    let badge = card.querySelector('.card-time');
+    if (!badge) {
+      badge = document.createElement('div');
+      badge.className = 'card-time';
+      card.appendChild(badge);
+    }
+    badge.textContent = _fmtMinutes(t);
+  });
+}
+
 async function initTimeFilter(photos, date, location) {
   const bar = document.getElementById('time-filter-bar');
   if (!bar || !photos.length) return;
@@ -1795,6 +1817,8 @@ async function initTimeFilter(photos, date, location) {
   });
 
   const realTimes = photoTimes.filter(t => t !== null);
+  // Stamp time badges on cards even when there aren't enough for a slider
+  if (realTimes.length) _stampCardTimes(photoTimes);
   if (realTimes.length < 2) return; // not enough timestamps for a useful filter
 
   const minTime = Math.min(...realTimes);

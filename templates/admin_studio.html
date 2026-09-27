@@ -658,6 +658,23 @@ function toggleNg(name) {
   if (hdr) hdr.classList.toggle('open', open);
 }
 const CONCURRENCY = 10;
+
+// Read EXIF capture times from local File objects (first 16KB only — fast, in-memory)
+async function readExifTimes(files) {
+  const times = {};
+  await Promise.all([...files].map(async f => {
+    if (!/\.(jpg|jpeg)$/i.test(f.name)) return;
+    try {
+      const txt = new TextDecoder('latin1').decode(await f.slice(0, 16384).arrayBuffer());
+      const m = txt.match(/\d{4}:\d{2}:\d{2} (\d{2}):(\d{2}):\d{2}/);
+      if (m) {
+        const mins = parseInt(m[1]) * 60 + parseInt(m[2]);
+        if (mins >= 0 && mins < 1440) times[f.name] = mins;
+      }
+    } catch(e) {}
+  }));
+  return times;
+}
 const ZIP_LOCS      = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip","nature zip line","nature zipline"]);
 let PORTRAIT_LOCS = new Set(["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip"]);
 
@@ -1831,8 +1848,9 @@ async function handleAddPhotosInput(fileList) {
   const okKeys = items.filter(it=>it.ok).map(it=>it.key);
   const failedCount = items.length - okKeys.length;
   if (okKeys.length) {
+    const times = await readExifTimes(files);
     const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys:okKeys})});
+      body:JSON.stringify({date,location,folder,keys:okKeys,times})});
     if (!ir.ok) { showToast('Index failed','error'); document.getElementById('add-photos-input').value=''; return; }
   }
   if (failedCount) showToast(`${okKeys.length} added, ${failedCount} failed — try again`,'error');
@@ -2266,8 +2284,9 @@ async function startUpload() {
     for (let i=0;i<allItems.length;i+=CONCURRENCY) await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>poseputOne(it)));
     const keys=allItems.filter(it=>it.ok).map(it=>it.key);
     const poses=getPoseGroupsForUpload();
+    const times=await readExifTimes(files);
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys,poses})});
+      body:JSON.stringify({date,location,folder,keys,poses,times})});
     const succeeded=done-failed;
     if (failed) {
       label.textContent=`Done — ${succeeded} uploaded, ${failed} failed`;
@@ -2359,12 +2378,17 @@ async function startUpload() {
   const isZip = _isZipUpload();
   const byFolder={};
   for (const it of allItems) if (it.ok) (byFolder[it.folder]=byFolder[it.folder]||[]).push(it.key);
+  // Pre-extract EXIF times per batch (reads file headers already in memory — fast)
+  const batchTimes = {};
+  await Promise.all(batches.map(async ({folder:bf, files:bf_files}) => {
+    if (bf_files?.length) batchTimes[bf] = await readExifTimes(bf_files);
+  }));
   let totalLive = 0;
   for (const [fi, {folder}] of batches.entries()) {
     const keys = byFolder[folder];
     if (!keys?.length) continue;
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys})});
+      body:JSON.stringify({date,location,folder,keys,times:batchTimes[folder]||{}})});
     if (isZip) {
       const gs = getUploadGroupSize(fi);
       if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
