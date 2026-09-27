@@ -667,6 +667,7 @@ let treeExpanded = {};
 let currentFolder = null;
 let currentLocation = null;
 let folderPhotos = [];
+let folderTimesMap = {};
 let selectedPaths = new Set();
 let selectedFolderMap = new Map(); // "date|loc|folder" → {date, location, folder}
 let lastClickPath = null;
@@ -1109,8 +1110,23 @@ async function loadFolderPhotos() {
     rebuildBtn.style.display = 'none';
   }
 
+  folderTimesMap = {};
   renderPhotoGrid();
   updatePricingPreview();
+
+  // Async: fetch EXIF times; updates filename labels when they arrive
+  const _ftDate = date, _ftLoc = location;
+  (async () => {
+    try {
+      const tr = await fetch(`/api/folder-times?date=${encodeURIComponent(_ftDate)}&location=${encodeURIComponent(_ftLoc)}`);
+      if (!tr.ok) return;
+      const td = await tr.json();
+      if (td.times && Object.keys(td.times).length) {
+        folderTimesMap = td.times;
+        updatePhotoTimestamps();
+      }
+    } catch(e) {}
+  })();
 }
 
 function updatePoseLiveBtn(isLive) {
@@ -1170,6 +1186,25 @@ async function rebuildPoses() {
   }
 }
 
+function fmtMin(m) {
+  const h = Math.floor(m / 60), mn = Math.round(m % 60);
+  const ampm = h < 12 ? 'AM' : 'PM';
+  const hd = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hd}:${String(mn).padStart(2,'0')} ${ampm}`;
+}
+
+function updatePhotoTimestamps() {
+  const cells = document.querySelectorAll('#photo-grid .photo-cell');
+  cells.forEach((cell, i) => {
+    const p = folderPhotos[i];
+    if (!p) return;
+    const fn = p.filename || p.path.split('/').pop();
+    const t = folderTimesMap[fn];
+    const el = cell.querySelector('.photo-filename');
+    if (el) el.textContent = t != null ? `${fmtMin(t)} · ${fn}` : fn;
+  });
+}
+
 function renderPhotoGrid() {
   const grid = document.getElementById('photo-grid');
   grid.style.gridTemplateColumns = `repeat(${colCount}, 1fr)`;
@@ -1180,16 +1215,19 @@ function renderPhotoGrid() {
   grid.innerHTML = folderPhotos.map((p, i) => {
     const pa = escAttr(p.path);
     const thumbSrc = `/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb`;
+    const fn = p.filename || p.path.split('/').pop();
+    const t  = folderTimesMap[fn];
+    const label = t != null ? `${fmtMin(t)} · ${fn}` : fn;
     return `<div class="photo-cell ${p.is_draft?'is-draft':''} ${selectedPaths.has(p.path)?'selected':''}"
       data-path="${pa}" onclick="selectPhoto(event,'${pa}')">
-      <img src="${thumbSrc}" loading="lazy" alt="${escAttr(p.filename)}">
+      <img src="${thumbSrc}" loading="lazy" alt="${escAttr(fn)}">
       <div class="overlay">
         <button class="enlarge-icon" onclick="event.stopPropagation();openLightbox(${i})" title="View full size">⛶</button>
         <button class="trash-icon" onclick="event.stopPropagation();trashPhoto('${pa}')" title="Trash">🗑</button>
       </div>
       <div class="check-badge">✓</div>
       <div class="draft-ribbon">DRAFT</div>
-      <div class="photo-filename">${escAttr(p.filename)}</div>
+      <div class="photo-filename">${label}</div>
     </div>`;
   }).join('');
   updateSelectionUI();

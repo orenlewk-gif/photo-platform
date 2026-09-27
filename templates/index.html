@@ -1817,20 +1817,21 @@ async function initTimeFilter(photos, date, location) {
   toSel.value   = String(endBucket);
 
   function applyFilter() {
-    const lo  = parseInt(fromSel.value, 10);
-    const hi  = parseInt(toSel.value,   10) + 14; // include full 15-min bucket
+    const lo    = parseInt(fromSel.value, 10);
+    const hi    = parseInt(toSel.value,   10) + 14; // include full 15-min bucket
+    const isAll = fromSel.value === String(startBucket) && toSel.value === String(endBucket);
 
     let shown = 0;
     document.querySelectorAll('.thumb-card').forEach(card => {
       const idx = parseInt(card.dataset.idx, 10);
       const t   = photoTimes[idx];
-      // Photos with no EXIF timestamp are always shown
-      const inRange = t === null || (t >= lo && t <= hi);
+      // When full range: show everything. When filtered: only photos with a matching timestamp.
+      const inRange = t === null ? isAll : (t >= lo && t <= hi);
       card.style.display = inRange ? '' : 'none';
       if (inRange) shown++;
     });
 
-    const isAll = fromSel.value === String(startBucket) && toSel.value === String(endBucket);
+
     const total = photos.length;
     const rc = document.getElementById('results-count');
     if (rc) rc.textContent = isAll
