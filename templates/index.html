@@ -1399,6 +1399,19 @@ function saveCurrentFolder() {
     for (const [c, v] of Object.entries(_poseState)) ser[c] = v === 'pose' ? 'pose' : [...v];
     entry.poseState = ser;
     entry.portraitPricing = _portraitPricing;
+    // Save pose structure so unified cart and checkout can render/send portrait items
+    entry.poses = (_poseData?.poses || []).map(p => ({
+      color: p.color || '',
+      label: p.label || '',
+      files: p.files || [],
+      paths: (p.files || []).map(f => {
+        const ph = allPhotos.find(a => (a.filename || a.path.split('/').pop()) === f);
+        return ph ? ph.path : '';
+      }).filter(Boolean),
+    }));
+    entry.poseDate = _poseDate;
+    entry.poseLoc  = _poseLoc;
+    entry.poseFam  = _poseFam;
   }
   folderCarts[currentFolderKey] = entry;
 }
@@ -1725,6 +1738,10 @@ async function showGallery(date, location, family, ln, group) {
 
   // ── Folder-cart: save previous folder BEFORE pricing changes ──
   saveCurrentFolder();
+  // Immediately hide the footer bar while loading the new gallery
+  document.getElementById('cart-bar').classList.remove('show');
+  document.getElementById('main-container').style.paddingBottom = '';
+  document.getElementById('print-upsell-banner').classList.remove('show');
   currentGroup = group || null;
 
   // Fetch pricing — for last-name searches location is unknown; derive from first photo
@@ -2218,6 +2235,9 @@ function updatePoseCart() {
   }
   cartBar.classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
+  // Clear any stale action-mode upsell text
+  const upsellEl = document.getElementById('cart-upsell-text');
+  if (upsellEl) upsellEl.innerHTML = '';
   const parts = [];
   if (fullPoses)   parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''}`);
   if (singles)     parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
@@ -3196,14 +3216,68 @@ function renderCartView() {
       : '';
     html += `<div class="cartview-section-label" style="margin-top:${html?'1.4rem':'0'};display:flex;align-items:center;">${label}${removeBtn}</div>`;
 
-    // Portrait summary line
+    // Portrait — render each pose as its own row with thumbnails + logo buttons
     if (hasPoseItems) {
+      const poseList = isCurrent ? (_poseData?.poses || []) : (fc.poses || []);
+      const pp = isCurrent ? _portraitPricing : fc.portraitPricing;
+      const poseTiers = pp?.pose_tiers || [65, 57.5, 50];
+      const singlePrice = pp?.single_photo ?? 40;
       const fullPosesCount = Object.values(savedPoseState).filter(v => v === 'pose').length;
-      const singlesCount = Object.values(savedPoseState).filter(v => v instanceof Set ? true : Array.isArray(v)).reduce((s, v) => s + (v instanceof Set ? v.size : v.length), 0);
-      const parts = [];
-      if (fullPosesCount) parts.push(`${fullPosesCount} pose${fullPosesCount !== 1 ? 's' : ''}`);
-      if (singlesCount) parts.push(`${singlesCount} individual photo${singlesCount !== 1 ? 's' : ''}`);
-      html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${parts.join(', ')} — $${poseDigitalTotal.toFixed(2)}</div>`;
+      const perPose = fullPosesCount > 0 ? (poseTiers[Math.min(fullPosesCount - 1, poseTiers.length - 1)]) : 0;
+      const photoByFilename = {};
+      if (isCurrent) allPhotos.forEach(p => { photoByFilename[p.filename || p.path.split('/').pop()] = p; });
+
+      poseList.forEach(pose => {
+        const color = pose.color || '';
+        const stateVal = savedPoseState[color];
+        if (!stateVal) return;
+        const isFullPose = stateVal === 'pose';
+        const selectedSet = isFullPose ? null : (stateVal instanceof Set ? stateVal : new Set(stateVal));
+
+        // Photos for this pose
+        let posePhotos = [];
+        if (isCurrent) {
+          posePhotos = (pose.files || []).map(f => photoByFilename[f]).filter(Boolean);
+          if (!isFullPose) posePhotos = [...selectedSet].map(idx => allPhotos[idx]).filter(Boolean);
+        } else {
+          posePhotos = (pose.paths || []).map(path => ({ path, filename: path.split('/').pop() }));
+          if (!isFullPose) {
+            // For individual selections in saved folders, use stored paths indexed by position
+            const allPosePaths = pose.paths || [];
+            posePhotos = [...(selectedSet || [])].map(idx => {
+              const path = allPosePaths[allPosePaths.indexOf(allPosePaths.find((_, i) => i === idx))] || allPosePaths[idx];
+              return path ? { path, filename: path.split('/').pop() } : null;
+            }).filter(Boolean);
+          }
+        }
+        const posePrice = isFullPose ? perPose : singlePrice * (selectedSet?.size || 0);
+        const photoCount = isFullPose ? (pose.files || []).length : (selectedSet?.size || 0);
+        const subtitle = isFullPose
+          ? `${photoCount} photo${photoCount !== 1 ? 's' : ''} · Full pose digital`
+          : `${photoCount} individual photo${photoCount !== 1 ? 's' : ''}`;
+
+        html += `<div style="padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.35rem">
+            <div>
+              <div style="font-weight:700;font-size:.9rem">${escHtml(pose.label || color)}</div>
+              <div style="font-size:.75rem;color:rgba(255,255,255,.45)">${subtitle}</div>
+            </div>
+            <div style="font-weight:700;color:#F5C518;white-space:nowrap">$${posePrice.toFixed(2)}</div>
+          </div>`;
+
+        if (posePhotos.length > 0) {
+          const SHOW = 5;
+          html += `<div class="cartview-photo-grid" style="margin-bottom:.25rem">`;
+          posePhotos.slice(0, SHOW).forEach(p => {
+            const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+            const logoOn = _digitalLogoPhotos.has(p.path);
+            html += `<div class="cartview-thumb"><img src="${src}" alt="" loading="lazy"/><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}');renderCartView()">Logo</button></div>`;
+          });
+          if (posePhotos.length > SHOW) html += `<div class="cv-more-badge">+${posePhotos.length - SHOW}</div>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      });
     }
 
     if (digitalCount > 0) {
@@ -3491,18 +3565,52 @@ function openCheckout() {
   }
 
   const folderHasItems = Object.values(folderCarts).some(fc =>
-    (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0);
+    (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0
+    || (fc.poseState && Object.keys(fc.poseState).length > 0));
   if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0 && !folderHasItems) return;
 
   saveCurrentFolder();
+
+  // Extract portrait items from saved folderCarts so checkout.html receives them
+  const allPortraitPoses   = [];
+  const allPortraitSingles = [];
+  Object.values(folderCarts).forEach(fc => {
+    if (!fc.poseState || !fc.poses) return;
+    fc.poses.forEach(pose => {
+      const color = pose.color || '';
+      const stateVal = fc.poseState[color];
+      if (!stateVal) return;
+      if (stateVal === 'pose') {
+        allPortraitPoses.push({
+          pose_label: pose.label,
+          color,
+          files:  pose.files || [],
+          paths:  pose.paths || [],
+          family: fc.poseFam || '',
+          date:   fc.poseDate || '',
+          location: fc.poseLoc || '',
+        });
+      } else {
+        const idxArr = Array.isArray(stateVal) ? stateVal : [...stateVal];
+        idxArr.forEach(idx => {
+          const path = (pose.paths || [])[idx] || '';
+          if (path) allPortraitSingles.push({ path, pose_label: pose.label, color, family: fc.poseFam || '' });
+        });
+      }
+    });
+  });
+
   localStorage.setItem('ci_checkout_cart', JSON.stringify({
-    folderCarts:      folderCarts,
-    printCart:        printCart,
-    frameCart:        frameCart,
-    currentFolderKey: currentFolderKey,
-    digitalLogoPaths: [..._digitalLogoPhotos],
-    returnUrl:        window.location.href,
-    timestamp:        Date.now(),
+    folderCarts:        folderCarts,
+    printCart:          printCart,
+    frameCart:          frameCart,
+    currentFolderKey:   currentFolderKey,
+    digitalLogoPaths:   [..._digitalLogoPhotos],
+    // Portrait items extracted from saved folders
+    portrait_poses:     allPortraitPoses.length   ? allPortraitPoses   : undefined,
+    portrait_singles:   allPortraitSingles.length ? allPortraitSingles : undefined,
+    returnUrl:          window.location.href,
+    timestamp:          Date.now(),
   }));
   window.location.href = '/checkout';
 }
