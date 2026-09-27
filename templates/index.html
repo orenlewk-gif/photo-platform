@@ -3126,35 +3126,32 @@ function renderCartView() {
     html += `<div class="cartview-section-label" style="margin-top:${html?'1.4rem':'0'};display:flex;align-items:center;">${label}${removeBtn}</div>`;
 
     if (digitalCount > 0) {
-      html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}</div>`;
       const photos = isCurrent
         ? [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean)
         : (fc.selectedPhotos || []);
-      const COLLAPSE_THRESHOLD = 10;
-      if (digitalCount > COLLAPSE_THRESHOLD) {
-        // Collapsed: one thumb + clickable +N badge
-        const first = photos[0];
-        const firstSrc = first ? `/api/photo?path=${enc(first.path)}&size=thumb&v=3` : '';
-        const escapedKey = escQ(key);
-        html += `<div class="cartview-photo-grid" style="cursor:pointer;" onclick="openFolderPhotosModal('${escapedKey}')">`;
-        html += `<div class="cartview-thumb" style="cursor:pointer;"><img src="${firstSrc}" alt="" /><div class="watermark"></div></div>`;
-        html += `<div class="cv-more-badge" style="cursor:pointer;">+${digitalCount - 1}</div>`;
-        html += `</div>`;
-      } else {
-        // Full grid with remove buttons
-        html += `<div class="cartview-photo-grid">`;
-        photos.forEach(p => {
-          const src = imgCache[p.path] || '';
-          const logoOn = _digitalLogoPhotos.has(p.path);
-          html += `<div class="cartview-thumb">
-            <img src="${src}" alt="${p.filename}" />
-            <div class="watermark"></div>
-            <button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="togglePhotoLogo('${escQ(p.path)}')">Logo</button>
-            <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
-          </div>`;
-        });
-        html += `</div>`;
-      }
+      const logoCount    = photos.filter(p => _digitalLogoPhotos.has(p.path)).length;
+      const folderLogoFee = logoCount * LOGO_FEE;
+      grandDigitalPrice += folderLogoFee;
+
+      const logoSuffix = folderLogoFee > 0
+        ? ` + ${logoCount} logo${logoCount!==1?'s':''} $${folderLogoFee.toFixed(2)}`
+        : '';
+      html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}${logoSuffix}</div>`;
+
+      // Always show full scrollable grid — every photo gets a logo toggle
+      const gridStyle = digitalCount > 10 ? 'max-height:220px;overflow-y:auto;' : '';
+      html += `<div class="cartview-photo-grid" style="${gridStyle}">`;
+      photos.forEach(p => {
+        const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+        const logoOn = _digitalLogoPhotos.has(p.path);
+        html += `<div class="cartview-thumb">
+          <img src="${src}" alt="${p.filename}" />
+          <div class="watermark"></div>
+          <button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="togglePhotoLogo('${escQ(p.path)}')">Logo</button>
+          <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
+        </div>`;
+      });
+      html += `</div>`;
     }
 
     // Prints within this folder
