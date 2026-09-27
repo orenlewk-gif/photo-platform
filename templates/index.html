@@ -3547,73 +3547,31 @@ function buildFrameOptions(currentFrameLabel, sizeIdx) {
 
 // ── Checkout ──
 function openCheckout() {
-  // Portrait pose mode
-  if (_poseData && _poseData.has_poses) {
-    const { fullPoses, singles, total } = calcPortraitTotal();
-    if (fullPoses === 0 && singles === 0 && printCart.length === 0 && frameCart.length === 0) return;
-    const posesToSend = [];
-    const singlesList = [];
-    (_poseData.poses || []).forEach(pose => {
-      const color = pose.color || '';
-      if (_poseState[color] === 'pose') {
-        posesToSend.push({
-          pose_label: pose.label,
-          color:      color,
-          files:      pose.files || [],
-          paths:      (pose.files || []).map(f => {
-            const p = allPhotos.find(ph => (ph.filename || ph.path.split('/').pop()) === f);
-            return p ? p.path : '';
-          }).filter(Boolean),
-          family: _poseFam,
-        });
-      } else if (_poseState[color] instanceof Set) {
-        _poseState[color].forEach(globalIdx => {
-          const photo = allPhotos[globalIdx];
-          if (photo) singlesList.push({ path: photo.path, pose_label: pose.label, color, family: _poseFam });
-        });
-      }
-    });
-    localStorage.setItem('ci_checkout_cart', JSON.stringify({
-      portrait_poses:   posesToSend,
-      portrait_singles: singlesList,
-      date:             _poseDate,
-      location:         _poseLoc,
-      family:           _poseFam,
-      printCart:        printCart,
-      frameCart:        frameCart,
-      digitalLogoPaths: [..._digitalLogoPhotos],
-      returnUrl:        window.location.href,
-      timestamp:        Date.now(),
-    }));
-    window.location.href = '/checkout';
-    return;
-  }
+  // Flush current gallery state (portrait or action) into folderCarts before building payload
+  saveCurrentFolder();
 
   const folderHasItems = Object.values(folderCarts).some(fc =>
     (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0
     || (fc.poseState && Object.keys(fc.poseState).length > 0));
   if (selectedPhotos.size === 0 && printCart.length === 0 && frameCart.length === 0 && !folderHasItems) return;
 
-  saveCurrentFolder();
-
-  // Extract portrait items from saved folderCarts so checkout.html receives them
+  // Extract portrait items from ALL saved folders (current folder is now included after saveCurrentFolder)
   const allPortraitPoses   = [];
   const allPortraitSingles = [];
   Object.values(folderCarts).forEach(fc => {
     if (!fc.poseState || !fc.poses) return;
     fc.poses.forEach(pose => {
-      const color = pose.color || '';
+      const color    = pose.color || '';
       const stateVal = fc.poseState[color];
       if (!stateVal) return;
       if (stateVal === 'pose') {
         allPortraitPoses.push({
-          pose_label: pose.label,
-          color,
-          files:  pose.files || [],
-          paths:  pose.paths || [],
-          family: fc.poseFam || '',
-          date:   fc.poseDate || '',
-          location: fc.poseLoc || '',
+          pose_label: pose.label, color,
+          files:    pose.files || [],
+          paths:    pose.paths || [],
+          family:   fc.poseFam   || '',
+          date:     fc.poseDate  || '',
+          location: fc.poseLoc   || '',
         });
       } else {
         const idxArr = Array.isArray(stateVal) ? stateVal : [...stateVal];
@@ -3626,16 +3584,19 @@ function openCheckout() {
   });
 
   localStorage.setItem('ci_checkout_cart', JSON.stringify({
-    folderCarts:        folderCarts,
-    printCart:          printCart,
-    frameCart:          frameCart,
-    currentFolderKey:   currentFolderKey,
-    digitalLogoPaths:   [..._digitalLogoPhotos],
-    // Portrait items extracted from saved folders
-    portrait_poses:     allPortraitPoses.length   ? allPortraitPoses   : undefined,
-    portrait_singles:   allPortraitSingles.length ? allPortraitSingles : undefined,
-    returnUrl:          window.location.href,
-    timestamp:          Date.now(),
+    folderCarts,
+    printCart,
+    frameCart,
+    currentFolderKey,
+    digitalLogoPaths:  [..._digitalLogoPhotos],
+    portrait_poses:    allPortraitPoses.length   ? allPortraitPoses   : undefined,
+    portrait_singles:  allPortraitSingles.length ? allPortraitSingles : undefined,
+    // Top-level date/location/family for email template (derived from first portrait pose if available)
+    date:     allPortraitPoses[0]?.date     || '',
+    location: allPortraitPoses[0]?.location || '',
+    family:   allPortraitPoses[0]?.family   || '',
+    returnUrl: window.location.href,
+    timestamp: Date.now(),
   }));
   window.location.href = '/checkout';
 }
