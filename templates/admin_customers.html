@@ -29,12 +29,14 @@ table{width:100%;border-collapse:collapse}
 thead th{padding:.65rem 1rem;font-size:.72rem;font-weight:700;text-transform:uppercase;
   letter-spacing:.7px;color:rgba(255,255,255,.35);text-align:left;
   border-bottom:1px solid rgba(255,255,255,.07);background:#071827}
-tbody tr{border-bottom:1px solid rgba(255,255,255,.05);transition:background .1s}
+tbody tr{border-bottom:1px solid rgba(255,255,255,.05);transition:background .1s;cursor:pointer}
 tbody tr:last-child{border-bottom:none}
-tbody tr:hover{background:rgba(255,255,255,.03)}
+tbody tr:hover{background:rgba(245,197,24,.05)}
 td{padding:.65rem 1rem;font-size:.86rem;color:rgba(255,255,255,.85);vertical-align:middle}
 td.name{font-weight:600;color:#e8eaf0}
 td.email{color:rgba(255,255,255,.5);font-size:.82rem}
+td.phone{color:rgba(255,255,255,.4);font-size:.82rem}
+td.edit-hint{color:rgba(255,255,255,.18);font-size:.75rem;text-align:right;white-space:nowrap}
 .empty-state{padding:3rem;text-align:center;color:rgba(255,255,255,.3);font-size:.9rem}
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
   background:#1a3a1a;color:#6ee86e;border:1px solid rgba(110,232,110,.25);
@@ -42,6 +44,30 @@ td.email{color:rgba(255,255,255,.5);font-size:.82rem}
   opacity:0;transition:opacity .2s;pointer-events:none;z-index:999}
 #toast.show{opacity:1}
 #toast.err{background:#3a1a1a;color:#e86e6e;border-color:rgba(232,110,110,.25)}
+
+/* Edit modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;
+  display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-box{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px;
+  padding:1.5rem;width:420px;max-width:calc(100vw - 2rem)}
+.modal-title{font-size:1rem;font-weight:700;color:#F5C518;margin-bottom:1.25rem}
+.form-field{margin-bottom:.85rem}
+.form-field label{display:block;font-size:.7rem;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:rgba(255,255,255,.38);margin-bottom:.35rem}
+.form-field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);
+  border-radius:7px;padding:.52rem .75rem;color:#fff;font-size:.88rem;outline:none;
+  transition:border-color .15s;font-family:inherit}
+.form-field input:focus{border-color:#F5C518}
+.modal-actions{display:flex;align-items:center;gap:.65rem;margin-top:1.25rem}
+.modal-actions .spacer{flex:1}
+.btn{padding:.5rem 1.1rem;border-radius:7px;font-size:.83rem;font-weight:600;
+  cursor:pointer;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:#F5C518;color:#07151f}
+.btn-ghost{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.14)}
+.btn-danger{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
+.btn-danger:hover{background:rgba(239,68,68,.25)}
 </style>
 </head>
 <body>
@@ -62,15 +88,36 @@ td.email{color:rgba(255,255,255,.5);font-size:.82rem}
           <tr>
             <th>Name</th>
             <th>Email</th>
+            <th>Phone</th>
+            <th></th>
           </tr>
         </thead>
         <tbody id="customer-tbody">
-          <tr><td colspan="2" class="empty-state">Loading...</td></tr>
+          <tr><td colspan="4" class="empty-state">Loading...</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 </div>
+
+<!-- Edit modal -->
+<div id="edit-modal" class="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <div class="modal-title">Edit Customer</div>
+    <div class="form-field"><label>First Name</label><input type="text" id="ef-first"></div>
+    <div class="form-field"><label>Last Name</label><input type="text" id="ef-last"></div>
+    <div class="form-field"><label>Email</label><input type="email" id="ef-email"></div>
+    <div class="form-field"><label>Phone</label><input type="text" id="ef-phone"></div>
+    <div class="form-field"><label>Address</label><input type="text" id="ef-address"></div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" onclick="deleteCustomer()">Delete</button>
+      <div class="spacer"></div>
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCustomer()">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
@@ -78,6 +125,7 @@ if (window.parent !== window) document.documentElement.classList.add('embedded')
 
 let allCustomers = [];
 let searchTimer = null;
+let editEmail = null; // email of customer currently being edited
 
 async function loadCustomers() {
   try {
@@ -113,17 +161,82 @@ function updateCount(n, isSearch) {
 function render(list) {
   const tbody = document.getElementById('customer-tbody');
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="2" class="empty-state">No customers found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No customers found</td></tr>';
     return;
   }
   tbody.innerHTML = list.map(c => {
-    const name = [c.first||'', c.last||''].filter(Boolean).join(' ') || '—';
+    const name  = [c.first||'', c.last||''].filter(Boolean).join(' ') || c.name || '—';
     const email = c.email || '—';
-    return `<tr>
+    const phone = c.phone || '';
+    return `<tr onclick="openEdit(${JSON.stringify(c.email||'')})">
       <td class="name">${esc(name)}</td>
       <td class="email">${esc(email)}</td>
+      <td class="phone">${esc(phone)}</td>
+      <td class="edit-hint">Edit ›</td>
     </tr>`;
   }).join('');
+}
+
+function openEdit(email) {
+  const c = allCustomers.find(x => x.email === email);
+  if (!c) return;
+  editEmail = email;
+  document.getElementById('ef-first').value   = c.first   || '';
+  document.getElementById('ef-last').value    = c.last    || '';
+  document.getElementById('ef-email').value   = c.email   || '';
+  document.getElementById('ef-phone').value   = c.phone   || '';
+  document.getElementById('ef-address').value = c.address || '';
+  document.getElementById('edit-modal').classList.add('open');
+  document.getElementById('ef-first').focus();
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  editEmail = null;
+}
+
+async function saveCustomer() {
+  const idx = allCustomers.findIndex(x => x.email === editEmail);
+  if (idx === -1) return;
+  allCustomers[idx] = {
+    ...allCustomers[idx],
+    first:   document.getElementById('ef-first').value.trim(),
+    last:    document.getElementById('ef-last').value.trim(),
+    email:   document.getElementById('ef-email').value.trim(),
+    phone:   document.getElementById('ef-phone').value.trim(),
+    address: document.getElementById('ef-address').value.trim(),
+  };
+  await persist();
+  closeModal();
+  render(allCustomers);
+  updateCount(allCustomers.length);
+}
+
+async function deleteCustomer() {
+  const idx = allCustomers.findIndex(x => x.email === editEmail);
+  if (idx === -1) return;
+  const c = allCustomers[idx];
+  const name = [c.first||'', c.last||''].filter(Boolean).join(' ') || c.email;
+  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  allCustomers.splice(idx, 1);
+  await persist();
+  closeModal();
+  render(allCustomers);
+  updateCount(allCustomers.length);
+}
+
+async function persist() {
+  try {
+    const r = await fetch('/api/pos-customers', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(allCustomers),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    showToast('Saved');
+  } catch(e) {
+    showToast('Save failed: ' + e, 'err');
+  }
 }
 
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -135,6 +248,8 @@ function showToast(msg, type='show') {
   clearTimeout(t._tid);
   t._tid = setTimeout(() => t.className = '', 2800);
 }
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
 loadCustomers();
 </script>
