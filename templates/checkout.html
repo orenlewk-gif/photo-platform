@@ -732,11 +732,15 @@ function renderSummary() {
         <div class="co-item-price">$${singPrice.toFixed(2)}</div>
       </div>`;
     });
-    if (cartData.digitalLogo && (poses.length || pSingles.length)) {
-      digTotal += 2;
+    const pLogoCount = (cartData.digitalLogoPaths || []).length;
+    if (pLogoCount > 0 && (poses.length || pSingles.length)) {
+      const pLogoFee = pLogoCount * 2;
+      digTotal += pLogoFee;
       itemsHtml += `<div class="co-item">
-        <div class="co-item-name">Digital logo add-on</div>
-        <div class="co-item-price">$2.00</div>
+        <div class="co-item-name">Digital logo add-on
+          <div class="co-item-sub">${pLogoCount} photo${pLogoCount !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="co-item-price">$${pLogoFee.toFixed(2)}</div>
       </div>`;
     }
   }
@@ -746,8 +750,8 @@ function renderSummary() {
 
   // Digital folders
   const hasAnyDigital = Object.values(fc).some(f => f.selectedPhotos?.length);
-  const digitalLogoEnabled = (cartData.digitalLogo || false) && hasAnyDigital;
-  if (digitalLogoEnabled) digTotal += 2;
+  const aLogoCount = hasAnyDigital ? (cartData.digitalLogoPaths || []).length : 0;
+  if (aLogoCount > 0) digTotal += aLogoCount * 2;
   Object.entries(fc).forEach(([key, folder]) => {
     const n = folder.selectedPhotos?.length || 0;
     if (!n) return;
@@ -763,10 +767,13 @@ function renderSummary() {
       <div class="co-item-price">$${price.toFixed(2)}</div>
     </div>`;
   });
-  if (digitalLogoEnabled) {
+  if (aLogoCount > 0) {
+    const aLogoFee = aLogoCount * 2;
     itemsHtml += `<div class="co-item">
-      <div class="co-item-name">Digital logo add-on</div>
-      <div class="co-item-price">$2.00</div>
+      <div class="co-item-name">Digital logo add-on
+        <div class="co-item-sub">${aLogoCount} photo${aLogoCount !== 1 ? 's' : ''}</div>
+      </div>
+      <div class="co-item-price">$${aLogoFee.toFixed(2)}</div>
     </div>`;
   }
 

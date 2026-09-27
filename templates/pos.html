@@ -1183,6 +1183,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 const PC_UNLOCK_KEY = 'ci_pos_unlocked';
 const PC_UNLOCK_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days
 
+let LOGO_FEE = 2; // loaded from /api/pricing logo_fee
+
 // ─── State ───────────────────────────────────────────────────────────────────
 const S = {
   // Auth
@@ -1417,7 +1419,7 @@ function cartSubRemove(itemId, type, idx){
     if(item._customPrice == null){
       const logoCount = (item._logoPaths || []).length;
       const poseCount = item._poses ? item._poses.length : 1;
-      item.price    = (item._poseBasePrice || 0) * poseCount + logoCount * 2;
+      item.price    = (item._poseBasePrice || 0) * poseCount + logoCount * LOGO_FEE;
       item.subtotal = item.price;
     }
   }
@@ -1514,7 +1516,7 @@ function renderCart(){
     if(item._logoPaths && item._logoPaths.length){
       item._logoPaths.forEach((p, li) => {
         const fn = p.split('/').pop();
-        subLines += `<div class="cart-item-detail" style="color:var(--accent);display:flex;align-items:center;justify-content:space-between;gap:.3rem"><span>${escHtml(fn)} +$2</span><button onclick="event.stopPropagation();cartSubRemove('${item.id}','logo',${li})" style="background:none;border:none;color:var(--accent);font-size:.9rem;cursor:pointer;padding:0 2px;line-height:1;touch-action:manipulation;flex-shrink:0">×</button></div>`;
+        subLines += `<div class="cart-item-detail" style="color:var(--accent);display:flex;align-items:center;justify-content:space-between;gap:.3rem"><span>${escHtml(fn)} +${fmt(LOGO_FEE)}</span><button onclick="event.stopPropagation();cartSubRemove('${item.id}','logo',${li})" style="background:none;border:none;color:var(--accent);font-size:.9rem;cursor:pointer;padding:0 2px;line-height:1;touch-action:manipulation;flex-shrink:0">×</button></div>`;
       });
     } else if(item._logoPrice){
       subLines += `<div class="cart-item-detail" style="color:var(--accent)">Logo +${fmt(item._logoPrice)}</div>`;
@@ -2621,7 +2623,7 @@ function recalcPortraitPosePrices(){
     item._poseBasePrice = rate;
     const poseCount = item._poses.length;
     const logoCount  = (item._logoPaths || []).length;
-    item.price    = poseCount * rate + logoCount * 2;
+    item.price    = poseCount * rate + logoCount * LOGO_FEE;
     item.subtotal = item.price;
     item.detail = [`${poseCount} pose${poseCount!==1?'s':''} · ${fmt(rate)}/pose`, item.date||''].filter(Boolean).join(' · ');
   });
@@ -2629,7 +2631,7 @@ function recalcPortraitPosePrices(){
     if(item._customPrice != null) return;
     item._poseBasePrice = rate;
     const logoCount = (item._logoPaths || []).length;
-    item.price    = rate + logoCount * 2;
+    item.price    = rate + logoCount * LOGO_FEE;
     item.subtotal = item.price;
     item.detail   = item.detail.replace(/\$[\d.]+\/pose/, `${fmt(rate)}/pose`);
   });
@@ -3103,6 +3105,7 @@ async function loadActionPricing(){
   try {
     const res = await fetch('/api/pricing');
     const d = await res.json();
+    if(typeof d.logo_fee === 'number') LOGO_FEE = d.logo_fee;
     const wa = (d.activities || {})['Winter Action'];
     if(wa && (wa.per_photo || wa.all_photos)){
       S.actionPricing = {per_photo: wa.per_photo || 25, all_photos: wa.all_photos || 115};
@@ -3389,8 +3392,8 @@ function renderItemModal(){
         </div>`;
       }).join('');
       body += `</div>`;
-      body += `<div id="portrait-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * 2)}` : 'Tap a photo to add logo (+$2 each)'}</div>`;
-      body += _imCustomPriceField(im.customPrice, `Leave blank for auto (${fmt(im._poseBasePrice * (im._poseCount||1) + (im._logoPaths||[]).length * 2)})`);
+      body += `<div id="portrait-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * LOGO_FEE)}` : `Tap a photo to add logo (+${fmt(LOGO_FEE)} each)`}</div>`;
+      body += _imCustomPriceField(im.customPrice, `Leave blank for auto (${fmt(im._poseBasePrice * (im._poseCount||1) + (im._logoPaths||[]).length * LOGO_FEE)})`);
 
     // Action photos: thumbnails with per-photo logo toggle + print shortcut
     } else if(im.category === 'action_photos' && im.photo_paths && im.photo_paths.length){
@@ -3413,8 +3416,8 @@ function renderItemModal(){
         </div>`;
       }).join('');
       body += `</div>`;
-      body += `<div id="ap-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${apLogoCount > 0 ? `${apLogoCount} photo${apLogoCount!==1?'s':''} with logo · +${fmt(apLogoCount * 2)}` : 'Tap a photo to add logo (+$2 each)'}</div>`;
-      body += _imCustomPriceField(im.customPrice, `Leave blank for auto (${fmt(im._baseActionPrice + (im._logoPaths||[]).length * 2)})`);
+      body += `<div id="ap-logo-count" style="font-size:.78rem;color:var(--muted);margin-bottom:.55rem">${apLogoCount > 0 ? `${apLogoCount} photo${apLogoCount!==1?'s':''} with logo · +${fmt(apLogoCount * LOGO_FEE)}` : `Tap a photo to add logo (+${fmt(LOGO_FEE)} each)`}</div>`;
+      body += _imCustomPriceField(im.customPrice, `Leave blank for auto (${fmt(im._baseActionPrice + (im._logoPaths||[]).length * LOGO_FEE)})`);
 
     }
 
@@ -3470,11 +3473,11 @@ function imUpdatePrice(){
   } else if(im.type === 'cart_edit'){
     if(im.category === 'portrait' && im._poseBasePrice){
       const logoCount = (im._logoPaths || []).length;
-      const calc = im._poseBasePrice * (im._poseCount || 1) + logoCount * 2;
+      const calc = im._poseBasePrice * (im._poseCount || 1) + logoCount * LOGO_FEE;
       price = (im.customPrice != null) ? im.customPrice : calc;
     } else if(im.category === 'action_photos' && im._baseActionPrice){
       const logoCount = (im._logoPaths || []).length;
-      const calc = im._baseActionPrice + logoCount * 2;
+      const calc = im._baseActionPrice + logoCount * LOGO_FEE;
       price = (im.customPrice != null) ? im.customPrice : calc;
     } else {
       price = (im.customPrice != null) ? im.customPrice : im.basePrice;
@@ -3575,7 +3578,7 @@ function imPortraitPhotoTap(idx){
   }
   const logoCount = im._logoPaths.length;
   const countEl = $('portrait-logo-count');
-  if(countEl) countEl.textContent = logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * 2)}` : 'Tap a photo to add logo (+$2 each)';
+  if(countEl) countEl.textContent = logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * LOGO_FEE)}` : `Tap a photo to add logo (+${fmt(LOGO_FEE)} each)`;
   imUpdatePrice();
 }
 
@@ -3602,7 +3605,7 @@ function imActionPhotoTap(idx){
   }
   const logoCount = im._logoPaths.length;
   const countEl = $('ap-logo-count');
-  if(countEl) countEl.textContent = logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * 2)}` : 'Tap a photo to add logo (+$2 each)';
+  if(countEl) countEl.textContent = logoCount > 0 ? `${logoCount} photo${logoCount!==1?'s':''} with logo · +${fmt(logoCount * LOGO_FEE)}` : `Tap a photo to add logo (+${fmt(LOGO_FEE)} each)`;
   imUpdatePrice();
 }
 
@@ -3639,11 +3642,11 @@ function itemModalAddToCart(){
         } else {
           item._customPrice = null;
           const poseCount = item._poses ? item._poses.length : 1;
-          item.price = (item._poseBasePrice || 0) * poseCount + logoCount * 2;
+          item.price = (item._poseBasePrice || 0) * poseCount + logoCount * LOGO_FEE;
         }
         item.subtotal = item.price;
-        const logoStr = logoCount > 0 ? ` · +$${logoCount * 2} logo` : '';
-        item.detail = item.detail.replace(/ · \+\$\d+ logo/g, '') + logoStr;
+        const logoStr = logoCount > 0 ? ` · +$${(logoCount * LOGO_FEE).toFixed(2).replace(/\.00$/,'')} logo` : '';
+        item.detail = item.detail.replace(/ · \+\$[\d.]+ logo/g, '') + logoStr;
         if((item._poseUnit || item._poses) && im.customPrice == null) recalcPortraitPosePrices();
       } else if(item.category === 'action_photos'){
         item._logoPaths = im._logoPaths || [];
@@ -3653,10 +3656,10 @@ function itemModalAddToCart(){
           item.price = im.customPrice;
         } else {
           item._customPrice = null;
-          item.price = (item._baseActionPrice || item.price) + logoCount * 2;
+          item.price = (item._baseActionPrice || item.price) + logoCount * LOGO_FEE;
         }
         item.subtotal = item.price;
-        const logoStr = logoCount > 0 ? ` · +$${logoCount * 2} logo` : '';
+        const logoStr = logoCount > 0 ? ` · +$${(logoCount * LOGO_FEE).toFixed(2).replace(/\.00$/,'')} logo` : '';
         item.detail = item.detail.replace(/ · \+\$\d+ logo/g, '') + logoStr;
       } else {
         item.price    = im.customPrice != null ? im.customPrice : im.basePrice;

@@ -222,6 +222,7 @@ input[type="text"].full{width:100%}
       <button class="pr-tab" id="ptab-base-area" onclick="showSection('base-area')">Base Area</button>
       <button class="pr-tab" id="ptab-bundles" onclick="showPricingGroup('bundles')">Bundles</button>
       <button class="pr-tab" id="ptab-items-bundles" onclick="showSection('items-bundles')">Item Lists</button>
+      <button class="pr-tab" id="ptab-logo-addon" onclick="showSection('logo-addon')">Logo Add-on</button>
     </div>
     <div id="pr-tabs-sub" class="pr-tabs-row"></div>
   </div>
@@ -481,6 +482,23 @@ input[type="text"].full{width:100%}
       </div>
     </div>
 
+    <!-- ── Logo Add-on ── -->
+    <div id="sec-logo-addon" class="section">
+      <h1>Logo Add-on</h1>
+      <p class="subtitle">Price charged per photo when a customer adds the licensed logo to digital or print orders. Applies across the website and the POS.</p>
+      <div class="card">
+        <div class="field-row">
+          <label style="min-width:140px">Price per photo</label>
+          <span style="color:rgba(255,255,255,.4);font-size:13px;margin-right:4px">$</span>
+          <input type="number" id="logo-fee-input" min="0" step="0.50" value="2" style="width:80px">
+        </div>
+        <p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:.75rem">Changing this only affects new orders. Existing cart sessions still use the price from when they were opened.</p>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="saveLogoAddon()">Save</button>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /layout -->
 
@@ -552,6 +570,9 @@ function renderAll(){
   renderBigSkyFrames();
   renderItemsBundles();
   renderItemsBundleChecks();
+  // Logo add-on fee
+  const logoInput = document.getElementById('logo-fee-input');
+  if(logoInput && typeof pricingData.logo_fee === 'number') logoInput.value = pricingData.logo_fee;
   showPricingGroup('digital');
 }
 
@@ -1087,6 +1108,14 @@ async function saveItemsBundles(){
   if(r.ok) showToast('Items bundles saved'); else showToast('Save failed','err');
 }
 
+async function saveLogoAddon(){
+  const val = parseFloat(document.getElementById('logo-fee-input').value);
+  if(isNaN(val) || val < 0){ showToast('Enter a valid price','err'); return; }
+  pricingData.logo_fee = val;
+  const r = await fetch('/api/admin/pricing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pricingData)});
+  if(r.ok) showToast('Logo fee saved — $'+val.toFixed(2)+' per photo'); else showToast('Save failed','err');
+}
+
 // ── Sidebar folder tree ────────────────────────────────────────────────────────
 (async function(){
   try{
@@ -1147,6 +1176,7 @@ const _sectionMap = {
   'create-bundle':    ['bundles'],
   'all-bundles':      ['bundles'],
   'items-bundles':    [],
+  'logo-addon':       [],
 };
 
 function navToSection(name){

@@ -532,6 +532,8 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   line-height:1;
 }
 .cartview-thumb .cv-remove:hover { background:#e53e3e; }
+.cv-logo-btn { position:absolute; bottom:0; left:0; right:0; z-index:5; background:rgba(0,0,0,.72); border:none; color:rgba(255,255,255,.42); font-size:.58rem; font-weight:700; padding:3px 0; text-align:center; cursor:pointer; font-family:'DM Sans',sans-serif; letter-spacing:.06em; text-transform:uppercase; transition:background .15s, color .15s; }
+.cv-logo-btn.active { background:rgba(245,197,24,.3); color:#F5C518; }
 .cv-more-badge {
   display:flex; align-items:center; justify-content:center;
   width:76px; height:76px; border-radius:8px; flex-shrink:0;
@@ -1567,6 +1569,7 @@ async function init() {
     const pRes = await fetch('/api/pricing?location=');
     const pData = await pRes.json();
     if (pData.combos) { globalCombos = pData.combos; updateCart(); }
+    if (typeof pData.logo_fee === 'number') LOGO_FEE = pData.logo_fee;
   } catch(e) {}
   const params = new URLSearchParams(location.search);
   const date   = params.get('date');
@@ -1929,9 +1932,9 @@ let _portraitPricing = null;
 const _poseExpandedMobile = new Set(); // pose indices expanded on mobile
 
 // ── Logo add-on ─────────────────────────────────────────────────────────────
-const LOGO_FEE = 2;
+let LOGO_FEE = 2; // overwritten from /api/pricing logo_fee on init
 let _qsLogo = false;
-let _digitalLogoEnabled = false;
+const _digitalLogoPhotos = new Set(); // photo paths that have digital logo enabled ($2 each)
 
 const POSE_COLOR_CSS = {
   Red: '#e05252', Orange: '#e0854a', Yellow: '#d4b44a',
@@ -2220,7 +2223,7 @@ function updatePoseCart() {
   if (printCount)  parts.push(`${printCount} print${printCount !== 1 ? 's' : ''}`);
   document.getElementById('cart-count-text').textContent = parts.join(' + ');
   const printTotal = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const digiLogoFee = _digitalLogoEnabled && poseCount > 0 ? LOGO_FEE : 0;
+  const digiLogoFee = _digitalLogoPhotos.size * LOGO_FEE;
   document.getElementById('cart-price-text').textContent = `$${(total + digiLogoFee + printTotal).toFixed(2)}`;
   updateHeaderCartBtn();
   const saBtn  = document.getElementById('cart-select-all-btn');
@@ -2310,7 +2313,8 @@ function renderPoseCartView() {
     let t = `<div class="cartview-photo-grid" ${gridClick}>`;
     shown.forEach(p => {
       const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
-      t += `<div class="cartview-thumb"><img src="${src}" alt="" /><div class="watermark"></div></div>`;
+      const logoOn = _digitalLogoPhotos.has(p.path);
+      t += `<div class="cartview-thumb"><img src="${src}" alt="" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
     });
     if (rest > 0) t += `<div class="cv-more-badge" onclick="${clickFn}">+${rest}</div>`;
     t += '</div>';
@@ -2381,12 +2385,12 @@ function renderPoseCartView() {
 
   if (!html) { body.innerHTML = '<p style="color:rgba(255,255,255,.4);text-align:center;padding:1rem 0">No poses selected yet.</p>'; return; }
   const printTotal = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const poseCount = Object.values(_poseState).filter(v => v === 'pose').length + Object.values(_poseState).filter(v => v instanceof Set).reduce((s, set) => s + set.size, 0);
-  const digiLogoFee = _digitalLogoEnabled && poseCount > 0 ? LOGO_FEE : 0;
+  const digiLogoFee = _digitalLogoPhotos.size * LOGO_FEE;
   if (digiLogoFee > 0) {
+    const n = _digitalLogoPhotos.size;
     html += `<div class="cv-logo-row" style="padding:.4rem 0;border-top:1px solid rgba(255,255,255,.06);margin-top:.4rem">
-      <span class="cv-logo-label">Digital logo +$${digiLogoFee.toFixed(2)}</span>
-      <button class="cv-logo-remove" onclick="removeDigitalLogo();renderPoseCartView();updatePoseCart()" title="Remove">×</button>
+      <span class="cv-logo-label">Logo on ${n} photo${n !== 1 ? 's' : ''} +$${digiLogoFee.toFixed(2)}</span>
+      <button class="cv-logo-remove" onclick="_digitalLogoPhotos.clear();renderPoseCartView();updatePoseCart()" title="Remove all">×</button>
     </div>`;
   }
   const grandTotal = total + digiLogoFee + printTotal;
@@ -2966,7 +2970,7 @@ function updateCart() {
   const shipping      = calcShipping();
   const comboActive   = checkCombo();
   const comboDiscount = comboActive ? comboActive.discount : 0;
-  const digitalLogoFee = _digitalLogoEnabled && (count > 0 || lockedTier) ? LOGO_FEE : 0;
+  const digitalLogoFee = _digitalLogoPhotos.size * LOGO_FEE;
   const total         = digitalPrice + digitalLogoFee + otherPrice + printPrice + framePrice + shipping - comboDiscount;
 
   // Count text: current folder only (so it matches what the customer sees highlighted)
@@ -3141,19 +3145,15 @@ function renderCartView() {
         html += `<div class="cartview-photo-grid">`;
         photos.forEach(p => {
           const src = imgCache[p.path] || '';
+          const logoOn = _digitalLogoPhotos.has(p.path);
           html += `<div class="cartview-thumb">
             <img src="${src}" alt="${p.filename}" />
             <div class="watermark"></div>
+            <button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="togglePhotoLogo('${escQ(p.path)}')">Logo</button>
             <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
           </div>`;
         });
         html += `</div>`;
-      }
-      if (isCurrent && _digitalLogoEnabled) {
-        html += `<div class="cv-logo-row" style="margin-top:.3rem">
-          <span class="cv-logo-label">Digital logo +$${LOGO_FEE.toFixed(2)}</span>
-          <button class="cv-logo-remove" onclick="removeDigitalLogo();renderCartView();" title="Remove">×</button>
-        </div>`;
       }
     }
 
@@ -3266,6 +3266,7 @@ function renderCartView() {
 }
 
 function deSelectPhotoByPath(path) {
+  _digitalLogoPhotos.delete(path);
   const idx = allPhotos.findIndex(p => p.path === path);
   if (idx !== -1 && selectedPhotos.has(idx)) {
     toggleSelect(idx);
@@ -3275,6 +3276,7 @@ function deSelectPhotoByPath(path) {
 
 // Remove a digital photo from a non-current folder's cart
 function removeFolderDigital(key, path) {
+  _digitalLogoPhotos.delete(path);
   const fc = folderCarts[key];
   if (!fc) return;
   fc.selectedPaths  = (fc.selectedPaths  || []).filter(p => p !== path);
@@ -3402,7 +3404,7 @@ function openCheckout() {
       family:           _poseFam,
       printCart:        printCart,
       frameCart:        frameCart,
-      digitalLogo:      _digitalLogoEnabled,
+      digitalLogoPaths: [..._digitalLogoPhotos],
       returnUrl:        window.location.href,
       timestamp:        Date.now(),
     }));
@@ -3420,7 +3422,7 @@ function openCheckout() {
     printCart:        printCart,
     frameCart:        frameCart,
     currentFolderKey: currentFolderKey,
-    digitalLogo:      _digitalLogoEnabled,
+    digitalLogoPaths: [..._digitalLogoPhotos],
     returnUrl:        window.location.href,
     timestamp:        Date.now(),
   }));
@@ -3767,11 +3769,12 @@ async function submitToWooCommerce() {
   const loc    = photos[0]?.location || allPhotos[allPrints[0]?.photoIdx]?.location || '';
   const date   = photos[0]?.date     || allPhotos[allPrints[0]?.photoIdx]?.date     || '';
 
-  const digitalLogoInPayload = _digitalLogoEnabled && count > 0 ? LOGO_FEE : 0;
+  const digitalLogoCount    = count > 0 ? _digitalLogoPhotos.size : 0;
+  const digitalLogoInPayload = digitalLogoCount * LOGO_FEE;
   const payload = {
     digital_count:     count,
     digital_price:     allDigitalPrice + digitalLogoInPayload,
-    digital_logo:      _digitalLogoEnabled && count > 0,
+    digital_logo_count: digitalLogoCount,
     digital_filenames: photos.map(p => p.filename),
     digital_paths:     photos.map(p => p.path),
     prints: allPrints.map(p => ({
@@ -4324,20 +4327,24 @@ function toggleQsLogo() {
   }
 }
 
-function toggleDigitalLogo() {
-  _digitalLogoEnabled = !_digitalLogoEnabled;
-  const track = document.getElementById('qs-digi-logo-track');
-  if (track) track.className = 'qs-logo-toggle-track' + (_digitalLogoEnabled ? ' on' : '');
-  const label = document.getElementById('qs-digi-logo-label');
-  if (label) label.innerHTML = _digitalLogoEnabled
-    ? `Logo on digital <span class="qs-logo-accent">+$${LOGO_FEE} added</span>`
-    : `Add logo to digital <span class="qs-logo-accent">+$${LOGO_FEE}</span>`;
-  if (_poseData) updatePoseCart(); else updateCart();
-}
-
-function removeDigitalLogo() {
-  _digitalLogoEnabled = false;
-  if (_poseData) updatePoseCart(); else updateCart();
+function togglePhotoLogo(path) {
+  if (_digitalLogoPhotos.has(path)) {
+    _digitalLogoPhotos.delete(path);
+  } else {
+    _digitalLogoPhotos.add(path);
+  }
+  // Sync quick shop toggle if this photo is currently open
+  const photo = allPhotos[_qsCurrentPhotoIdx];
+  if (photo && photo.path === path) {
+    const on = _digitalLogoPhotos.has(path);
+    const track = document.getElementById('qs-digi-logo-track');
+    if (track) track.className = 'qs-logo-toggle-track' + (on ? ' on' : '');
+    const label = document.getElementById('qs-digi-logo-label');
+    if (label) label.innerHTML = on
+      ? `Logo on this photo <span class="qs-logo-accent">+$${LOGO_FEE}</span>`
+      : `Add logo to this photo <span class="qs-logo-accent">+$${LOGO_FEE}</span>`;
+  }
+  if (_poseData) { renderPoseCartView(); updatePoseCart(); } else { renderCartView(); updateCart(); }
 }
 
 let _qsCurrentPhotoIdx = 0;
@@ -4412,12 +4419,16 @@ function openQuickShop(i) {
   const showDigiLogo = !currentPricing?.zip_group_size && (_poseData || (currentPricing && currentPricing.tiers));
   const dlSection = document.getElementById('qs-digital-logo-section');
   if (dlSection) {
-    _digitalLogoEnabled = false;
     dlSection.style.display = showDigiLogo ? '' : 'none';
-    dlSection.innerHTML = showDigiLogo ? `<div class="qs-logo-row" onclick="toggleDigitalLogo()">
-      <div id="qs-digi-logo-track" class="qs-logo-toggle-track"></div>
-      <span id="qs-digi-logo-label">Add logo to digital <span class="qs-logo-accent">+$${LOGO_FEE}</span></span>
-    </div>` : '';
+    if (showDigiLogo) {
+      const _dlOn = _digitalLogoPhotos.has(photo.path);
+      dlSection.innerHTML = `<div class="qs-logo-row" onclick="togglePhotoLogo('${escQ(photo.path)}')">
+        <div id="qs-digi-logo-track" class="qs-logo-toggle-track${_dlOn ? ' on' : ''}"></div>
+        <span id="qs-digi-logo-label">${_dlOn ? `Logo on this photo` : `Add logo to this photo`} <span class="qs-logo-accent">+$${LOGO_FEE}</span></span>
+      </div>`;
+    } else {
+      dlSection.innerHTML = '';
+    }
   }
 
   // Print section
