@@ -2283,7 +2283,7 @@ function _fpOpenPosePhotos(label, photos) {
     const logoOn = _digitalLogoPhotos.has(p.path);
     return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
   }).join('');
-  document.getElementById('fp-grid').innerHTML = `<div class="cartview-photo-grid">${thumbsHtml}</div>`;
+  document.getElementById('fp-grid').innerHTML = `<div class="cartview-photo-grid" style="grid-column:1/-1">${thumbsHtml}</div>`;
   document.getElementById('fp-overlay').classList.add('open');
 }
 function openPosePhotosModalByIdx(pi) {
@@ -2374,7 +2374,7 @@ function renderPoseCartView() {
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
           <div style="font-weight:700;font-size:.92rem">${p.size} Print${frameLabel}</div>
-          <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${esc(photo?.filename || '')}</div>
+          <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${escHtml(photo?.filename || '')}</div>
         </div>
         <div style="display:flex;align-items:center;gap:.75rem">
           <div style="font-weight:700;color:#F5C518">$${(p.price + p.framePrice).toFixed(2)}</div>
