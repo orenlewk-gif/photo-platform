@@ -506,7 +506,7 @@ let itemsBundlesData    = {bundles:[]};
 let _actGroupNames      = [];  // activity group names for bundle dropdowns
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
-fetch('/api/activity-groups').then(r=>r.json()).then(d=>{
+fetch('/api/admin/activity-groups').then(r=>r.json()).then(d=>{
   _actGroupNames = Object.keys(d.activity_groups || {}).sort();
   _renderBundleGroupSelects();
 }).catch(()=>{});
