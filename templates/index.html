@@ -2907,8 +2907,11 @@ function getUpsellMsg(count) {
       const moreLabel = nearest.more === 1 ? 'the last photo' : `the remaining ${nearest.more} photos`;
       return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} more</strong> → get all ${nearest.count} photos for $${nearest.price}`;
     }
+    if (nearest.isMax) {
+      return `Add <strong>up to ${nearest.more} more photo${nearest.more !== 1 ? 's' : ''}</strong> to complete your all photos package`;
+    }
     const moreLabel = nearest.more === 1 ? 'one more photo from this folder' : `${nearest.more} more photos from this folder`;
-    return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} extra</strong> → ${nearest.isMax?'up to ':''}${nearest.count} photos for $${nearest.price}`;
+    return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} extra</strong> → ${nearest.count} photos for $${nearest.price}`;
   }
 
   // Already at the cheapest tier — $0 extra to add more photos
