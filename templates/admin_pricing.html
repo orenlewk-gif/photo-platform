@@ -221,7 +221,6 @@ input[type="text"].full{width:100%}
       <button class="pr-tab" id="ptab-private-sessions" onclick="showSection('private-sessions')">Private Sessions</button>
       <button class="pr-tab" id="ptab-base-area" onclick="showSection('base-area')">Base Area</button>
       <button class="pr-tab" id="ptab-bundles" onclick="showPricingGroup('bundles')">Bundles</button>
-      <button class="pr-tab" id="ptab-items-bundles" onclick="showSection('items-bundles')">Item Lists</button>
       <button class="pr-tab" id="ptab-logo-addon" onclick="showSection('logo-addon')">Logo Add-on</button>
     </div>
     <div id="pr-tabs-sub" class="pr-tabs-row"></div>
@@ -457,30 +456,6 @@ input[type="text"].full{width:100%}
       </div>
     </div>
 
-    <!-- ── Item Lists ── -->
-    <div id="sec-items-bundles" class="section">
-      <h1>Item Lists</h1>
-      <p class="subtitle">Define named lists of purchasable item categories. Assign a list to a folder at upload to make those items available in that gallery.</p>
-      <div class="card">
-        <div id="items-bundles-list"></div>
-        <button class="btn btn-ghost btn-sm" style="margin-top:.8rem" onclick="toggleBundleEditor()">+ New Bundle</button>
-        <div id="bundle-editor" class="bundle-editor">
-          <div class="field-row" style="margin-bottom:.75rem">
-            <label style="min-width:80px">Bundle name</label>
-            <input type="text" id="ib-name" class="wide" placeholder="e.g. Action Photos">
-          </div>
-          <div style="font-size:12px;color:rgba(255,255,255,.45);margin-bottom:.5rem;text-transform:uppercase;letter-spacing:.8px">Include items</div>
-          <div id="ib-checks"></div>
-          <div class="btn-row">
-            <button class="btn btn-primary btn-sm" onclick="saveNewBundle()">Add Bundle</button>
-            <button class="btn btn-ghost btn-sm" onclick="toggleBundleEditor()">Cancel</button>
-          </div>
-        </div>
-      </div>
-      <div class="btn-row" style="margin-top:.25rem">
-        <button class="btn btn-primary btn-sm" onclick="saveItemsBundles()">Save All</button>
-      </div>
-    </div>
 
     <!-- ── Logo Add-on ── -->
     <div id="sec-logo-addon" class="section">
