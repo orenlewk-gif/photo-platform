@@ -235,7 +235,18 @@ input[type="range"]::-webkit-slider-thumb {
 .thumb-card:hover .card-fname    { opacity:1; }
 .thumb-card.selected .card-fname { opacity:1; }
 @media(hover:none) and (pointer:coarse) {
-  .card-fname { opacity:1; font-size:.62rem; padding:3px 6px; }
+  .card-fname { display:none; }
+}
+.card-time-badge {
+  display:none;
+}
+@media(hover:none) and (pointer:coarse) {
+  .card-time-badge {
+    display:block; position:absolute; top:6px; right:6px; z-index:5;
+    background:rgba(0,0,0,.55); color:rgba(255,255,255,.9);
+    font-size:.65rem; font-weight:600; padding:2px 6px; border-radius:4px;
+    pointer-events:none;
+  }
 }
 
 
@@ -1796,12 +1807,16 @@ function _fmtMinutes(m) {
 function _stampCardTimes(photoTimes) {
   document.querySelectorAll('.thumb-card[data-idx]').forEach(card => {
     const t = photoTimes[parseInt(card.dataset.idx, 10)];
+    // Desktop: update filename bar with "time · filename"
     const fnEl = card.querySelector('.card-fname');
-    if (!fnEl) return;
-    // Save original filename on first stamp so re-calls don't double-prepend
-    if (!card.dataset.fname) card.dataset.fname = fnEl.textContent;
-    const fname = card.dataset.fname;
-    fnEl.textContent = t != null ? `${_fmtMinutes(t)} · ${fname}` : fname;
+    if (fnEl) {
+      if (!card.dataset.fname) card.dataset.fname = fnEl.textContent;
+      const fname = card.dataset.fname;
+      fnEl.textContent = t != null ? `${_fmtMinutes(t)} · ${fname}` : fname;
+    }
+    // Mobile: time-only badge at top-right
+    const badge = card.querySelector('.card-time-badge');
+    if (badge) badge.textContent = t != null ? _fmtMinutes(t) : '';
   });
 }
 
@@ -2364,6 +2379,7 @@ function renderThumbs(photos) {
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
+      <div class="card-time-badge"></div>
       <button class="card-shop-btn" data-idx="${i}"><svg class="cart-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg><span class="cart-label"> Shop</span></button>
       <div class="card-fname">${photo.filename || ''}</div>`;
 
