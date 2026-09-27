@@ -732,12 +732,22 @@ function renderSummary() {
         <div class="co-item-price">$${singPrice.toFixed(2)}</div>
       </div>`;
     });
+    if (cartData.digitalLogo && (poses.length || pSingles.length)) {
+      digTotal += 2;
+      itemsHtml += `<div class="co-item">
+        <div class="co-item-name">Digital logo add-on</div>
+        <div class="co-item-price">$2.00</div>
+      </div>`;
+    }
   }
 
   // ── Pre-calculate combo adjusted prices ──────────────────────────────────
   const comboAdjPrices = calcComboAdjPrices(fc);
 
   // Digital folders
+  const hasAnyDigital = Object.values(fc).some(f => f.selectedPhotos?.length);
+  const digitalLogoEnabled = (cartData.digitalLogo || false) && hasAnyDigital;
+  if (digitalLogoEnabled) digTotal += 2;
   Object.entries(fc).forEach(([key, folder]) => {
     const n = folder.selectedPhotos?.length || 0;
     if (!n) return;
@@ -753,14 +763,21 @@ function renderSummary() {
       <div class="co-item-price">$${price.toFixed(2)}</div>
     </div>`;
   });
+  if (digitalLogoEnabled) {
+    itemsHtml += `<div class="co-item">
+      <div class="co-item-name">Digital logo add-on</div>
+      <div class="co-item-price">$2.00</div>
+    </div>`;
+  }
 
   // Prints
   prints.forEach(p => {
     const total = (p.price || 0) + (p.framePrice || 0);
     printTotal += total;
     const frameLabel = p.frame && p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
+    const logoLabel = p._logo ? ' + Logo' : '';
     itemsHtml += `<div class="co-item">
-      <div class="co-item-name">${p.size} Print${frameLabel}
+      <div class="co-item-name">${p.size} Print${frameLabel}${logoLabel}
         <div class="co-item-sub">${p.filename}</div>
       </div>
       <div class="co-item-price">$${total.toFixed(2)}</div>
