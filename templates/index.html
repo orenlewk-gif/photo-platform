@@ -268,15 +268,11 @@ input[type="range"]::-webkit-slider-thumb {
   position:absolute; inset:0; z-index:3;
   display:flex; align-items:center; justify-content:center;
   pointer-events:none;
-}
-@media(hover:none) and (pointer:coarse) {
-  .watermark {
-    background-image: url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png');
-    background-size: 60%, 42%, 38%;
-    background-position: center, 12% 18%, 88% 82%;
-    background-repeat: no-repeat, no-repeat, no-repeat;
-    opacity: 0.3;
-  }
+  background-image: url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png');
+  background-size: 60%, 42%, 38%;
+  background-position: center, 12% 18%, 88% 82%;
+  background-repeat: no-repeat, no-repeat, no-repeat;
+  opacity: 0.3;
 }
 
 @media(max-width:640px) {
@@ -2245,7 +2241,7 @@ function renderPoseCartView() {
     let t = `<div class="cartview-photo-grid" ${gridClick}>`;
     shown.forEach(p => {
       const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
-      t += `<div class="cartview-thumb"><img src="${src}" alt="" /></div>`;
+      t += `<div class="cartview-thumb"><img src="${src}" alt="" /><div class="watermark"></div></div>`;
     });
     if (rest > 0) t += `<div class="cv-more-badge" onclick="${clickFn}">+${rest}</div>`;
     t += '</div>';
@@ -3053,7 +3049,7 @@ function renderCartView() {
         const firstSrc = first ? `/api/photo?path=${enc(first.path)}&size=thumb&v=3` : '';
         const escapedKey = escQ(key);
         html += `<div class="cartview-photo-grid" style="cursor:pointer;" onclick="openFolderPhotosModal('${escapedKey}')">`;
-        html += `<div class="cartview-thumb" style="cursor:pointer;"><img src="${firstSrc}" alt="" /></div>`;
+        html += `<div class="cartview-thumb" style="cursor:pointer;"><img src="${firstSrc}" alt="" /><div class="watermark"></div></div>`;
         html += `<div class="cv-more-badge" style="cursor:pointer;">+${digitalCount - 1}</div>`;
         html += `</div>`;
       } else {
@@ -3063,6 +3059,7 @@ function renderCartView() {
           const src = imgCache[p.path] || '';
           html += `<div class="cartview-thumb">
             <img src="${src}" alt="${p.filename}" />
+            <div class="watermark"></div>
             <button class="cv-remove" onclick="${isCurrent ? `deSelectPhotoByPath('${escQ(p.path)}')` : `removeFolderDigital('${escQ(key)}','${escQ(p.path)}')`}" title="Remove">✕</button>
           </div>`;
         });

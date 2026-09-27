@@ -158,11 +158,28 @@
       gap: 6px;
       margin-bottom: 1.25rem;
     }
-    .co-thumb {
+    .co-thumb-wrap {
+      position: relative;
       width: 62px; height: 62px;
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .co-thumb {
+      width: 100%; height: 100%;
       border-radius: 8px;
       object-fit: cover;
       background: #071827;
+      display: block;
+    }
+    .co-thumb-wrap .watermark {
+      position: absolute; inset: 0; z-index: 3;
+      pointer-events: none;
+      background-image: url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png'), url('/static/watermark-transparent.png');
+      background-size: 60%, 42%, 38%;
+      background-position: center, 12% 18%, 88% 82%;
+      background-repeat: no-repeat, no-repeat, no-repeat;
+      opacity: 0.3;
     }
     .co-thumb-more {
       width: 62px; height: 62px;
@@ -623,6 +640,8 @@ async function loadThumbs() {
 
   for (const p of show) {
     if (!p?.path) continue;
+    const wrap = document.createElement('div');
+    wrap.className = 'co-thumb-wrap';
     const img = document.createElement('img');
     img.className = 'co-thumb';
     img.alt = '';
@@ -631,7 +650,11 @@ async function loadThumbs() {
       const blob = await resp.blob();
       img.src = URL.createObjectURL(blob);
     } catch(e) { img.src = ''; }
-    container.appendChild(img);
+    const wm = document.createElement('div');
+    wm.className = 'watermark';
+    wrap.appendChild(img);
+    wrap.appendChild(wm);
+    container.appendChild(wrap);
   }
   if (extra > 0) {
     const more = document.createElement('div');
