@@ -5111,15 +5111,17 @@ async def admin_upload_index(request: Request):
     location = clean_location(location)
     for key in keys:
         if key not in existing:
-            data.append({
+            entry = {
                 "path":      key,
                 "date":      date,
                 "location":  location,
                 "last_name": folder if is_portrait else "",
                 "group":     "" if is_portrait else folder,
                 "embedding": None,
-                "draft":     True,
-            })
+            }
+            if not is_portrait:
+                entry["draft"] = True
+            data.append(entry)
             existing.add(key)
             added += 1
     s3.put_object(Bucket=R2_BUCKET, Key="images.json",
