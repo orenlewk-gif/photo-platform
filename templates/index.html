@@ -1037,11 +1037,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 <!-- Screenshot blackout -->
 <div id="ss-block"></div>
 
-<!-- Print upsell banner -->
-<div class="print-upsell-banner" id="print-upsell-banner">
-  <span>Your selected digital photos include <strong>50% off prints</strong> — add 3+ unframed prints for <strong>free shipping</strong>.<button class="banner-view-btn" onclick="openPrintsModal()">View Photos →</button></span>
-  <button class="banner-close-btn" onclick="document.getElementById('print-upsell-banner').classList.remove('show')">✕</button>
-</div>
+<!-- print-upsell-banner removed; upsell lives in the footer cart bar -->
 
 <!-- Cart bar -->
 <div class="cart-bar" id="cart-bar">
@@ -1607,7 +1603,7 @@ async function showDays() {
   saveCurrentFolder();
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   showSpinner();
   const res  = await fetch('/api/days');
   const data = await res.json();
@@ -1637,7 +1633,7 @@ async function showLocations(date) {
   saveCurrentFolder();
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   showSpinner();
   const [res, infoRes] = await Promise.all([
     fetch(`/api/locations?date=${enc(date)}`),
@@ -1674,7 +1670,7 @@ async function showFamilies(date, location) {
   saveCurrentFolder();
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   showSpinner();
   const res  = await fetch(`/api/subfolders?date=${enc(date)}&location=${enc(location)}`);
   const data = await res.json();
@@ -1756,7 +1752,7 @@ async function showGallery(date, location, family, ln, group) {
   // Immediately hide the footer bar while loading the new gallery
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   currentGroup = group || null;
 
   // Fetch pricing — for last-name searches location is unknown; derive from first photo
@@ -2258,9 +2254,12 @@ function updatePoseCart() {
   }
   cartBar.classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
-  // Clear any stale action-mode upsell text
+  // Prints upsell in footer (portrait mode)
   const upsellEl = document.getElementById('cart-upsell-text');
-  if (upsellEl) upsellEl.innerHTML = '';
+  if (upsellEl) {
+    const hasPrints = printCart.length > 0;
+    upsellEl.innerHTML = hasPrints ? '' : `Get <strong>50% off prints</strong> for your portrait photos!`;
+  }
   const parts = [];
   if (fullPoses)   parts.push(`${fullPoses} pose${fullPoses !== 1 ? 's' : ''}`);
   if (singles)     parts.push(`${singles} photo${singles !== 1 ? 's' : ''}`);
@@ -2660,7 +2659,7 @@ async function showFramesView() {
   saveCurrentFolder();
   document.getElementById('cart-bar').classList.remove('show');
   document.getElementById('main-container').style.paddingBottom = '';
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   showView('frames');
   setBreadcrumb([], 'Frames');
   const el = document.getElementById('view-frames');
@@ -2837,7 +2836,7 @@ function clearPhotoCart() {
   lockedTier = null;
   if (currentFolderKey) delete folderCarts[currentFolderKey];
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   updateCart();
 }
 
@@ -2854,7 +2853,7 @@ function clearCart() {
   document.querySelectorAll('.thumb-card.selected').forEach(c => c.classList.remove('selected'));
   document.querySelectorAll('.pose-gallery.pose-full-selected').forEach(g => g.classList.remove('pose-full-selected'));
   document.getElementById('cart-bar').classList.remove('show');
-  document.getElementById('print-upsell-banner').classList.remove('show');
+  
   document.getElementById('main-container').style.paddingBottom = '';
   if (_poseData) updatePoseHeaders();
   updateHeaderCartBtn();
@@ -3064,7 +3063,7 @@ function updateCart() {
   if (count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier) {
     document.getElementById('cart-bar').classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
-    document.getElementById('print-upsell-banner').classList.remove('show');
+    
     saveCart();
     return;
   }
@@ -3144,10 +3143,6 @@ function updateCart() {
   document.getElementById('main-container').style.paddingBottom = '80px';
   saveCart();
   updateLBSelectBtn();
-  // Show print upsell banner whenever digital photos are selected
-  const banner = document.getElementById('print-upsell-banner');
-  if (count > 0) banner.classList.add('show');
-  else           banner.classList.remove('show');
 }
 
 // ── Cart View ──
@@ -4801,10 +4796,6 @@ function lockTierFromQS(tierIdx) {
 function selectAllFromQS(photoIdx) {
   selectAllPhotos();
   closeQuickShop();
-  // Show half-off print upsell
-  const upsell = document.getElementById('print-upsell-banner');
-  upsell.classList.add('show');
-  setTimeout(() => upsell.classList.remove('show'), 6000);
 }
 
 // ── Print → Frame flow ──
