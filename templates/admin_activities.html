@@ -99,6 +99,13 @@ a{color:inherit;text-decoration:none}
 .item-check input[type="checkbox"]{width:15px;height:15px;accent-color:#F5C518;cursor:pointer;flex-shrink:0}
 .item-check span{font-size:12px;color:rgba(255,255,255,.65)}
 .item-check:hover span{color:#e8eaf0}
+.item-check.inherited{opacity:.6;pointer-events:none}
+.inherited-badge{font-size:9px;font-weight:700;letter-spacing:.04em;color:rgba(245,197,24,.75);background:rgba(245,197,24,.12);border-radius:3px;padding:.1rem .3rem;margin-left:.3rem;flex-shrink:0}
+
+/* Category defaults bar */
+.cat-defaults-bar{background:rgba(245,197,24,.04);border:1px solid rgba(245,197,24,.15);border-radius:7px;padding:.75rem 1rem;margin-bottom:.75rem}
+.cat-defaults-label{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(245,197,24,.55);margin-bottom:.65rem}
+.cat-defaults-save{margin-top:.65rem}
 
 /* Feature flags (toggles) */
 .flags-row{display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center}
@@ -400,6 +407,28 @@ function renderList() {
       ? t.acts.map(it => actRowHtml(it)).join('')
       : '<div class="cat-empty">No activities added yet</div>';
     const sid = slugId(t.name);
+
+    // Category-level default items bar (only for categories that support adding locations)
+    let catDefaultsHtml = '';
+    if (CAT_ADD_LOCATION.includes(t.name)) {
+      const catObj = cats.find(c => c.name === t.name);
+      const catDefs = catObj?.default_items || [];
+      const defsGrid = ALL_ITEMS.map(it =>
+        `<label class="item-check">
+          <input type="checkbox" id="catdef-${sid}-${it.key}" ${catDefs.includes(it.key) ? 'checked' : ''}>
+          <span>${esc(it.label)}</span>
+        </label>`
+      ).join('');
+      catDefaultsHtml = `
+        <div class="cat-defaults-bar">
+          <div class="cat-defaults-label">Default items — automatically added to every new location in this category</div>
+          <div class="items-grid">${defsGrid}</div>
+          <div class="cat-defaults-save">
+            <button class="btn btn-ghost btn-sm" onclick="saveCatDefaults('${esc(t.name)}')">Save Defaults</button>
+          </div>
+        </div>`;
+    }
+
     const addHtml = CAT_ADD_LOCATION.includes(t.name) ? `
       <div class="cat-add-row">
         <button class="btn btn-ghost btn-sm" onclick="showAddLocation('${esc(t.name)}')">+ Add Location</button>
@@ -409,7 +438,7 @@ function renderList() {
           <button class="btn btn-ghost btn-sm" onclick="hideAddLocation('${esc(t.name)}')">Cancel</button>
         </div>
       </div>` : '';
-    return `<div class="act-tab-panel${t.name === firstTab ? ' active' : ''}" data-cat="${esc(t.name)}">${actsHtml}${addHtml}</div>`;
+    return `<div class="act-tab-panel${t.name === firstTab ? ' active' : ''}" data-cat="${esc(t.name)}">${catDefaultsHtml}${actsHtml}${addHtml}</div>`;
   }).join('');
 
   document.getElementById('act-list-body').innerHTML = tabsHtml + panelsHtml;
@@ -446,6 +475,16 @@ async function createLocationInCat(catName) {
   if (!pricingData.activities) pricingData.activities = {};
   if (pricingData.activities[name]) { showToast(`"${name}" already exists`, 'err'); return; }
 
+  if (!pricingData.activity_categories || !pricingData.activity_categories.length) {
+    pricingData.activity_categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+  }
+  const cat = pricingData.activity_categories.find(c => c.name === catName);
+
+  // Use category defaults if set, otherwise fall back to sensible per-category defaults
+  const defaultItems = cat?.default_items?.length
+    ? cat.default_items
+    : (catName === 'Winter Action' ? ['action_digital'] : ['portrait_digital']);
+
   if (catName === 'Winter Action') {
     pricingData.activities[name] = {
       use_default: false,
@@ -453,17 +492,13 @@ async function createLocationInCat(catName) {
         {label: '1 Photo',    count: 1,     price: 25},
         {label: 'All Photos', count: 'all', price: 115, max: true},
       ],
-      items: ['action_digital'],
+      items: defaultItems,
       flags: {time_search: true, clip: true},
     };
   } else {
-    pricingData.activities[name] = {use_default: false, tiers: [], items: ['portrait_digital'], flags: {}};
+    pricingData.activities[name] = {use_default: false, tiers: [], items: defaultItems, flags: {}};
   }
 
-  if (!pricingData.activity_categories || !pricingData.activity_categories.length) {
-    pricingData.activity_categories = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-  }
-  const cat = pricingData.activity_categories.find(c => c.name === catName);
   if (cat) { if (!cat.acts) cat.acts = []; if (!cat.acts.includes(name)) cat.acts.push(name); }
 
   try {
@@ -516,13 +551,20 @@ function toggleDetail(name) {
   const enabledItems = new Set(cfg.items || []);
   const flags        = cfg.flags || {};
 
-  // Item option checkboxes
-  const itemsHtml = ALL_ITEMS.map(it =>
-    `<label class="item-check">
-      <input type="checkbox" id="item-${sid}-${it.key}" ${enabledItems.has(it.key) ? 'checked' : ''}>
-      <span>${esc(it.label)}</span>
-    </label>`
-  ).join('');
+  // Find which category owns this activity to inherit defaults
+  const ownerCat = (pricingData.activity_categories || []).find(c => (c.acts || []).includes(name));
+  const inheritedItems = new Set(ownerCat?.default_items || []);
+
+  // Item option checkboxes — inherited items are locked
+  const itemsHtml = ALL_ITEMS.map(it => {
+    const isInherited = inheritedItems.has(it.key);
+    const checked     = isInherited || enabledItems.has(it.key);
+    const badge       = isInherited ? `<span class="inherited-badge">preset</span>` : '';
+    return `<label class="item-check${isInherited ? ' inherited' : ''}">
+      <input type="checkbox" id="item-${sid}-${it.key}" ${checked ? 'checked' : ''} ${isInherited ? 'disabled' : ''}>
+      <span>${esc(it.label)}${badge}</span>
+    </label>`;
+  }).join('');
 
   // Feature flag toggles
   const flagsHtml = ALL_FLAGS.map(fl =>
@@ -614,9 +656,11 @@ async function saveActivityConfig(actName) {
   if (!pricingData.activities) pricingData.activities = {};
   if (!pricingData.activities[actName]) pricingData.activities[actName] = {};
 
-  // Collect checked items
+  // Collect checked items — include inherited (disabled) ones too
+  const ownerCat2 = (pricingData.activity_categories || []).find(c => (c.acts || []).includes(actName));
+  const inheritedSet = new Set(ownerCat2?.default_items || []);
   const items = ALL_ITEMS
-    .filter(it => document.getElementById(`item-${sid}-${it.key}`)?.checked)
+    .filter(it => inheritedSet.has(it.key) || document.getElementById(`item-${sid}-${it.key}`)?.checked)
     .map(it => it.key);
 
   // Collect flags (already updated in pricingData by toggleFlag)
@@ -717,6 +761,26 @@ async function toggleCatActive(catName) {
     if (!r.ok) throw new Error(await r.text());
     showToast(cat.active ? `"${catName}" enabled` : `"${catName}" hidden from upload`);
     renderList();
+  } catch(e) {
+    showToast('Save failed: ' + e, 'err');
+  }
+}
+
+async function saveCatDefaults(catName) {
+  if (!pricingData?.activity_categories) return;
+  const cat = pricingData.activity_categories.find(c => c.name === catName);
+  if (!cat) return;
+  const sid = slugId(catName);
+  cat.default_items = ALL_ITEMS
+    .filter(it => document.getElementById(`catdef-${sid}-${it.key}`)?.checked)
+    .map(it => it.key);
+  try {
+    const r = await fetch('/api/admin/pricing', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pricingData),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    showToast('Category defaults saved');
   } catch(e) {
     showToast('Save failed: ' + e, 'err');
   }
