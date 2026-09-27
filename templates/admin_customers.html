@@ -168,7 +168,7 @@ function render(list) {
     const name  = [c.first||'', c.last||''].filter(Boolean).join(' ') || c.name || '—';
     const email = c.email || '—';
     const phone = c.phone || '';
-    return `<tr onclick="openEdit(${JSON.stringify(c.email||'')})">
+    return `<tr data-email="${esc(c.email||'')}" onclick="openEdit(this.dataset.email)">
       <td class="name">${esc(name)}</td>
       <td class="email">${esc(email)}</td>
       <td class="phone">${esc(phone)}</td>
