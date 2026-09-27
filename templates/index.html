@@ -1365,6 +1365,7 @@ let lockedTier      = null;      // tier the customer chose in Quick Shop (curre
 // Key = "date||location||family"; each entry holds that folder's selections/package/prints
 let folderCarts        = {};
 let _cvExpandPoses     = [];  // ephemeral: pose photo sets for +N expand buttons in cart view
+let _fpPosePhotos      = null; // photos currently shown in fp-overlay pose expansion (for re-render)
 let pricingCache       = {};     // location → pricing; avoids re-fetching
 let globalCombos       = [];     // combo deals loaded from /api/pricing
 let currentFolderKey   = null;   // key for the gallery currently being viewed
@@ -1947,8 +1948,16 @@ async function initTimeFilter(photos, date, location) {
     if (rangeEl) rangeEl.textContent = isAll ? '' : `${shown} photo${shown !== 1 ? 's' : ''}`;
   }
 
-  fromSel.addEventListener('change', applyFilter);
-  toSel.addEventListener('change',   applyFilter);
+  fromSel.addEventListener('change', () => {
+    // If "from" advanced past "to", pull "to" up to match
+    if (parseInt(fromSel.value) > parseInt(toSel.value)) toSel.value = fromSel.value;
+    applyFilter();
+  });
+  toSel.addEventListener('change', () => {
+    // If "to" went before "from", push "from" back to match
+    if (parseInt(toSel.value) < parseInt(fromSel.value)) fromSel.value = toSel.value;
+    applyFilter();
+  });
 
   bar.style.display = '';
   applyFilter();
@@ -2313,14 +2322,23 @@ function clearPoseCart() {
   saveCart();
 }
 function _fpOpenPosePhotos(label, photos) {
+  _fpPosePhotos = { label, photos };
   document.getElementById('fp-title').textContent = `${label} — ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
-  const thumbsHtml = photos.map(p => {
+  _fpRenderPoseGrid();
+  document.getElementById('fp-overlay').classList.add('open');
+}
+function _fpRenderPoseGrid() {
+  if (!_fpPosePhotos) return;
+  const thumbsHtml = _fpPosePhotos.photos.map(p => {
     const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
     const logoOn = _digitalLogoPhotos.has(p.path);
-    return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
+    return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="_fpTogglePosePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
   }).join('');
   document.getElementById('fp-grid').innerHTML = `<div class="cartview-photo-grid fp-photo-grid" style="grid-column:1/-1">${thumbsHtml}</div>`;
-  document.getElementById('fp-overlay').classList.add('open');
+}
+function _fpTogglePosePhotoLogo(path) {
+  togglePhotoLogo(path);   // update _digitalLogoPhotos + cart view
+  _fpRenderPoseGrid();     // re-render fp-overlay to reflect new logo state
 }
 function openPosePhotosModalByIdx(pi) {
   if (!_poseData) return;
@@ -4706,6 +4724,7 @@ function openFolderPhotosModal(key) {
 }
 
 function closeFolderPhotosModal() {
+  _fpPosePhotos = null;
   document.getElementById('fp-overlay').classList.remove('open');
 }
 
