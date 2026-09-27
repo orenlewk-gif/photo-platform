@@ -1537,6 +1537,7 @@ function saveCart() {
       frameCart,
       folderCarts,
       currentFolderKey,
+      digitalLogoPaths: [..._digitalLogoPhotos],
     }));
   } catch(e) {}
 }
@@ -1549,6 +1550,7 @@ function loadCart() {
     if (Date.now() - data.ts > CART_TTL) { localStorage.removeItem(CART_KEY); return; }
     frameCart   = data.frameCart   || [];
     folderCarts = data.folderCarts || {};
+    if (data.digitalLogoPaths) data.digitalLogoPaths.forEach(p => _digitalLogoPhotos.add(p));
     // Legacy format: had flat selectedPaths — migrate silently
     if (!data.folderCarts && data.selectedPaths) {
       window._savedPhotoPaths = data.selectedPaths;
@@ -2450,7 +2452,7 @@ function renderPoseCartView() {
     const n = _digitalLogoPhotos.size;
     html += `<div class="cv-logo-row" style="padding:.4rem 0;border-top:1px solid rgba(255,255,255,.06);margin-top:.4rem">
       <span class="cv-logo-label">Logo on ${n} photo${n !== 1 ? 's' : ''} +$${digiLogoFee.toFixed(2)}</span>
-      <button class="cv-logo-remove" onclick="_digitalLogoPhotos.clear();renderPoseCartView();updatePoseCart()" title="Remove all">×</button>
+      <button class="cv-logo-remove" onclick="_digitalLogoPhotos.clear();renderCartView();updatePoseCart()" title="Remove all">×</button>
     </div>`;
   }
   const shipping = calcShipping();
@@ -3313,6 +3315,15 @@ function renderCartView() {
             html += `<div class="cv-more-badge" onclick="_fpOpenPosePhotos(_cvExpandPoses[${expandIdx}].label,_cvExpandPoses[${expandIdx}].photos)">+${posePhotos.length - SHOW}</div>`;
           }
           html += `</div>`;
+          // Itemized logo list for this pose
+          const poseLogoPhotos = posePhotos.filter(p => _digitalLogoPhotos.has(p.path));
+          if (poseLogoPhotos.length > 0) {
+            const fee = poseLogoPhotos.length * LOGO_FEE;
+            html += `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin:.1rem 0 .25rem;line-height:1.5">
+              <span style="color:#F5C518;font-weight:600">Logo add-on</span> (+$${fee.toFixed(2)}):
+              ${poseLogoPhotos.map(p => `<span>${escHtml(p.filename || p.path.split('/').pop())}</span>`).join(', ')}
+            </div>`;
+          }
         }
         html += `</div>`;
       });
@@ -3326,10 +3337,7 @@ function renderCartView() {
       const folderLogoFee = logoCount * LOGO_FEE;
       grandDigitalPrice += folderLogoFee;
 
-      const logoSuffix = folderLogoFee > 0
-        ? ` + ${logoCount} logo${logoCount!==1?'s':''} $${folderLogoFee.toFixed(2)}`
-        : '';
-      html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}${logoSuffix}</div>`;
+      html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.45);margin-bottom:0.5rem;">${digitalCount} digital photo${digitalCount!==1?'s':''} — $${digitalPrice}</div>`;
 
       // Always show full scrollable grid — every photo gets a logo toggle
       const gridStyle = digitalCount > 10 ? 'max-height:220px;overflow-y:auto;' : '';
@@ -3345,6 +3353,16 @@ function renderCartView() {
         </div>`;
       });
       html += `</div>`;
+      // Itemized logo list for this folder's digital photos
+      const folderLogoPhotos = photos.filter(p => _digitalLogoPhotos.has(p.path));
+      if (folderLogoPhotos.length > 0) {
+        const fee = folderLogoPhotos.length * LOGO_FEE;
+        grandDigitalPrice += fee;
+        html += `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin:.35rem 0 .25rem;line-height:1.5">
+          <span style="color:#F5C518;font-weight:600">Logo add-on</span> (+$${fee.toFixed(2)}):
+          ${folderLogoPhotos.map(p => `<span>${escHtml(p.filename || p.path.split('/').pop())}</span>`).join(', ')}
+        </div>`;
+      }
     }
 
     // Prints within this folder
@@ -3502,7 +3520,9 @@ function togglePrintLogo(idx) {
   const isSelected = p.photoPath ? selectedPaths.has(p.photoPath) : selectedPhotos.has(p.photoIdx);
   const halfPrice = isSelected ? base / 2 : base;
   p.price = halfPrice + (p._logo ? LOGO_FEE : 0);
-  if (_poseData) { renderPoseCartView(); updatePoseCart(); } else { renderCartView(); updateCart(); }
+  if (document.getElementById('cartview-overlay').classList.contains('open')) renderCartView();
+  else if (document.getElementById('pose-cartview-overlay').classList.contains('open')) renderPoseCartView();
+  if (_poseData) updatePoseCart(); else updateCart();
 }
 
 function removeFolderPrint(key, idx) {
@@ -4529,7 +4549,9 @@ function togglePhotoLogo(path) {
       ? `Logo on this photo <span class="qs-logo-accent">+$${LOGO_FEE}</span>`
       : `Add logo to this photo <span class="qs-logo-accent">+$${LOGO_FEE}</span>`;
   }
-  if (_poseData) { renderPoseCartView(); updatePoseCart(); } else { renderCartView(); updateCart(); }
+  if (document.getElementById('cartview-overlay').classList.contains('open')) renderCartView();
+  else if (document.getElementById('pose-cartview-overlay').classList.contains('open')) renderPoseCartView();
+  if (_poseData) updatePoseCart(); else updateCart();
 }
 
 let _qsCurrentPhotoIdx = 0;
