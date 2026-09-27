@@ -2268,7 +2268,12 @@ function updatePoseCart() {
   if (printCount)  parts.push(`${printCount} print${printCount !== 1 ? 's' : ''}`);
   document.getElementById('cart-count-text').textContent = parts.join(' + ');
   const printTotal = printCart.reduce((s, p) => s + p.price + p.framePrice, 0);
-  const digiLogoFee = _digitalLogoPhotos.size * LOGO_FEE;
+  // Count logo fee only for portrait photos in this and saved portrait folders
+  const portraitPathSet = new Set(_poseData?.poses?.flatMap(p => p.paths || []) || []);
+  Object.values(folderCarts).forEach(fc => {
+    if (fc.poses) fc.poses.forEach(p => (p.paths || []).forEach(path => portraitPathSet.add(path)));
+  });
+  const digiLogoFee = [..._digitalLogoPhotos].filter(p => portraitPathSet.has(p)).length * LOGO_FEE;
   document.getElementById('cart-price-text').textContent = `$${(total + digiLogoFee + printTotal + calcShipping()).toFixed(2)}`;
   updateHeaderCartBtn();
   const saBtn  = document.getElementById('cart-select-all-btn');
@@ -3075,7 +3080,13 @@ function updateCart() {
   const shipping      = calcShipping();
   const comboActive   = checkCombo();
   const comboDiscount = comboActive ? comboActive.discount : 0;
-  const digitalLogoFee = _digitalLogoPhotos.size * LOGO_FEE;
+  // Count logo fee only for action photos (not portrait poses)
+  const actionPathSet = new Set([...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean));
+  Object.entries(folderCarts).forEach(([key, fc]) => {
+    if (key === currentFolderKey || fc.poseState) return;
+    (fc.selectedPaths || []).forEach(p => actionPathSet.add(p));
+  });
+  const digitalLogoFee = [..._digitalLogoPhotos].filter(p => actionPathSet.has(p)).length * LOGO_FEE;
   const total         = digitalPrice + digitalLogoFee + otherPrice + printPrice + framePrice + shipping - comboDiscount;
 
   // Count text: show current-folder activity when present; fall back to global cart summary
@@ -3319,6 +3330,7 @@ function renderCartView() {
           const poseLogoPhotos = posePhotos.filter(p => _digitalLogoPhotos.has(p.path));
           if (poseLogoPhotos.length > 0) {
             const fee = poseLogoPhotos.length * LOGO_FEE;
+            grandDigitalPrice += fee;
             html += `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin:.1rem 0 .25rem;line-height:1.5">
               <span style="color:#F5C518;font-weight:600">Logo add-on</span> (+$${fee.toFixed(2)}):
               ${poseLogoPhotos.map(p => `<span>${escHtml(p.filename || p.path.split('/').pop())}</span>`).join(', ')}
@@ -3357,7 +3369,6 @@ function renderCartView() {
       const folderLogoPhotos = photos.filter(p => _digitalLogoPhotos.has(p.path));
       if (folderLogoPhotos.length > 0) {
         const fee = folderLogoPhotos.length * LOGO_FEE;
-        grandDigitalPrice += fee;
         html += `<div style="font-size:.72rem;color:rgba(255,255,255,.45);margin:.35rem 0 .25rem;line-height:1.5">
           <span style="color:#F5C518;font-weight:600">Logo add-on</span> (+$${fee.toFixed(2)}):
           ${folderLogoPhotos.map(p => `<span>${escHtml(p.filename || p.path.split('/').pop())}</span>`).join(', ')}
