@@ -734,15 +734,17 @@ function renderSummary() {
       </div>`;
     });
     const allLogoPaths = new Set(cartData.digitalLogoPaths || []);
-    const posePaths = new Set(poses.flatMap(p => p.paths || []));
-    pSingles.forEach(s => { if (s.path) posePaths.add(s.path); });
-    const pLogoCount = [...allLogoPaths].filter(p => posePaths.has(p)).length;
-    if (pLogoCount > 0) {
-      const pLogoFee = pLogoCount * 2;
+    // Build path→filename map for portrait photos
+    const posePathToName = {};
+    poses.forEach(pose => (pose.paths || []).forEach((path, i) => { posePathToName[path] = (pose.files || [])[i] || path.split('/').pop(); }));
+    pSingles.forEach(s => { if (s.path) posePathToName[s.path] = s.path.split('/').pop(); });
+    const pLogoEntries = Object.keys(posePathToName).filter(p => allLogoPaths.has(p));
+    if (pLogoEntries.length > 0) {
+      const pLogoFee = pLogoEntries.length * 2;
       digTotal += pLogoFee;
       itemsHtml += `<div class="co-item">
         <div class="co-item-name">Digital logo add-on
-          <div class="co-item-sub">${pLogoCount} photo${pLogoCount !== 1 ? 's' : ''}</div>
+          <div class="co-item-sub">${pLogoEntries.map(p => posePathToName[p]).join(', ')}</div>
         </div>
         <div class="co-item-price">$${pLogoFee.toFixed(2)}</div>
       </div>`;
@@ -774,9 +776,13 @@ function renderSummary() {
   });
   if (aLogoCount > 0) {
     const aLogoFee = aLogoCount * 2;
+    // Build filename list for action logo photos
+    const actionPathToName = {};
+    Object.values(fc).forEach(folder => (folder.selectedPhotos || []).forEach(p => { actionPathToName[p.path] = p.filename || p.path.split('/').pop(); }));
+    const aLogoNames = [...allLogoPaths].filter(p => folderPhotoPaths.has(p)).map(p => actionPathToName[p] || p.split('/').pop());
     itemsHtml += `<div class="co-item">
       <div class="co-item-name">Digital logo add-on
-        <div class="co-item-sub">${aLogoCount} photo${aLogoCount !== 1 ? 's' : ''}</div>
+        <div class="co-item-sub">${aLogoNames.join(', ')}</div>
       </div>
       <div class="co-item-price">$${aLogoFee.toFixed(2)}</div>
     </div>`;
