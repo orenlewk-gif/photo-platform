@@ -5495,6 +5495,8 @@ def _generate_theme_css(cfg: dict, is_admin: bool) -> str:
             "/* Crystal Images — Frontend Theme (generated) */\n"
             f"body{{background:{page}!important}}\n"
             f".custom-header{{background:{panel}!important}}\n"
+            f".co-card{{background:{panel}!important}}\n"
+            f".co-header{{background:{page}!important;filter:brightness(.85)}}\n"
         )
 
 def _write_theme_files(cfg: dict) -> None:
