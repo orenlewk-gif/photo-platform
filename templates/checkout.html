@@ -733,8 +733,11 @@ function renderSummary() {
         <div class="co-item-price">$${singPrice.toFixed(2)}</div>
       </div>`;
     });
-    const pLogoCount = (cartData.digitalLogoPaths || []).length;
-    if (pLogoCount > 0 && (poses.length || pSingles.length)) {
+    const allLogoPaths = new Set(cartData.digitalLogoPaths || []);
+    const posePaths = new Set(poses.flatMap(p => p.paths || []));
+    pSingles.forEach(s => { if (s.path) posePaths.add(s.path); });
+    const pLogoCount = [...allLogoPaths].filter(p => posePaths.has(p)).length;
+    if (pLogoCount > 0) {
       const pLogoFee = pLogoCount * 2;
       digTotal += pLogoFee;
       itemsHtml += `<div class="co-item">
@@ -750,8 +753,9 @@ function renderSummary() {
   const comboAdjPrices = calcComboAdjPrices(fc);
 
   // Digital folders
-  const hasAnyDigital = Object.values(fc).some(f => f.selectedPhotos?.length);
-  const aLogoCount = hasAnyDigital ? (cartData.digitalLogoPaths || []).length : 0;
+  const allLogoPaths = new Set(cartData.digitalLogoPaths || []);
+  const folderPhotoPaths = new Set(Object.values(fc).flatMap(f => (f.selectedPhotos || []).map(p => p.path)));
+  const aLogoCount = [...allLogoPaths].filter(p => folderPhotoPaths.has(p)).length;
   if (aLogoCount > 0) digTotal += aLogoCount * 2;
   Object.entries(fc).forEach(([key, folder]) => {
     const n = folder.selectedPhotos?.length || 0;
