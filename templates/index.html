@@ -511,6 +511,7 @@ input::placeholder { color:rgba(255,255,255,0.3); }
   background:#0e2a3a; border:1px solid rgba(255,255,255,0.1);
   border-radius:16px 16px 0 0; width:100%; max-width:600px;
   max-height:82vh; overflow-y:auto; padding:1.8rem 1.8rem 2rem;
+  overscroll-behavior:contain; -webkit-overflow-scrolling:touch;
 }
 .cartview-modal h3 { font-size:1.15rem; font-weight:700; margin-bottom:1.2rem; }
 .cartview-section-label {
@@ -1363,6 +1364,7 @@ let lockedTier      = null;      // tier the customer chose in Quick Shop (curre
 // ── Per-folder cart ──
 // Key = "date||location||family"; each entry holds that folder's selections/package/prints
 let folderCarts        = {};
+let _cvExpandPoses     = [];  // ephemeral: pose photo sets for +N expand buttons in cart view
 let pricingCache       = {};     // location → pricing; avoids re-fetching
 let globalCombos       = [];     // combo deals loaded from /api/pricing
 let currentFolderKey   = null;   // key for the gallery currently being viewed
@@ -1601,6 +1603,10 @@ async function init() {
 }
 // ── View: Days ──
 async function showDays() {
+  saveCurrentFolder();
+  document.getElementById('cart-bar').classList.remove('show');
+  document.getElementById('main-container').style.paddingBottom = '';
+  document.getElementById('print-upsell-banner').classList.remove('show');
   showSpinner();
   const res  = await fetch('/api/days');
   const data = await res.json();
@@ -1627,6 +1633,10 @@ async function showDays() {
 
 // ── View: Locations ──
 async function showLocations(date) {
+  saveCurrentFolder();
+  document.getElementById('cart-bar').classList.remove('show');
+  document.getElementById('main-container').style.paddingBottom = '';
+  document.getElementById('print-upsell-banner').classList.remove('show');
   showSpinner();
   const [res, infoRes] = await Promise.all([
     fetch(`/api/locations?date=${enc(date)}`),
@@ -1660,6 +1670,10 @@ async function showLocations(date) {
 
 // ── View: Families / Groups (sub-folders) or straight to gallery ──
 async function showFamilies(date, location) {
+  saveCurrentFolder();
+  document.getElementById('cart-bar').classList.remove('show');
+  document.getElementById('main-container').style.paddingBottom = '';
+  document.getElementById('print-upsell-banner').classList.remove('show');
   showSpinner();
   const res  = await fetch(`/api/subfolders?date=${enc(date)}&location=${enc(location)}`);
   const data = await res.json();
@@ -2625,6 +2639,10 @@ let framePhotos    = {};   // { "5x7": ["/frames/frame_5x7_landscape_1.jpg", ...
 let framePhotoIdx  = {};   // { sizeIdx: currentPhotoIndex }
 
 async function showFramesView() {
+  saveCurrentFolder();
+  document.getElementById('cart-bar').classList.remove('show');
+  document.getElementById('main-container').style.paddingBottom = '';
+  document.getElementById('print-upsell-banner').classList.remove('show');
   showView('frames');
   setBreadcrumb([], 'Frames');
   const el = document.getElementById('view-frames');
@@ -3116,6 +3134,7 @@ function updateCart() {
 
 // ── Cart View ──
 function openCartView() {
+  document.body.style.overflow = 'hidden';
   renderCartView();
   document.getElementById('cartview-overlay').classList.add('open');
   // Async: fetch pricing for any non-current folder that isn't already cached
@@ -3132,12 +3151,14 @@ function openCartView() {
 }
 
 function closeCartView() {
+  document.body.style.overflow = '';
   document.getElementById('cartview-overlay').classList.remove('open');
 }
 
 function renderCartView() {
   // Flush current folder so the view is accurate
   saveCurrentFolder();
+  _cvExpandPoses = [];
 
   let html = '';
   let grandDigitalPrice = 0;
@@ -3273,7 +3294,11 @@ function renderCartView() {
             const logoOn = _digitalLogoPhotos.has(p.path);
             html += `<div class="cartview-thumb"><img src="${src}" alt="" loading="lazy"/><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}');renderCartView()">Logo</button></div>`;
           });
-          if (posePhotos.length > SHOW) html += `<div class="cv-more-badge">+${posePhotos.length - SHOW}</div>`;
+          if (posePhotos.length > SHOW) {
+            const expandIdx = _cvExpandPoses.length;
+            _cvExpandPoses.push({ label: pose.label || color, photos: posePhotos });
+            html += `<div class="cv-more-badge" onclick="_fpOpenPosePhotos(_cvExpandPoses[${expandIdx}].label,_cvExpandPoses[${expandIdx}].photos)">+${posePhotos.length - SHOW}</div>`;
+          }
           html += `</div>`;
         }
         html += `</div>`;
