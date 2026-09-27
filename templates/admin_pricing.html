@@ -1222,6 +1222,11 @@ document.addEventListener('keydown',function(e){
   if(e.key>='0'&&e.key<='9') pinKey(e.key);
   else if(e.key==='Backspace') pinBack();
 });
+// Auto-focus the gate so keyboard works without clicking first
+(function(){
+  const g=document.getElementById('pin-gate');
+  if(g&&g.style.display!=='none'){g.setAttribute('tabindex','-1');g.focus();}
+})();
 </script>
 </body>
 </html>

@@ -802,6 +802,10 @@ document.addEventListener('keydown',function(e){
   if(e.key>='0'&&e.key<='9') pinKey(e.key);
   else if(e.key==='Backspace') pinBack();
 });
+(function(){
+  const g=document.getElementById('pin-gate');
+  if(g&&g.style.display!=='none'){g.setAttribute('tabindex','-1');g.focus();}
+})();
 </script>
 <script>
 if (window.parent !== window) document.documentElement.classList.add('embedded');
