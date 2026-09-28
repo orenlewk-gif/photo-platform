@@ -4628,7 +4628,13 @@ function openQuickShop(i) {
     const poseLabel = poseIdx >= 0 ? (_poseData.poses[poseIdx].label || `Pose ${poseIdx+1}`) : '';
     const poseCount = poseIdx >= 0 ? (_poseData.poses[poseIdx].files||[]).length : 0;
     const posePrice = calcPosePrice(Object.values(_poseState).filter(v=>v==='pose').length + 1);
-    digEl.innerHTML = `<div class="qs-row">
+    const poseAlreadyAdded = _poseState[poseColor] === 'pose';
+    if (poseAlreadyAdded) {
+      digEl.innerHTML = `<div class="qs-row">
+        <span class="qs-row-label" style="color:rgba(255,255,255,.45)">This pose has already been added to your cart</span>
+      </div>`;
+    } else {
+      digEl.innerHTML = `<div class="qs-row">
         <span class="qs-row-label">This photo only — $${singlePrice.toFixed(2)}</span>
         <button class="qs-add-btn" onclick="togglePoseSingle(${i},'${poseColor}');closeQuickShop()">Select Photo</button>
       </div>
@@ -4636,6 +4642,7 @@ function openQuickShop(i) {
         <span class="qs-row-label">All ${poseCount} photos in ${poseLabel} — $${posePrice.toFixed(2)}</span>
         <button class="qs-add-btn" onclick="togglePosePurchase('${poseColor}',${poseIdx});closeQuickShop()">Buy Pose</button>
       </div>` : ''}`;
+    }
   } else if (currentPricing && currentPricing.tiers) {
     digEl.innerHTML = currentPricing.tiers.map((t, tidx) => {
       const isAll    = t.count === 'all';
