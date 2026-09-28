@@ -155,6 +155,87 @@ input[type="text"].full{width:100%}
 .st-sub{padding:.27rem .85rem .27rem 2.5rem;font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-radius:4px;margin:0 .3rem}
 .st-sub:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}
 .st-cnt{font-size:.66rem;color:rgba(255,255,255,.22)}
+
+/* ── Discount Codes ── */
+.dc-page-header{display:flex;align-items:center;gap:1rem;margin-bottom:1.75rem}
+.dc-page-title{font-size:1.25rem;font-weight:700;color:#F5C518}
+.dc-btn-pr{background:#F5C518;color:#07151f;border:none;border-radius:8px;padding:.5rem 1.2rem;font-size:.85rem;font-weight:700;cursor:pointer;transition:opacity .15s}
+.dc-btn-pr:hover{opacity:.85}
+.dc-btn-sec{background:rgba(255,255,255,.07);color:rgba(255,255,255,.75);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.48rem 1rem;font-size:.82rem;cursor:pointer;transition:background .15s}
+.dc-btn-sec:hover{background:rgba(255,255,255,.12)}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:.85rem;margin-bottom:1.75rem}
+.stat-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1rem 1.2rem}
+.stat-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.35);margin-bottom:.35rem}
+.stat-val{font-size:1.4rem;font-weight:700;color:#e8eaf0}
+.stat-val.yellow{color:#F5C430}
+.codes-table{margin-bottom:0}
+.filter-row{display:flex;gap:.65rem;margin-bottom:1.1rem;flex-wrap:wrap;align-items:center}
+.filter-btn{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:.32rem .85rem;font-size:.78rem;color:rgba(255,255,255,.55);cursor:pointer;transition:all .15s}
+.filter-btn.active{background:rgba(245,197,24,.1);border-color:rgba(245,197,24,.35);color:#F5C518}
+.search-wrap{margin-left:auto}
+.search-input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:.42rem .85rem;color:#fff;font-size:.82rem;outline:none;width:200px}
+.search-input:focus{border-color:rgba(245,197,24,.4)}
+.search-input::placeholder{color:rgba(255,255,255,.25)}
+.codes-table{width:100%;border-collapse:collapse}
+.codes-table th{font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.3);padding:.55rem .75rem;text-align:left;border-bottom:1px solid rgba(255,255,255,.07)}
+.codes-table td{padding:.7rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);font-size:.83rem;color:rgba(255,255,255,.8);vertical-align:middle}
+.codes-table tr:hover td{background:rgba(255,255,255,.025);cursor:pointer}
+.code-pill{font-family:monospace;font-size:.85rem;font-weight:700;color:#F5C518;background:rgba(245,197,24,.1);border-radius:5px;padding:.2rem .5rem;letter-spacing:.05em}
+.badge{display:inline-flex;align-items:center;border-radius:20px;padding:.18rem .6rem;font-size:.7rem;font-weight:600;letter-spacing:.04em}
+.badge-active{background:rgba(74,222,128,.12);color:#4ade80;border:1px solid rgba(74,222,128,.2)}
+.badge-inactive{background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);border:1px solid rgba(255,255,255,.1)}
+.badge-expired{background:rgba(220,50,50,.1);color:#e87070;border:1px solid rgba(220,50,50,.2)}
+.type-label{font-size:.72rem;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.06em}
+.amount-big{font-weight:700;color:#fff}
+.uses-bar-wrap{width:80px;height:5px;background:rgba(255,255,255,.08);border-radius:3px;display:inline-block;vertical-align:middle;margin-left:.4rem}
+.uses-bar-fill{height:100%;background:#F5C518;border-radius:3px;transition:width .3s}
+.codes-table td.dim{color:rgba(255,255,255,.35)}
+.codes-table td.saved{color:#4ade80;font-weight:600}
+#dc-panel-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;display:none;opacity:0;transition:opacity .2s}
+#dc-panel-overlay.open{display:block;opacity:1}
+#dc-side-panel{position:fixed;top:0;right:-520px;width:520px;height:100vh;background:#0a1e2e;border-left:1px solid rgba(255,255,255,.1);z-index:101;transition:right .25s;overflow-y:auto;display:flex;flex-direction:column}
+#dc-side-panel.open{right:0}
+#dc-panel-header{padding:1.2rem 1.5rem;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:.75rem;flex-shrink:0}
+#dc-panel-header h2{font-size:1rem;font-weight:700;flex:1;color:#F5C518}
+.dc-panel-close{background:none;border:none;color:rgba(255,255,255,.4);font-size:1.25rem;cursor:pointer;line-height:1}
+.dc-panel-close:hover{color:#fff}
+#dc-panel-body{padding:1.5rem;flex:1;overflow-y:auto}
+#dc-side-panel .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+#dc-side-panel .form-grid.full{grid-template-columns:1fr}
+#dc-side-panel .field{display:flex;flex-direction:column;gap:.35rem;margin-bottom:.85rem}
+#dc-side-panel .field.span2{grid-column:1/-1}
+#dc-side-panel label{font-size:.72rem;font-weight:700;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.07em}
+#dc-side-panel input,#dc-side-panel select,#dc-side-panel textarea{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.55rem .85rem;color:#fff;font-size:.87rem;outline:none;width:100%;transition:border-color .15s;font-family:inherit}
+#dc-side-panel input:focus,#dc-side-panel select:focus,#dc-side-panel textarea:focus{border-color:#F5C518}
+#dc-side-panel input::placeholder,#dc-side-panel textarea::placeholder{color:rgba(255,255,255,.25)}
+#dc-side-panel select option{background:#0a1e2e;color:#fff}
+.dc-hint{font-size:.7rem;color:rgba(255,255,255,.28);line-height:1.5}
+#dc-side-panel .checkbox-row{display:flex;align-items:center;gap:.6rem;padding:.45rem 0}
+#dc-side-panel .checkbox-row input[type=checkbox]{width:auto;accent-color:#F5C518}
+#dc-side-panel .checkbox-row span{font-size:.85rem;color:rgba(255,255,255,.7)}
+#dc-side-panel .form-section{margin-bottom:1.4rem}
+#dc-side-panel .form-section-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.25);margin-bottom:.85rem;padding-bottom:.4rem;border-bottom:1px solid rgba(255,255,255,.06)}
+#dc-side-panel .form-actions{display:flex;gap:.65rem;padding-top:1rem;border-top:1px solid rgba(255,255,255,.07);margin-top:1.2rem}
+#dc-panel-detail .detail-code{font-family:monospace;font-size:1.6rem;font-weight:700;color:#F5C518;margin-bottom:.25rem;letter-spacing:.08em}
+#dc-panel-detail .detail-meta{font-size:.78rem;color:rgba(255,255,255,.4);margin-bottom:1.2rem;line-height:1.7}
+.detail-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem;margin-bottom:1.2rem}
+.ds-card{background:rgba(255,255,255,.04);border-radius:8px;padding:.75rem 1rem;border:1px solid rgba(255,255,255,.06)}
+.ds-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.3);margin-bottom:.25rem}
+.ds-val{font-size:1.15rem;font-weight:700;color:#fff}
+.ds-val.green{color:#4ade80}
+.dc-section-hdr{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.25);margin:.85rem 0 .5rem}
+.uses-list{display:flex;flex-direction:column;gap:.35rem}
+.use-row{background:rgba(255,255,255,.04);border-radius:7px;padding:.6rem .85rem;display:flex;align-items:center;gap:.75rem;font-size:.78rem}
+.use-date{color:rgba(255,255,255,.4);width:80px;flex-shrink:0}
+.use-email{flex:1;color:rgba(255,255,255,.7);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.use-saved{color:#4ade80;font-weight:700;flex-shrink:0}
+.use-source{font-size:.65rem;padding:.15rem .45rem;border-radius:10px;flex-shrink:0}
+.use-source.pos{background:rgba(245,197,24,.12);color:#F5C518}
+.use-source.web{background:rgba(100,160,255,.12);color:#88b4ff}
+.empty-uses{text-align:center;padding:2rem;color:rgba(255,255,255,.25);font-size:.82rem}
+.detail-rules{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.65rem}
+.rule-tag{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:.22rem .65rem;font-size:.72rem;color:rgba(255,255,255,.55)}
+.dc-empty-state{text-align:center;padding:4rem 2rem;color:rgba(255,255,255,.25)}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
@@ -222,7 +303,7 @@ input[type="text"].full{width:100%}
       <button class="pr-tab" id="ptab-base-area" onclick="showSection('base-area')">Base Area</button>
       <button class="pr-tab" id="ptab-bundles" onclick="showPricingGroup('bundles')">Bundles</button>
       <button class="pr-tab" id="ptab-logo-addon" onclick="showSection('logo-addon')">Logo Add-on</button>
-      <a class="pr-tab" href="/admin/discount-codes">Discount Codes</a>
+      <button class="pr-tab" id="ptab-discount-codes" onclick="showSection('discount-codes');dcLoad()">Discount Codes</button>
     </div>
     <div id="pr-tabs-sub" class="pr-tabs-row"></div>
   </div>
@@ -474,8 +555,246 @@ input[type="text"].full{width:100%}
       </div>
     </div>
 
+    <!-- ── Discount Codes ── -->
+    <div id="sec-discount-codes" class="section">
+      <h1>Discount Codes</h1>
+      <p class="subtitle">Create and manage discount codes for customer orders.</p>
+      <div class="btn-row" style="margin-bottom:1.5rem">
+        <button class="btn btn-primary btn-sm" onclick="dcOpenCreatePanel()">+ New Code</button>
+        <button class="btn btn-ghost btn-sm" onclick="dcOpenGeneratePanel()">Auto-Generate</button>
+      </div>
+      <div class="card" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;padding:1rem 1.4rem;margin-bottom:1.25rem">
+        <div><div class="stat-label">Total Codes</div><div class="stat-val" id="dc-stat-total">—</div></div>
+        <div><div class="stat-label">Active</div><div class="stat-val yellow" id="dc-stat-active">—</div></div>
+        <div><div class="stat-label">Total Uses</div><div class="stat-val" id="dc-stat-uses">—</div></div>
+        <div><div class="stat-label">Total Saved</div><div class="stat-val" id="dc-stat-saved">—</div></div>
+      </div>
+      <div class="filter-row">
+        <button class="filter-btn active" onclick="dcSetFilter('all',this)">All</button>
+        <button class="filter-btn" onclick="dcSetFilter('active',this)">Active</button>
+        <button class="filter-btn" onclick="dcSetFilter('inactive',this)">Inactive</button>
+        <button class="filter-btn" onclick="dcSetFilter('expired',this)">Expired</button>
+        <button class="filter-btn" onclick="dcSetFilter('promo',this)">Promo</button>
+        <button class="filter-btn" onclick="dcSetFilter('receipt',this)">Receipt</button>
+        <button class="filter-btn" onclick="dcSetFilter('review',this)">Review</button>
+        <button class="filter-btn" onclick="dcSetFilter('referral',this)">Referral</button>
+        <div class="search-wrap">
+          <input type="text" class="search-input" id="dc-search-input" placeholder="Search codes…" oninput="dcRenderTable()">
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="codes-table" id="dc-codes-table">
+          <thead>
+            <tr>
+              <th>Code</th><th>Discount</th><th>Rules</th><th>Source</th>
+              <th>Uses</th><th>Saved</th><th>Expires</th><th>Status</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="dc-codes-tbody"></tbody>
+        </table>
+        <div id="dc-empty-state" class="dc-empty-state" style="display:none;padding:3rem 2rem">
+          <div style="font-size:.95rem;margin-bottom:.35rem">No discount codes yet</div>
+          <div style="font-size:.8rem">Create your first code to get started</div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /main -->
 </div><!-- /layout -->
+
+<!-- Discount Codes side panel -->
+<div id="dc-panel-overlay" onclick="dcClosePanel()"></div>
+<div id="dc-side-panel">
+  <div id="dc-panel-header">
+    <h2 id="dc-panel-title">New Code</h2>
+    <button class="dc-panel-close" onclick="dcClosePanel()">&#215;</button>
+  </div>
+  <div id="dc-panel-body">
+
+    <!-- CREATE / EDIT FORM -->
+    <div id="dc-panel-form">
+      <input type="hidden" id="dc-f-id">
+      <div class="form-section">
+        <div class="form-section-title">Code</div>
+        <div class="form-grid">
+          <div class="field span2">
+            <label>Code</label>
+            <input type="text" id="dc-f-code" placeholder="e.g. SUMMER25 — leave blank to auto-generate" style="text-transform:uppercase">
+            <div class="dc-hint">Letters and numbers only. Leave blank to auto-generate.</div>
+          </div>
+          <div class="field span2">
+            <label>Description (internal note)</label>
+            <input type="text" id="dc-f-description" placeholder="e.g. Summer promo — all digital 25% off">
+          </div>
+          <div class="field">
+            <label>Source / Type</label>
+            <select id="dc-f-source">
+              <option value="promo">Promo / Holiday</option>
+              <option value="receipt">Receipt (follow-up)</option>
+              <option value="review">Review Reward</option>
+              <option value="referral">Referral / Affiliate</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">Discount</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Discount Type</label>
+            <select id="dc-f-type" onchange="dcOnTypeChange()">
+              <option value="percent">Percent off (%)</option>
+              <option value="fixed">Fixed amount off ($)</option>
+              <option value="free_shipping">Free shipping only</option>
+            </select>
+          </div>
+          <div class="field" id="dc-amount-field">
+            <label id="dc-amount-label">Amount (%)</label>
+            <input type="number" id="dc-f-amount" min="0" step="0.01" placeholder="25">
+          </div>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="dc-f-free-shipping">
+          <span>Also include free shipping</span>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">Eligibility Rules</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Applies To</label>
+            <select id="dc-f-applies-to">
+              <option value="all">All items</option>
+              <option value="digital">Digital downloads only</option>
+              <option value="prints">Prints only</option>
+              <option value="portraits">Portrait poses only</option>
+              <option value="frames">Frames only</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Min. Order Value ($)</label>
+            <input type="number" id="dc-f-min-order" min="0" step="0.01" placeholder="0">
+            <div class="dc-hint">Order subtotal must be at least this much</div>
+          </div>
+          <div class="field">
+            <label>Min. Item Quantity</label>
+            <input type="number" id="dc-f-min-qty" min="1" step="1" placeholder="1" value="1">
+            <div class="dc-hint">Customer must have at least this many items</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-section">
+        <div class="form-section-title">Limits &amp; Expiry</div>
+        <div class="form-grid">
+          <div class="field">
+            <label>Total Usage Limit</label>
+            <input type="number" id="dc-f-usage-limit" min="1" placeholder="Unlimited">
+          </div>
+          <div class="field">
+            <label>Uses Per Customer</label>
+            <input type="number" id="dc-f-usage-per-user" min="1" placeholder="Unlimited">
+          </div>
+          <div class="field">
+            <label>Start Date</label>
+            <input type="date" id="dc-f-start-date">
+            <div class="dc-hint">Code inactive before this date</div>
+          </div>
+          <div class="field">
+            <label>Expiry Date</label>
+            <input type="date" id="dc-f-expires">
+            <div class="dc-hint">Code inactive after this date</div>
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="dc-btn-pr" id="dc-btn-save" onclick="dcSaveCode()">Create Code</button>
+        <button class="dc-btn-sec" onclick="dcClosePanel()">Cancel</button>
+        <button class="btn-danger" id="dc-btn-delete" style="display:none;margin-left:auto" onclick="dcDeleteCode()">Delete</button>
+      </div>
+    </div>
+
+    <!-- AUTO-GENERATE FORM -->
+    <div id="dc-panel-generate" style="display:none">
+      <div class="form-section">
+        <div class="form-section-title">Auto-Generate Codes</div>
+        <div class="form-grid">
+          <div class="field span2">
+            <label>Prefix</label>
+            <input type="text" id="dc-g-prefix" placeholder="e.g. REVIEW, RECEIPT, PROMO" style="text-transform:uppercase">
+            <div class="dc-hint">Generated codes will look like: REVIEW-XK4M2P</div>
+          </div>
+          <div class="field">
+            <label>How Many Codes</label>
+            <input type="number" id="dc-g-count" value="1" min="1" max="100">
+          </div>
+          <div class="field">
+            <label>Discount Type</label>
+            <select id="dc-g-type" onchange="dcOnGenTypeChange()">
+              <option value="percent">Percent off (%)</option>
+              <option value="fixed">Fixed amount ($)</option>
+              <option value="free_shipping">Free shipping</option>
+            </select>
+          </div>
+          <div class="field" id="dc-g-amount-field">
+            <label id="dc-g-amount-label">Amount (%)</label>
+            <input type="number" id="dc-g-amount" min="0" step="0.01" placeholder="25">
+          </div>
+          <div class="field">
+            <label>Source</label>
+            <select id="dc-g-source">
+              <option value="promo">Promo</option>
+              <option value="receipt">Receipt</option>
+              <option value="review">Review Reward</option>
+              <option value="referral">Referral</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Uses Per Code</label>
+            <input type="number" id="dc-g-usage-limit" min="1" placeholder="1">
+          </div>
+          <div class="field span2">
+            <label>Expiry Date</label>
+            <input type="date" id="dc-g-expires">
+          </div>
+          <div class="field span2">
+            <label>Description</label>
+            <input type="text" id="dc-g-description" placeholder="Internal note for these codes">
+          </div>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="dc-btn-pr" onclick="dcGenerateCodes()">Generate Codes</button>
+        <button class="dc-btn-sec" onclick="dcClosePanel()">Cancel</button>
+      </div>
+      <div id="dc-g-result" style="display:none;margin-top:1.2rem">
+        <div class="form-section-title">Generated Codes</div>
+        <div id="dc-g-result-list" style="display:flex;flex-direction:column;gap:.4rem;margin-top:.5rem"></div>
+      </div>
+    </div>
+
+    <!-- DETAIL VIEW -->
+    <div id="dc-panel-detail" style="display:none">
+      <div class="detail-code" id="dc-d-code">—</div>
+      <div class="detail-meta" id="dc-d-meta">—</div>
+      <div class="detail-stats">
+        <div class="ds-card"><div class="ds-label">Times Used</div><div class="ds-val" id="dc-d-uses">0</div></div>
+        <div class="ds-card"><div class="ds-label">Total Saved</div><div class="ds-val green" id="dc-d-saved">$0</div></div>
+        <div class="ds-card"><div class="ds-label">Avg. Saved</div><div class="ds-val" id="dc-d-avg">$0</div></div>
+      </div>
+      <div class="detail-rules" id="dc-d-rules"></div>
+      <div style="display:flex;gap:.6rem;margin-bottom:1.2rem">
+        <button class="dc-btn-sec" onclick="dcEditFromDetail()">Edit</button>
+        <button class="dc-btn-sec" id="dc-d-toggle-btn" onclick="dcToggleActive()">Deactivate</button>
+        <button class="dc-btn-sec" onclick="dcGenerateFromTemplate()">Generate Child Code</button>
+        <button class="dc-btn-sec" id="dc-d-wc-sync-btn" onclick="dcResyncToWC()">WC Sync</button>
+        <button class="btn-danger" style="margin-left:auto" onclick="dcDeleteCode()">Delete</button>
+      </div>
+      <div class="dc-section-hdr">Usage History</div>
+      <div class="uses-list" id="dc-d-uses-list"></div>
+    </div>
+
+  </div>
+</div>
 
 <div id="toast"></div>
 
@@ -1219,6 +1538,346 @@ document.addEventListener('keydown',function(e){
   const g=document.getElementById('pin-gate');
   if(g&&g.style.display!=='none'){g.setAttribute('tabindex','-1');g.focus();}
 })();
+
+// ── Discount Codes ─────────────────────────────────────────────────────────────
+let allCodes = [];
+let activeFilter = 'all';
+let currentCode = null;
+let dcPanelMode = 'create';
+
+async function dcLoad() {
+  const r = await fetch('/api/admin/discount-codes');
+  const d = await r.json();
+  allCodes = d.codes || [];
+  dcUpdateStats();
+  dcRenderTable();
+}
+
+function dcUpdateStats() {
+  const now = new Date();
+  const active = allCodes.filter(c => c.active && (!c.expires || new Date(c.expires) > now));
+  const totalUses = allCodes.reduce((s,c) => s + (c.usage_count||0), 0);
+  const totalSaved = allCodes.reduce((s,c) => s + (c.total_saved||0), 0);
+  document.getElementById('dc-stat-total').textContent = allCodes.length;
+  document.getElementById('dc-stat-active').textContent = active.length;
+  document.getElementById('dc-stat-uses').textContent = totalUses;
+  document.getElementById('dc-stat-saved').textContent = '$' + totalSaved.toFixed(2);
+}
+
+function dcCodeStatus(c) {
+  const now = new Date();
+  if (c.expires && new Date(c.expires) < now) return 'expired';
+  return c.active ? 'active' : 'inactive';
+}
+
+function dcSetFilter(f, el) {
+  activeFilter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  dcRenderTable();
+}
+
+function dcRenderTable() {
+  const qEl = document.getElementById('dc-search-input');
+  const q = qEl ? qEl.value.toLowerCase() : '';
+  const tbody = document.getElementById('dc-codes-tbody');
+  if (!tbody) return;
+
+  const rows = allCodes.filter(c => {
+    const status = dcCodeStatus(c);
+    if (activeFilter === 'active' && status !== 'active') return false;
+    if (activeFilter === 'inactive' && status !== 'inactive') return false;
+    if (activeFilter === 'expired' && status !== 'expired') return false;
+    if (['promo','receipt','review','referral'].includes(activeFilter) && c.source !== activeFilter) return false;
+    if (q && !c.code.toLowerCase().includes(q) && !(c.description||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  document.getElementById('dc-empty-state').style.display = rows.length ? 'none' : 'block';
+  document.getElementById('dc-codes-table').style.display = rows.length ? '' : 'none';
+
+  tbody.innerHTML = rows.map(c => {
+    const status = dcCodeStatus(c);
+    const badgeCls = status === 'active' ? 'badge-active' : status === 'expired' ? 'badge-expired' : 'badge-inactive';
+    const statusLabel = status.charAt(0).toUpperCase() + status.slice(1);
+    const discount = c.type === 'free_shipping' ? 'Free Shipping'
+      : c.type === 'percent' ? `${c.amount}% off`
+      : `$${(c.amount||0).toFixed(2)} off`;
+    const rules = [];
+    if (c.applies_to && c.applies_to !== 'all') rules.push(c.applies_to);
+    if (c.min_order > 0) rules.push(`min $${c.min_order}`);
+    if (c.min_qty > 0) rules.push(`min ${c.min_qty} items`);
+    if (c.free_shipping && c.type !== 'free_shipping') rules.push('+ free ship');
+    const rulesHtml = rules.length ? rules.map(r => `<span class="rule-tag">${r}</span>`).join(' ') : '<span style="color:rgba(255,255,255,.3);font-size:.72rem">No restrictions</span>';
+    const limit = c.usage_limit || null;
+    const usePct = limit ? Math.min(100, ((c.usage_count||0)/limit)*100) : 0;
+    const usesHtml = `${c.usage_count||0}${limit ? `/${limit}<div class="uses-bar-wrap"><div class="uses-bar-fill" style="width:${usePct}%"></div></div>` : ''}`;
+    const expiresStr = c.expires ? new Date(c.expires).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    const sourceLabels = {promo:'Promo',receipt:'Receipt',review:'Review',referral:'Referral'};
+    const sourceLabel = sourceLabels[c.source] || c.source || '—';
+    return `<tr onclick="dcOpenDetail('${esc(c.id)}')">
+      <td><span class="code-pill">${esc(c.code)}</span></td>
+      <td><span class="amount-big">${esc(discount)}</span>${c.free_shipping && c.type !== 'free_shipping' ? '<br><span class="type-label">+ Free Ship</span>' : ''}</td>
+      <td>${rulesHtml}</td>
+      <td class="dim">${esc(sourceLabel)}</td>
+      <td>${usesHtml}</td>
+      <td class="saved">$${(c.total_saved||0).toFixed(2)}</td>
+      <td class="dim">${esc(expiresStr)}</td>
+      <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
+      <td onclick="event.stopPropagation()">
+        <button class="dc-btn-sec" style="padding:.28rem .65rem;font-size:.72rem" onclick="dcOpenEdit('${esc(c.id)}')">Edit</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function dcOpenPanel() {
+  document.getElementById('dc-panel-overlay').classList.add('open');
+  document.getElementById('dc-side-panel').classList.add('open');
+}
+function dcClosePanel() {
+  document.getElementById('dc-panel-overlay').classList.remove('open');
+  document.getElementById('dc-side-panel').classList.remove('open');
+  currentCode = null;
+}
+function dcShowPanelSection(section) {
+  document.getElementById('dc-panel-form').style.display = section === 'form' ? 'block' : 'none';
+  document.getElementById('dc-panel-generate').style.display = section === 'generate' ? 'block' : 'none';
+  document.getElementById('dc-panel-detail').style.display = section === 'detail' ? 'block' : 'none';
+}
+
+function dcOpenCreatePanel() {
+  dcPanelMode = 'create';
+  document.getElementById('dc-panel-title').textContent = 'New Code';
+  document.getElementById('dc-f-id').value = '';
+  document.getElementById('dc-f-code').value = '';
+  document.getElementById('dc-f-description').value = '';
+  document.getElementById('dc-f-source').value = 'promo';
+  document.getElementById('dc-f-type').value = 'percent';
+  document.getElementById('dc-f-amount').value = '';
+  document.getElementById('dc-f-free-shipping').checked = false;
+  document.getElementById('dc-f-applies-to').value = 'all';
+  document.getElementById('dc-f-min-order').value = '';
+  document.getElementById('dc-f-min-qty').value = '1';
+  document.getElementById('dc-f-usage-limit').value = '';
+  document.getElementById('dc-f-usage-per-user').value = '';
+  document.getElementById('dc-f-start-date').value = '';
+  document.getElementById('dc-f-expires').value = '';
+  document.getElementById('dc-btn-save').textContent = 'Create Code';
+  document.getElementById('dc-btn-delete').style.display = 'none';
+  dcOnTypeChange();
+  dcShowPanelSection('form');
+  dcOpenPanel();
+}
+
+function dcOpenEdit(id) {
+  const c = allCodes.find(x => x.id === id);
+  if (!c) return;
+  currentCode = c;
+  dcPanelMode = 'edit';
+  document.getElementById('dc-panel-title').textContent = 'Edit Code';
+  document.getElementById('dc-f-id').value = c.id;
+  document.getElementById('dc-f-code').value = c.code;
+  document.getElementById('dc-f-description').value = c.description || '';
+  document.getElementById('dc-f-source').value = c.source || 'promo';
+  document.getElementById('dc-f-type').value = c.type || 'percent';
+  document.getElementById('dc-f-amount').value = c.amount || '';
+  document.getElementById('dc-f-free-shipping').checked = !!c.free_shipping;
+  document.getElementById('dc-f-applies-to').value = c.applies_to || 'all';
+  document.getElementById('dc-f-min-order').value = c.min_order || '';
+  document.getElementById('dc-f-min-qty').value = c.min_qty || '1';
+  document.getElementById('dc-f-usage-limit').value = c.usage_limit || '';
+  document.getElementById('dc-f-usage-per-user').value = c.usage_limit_per_user || '';
+  document.getElementById('dc-f-start-date').value = c.start_date ? c.start_date.substring(0,10) : '';
+  document.getElementById('dc-f-expires').value = c.expires ? c.expires.substring(0,10) : '';
+  document.getElementById('dc-btn-save').textContent = 'Save Changes';
+  document.getElementById('dc-btn-delete').style.display = '';
+  dcOnTypeChange();
+  dcShowPanelSection('form');
+  dcOpenPanel();
+}
+
+function dcEditFromDetail() { if (currentCode) dcOpenEdit(currentCode.id); }
+
+function dcOpenDetail(id) {
+  const c = allCodes.find(x => x.id === id);
+  if (!c) return;
+  currentCode = c;
+  dcPanelMode = 'detail';
+  document.getElementById('dc-panel-title').textContent = 'Code Detail';
+  document.getElementById('dc-d-code').textContent = c.code;
+  const status = dcCodeStatus(c);
+  const discount = c.type === 'free_shipping' ? 'Free Shipping'
+    : c.type === 'percent' ? `${c.amount}% off`
+    : `$${(c.amount||0).toFixed(2)} off`;
+  const expiresStr = c.expires ? 'Expires ' + new Date(c.expires).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'No expiry';
+  const createdStr = c.created ? 'Created ' + new Date(c.created).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
+  const statusStr = status.charAt(0).toUpperCase() + status.slice(1);
+  const wcSync = c.wc_id
+    ? `<span style="color:#4ade80;font-size:.72rem">WooCommerce synced</span>`
+    : c.wc_sync_error
+      ? `<span style="color:#e87070;font-size:.72rem" title="${esc(c.wc_sync_error)}">WC sync failed — click Sync</span>`
+      : `<span style="color:rgba(255,255,255,.3);font-size:.72rem">WC not synced</span>`;
+  document.getElementById('dc-d-meta').innerHTML = `${esc(discount)} · ${statusStr} · ${expiresStr}${createdStr ? ' · ' + createdStr : ''}<br>${wcSync}${c.description ? '<br><em style="font-style:italic;color:rgba(255,255,255,.45)">' + esc(c.description) + '</em>' : ''}`;
+  document.getElementById('dc-d-uses').textContent = c.usage_count || 0;
+  document.getElementById('dc-d-saved').textContent = '$' + (c.total_saved||0).toFixed(2);
+  const avg = c.usage_count ? (c.total_saved||0) / c.usage_count : 0;
+  document.getElementById('dc-d-avg').textContent = '$' + avg.toFixed(2);
+  const rules = [];
+  if (c.applies_to && c.applies_to !== 'all') rules.push(`Applies to: ${c.applies_to}`);
+  if (c.min_order > 0) rules.push(`Min. order $${c.min_order}`);
+  if (c.min_qty > 0) rules.push(`Min. ${c.min_qty} items`);
+  if (c.free_shipping && c.type !== 'free_shipping') rules.push('Includes free shipping');
+  if (c.usage_limit) rules.push(`Limit: ${c.usage_count||0}/${c.usage_limit} uses`);
+  if (c.usage_limit_per_user) rules.push(`${c.usage_limit_per_user} use${c.usage_limit_per_user>1?'s':''} per customer`);
+  document.getElementById('dc-d-rules').innerHTML = rules.map(r => `<span class="rule-tag">${esc(r)}</span>`).join('') || '<span style="font-size:.75rem;color:rgba(255,255,255,.3)">No special restrictions</span>';
+  document.getElementById('dc-d-toggle-btn').textContent = c.active ? 'Deactivate' : 'Activate';
+  const uses = (c.recent_uses || []).slice().reverse();
+  const usesList = document.getElementById('dc-d-uses-list');
+  if (!uses.length) {
+    usesList.innerHTML = '<div class="empty-uses">No uses recorded yet</div>';
+  } else {
+    usesList.innerHTML = uses.map(u => `
+      <div class="use-row">
+        <span class="use-date">${esc(u.date||'—')}</span>
+        <span class="use-email">${esc(u.email||'—')}</span>
+        <span class="use-saved">-$${(u.amount_saved||0).toFixed(2)}</span>
+        <span class="use-source ${esc(u.source||'web')}">${esc((u.source||'web').toUpperCase())}</span>
+      </div>`).join('');
+  }
+  dcShowPanelSection('detail');
+  dcOpenPanel();
+}
+
+function dcOpenGeneratePanel() {
+  dcPanelMode = 'generate';
+  document.getElementById('dc-panel-title').textContent = 'Auto-Generate Codes';
+  document.getElementById('dc-g-result').style.display = 'none';
+  document.getElementById('dc-g-result-list').innerHTML = '';
+  dcOnGenTypeChange();
+  dcShowPanelSection('generate');
+  dcOpenPanel();
+}
+
+function dcOnTypeChange() {
+  const t = document.getElementById('dc-f-type').value;
+  document.getElementById('dc-amount-field').style.display = t === 'free_shipping' ? 'none' : '';
+  document.getElementById('dc-amount-label').textContent = t === 'percent' ? 'Amount (%)' : 'Amount ($)';
+}
+
+function dcOnGenTypeChange() {
+  const t = document.getElementById('dc-g-type').value;
+  document.getElementById('dc-g-amount-field').style.display = t === 'free_shipping' ? 'none' : '';
+  document.getElementById('dc-g-amount-label').textContent = t === 'percent' ? 'Amount (%)' : 'Amount ($)';
+}
+
+async function dcSaveCode() {
+  const isEdit = dcPanelMode === 'edit';
+  const id = document.getElementById('dc-f-id').value;
+  const codeVal = document.getElementById('dc-f-code').value.trim().toUpperCase();
+  const payload = {
+    code:                 codeVal || undefined,
+    auto_generate:        !codeVal,
+    description:          document.getElementById('dc-f-description').value.trim(),
+    source:               document.getElementById('dc-f-source').value,
+    type:                 document.getElementById('dc-f-type').value,
+    amount:               parseFloat(document.getElementById('dc-f-amount').value) || 0,
+    free_shipping:        document.getElementById('dc-f-free-shipping').checked,
+    applies_to:           document.getElementById('dc-f-applies-to').value,
+    min_order:            parseFloat(document.getElementById('dc-f-min-order').value) || 0,
+    min_qty:              parseInt(document.getElementById('dc-f-min-qty').value) || 1,
+    usage_limit:          parseInt(document.getElementById('dc-f-usage-limit').value) || null,
+    usage_limit_per_user: parseInt(document.getElementById('dc-f-usage-per-user').value) || null,
+    start_date:           document.getElementById('dc-f-start-date').value || null,
+    expires:              document.getElementById('dc-f-expires').value || null,
+  };
+  const url = isEdit ? `/api/admin/discount-codes/${id}` : '/api/admin/discount-codes';
+  const method = isEdit ? 'PUT' : 'POST';
+  const r = await fetch(url, {method, headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error || 'Error saving code', 'err'); return; }
+  showToast(isEdit ? 'Code updated' : `Code created: ${d.code?.code || ''}`, 'show');
+  dcClosePanel();
+  await dcLoad();
+}
+
+async function dcDeleteCode() {
+  if (!currentCode) return;
+  if (!confirm(`Delete code "${currentCode.code}"? This cannot be undone.`)) return;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}`, {method:'DELETE'});
+  if (!r.ok) { showToast('Error deleting code', 'err'); return; }
+  showToast('Code deleted', 'show');
+  dcClosePanel();
+  await dcLoad();
+}
+
+async function dcToggleActive() {
+  if (!currentCode) return;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({active: !currentCode.active})
+  });
+  if (!r.ok) { showToast('Error updating code', 'err'); return; }
+  const d = await r.json();
+  showToast(d.code.active ? 'Code activated' : 'Code deactivated', 'show');
+  dcClosePanel();
+  await dcLoad();
+}
+
+async function dcGenerateCodes() {
+  const count = parseInt(document.getElementById('dc-g-count').value) || 1;
+  const prefix = document.getElementById('dc-g-prefix').value.trim().toUpperCase();
+  const type = document.getElementById('dc-g-type').value;
+  const amount = parseFloat(document.getElementById('dc-g-amount').value) || 0;
+  const source = document.getElementById('dc-g-source').value;
+  const usageLimit = parseInt(document.getElementById('dc-g-usage-limit').value) || null;
+  const expires = document.getElementById('dc-g-expires').value || null;
+  const description = document.getElementById('dc-g-description').value.trim();
+  const generated = [];
+  for (let i = 0; i < Math.min(count, 100); i++) {
+    const payload = { auto_generate:true, prefix, type, amount, source, description,
+      usage_limit:usageLimit, expires, free_shipping:type==='free_shipping' };
+    const r = await fetch('/api/admin/discount-codes', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await r.json();
+    if (r.ok && d.code) generated.push(d.code.code);
+  }
+  const resultList = document.getElementById('dc-g-result-list');
+  resultList.innerHTML = generated.map(c =>
+    `<div style="font-family:monospace;font-size:.9rem;color:#F5C518;background:rgba(245,197,24,.08);border-radius:6px;padding:.4rem .75rem;">${esc(c)}</div>`
+  ).join('');
+  document.getElementById('dc-g-result').style.display = '';
+  showToast(`${generated.length} code${generated.length!==1?'s':''} generated`, 'show');
+  await dcLoad();
+}
+
+async function dcGenerateFromTemplate() {
+  if (!currentCode) return;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}/generate`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})
+  });
+  const d = await r.json();
+  if (!r.ok) { showToast(d.error || 'Error generating code', 'err'); return; }
+  showToast(`Generated: ${d.code.code}`, 'show');
+  dcClosePanel();
+  await dcLoad();
+}
+
+async function dcResyncToWC() {
+  if (!currentCode) return;
+  const btn = document.getElementById('dc-d-wc-sync-btn');
+  btn.textContent = 'Syncing…'; btn.disabled = true;
+  const r = await fetch(`/api/admin/discount-codes/${currentCode.id}/wc-sync`, {method:'POST'});
+  const d = await r.json();
+  btn.textContent = 'WC Sync'; btn.disabled = false;
+  if (r.ok && d.wc_id) {
+    showToast('Synced to WooCommerce', 'show');
+    currentCode.wc_id = d.wc_id;
+    delete currentCode.wc_sync_error;
+    await dcLoad();
+  } else {
+    showToast(d.error || 'Sync failed', 'err');
+  }
+}
 </script>
 </body>
 </html>
