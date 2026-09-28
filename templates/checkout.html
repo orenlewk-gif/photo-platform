@@ -695,6 +695,33 @@ function _comboGroupFolders(fc, groups) {
   return result;
 }
 
+// Returns true if a group corresponds to portrait activities (portraits live in cartData, not folderCarts)
+function _isPortraitGroup(g) {
+  const acts = globalActivityGroups[g] || [];
+  return g.toLowerCase().includes('portrait') || acts.some(a => a.toLowerCase().includes('portrait'));
+}
+
+// Returns true if a group has content — folder entries in folderCarts OR portrait data for portrait groups
+function _groupPresent(g, groupFolders) {
+  if (groupFolders[g]?.length) return true;
+  if (_isPortraitGroup(g)) {
+    return (cartData?.portrait_poses?.length || 0) > 0 || (cartData?.portrait_singles?.length || 0) > 0;
+  }
+  return false;
+}
+
+// Returns the active bundle's pct_off, or 0 if no bundle is fully satisfied
+function calcComboPctOff(fc) {
+  for (const combo of globalCombos) {
+    const groups = combo.activity_groups || [];
+    const pctOff = combo.pct_off;
+    if (!groups.length || pctOff == null) continue;
+    const gf = _comboGroupFolders(fc, groups);
+    if (groups.every(g => _groupPresent(g, gf))) return pctOff;
+  }
+  return 0;
+}
+
 function calcComboAdjPrices(fc) {
   const comboAdjPrices = {};
   for (const combo of globalCombos) {
@@ -704,7 +731,7 @@ function calcComboAdjPrices(fc) {
     if (groups.length && pctOff != null) {
       // New format: activity_groups + pct_off
       const groupFolders = _comboGroupFolders(fc, groups);
-      if (!groups.every(g => groupFolders[g]?.length)) continue;
+      if (!groups.every(g => _groupPresent(g, groupFolders))) continue;
       groups.forEach(g => {
         groupFolders[g].forEach(k => {
           const n = fc[k].selectedPhotos?.length || 0;
@@ -753,9 +780,12 @@ function renderSummary() {
   const poseTiers   = posePricing.pose_tiers || [65, 57.5, 50];
   const poses       = cartData.portrait_poses   || [];
   const pSingles    = cartData.portrait_singles || [];
+  const comboPct    = calcComboPctOff(fc);
   if (poses.length || pSingles.length) {
-    const posePrice = poses.length ? poseTiers[Math.min(poses.length - 1, poseTiers.length - 1)] : 0;
-    const singPrice = posePricing.single_photo ?? 40;
+    const basePosePrice = poses.length ? poseTiers[Math.min(poses.length - 1, poseTiers.length - 1)] : 0;
+    const baseSingPrice = posePricing.single_photo ?? 40;
+    const posePrice = comboPct ? Math.round(basePosePrice * (1 - comboPct / 100) * 100) / 100 : basePosePrice;
+    const singPrice = comboPct ? Math.round(baseSingPrice * (1 - comboPct / 100) * 100) / 100 : baseSingPrice;
     poses.forEach(pose => {
       const n = pose.files?.length || 0;
       const price = posePrice;
@@ -862,8 +892,9 @@ function renderSummary() {
   const unframed = prints.filter(p => !p.frame || p.frame === 'No Frame');
   const freeShip = unframed.length >= 3 && !prints.some(p => p.frame && p.frame !== 'No Frame');
 
+  const bundleActive = Object.keys(comboAdjPrices).length > 0 || comboPct > 0;
   let discountAmt = 0;
-  if (appliedCoupon) {
+  if (appliedCoupon && !bundleActive) {
     const at = appliedCoupon.applies_to || 'all';
     const discountBase = at === 'digital' || at === 'portraits' ? digTotal
                        : at === 'prints'  ? printTotal
@@ -878,7 +909,7 @@ function renderSummary() {
   const grandTotal = Math.max(0, subtotal + shipping - discountAmt);
 
   let totalsHtml = '';
-  const showSub  = shipping > 0 || freeShip || discountAmt > 0;
+  const showSub  = shipping > 0 || freeShip || discountAmt > 0 || bundleActive;
   if (showSub) {
     totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
   }
@@ -886,6 +917,9 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
   } else if (freeShip) {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
+  }
+  if (bundleActive) {
+    totalsHtml += `<div class="co-total-row discount"><span>Bundle deal (${comboPct}% off)</span><span class="amt">included</span></div>`;
   }
   if (discountAmt > 0) {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
@@ -999,8 +1033,8 @@ function checkBundleUpsell() {
     const pctOff = combo.pct_off;
     if (!groups.length || pctOff == null) continue;
     const groupFolders = _comboGroupFolders(fc, groups);
-    const present = groups.filter(g => groupFolders[g]?.length);
-    const missing = groups.filter(g => !groupFolders[g]?.length);
+    const present = groups.filter(g => _groupPresent(g, groupFolders));
+    const missing = groups.filter(g => !_groupPresent(g, groupFolders));
     if (present.length > 0 && missing.length > 0) {
       const missingLabel = missing.join(' or ');
       const msg = `Did you get any <strong>${missingLabel}</strong> photos taken?<br>
@@ -1068,12 +1102,14 @@ async function placeOrder() {
   const date     = cartData.date     || allDigital[0]?.date     || prints[0]?.date     || '';
   const lastName = cartData.family   || allDigital[0]?.last_name || '';
 
-  // Coupon discount — calculated on combo-adjusted subtotal
+  // Coupon discount — bundle and coupon are mutually exclusive; bundle takes priority
+  const comboPctOff  = calcComboPctOff(fc);
+  const bundleActive2 = Object.keys(comboAdj).length > 0 || comboPctOff > 0;
   const printTotal2 = prints.reduce((s,p) => s+(p.price||0), 0);
   const frameTotal2 = prints.reduce((s,p) => s+(p.framePrice||0), 0) + frames.reduce((s,f) => s+(f.price||0)*(f.quantity||1), 0);
   const subtotal    = digPrice + printTotal2 + frameTotal2;
   let discountAmt   = 0;
-  if (appliedCoupon) {
+  if (appliedCoupon && !bundleActive2) {
     const at2 = appliedCoupon.applies_to || 'all';
     const discountBase2 = at2 === 'digital' || at2 === 'portraits' ? digPrice
                         : at2 === 'prints'  ? printTotal2
@@ -1131,8 +1167,9 @@ async function placeOrder() {
     last_name:       lastName,
     billing:         billing,
     shipping:        shipping,
-    coupon_code:     appliedCoupon ? appliedCoupon.code : '',
-    coupon_discount: discountAmt,
+    coupon_code:         appliedCoupon && !bundleActive2 ? appliedCoupon.code : '',
+    coupon_discount:     discountAmt,
+    bundle_discount_pct: comboPctOff || 0,
   };
 
   try {

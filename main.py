@@ -1636,9 +1636,10 @@ async def create_checkout(request: Request):
     try:
         body = await request.json()
 
-        digital_albums   = body.get("digital_albums", [])
-        portrait_poses   = body.get("portrait_poses", [])    # [{pose_label, color, files, paths, family}]
-        portrait_singles = body.get("portrait_singles", [])  # [{filename, path, family}]
+        digital_albums      = body.get("digital_albums", [])
+        portrait_poses      = body.get("portrait_poses", [])    # [{pose_label, color, files, paths, family}]
+        portrait_singles    = body.get("portrait_singles", [])  # [{filename, path, family}]
+        bundle_discount_pct = float(body.get("bundle_discount_pct", 0))
         # Fallback for legacy payloads
         digital_count = body.get("digital_count", sum(a.get("count", 0) for a in digital_albums))
         digital_price = body.get("digital_price", sum(a.get("price", 0) for a in digital_albums))
@@ -1718,6 +1719,9 @@ async def create_checkout(request: Request):
             pp_tiers  = _load_portrait_pricing().get("pose_tiers", _DEFAULT_PORTRAIT_PRICING["pose_tiers"])
             pp_single = float(_load_portrait_pricing().get("single_photo", 40.0))
             pose_price_each = float(pp_tiers[min(len(portrait_poses) - 1, len(pp_tiers) - 1)]) if portrait_poses else 0.0
+            if bundle_discount_pct > 0:
+                pose_price_each = round(pose_price_each * (1 - bundle_discount_pct / 100), 2)
+                pp_single = round(pp_single * (1 - bundle_discount_pct / 100), 2)
             for pose in portrait_poses:
                 _family   = pose.get("family", last_name or location)
                 _label    = pose.get("pose_label", "Pose")
@@ -6282,7 +6286,13 @@ def api_activity_groups_get(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     pricing = _load_pricing()
-    return {"activity_groups": pricing.get("activity_groups", {})}
+    _derived = {
+        cat["name"]: cat.get("acts", [])
+        for cat in pricing.get("activity_categories", [])
+        if cat.get("name")
+    }
+    merged = {**_derived, **pricing.get("activity_groups", {})}
+    return {"activity_groups": merged}
 
 @app.post("/api/admin/activity-groups")
 async def api_activity_groups_save(request: Request):
