@@ -1249,6 +1249,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
       <div class="qs-section">
         <div class="qs-section-label">Prints</div>
         <div class="print-discount-banner" id="qs-print-banner" style="display:none"></div>
+        <div id="qs-ship-note" style="display:none;font-size:.75rem;color:#4ade80;margin:-0.2rem 0 0.5rem;"></div>
         <div id="qs-prints"></div>
         <div id="qs-logo-section"></div>
       </div>
@@ -4673,11 +4674,24 @@ function openQuickShop(i) {
 
   // Print section
   const banner = document.getElementById('qs-print-banner');
+  const shipNote = document.getElementById('qs-ship-note');
   if (hasDigitals) {
     banner.style.display = '';
-    banner.innerHTML = '🎉 <strong>50% off prints</strong> with your digital file purchase!';
+    banner.innerHTML = '<strong>50% off prints</strong> with your digital file purchase!';
+    const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+    const need = 3 - unframed.length;
+    if (need > 0) {
+      shipNote.style.display = '';
+      shipNote.textContent = `Add ${need} more unframed print${need !== 1 ? 's' : ''} for free shipping`;
+    } else if (unframed.length >= 3) {
+      shipNote.style.display = '';
+      shipNote.textContent = 'Free shipping included on your prints!';
+    } else {
+      shipNote.style.display = 'none';
+    }
   } else {
     banner.style.display = 'none';
+    shipNote.style.display = 'none';
   }
 
   _renderQsPrints(i, hasDigitals);

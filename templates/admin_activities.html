@@ -419,10 +419,13 @@ function renderList() {
           <span>${esc(it.label)}</span>
         </label>`
       ).join('');
+      const defaultNote = catObj?.default_note || '';
       catDefaultsHtml = `
         <div class="cat-defaults-bar">
           <div class="cat-defaults-label">Default items — automatically added to every new location in this category</div>
           <div class="items-grid">${defsGrid}</div>
+          <div class="cat-defaults-label" style="margin-top:.75rem">Default note — shown to customers on every folder in this category</div>
+          <textarea id="catdef-note-${sid}" rows="3" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.5rem .75rem;font-size:.85rem;resize:vertical;box-sizing:border-box;" placeholder="Optional note shown on every folder…">${esc(defaultNote)}</textarea>
           <div class="cat-defaults-save">
             <button class="btn btn-ghost btn-sm" onclick="saveCatDefaults('${esc(t.name)}')">Save Defaults</button>
           </div>
@@ -774,6 +777,8 @@ async function saveCatDefaults(catName) {
   cat.default_items = ALL_ITEMS
     .filter(it => document.getElementById(`catdef-${sid}-${it.key}`)?.checked)
     .map(it => it.key);
+  const noteEl = document.getElementById(`catdef-note-${sid}`);
+  if (noteEl) cat.default_note = noteEl.value.trim();
   try {
     const r = await fetch('/api/admin/pricing', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
