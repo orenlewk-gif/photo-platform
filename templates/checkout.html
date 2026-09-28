@@ -816,7 +816,9 @@ function renderSummary() {
     pSingles.forEach(s => { if (s.path) posePathToName[s.path] = s.path.split('/').pop(); });
     const pLogoEntries = Object.keys(posePathToName).filter(p => allLogoPaths.has(p));
     if (pLogoEntries.length > 0) {
-      const pLogoFee = pLogoEntries.length * 2;
+      const pLogoBase = pLogoEntries.length * 2;
+      const pLogoFee = comboPct > 0 ? Math.round(pLogoBase * (1 - comboPct / 100) * 100) / 100 : pLogoBase;
+      bundleSavings += pLogoBase - pLogoFee;
       digTotal += pLogoFee;
       itemsHtml += `<div class="co-item">
         <div class="co-item-name">Digital logo add-on
@@ -834,7 +836,9 @@ function renderSummary() {
   const allLogoPaths = new Set(cartData.digitalLogoPaths || []);
   const folderPhotoPaths = new Set(Object.values(fc).flatMap(f => (f.selectedPhotos || []).map(p => p.path)));
   const aLogoCount = [...allLogoPaths].filter(p => folderPhotoPaths.has(p)).length;
-  if (aLogoCount > 0) digTotal += aLogoCount * 2;
+  const aLogoBase = aLogoCount * 2;
+  const aLogoFeeDsc = comboPct > 0 ? Math.round(aLogoBase * (1 - comboPct / 100) * 100) / 100 : aLogoBase;
+  if (aLogoCount > 0) { digTotal += aLogoFeeDsc; bundleSavings += aLogoBase - aLogoFeeDsc; }
   Object.entries(fc).forEach(([key, folder]) => {
     const n = folder.selectedPhotos?.length || 0;
     if (!n) return;
@@ -851,7 +855,6 @@ function renderSummary() {
     </div>`;
   });
   if (aLogoCount > 0) {
-    const aLogoFee = aLogoCount * 2;
     // Build filename list for action logo photos
     const actionPathToName = {};
     Object.values(fc).forEach(folder => (folder.selectedPhotos || []).forEach(p => { actionPathToName[p.path] = p.filename || p.path.split('/').pop(); }));
@@ -860,13 +863,15 @@ function renderSummary() {
       <div class="co-item-name">Digital logo add-on
         <div class="co-item-sub">${aLogoNames.join(', ')}</div>
       </div>
-      <div class="co-item-price">$${aLogoFee.toFixed(2)}</div>
+      <div class="co-item-price">$${aLogoFeeDsc.toFixed(2)}</div>
     </div>`;
   }
 
   // Prints
   prints.forEach(p => {
-    const total = (p.price || 0) + (p.framePrice || 0);
+    const baseTotal = (p.price || 0) + (p.framePrice || 0);
+    const total = comboPct > 0 ? Math.round(baseTotal * (1 - comboPct / 100) * 100) / 100 : baseTotal;
+    bundleSavings += baseTotal - total;
     printTotal += total;
     const frameLabel = p.frame && p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
     const logoLabel = p._logo ? ' + Logo' : '';
@@ -880,7 +885,9 @@ function renderSummary() {
 
   // Frames
   frames.forEach(f => {
-    const total = (f.price || 0) * (f.quantity || 1);
+    const baseTotal = (f.price || 0) * (f.quantity || 1);
+    const total = comboPct > 0 ? Math.round(baseTotal * (1 - comboPct / 100) * 100) / 100 : baseTotal;
+    bundleSavings += baseTotal - total;
     frameTotal += total;
     itemsHtml += `<div class="co-item">
       <div class="co-item-name">${f.size} Frame (${f.orientation}) ×${f.quantity}</div>
@@ -1152,21 +1159,24 @@ async function placeOrder() {
     digital_albums:    digitalAlbums,
     digital_filenames: allDigital.map(p => p.filename),
     digital_paths:     allDigital.map(p => p.path),
-    prints: prints.map(p => ({
-      filename:    p.filename,
-      size:        p.size,
-      size_idx:    p.sizeIdx || 0,
-      orientation: p.orientation || 'landscape',
-      price:       p.price || 0,
-      frame:       p.frame || '',
-      frame_price: p.framePrice || 0,
-    })),
+    prints: prints.map(p => {
+      const disc = comboPctOff > 0 ? 1 - comboPctOff / 100 : 1;
+      return {
+        filename:    p.filename,
+        size:        p.size,
+        size_idx:    p.sizeIdx || 0,
+        orientation: p.orientation || 'landscape',
+        price:       Math.round((p.price || 0) * disc * 100) / 100,
+        frame:       p.frame || '',
+        frame_price: Math.round((p.framePrice || 0) * disc * 100) / 100,
+      };
+    }),
     frames: frames.map(f => ({
       variation_id: f.variation_id,
       size:         f.size,
       sizeIdx:      f.sizeIdx || 0,
       orientation:  f.orientation,
-      price:        f.price,
+      price:        comboPctOff > 0 ? Math.round((f.price || 0) * (1 - comboPctOff / 100) * 100) / 100 : (f.price || 0),
       quantity:     f.quantity,
     })),
     location:        loc,

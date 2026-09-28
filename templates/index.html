@@ -2315,6 +2315,17 @@ function openPoseCartView() {
 function closePoseCartView() {
   document.getElementById('pose-cartview-overlay').classList.remove('open');
 }
+function removePoseFromCart(pi, color) {
+  delete _poseState[color];
+  const galleryEl = document.getElementById(`pose-gallery-${pi}`);
+  if (galleryEl) {
+    galleryEl.classList.remove('pose-full-selected');
+    galleryEl.querySelectorAll('.thumb-card').forEach(c => c.classList.remove('selected'));
+  }
+  renderPoseCartView();
+  updatePoseCart();
+}
+
 function clearPoseCart() {
   _poseState = {};
   printCart.splice(0);
@@ -2403,7 +2414,10 @@ function renderPoseCartView() {
           <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`}</div>
           <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${count} photo${count !== 1 ? 's' : ''} · Full pose digital download</div>
         </div>
-        <div style="font-weight:700;color:#F5C518">$${posePrice.toFixed(2)}</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <div style="font-weight:700;color:#F5C518">$${posePrice.toFixed(2)}</div>
+          <button class="cartview-rm-btn" onclick="removePoseFromCart(${pi},'${escQ(color)}')">Remove</button>
+        </div>
       </div>
       ${posePhotos.length ? thumbRow(posePhotos, `openPosePhotosModalByIdx(${pi})`) : ''}
     </div>`;
@@ -2421,7 +2435,10 @@ function renderPoseCartView() {
           <div style="font-weight:700;font-size:.92rem">${pose.label || `Pose ${pi + 1}`} — individual</div>
           <div style="font-size:.78rem;color:rgba(255,255,255,.45);margin-top:2px">${set.size} photo${set.size !== 1 ? 's' : ''} · Digital download</div>
         </div>
-        <div style="font-weight:700;color:#F5C518">$${(singlePrice * set.size).toFixed(2)}</div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <div style="font-weight:700;color:#F5C518">$${(singlePrice * set.size).toFixed(2)}</div>
+          <button class="cartview-rm-btn" onclick="removePoseFromCart(${pi},'${escQ(color)}')">Remove</button>
+        </div>
       </div>
       ${singlePhotos.length ? thumbRow(singlePhotos, `openPosePhotosModalBySingles(${pi})`) : ''}
     </div>`;
@@ -2975,6 +2992,7 @@ function getUpsellMsg(count) {
       return `Add <strong>${moreLabel}</strong> for only <strong>$${nearest.extra} more</strong> → get all ${nearest.count} photos for $${nearest.price}`;
     }
     if (nearest.isMax) {
+      if (!lockedTier) return '';
       return `Add <strong>up to ${nearest.more} more photo${nearest.more !== 1 ? 's' : ''}</strong> to complete your all photos package`;
     }
     const moreLabel = nearest.more === 1 ? 'one more photo from this folder' : `${nearest.more} more photos from this folder`;
@@ -2984,6 +3002,7 @@ function getUpsellMsg(count) {
   // Already at the cheapest tier — $0 extra to add more photos
   if (nearest && nearest.extra === 0) {
     if (nearest.isMax) {
+      if (!lockedTier) return '';
       const mt = tiers.find(t => t.max && t.count === nearest.count);
       const label = mt ? mt.label : `Up to ${nearest.count} Photos`;
       return `<strong>${nearest.more} more photo${nearest.more!==1?'s':''}</strong> still included in your <strong>${label}</strong> package`;
@@ -3128,9 +3147,11 @@ function updateCart() {
   if (clearBtn) clearBtn.onclick = clearCart;
   // Upsell: if photos selected show upgrade prompt; if only prints with no digital for that photo, suggest adding the digital
   const upgradeMsg = count > 0 ? getUpsellMsg(count) : '';
-  // Print upsell — only show when digital selected but no prints yet
-  const printMsg = (count > 0 && printCart.length === 0)
-    ? `Get <strong>50% off prints</strong> for your selected photos!`
+  // Print upsell — show 50% off prints whenever digital photos are selected
+  const printMsg = count > 0
+    ? (printCart.length === 0
+        ? `Get <strong>50% off prints</strong> for your selected photos!`
+        : `<strong>50% off prints</strong> available for your photos`)
     : '';
   const cartUpsell = upgradeMsg || printMsg;
   // Free shipping incentive — only applies to unframed prints
