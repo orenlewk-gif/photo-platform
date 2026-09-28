@@ -1652,6 +1652,10 @@ async def create_checkout(request: Request):
         last_name        = body.get("last_name", "").strip()
         coupon_code      = body.get("coupon_code", "").strip()
         coupon_discount  = float(body.get("coupon_discount", 0))
+        # Bundle and coupon are mutually exclusive — bundle takes priority
+        if bundle_discount_pct > 0:
+            coupon_code     = ""
+            coupon_discount = 0.0
 
         line_items = []
         fee_lines  = []

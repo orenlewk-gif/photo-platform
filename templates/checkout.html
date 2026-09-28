@@ -920,7 +920,7 @@ function renderSummary() {
   }
   if (bundleActive) {
     _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
-    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)</span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
+    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)<br><span style="font-size:.75em;opacity:.55;font-weight:400">Cannot be combined with discount codes</span></span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
   }
   if (shipping > 0) {
     totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
@@ -1042,9 +1042,11 @@ function checkBundleUpsell() {
     const present = groups.filter(g => _groupPresent(g, groupFolders));
     const missing = groups.filter(g => !_groupPresent(g, groupFolders));
     if (present.length > 0 && missing.length > 0) {
-      const missingLabel = missing.join(' or ');
+      const _displayName = g => g.replace(/^(Winter|Summer|Fall|Spring|Autumn)\s+/i, '');
+      const missingLabel = missing.map(_displayName).join(' or ');
       const msg = `Did you get any <strong>${missingLabel}</strong> photos taken?<br>
-        Add them to your cart and receive <strong>${pctOff}% off your order!</strong>`;
+        Add them to your cart and receive <strong>${pctOff}% off your order!</strong><br>
+        <span style="font-size:.82em;opacity:.65">Cannot be combined with discount codes.</span>`;
       document.getElementById('bundle-upsell-msg').innerHTML = msg;
       const backLink = document.getElementById('bundle-upsell-back');
       if (backLink) backLink.href = cartData.returnUrl || '/';
