@@ -771,10 +771,11 @@ function renderSummary() {
   const frames  = cartData.frameCart || [];
   const prints  = getAllPrints();
 
-  let itemsHtml  = '';
-  let digTotal   = 0;
-  let printTotal = 0;
-  let frameTotal = 0;
+  let itemsHtml    = '';
+  let digTotal     = 0;
+  let printTotal   = 0;
+  let frameTotal   = 0;
+  let bundleSavings = 0;
 
   // ── Portrait pose items ───────────────────────────────────────────────────
   const posePricing = window._coPortraitPricing || { single_photo: 40, pose_tiers: [65, 57.5, 50] };
@@ -787,6 +788,7 @@ function renderSummary() {
     const baseSingPrice = posePricing.single_photo ?? 40;
     const posePrice = comboPct ? Math.round(basePosePrice * (1 - comboPct / 100) * 100) / 100 : basePosePrice;
     const singPrice = comboPct ? Math.round(baseSingPrice * (1 - comboPct / 100) * 100) / 100 : baseSingPrice;
+    bundleSavings += (basePosePrice - posePrice) * poses.length + (baseSingPrice - singPrice) * pSingles.length;
     poses.forEach(pose => {
       const n = pose.files?.length || 0;
       const price = posePrice;
@@ -835,9 +837,9 @@ function renderSummary() {
   Object.entries(fc).forEach(([key, folder]) => {
     const n = folder.selectedPhotos?.length || 0;
     if (!n) return;
-    const price = comboAdjPrices.hasOwnProperty(key)
-      ? comboAdjPrices[key]
-      : calcPriceFor(n, folder.pricing);
+    const basePrice = calcPriceFor(n, folder.pricing);
+    const price = comboAdjPrices.hasOwnProperty(key) ? comboAdjPrices[key] : basePrice;
+    if (comboAdjPrices.hasOwnProperty(key)) bundleSavings += basePrice - price;
     digTotal += price;
     const label = folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos';
     itemsHtml += `<div class="co-item">
@@ -920,7 +922,7 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
   }
   if (bundleActive) {
-    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal</span><span class="amt">${comboPct}% off included</span></div>`;
+    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)</span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
   }
   if (discountAmt > 0) {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
