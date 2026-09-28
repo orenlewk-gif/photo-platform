@@ -1116,7 +1116,14 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                 print(f"zip pricing lookup error: {e}")
     pricing = _load_pricing()
     combos = pricing.get("combos", [])
-    _activity_groups = pricing.get("activity_groups", {})
+    # Build activity_groups: category name → list of its acts (individual location names).
+    # Explicit entries in pricing["activity_groups"] override the derived ones.
+    _derived_groups = {
+        cat["name"]: cat.get("acts", [])
+        for cat in pricing.get("activity_categories", [])
+        if cat.get("name")
+    }
+    _activity_groups = {**_derived_groups, **pricing.get("activity_groups", {})}
     if location and date:
         date_overrides = pricing.get("date_overrides", {})
         date_ov = date_overrides.get(date, {})
