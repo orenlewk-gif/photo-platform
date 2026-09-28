@@ -897,6 +897,7 @@ function renderSummary() {
   const freeShip = unframed.length >= 3 && !prints.some(p => p.frame && p.frame !== 'No Frame');
 
   const bundleActive = Object.keys(comboAdjPrices).length > 0 || comboPct > 0;
+  const subtotalBeforeBundle = bundleActive ? subtotal + bundleSavings : subtotal;
   let discountAmt = 0;
   if (appliedCoupon && !bundleActive) {
     const at = appliedCoupon.applies_to || 'all';
@@ -915,16 +916,16 @@ function renderSummary() {
   let totalsHtml = '';
   const showSub  = shipping > 0 || freeShip || discountAmt > 0 || bundleActive;
   if (showSub) {
-    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
+    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotalBeforeBundle.toFixed(2)}</span></div>`;
+  }
+  if (bundleActive) {
+    _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
+    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)</span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
   }
   if (shipping > 0) {
     totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
   } else if (freeShip) {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
-  }
-  if (bundleActive) {
-    _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
-    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)</span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
   }
   if (discountAmt > 0) {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
