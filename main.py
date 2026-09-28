@@ -5922,11 +5922,13 @@ def api_folder_info(date: str = Query(None), location: str = Query(None), family
     fk = _folder_key(date, (location or "").strip(), (family or "").strip())
     fm = _load_folder_meta()
     desc = fm.get(fk, {}).get("description", "")
-    # Fall back to category default_note only at the location level (family empty)
-    if not desc and location and not (family or "").strip():
+    # Fall back to category default_note for action categories (not portrait)
+    if not desc and location:
         pricing = _load_pricing()
         loc_name = (location or "").strip().lower()
         for cat in (pricing.get("activity_categories") or []):
+            if "portrait" in cat.get("name", "").lower():
+                continue
             acts = [a.lower() for a in (cat.get("acts") or [])]
             if loc_name in acts and cat.get("default_note"):
                 desc = cat["default_note"]
