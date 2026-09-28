@@ -683,12 +683,20 @@ async function loadThumbs() {
 // ── Shared combo price helper ─────────────────────────────────────────────
 // Returns {folderKey -> adjustedPrice} when a combo deal is active, else {}.
 function _comboGroupFolders(fc, groups) {
-  // For each group name, find folder keys whose location belongs to that group
+  // For each group name, find folder keys whose location belongs to that group.
+  // If no explicit location mapping exists, fall back to matching the location
+  // directly against the group name (activity name === location name).
   const result = {};
   for (const g of groups) {
-    const gLocs = new Set((globalActivityGroups[g] || []).map(l => l.toLowerCase()));
+    const explicitLocs = (globalActivityGroups[g] || []).map(l => l.toLowerCase());
+    const gLocs = new Set(explicitLocs);
+    const gNameLower = g.toLowerCase();
     result[g] = Object.entries(fc)
-      .filter(([, f]) => (f.selectedPhotos?.length || 0) > 0 && gLocs.has((f.location || '').toLowerCase()))
+      .filter(([, f]) => {
+        if (!((f.selectedPhotos?.length || 0) > 0)) return false;
+        const loc = (f.location || '').toLowerCase();
+        return gLocs.size > 0 ? gLocs.has(loc) : loc === gNameLower;
+      })
       .map(([k]) => k);
   }
   return result;

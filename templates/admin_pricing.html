@@ -851,6 +851,16 @@ Promise.all([
 }).catch(e=>{ console.error('Load error:',e); showToast('Load error: '+e,'err'); });
 
 function renderAll(){
+  // Populate activity group names from activity_categories (all activity names)
+  const _fromCats = [];
+  (pricingData.activity_categories || []).forEach(cat => {
+    (cat.acts || []).forEach(a => { if (!_fromCats.includes(a)) _fromCats.push(a); });
+  });
+  if (_fromCats.length) {
+    const merged = [...new Set([..._actGroupNames, ..._fromCats])].sort();
+    _actGroupNames = merged;
+  }
+
   renderZip();
   renderActEditor('Mountain Biking','act-editor-mountain-biking');
   renderActEditor('Dirt Days','act-editor-dirt-days');
