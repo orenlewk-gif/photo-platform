@@ -255,6 +255,7 @@
     }
     .co-total-row .amt { font-weight: 600; color: rgba(255,255,255,.8); }
     .co-total-row.discount .amt { color: #4ade80; }
+    .co-total-row.bundle-deal .amt { color: #F5C518; }
     .co-total-row.free-ship .amt { color: #4ade80; }
     .co-total-final {
       display: flex;
@@ -919,7 +920,7 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
   }
   if (bundleActive) {
-    totalsHtml += `<div class="co-total-row discount"><span>Bundle deal (${comboPct}% off)</span><span class="amt">included</span></div>`;
+    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal</span><span class="amt">${comboPct}% off included</span></div>`;
   }
   if (discountAmt > 0) {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
