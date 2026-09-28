@@ -1000,7 +1000,11 @@ function renderActEditor(actName, containerId){
         <td><input type="text" value="${esc(t.label||'')}" style="width:130px" oninput="actField('${esc(actName)}',${i},'label',this.value)"></td>
         <td>${t.count==='all'?'<span style="color:rgba(255,255,255,.4);font-size:12px">All</span>':`<input type="number" value="${t.count}" min="1" style="width:58px" oninput="actField('${esc(actName)}',${i},'count',+this.value)">`}</td>
         <td><span class="dollar">$</span><input type="number" value="${t.price}" min="0" oninput="actField('${esc(actName)}',${i},'price',+this.value)"></td>
-        <td><button class="btn btn-danger btn-sm" onclick="removeActTier('${esc(actName)}','${containerId}',${i})">&#10005;</button></td>
+        <td style="display:flex;gap:.25rem;align-items:center">
+          <button class="btn btn-ghost btn-sm" style="padding:.15rem .4rem;font-size:.7rem" ${i===0?'disabled':''} onclick="moveActTier('${esc(actName)}','${containerId}',${i},-1)">&#9650;</button>
+          <button class="btn btn-ghost btn-sm" style="padding:.15rem .4rem;font-size:.7rem" ${i===tiers.length-1?'disabled':''} onclick="moveActTier('${esc(actName)}','${containerId}',${i},1)">&#9660;</button>
+          <button class="btn btn-danger btn-sm" onclick="removeActTier('${esc(actName)}','${containerId}',${i})">&#10005;</button>
+        </td>
       </tr>`).join('')}
     </tbody>
   </table>
@@ -1012,6 +1016,15 @@ function renderActEditor(actName, containerId){
 function actField(actName,i,field,val){
   const tiers = pricingData?.activities?.[actName]?.tiers;
   if(tiers&&tiers[i]) tiers[i][field]=val;
+}
+
+function moveActTier(actName,containerId,i,dir){
+  const tiers = pricingData?.activities?.[actName]?.tiers;
+  if(!tiers) return;
+  const j = i + dir;
+  if(j < 0 || j >= tiers.length) return;
+  [tiers[i], tiers[j]] = [tiers[j], tiers[i]];
+  renderActTiers(actName, containerId);
 }
 
 function addActTierFor(actName,containerId){
