@@ -255,8 +255,9 @@
     }
     .co-total-row .amt { font-weight: 600; color: rgba(255,255,255,.8); }
     .co-total-row.discount .amt { color: #4ade80; }
-    .co-total-row.bundle-deal .amt { color: #F5C518; }
     .co-total-row.free-ship .amt { color: #4ade80; }
+    .co-total-row.co-total-saved { margin-top: .5rem; padding-top: .5rem; border-top: 1px solid rgba(255,255,255,.08); font-size: .85rem; opacity: .8; }
+    .co-total-row.co-total-saved .amt { color: #4ade80; }
     .co-total-final {
       display: flex;
       justify-content: space-between;
@@ -904,7 +905,7 @@ function renderSummary() {
   const freeShip = unframed.length >= 3 && !prints.some(p => p.frame && p.frame !== 'No Frame');
 
   const bundleActive = Object.keys(comboAdjPrices).length > 0 || comboPct > 0;
-  const subtotalBeforeBundle = bundleActive ? subtotal + bundleSavings : subtotal;
+  if (bundleActive) _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
   let discountAmt = 0;
   if (appliedCoupon && !bundleActive) {
     const at = appliedCoupon.applies_to || 'all';
@@ -921,13 +922,9 @@ function renderSummary() {
   const grandTotal = Math.max(0, subtotal + shipping - discountAmt);
 
   let totalsHtml = '';
-  const showSub  = shipping > 0 || freeShip || discountAmt > 0 || bundleActive;
+  const showSub = shipping > 0 || freeShip || discountAmt > 0 || bundleActive;
   if (showSub) {
-    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotalBeforeBundle.toFixed(2)}</span></div>`;
-  }
-  if (bundleActive) {
-    _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
-    totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)<br><span style="font-size:.75em;opacity:.55;font-weight:400">Cannot be combined with discount codes</span></span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
+    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
   }
   if (shipping > 0) {
     totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
@@ -938,6 +935,9 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
   }
   totalsHtml += `<div class="co-total-final"><span>Total</span><span class="amt">$${grandTotal.toFixed(2)}</span></div>`;
+  if (bundleActive && bundleSavings > 0) {
+    totalsHtml += `<div class="co-total-row co-total-saved"><span>Total saved</span><span class="amt">$${bundleSavings.toFixed(2)}</span></div>`;
+  }
 
   document.getElementById('co-totals').innerHTML = totalsHtml;
   document.getElementById('mobile-total').textContent = `$${grandTotal.toFixed(2)}`;
