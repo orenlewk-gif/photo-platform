@@ -1639,7 +1639,8 @@ async def create_checkout(request: Request):
         digital_albums      = body.get("digital_albums", [])
         portrait_poses      = body.get("portrait_poses", [])    # [{pose_label, color, files, paths, family}]
         portrait_singles    = body.get("portrait_singles", [])  # [{filename, path, family}]
-        bundle_discount_pct = float(body.get("bundle_discount_pct", 0))
+        bundle_discount_pct    = float(body.get("bundle_discount_pct", 0))
+        bundle_savings_amount  = float(body.get("bundle_savings_amount", 0))
         # Fallback for legacy payloads
         digital_count = body.get("digital_count", sum(a.get("count", 0) for a in digital_albums))
         digital_price = body.get("digital_price", sum(a.get("price", 0) for a in digital_albums))
@@ -1848,6 +1849,9 @@ async def create_checkout(request: Request):
         if coupon_code:
             meta.append({"key": "_coupon_code",     "value": coupon_code})
             meta.append({"key": "_coupon_discount", "value": str(coupon_discount)})
+        if bundle_discount_pct > 0:
+            meta.append({"key": "_bundle_discount_pct", "value": str(bundle_discount_pct)})
+            meta.append({"key": "_bundle_savings",      "value": str(bundle_savings_amount)})
 
         customer_email = body.get("email", "")
         billing_data   = body.get("billing", {})
@@ -2222,6 +2226,23 @@ async def wc_webhook(request: Request):
                 "order_id":     str(order_id),
                 "email":        customer_email,
                 "amount_saved": wc_coupon_discount,
+                "order_total":  float(order.get("total", 0)),
+                "source":       "web",
+            })
+        except Exception:
+            pass
+
+    # Record bundle deal usage
+    wc_bundle_pct     = float(meta.get("_bundle_discount_pct", 0) or 0)
+    wc_bundle_savings = float(meta.get("_bundle_savings", 0) or 0)
+    if wc_bundle_pct > 0:
+        try:
+            _record_bundle_use({
+                "date":         datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "order_id":     str(order_id),
+                "email":        customer_email,
+                "amount_saved": wc_bundle_savings,
+                "pct_off":      wc_bundle_pct,
                 "order_total":  float(order.get("total", 0)),
                 "source":       "web",
             })
@@ -3633,6 +3654,32 @@ def _record_coupon_use(code_upper: str, use: dict):
             uses.append(use)
             c["uses"] = uses[-500:]   # cap history at 500 entries
             break
+    _save_discount_codes(codes)
+
+def _record_bundle_use(use: dict):
+    """Record a bundle deal use — upserts a synthetic BUNDLE_DEAL entry."""
+    codes = _load_discount_codes()
+    entry = next((c for c in codes if c.get("code") == "BUNDLE_DEAL"), None)
+    if not entry:
+        entry = {
+            "id":           "BUNDLE_DEAL",
+            "code":         "BUNDLE_DEAL",
+            "label":        "Bundle Deal (auto-applied)",
+            "discount_type": "percent",
+            "amount":       0,
+            "applies_to":   "all",
+            "active":       True,
+            "is_system":    True,
+            "usage_count":  0,
+            "total_saved":  0.0,
+            "uses":         [],
+        }
+        codes.insert(0, entry)
+    entry["usage_count"] = int(entry.get("usage_count", 0)) + 1
+    entry["total_saved"] = round(float(entry.get("total_saved", 0)) + float(use.get("amount_saved", 0)), 2)
+    uses = entry.get("uses", [])
+    uses.append(use)
+    entry["uses"] = uses[-500:]
     _save_discount_codes(codes)
 
 import random, string as _string

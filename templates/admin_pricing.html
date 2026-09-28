@@ -1621,7 +1621,7 @@ function dcRenderTable() {
     const usesHtml = `${c.usage_count||0}${limit ? `/${limit}<div class="uses-bar-wrap"><div class="uses-bar-fill" style="width:${usePct}%"></div></div>` : ''}`;
     const expiresStr = c.expires ? new Date(c.expires).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : '—';
     const sourceLabels = {promo:'Promo',receipt:'Receipt',review:'Review',referral:'Referral'};
-    const sourceLabel = sourceLabels[c.source] || c.source || '—';
+    const sourceLabel = c.is_system ? 'Auto' : (sourceLabels[c.source] || c.source || '—');
     return `<tr onclick="dcOpenDetail('${esc(c.id)}')">
       <td><span class="code-pill">${esc(c.code)}</span></td>
       <td><span class="amount-big">${esc(discount)}</span>${c.free_shipping && c.type !== 'free_shipping' ? '<br><span class="type-label">+ Free Ship</span>' : ''}</td>
@@ -1632,7 +1632,7 @@ function dcRenderTable() {
       <td class="dim">${esc(expiresStr)}</td>
       <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
       <td onclick="event.stopPropagation()">
-        <button class="dc-btn-sec" style="padding:.28rem .65rem;font-size:.72rem" onclick="dcOpenEdit('${esc(c.id)}')">Edit</button>
+        ${c.is_system ? '' : `<button class="dc-btn-sec" style="padding:.28rem .65rem;font-size:.72rem" onclick="dcOpenEdit('${esc(c.id)}')">Edit</button>`}
       </td>
     </tr>`;
   }).join('');
@@ -1739,6 +1739,9 @@ function dcOpenDetail(id) {
   if (c.usage_limit_per_user) rules.push(`${c.usage_limit_per_user} use${c.usage_limit_per_user>1?'s':''} per customer`);
   document.getElementById('dc-d-rules').innerHTML = rules.map(r => `<span class="rule-tag">${esc(r)}</span>`).join('') || '<span style="font-size:.75rem;color:rgba(255,255,255,.3)">No special restrictions</span>';
   document.getElementById('dc-d-toggle-btn').textContent = c.active ? 'Deactivate' : 'Activate';
+  document.getElementById('dc-d-toggle-btn').style.display = c.is_system ? 'none' : '';
+  const dcDetailDelete = document.querySelector('#dc-panel-detail .btn-danger');
+  if (dcDetailDelete) dcDetailDelete.style.display = c.is_system ? 'none' : '';
   const uses = (c.recent_uses || []).slice().reverse();
   const usesList = document.getElementById('dc-d-uses-list');
   if (!uses.length) {

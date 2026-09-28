@@ -513,7 +513,8 @@
 // ── Cart state ───────────────────────────────────────────────────────────────
 let cartData      = null;
 let appliedCoupon = null;
-let globalCombos  = [];     // combo deals loaded from /api/pricing
+let globalCombos     = [];     // combo deals loaded from /api/pricing
+let _lastBundleSavings = 0;    // set in renderSummary, read by placeOrder
 let globalActivityGroups = {};  // {groupName: [location, ...]} for bundle matching
 
 let PRINT_SHIPPING = [8, 8, 13, 13];
@@ -922,6 +923,7 @@ function renderSummary() {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
   }
   if (bundleActive) {
+    _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
     totalsHtml += `<div class="co-total-row bundle-deal"><span>Bundle deal (${comboPct}% off)</span><span class="amt">-$${bundleSavings.toFixed(2)}</span></div>`;
   }
   if (discountAmt > 0) {
@@ -1172,7 +1174,8 @@ async function placeOrder() {
     shipping:        shipping,
     coupon_code:         appliedCoupon && !bundleActive2 ? appliedCoupon.code : '',
     coupon_discount:     discountAmt,
-    bundle_discount_pct: comboPctOff || 0,
+    bundle_discount_pct:    comboPctOff || 0,
+    bundle_savings_amount:  comboPctOff > 0 ? _lastBundleSavings : 0,
   };
 
   try {
