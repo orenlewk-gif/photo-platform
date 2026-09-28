@@ -106,6 +106,13 @@ a{color:inherit;text-decoration:none}
 .cat-defaults-bar{background:rgba(245,197,24,.04);border:1px solid rgba(245,197,24,.15);border-radius:7px;padding:.75rem 1rem;margin-bottom:.75rem}
 .cat-defaults-label{font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(245,197,24,.55);margin-bottom:.65rem}
 .cat-defaults-save{margin-top:.65rem}
+.note-toolbar{display:flex;gap:.35rem;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.15);border-bottom:none;border-radius:6px 6px 0 0;padding:.3rem .5rem}
+.note-fmt-btn{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:4px;color:#e8eaf0;cursor:pointer;padding:.1rem .45rem;font-size:.8rem;line-height:1.4}
+.note-fmt-btn:hover{background:rgba(255,255,255,.2)}
+.note-fmt-select{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);border-radius:4px;color:#e8eaf0;font-size:.78rem;padding:.1rem .3rem;cursor:pointer}
+.note-fmt-select option{background:#1a1d26}
+.note-editor{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:0 0 6px 6px;color:#fff;padding:.5rem .75rem;font-size:.85rem;min-height:4.5rem;box-sizing:border-box;outline:none;line-height:1.5}
+.note-editor:empty:before{content:attr(data-placeholder);color:rgba(255,255,255,.3);pointer-events:none}
 
 /* Feature flags (toggles) */
 .flags-row{display:flex;flex-wrap:wrap;gap:1.25rem;align-items:center}
@@ -425,7 +432,18 @@ function renderList() {
           <div class="cat-defaults-label">Default items — automatically added to every new location in this category</div>
           <div class="items-grid">${defsGrid}</div>
           <div class="cat-defaults-label" style="margin-top:.75rem">Default note — shown to customers on every folder in this category</div>
-          <textarea id="catdef-note-${sid}" rows="3" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.5rem .75rem;font-size:.85rem;resize:vertical;box-sizing:border-box;" placeholder="Optional note shown on every folder…">${esc(defaultNote)}</textarea>
+          <div class="note-toolbar">
+            <button type="button" class="note-fmt-btn" onmousedown="event.preventDefault();fmtNote('${sid}','bold')" title="Bold"><b>B</b></button>
+            <button type="button" class="note-fmt-btn" onmousedown="event.preventDefault();fmtNote('${sid}','italic')" title="Italic"><i>I</i></button>
+            <select class="note-fmt-select" onchange="fmtNoteSize('${sid}',this.value);this.value=''" title="Font size">
+              <option value="">Size</option>
+              <option value="1">Small</option>
+              <option value="3">Normal</option>
+              <option value="4">Large</option>
+              <option value="5">Larger</option>
+            </select>
+          </div>
+          <div id="catdef-note-${sid}" class="note-editor" contenteditable="true" data-placeholder="Optional note shown on every folder…">${defaultNote}</div>
           <div class="cat-defaults-save">
             <button class="btn btn-ghost btn-sm" onclick="saveCatDefaults('${esc(t.name)}')">Save Defaults</button>
           </div>
@@ -778,7 +796,7 @@ async function saveCatDefaults(catName) {
     .filter(it => document.getElementById(`catdef-${sid}-${it.key}`)?.checked)
     .map(it => it.key);
   const noteEl = document.getElementById(`catdef-note-${sid}`);
-  if (noteEl) cat.default_note = noteEl.value.trim();
+  if (noteEl) cat.default_note = noteEl.innerHTML.trim();
   try {
     const r = await fetch('/api/admin/pricing', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -860,6 +878,19 @@ async function createActivity() {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+function fmtNote(sid, cmd) {
+  const el = document.getElementById(`catdef-note-${sid}`);
+  el.focus();
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand(cmd, false, null);
+}
+function fmtNoteSize(sid, val) {
+  if (!val) return;
+  const el = document.getElementById(`catdef-note-${sid}`);
+  el.focus();
+  document.execCommand('styleWithCSS', false, true);
+  document.execCommand('fontSize', false, val);
+}
 function slugId(s) { return String(s).replace(/[^a-zA-Z0-9]/g, '-'); }
 function esc(s)    { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 let _tt;

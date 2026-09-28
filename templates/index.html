@@ -124,6 +124,7 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
   background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15);
   border-radius:6px; color:#e8eaf0; font-size:.75rem;
   padding:.25rem .5rem; outline:none; cursor:pointer;
+  width:auto; max-width:130px;
 }
 .tf-select:focus { border-color:rgba(255,255,255,.3); }
 .tf-select option { background:#0f1117; }
@@ -1651,7 +1652,7 @@ async function showLocations(date) {
   document.getElementById('ln-bar').style.display = '';
 
   const dateInfoHtml = infoData.description
-    ? `<div class="folder-info-box">${escHtml(infoData.description)}</div>`
+    ? `<div class="folder-info-box">${infoData.description}</div>`
     : '';
 
   const el = document.getElementById('view-locations');
@@ -1702,7 +1703,7 @@ async function showFamilies(date, location) {
     const infoRes = await fetch(`/api/folder/info?date=${enc(date)}&location=${enc(location)}`);
     const infoData = await infoRes.json();
     if (infoData.description) {
-      locationInfoHtml = `<div class="folder-info-box">${escHtml(infoData.description)}</div>`;
+      locationInfoHtml = `<div class="folder-info-box">${infoData.description}</div>`;
     }
   } catch(e) {}
 
@@ -1790,7 +1791,7 @@ async function showGallery(date, location, family, ln, group) {
       const infoRes = await fetch(`/api/folder/info?date=${enc(date)}&location=${enc(location)}&family=${enc(family || group)}`);
       const infoData = await infoRes.json();
       if (infoData.description) {
-        folderInfoHtml = `<div class="folder-info-box">${escHtml(infoData.description)}</div>`;
+        folderInfoHtml = `<div class="folder-info-box">${infoData.description}</div>`;
       }
     } catch(e) {}
   }
