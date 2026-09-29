@@ -3103,12 +3103,17 @@ async function loadPrivateSessions(){
 
 async function loadActionPricing(){
   try {
-    const res = await fetch('/api/pricing');
+    const res = await fetch('/api/pricing?location=Winter Action');
     const d = await res.json();
     if(typeof d.logo_fee === 'number') LOGO_FEE = d.logo_fee;
-    const wa = (d.activities || {})['Winter Action'];
-    if(wa && (wa.per_photo || wa.all_photos)){
-      S.actionPricing = {per_photo: wa.per_photo || 25, all_photos: wa.all_photos || 115};
+    const tiers = d.tiers || [];
+    const oneTier = tiers.find(t => t.count === 1 || t.count === '1');
+    const allTier = tiers.find(t => t.count === 'all' || t.max);
+    if(oneTier || allTier) {
+      S.actionPricing = {
+        per_photo: oneTier ? oneTier.price : (S.actionPricing.per_photo || 25),
+        all_photos: allTier ? allTier.price : (S.actionPricing.all_photos || 115),
+      };
     }
   } catch(e){}
 }
