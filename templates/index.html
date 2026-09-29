@@ -4548,8 +4548,8 @@ function toggleQsLogo() {
   if (track) track.className = 'qs-logo-toggle-track' + (_qsLogo ? ' on' : '');
   const label = document.getElementById('qs-logo-label');
   if (label) label.innerHTML = _qsLogo
-    ? `Logo on prints <span class="qs-logo-accent">+$${LOGO_FEE} each</span>`
-    : `Add logo to prints <span class="qs-logo-accent">+$${LOGO_FEE} each</span>`;
+    ? `Big Sky Resort logo on prints <span class="qs-logo-accent">+$${LOGO_FEE} each</span>`
+    : `Add the Big Sky Resort logo <span class="qs-logo-accent">+$${LOGO_FEE} each</span>`;
   // Re-render print rows with new logo state
   const body = document.getElementById('qs-prints');
   if (body) {
@@ -4711,7 +4711,7 @@ function openQuickShop(i) {
     logoSection.style.display = showLogo ? '' : 'none';
     logoSection.innerHTML = showLogo ? `<div class="qs-logo-row" onclick="toggleQsLogo()">
       <div id="qs-logo-track" class="qs-logo-toggle-track"></div>
-      <span id="qs-logo-label">Add logo to prints <span class="qs-logo-accent">+$${LOGO_FEE} each</span></span>
+      <span id="qs-logo-label">Add the Big Sky Resort logo <span class="qs-logo-accent">+$${LOGO_FEE} each</span></span>
     </div>` : '';
   }
 
