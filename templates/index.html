@@ -3156,9 +3156,13 @@ function updateCart() {
         : `<strong>50% off prints</strong> available for your photos`)
     : '';
   const cartUpsell = upgradeMsg || printMsg;
-  // Free shipping incentive — only applies to unframed prints
+  // Free shipping incentive — only applies to unframed prints (count across all folders)
   let shippingMsg = '';
-  const unframedPrints = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+  const allUnframedPrints = [
+    ...printCart,
+    ...Object.entries(folderCarts).filter(([key]) => key !== currentFolderKey).flatMap(([, fc]) => fc.printCart || [])
+  ].filter(p => !p.frame || p.frame === 'No Frame');
+  const unframedPrints = allUnframedPrints;
   if (unframedPrints.length > 0) {
     const FREE_SHIP_THRESHOLD = 3;
     const need = FREE_SHIP_THRESHOLD - unframedPrints.length;
@@ -3711,13 +3715,27 @@ function openCheckout_UNUSED() {
 }
 
 function calcShipping() {
-  const framed   = printCart.filter(p => p.frame && p.frame !== 'No Frame');
-  const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
+  // Gather prints and frames from all folders (current + saved)
+  const allPrints = [
+    ...printCart,
+    ...Object.entries(folderCarts)
+      .filter(([key]) => key !== currentFolderKey)
+      .flatMap(([, fc]) => fc.printCart || [])
+  ];
+  const allFrames = [
+    ...frameCart,
+    ...Object.entries(folderCarts)
+      .filter(([key]) => key !== currentFolderKey)
+      .flatMap(([, fc]) => fc.frameCart || [])
+  ];
+
+  const framed   = allPrints.filter(p => p.frame && p.frame !== 'No Frame');
+  const unframed = allPrints.filter(p => !p.frame || p.frame === 'No Frame');
 
   // Collect every frame rate (framed prints + standalone frame store items, expanded by qty)
   const frameRates = [
     ...framed.map(p => FRAME_SHIPPING[p.sizeIdx]),
-    ...frameCart.flatMap(f => Array(f.quantity).fill(FRAME_SHIPPING[f.sizeIdx ?? 0])),
+    ...allFrames.flatMap(f => Array(f.quantity).fill(FRAME_SHIPPING[f.sizeIdx ?? 0])),
   ].filter(r => r != null).sort((a, b) => b - a);
 
   if (frameRates.length) {

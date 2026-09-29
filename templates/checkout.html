@@ -692,7 +692,7 @@ function _comboGroupFolders(fc, groups) {
   for (const g of groups) {
     const gLocs = new Set((globalActivityGroups[g] || []).map(l => l.toLowerCase()));
     result[g] = Object.entries(fc)
-      .filter(([, f]) => (f.selectedPhotos?.length || 0) > 0 && gLocs.has((f.location || '').toLowerCase()))
+      .filter(([, f]) => ((f.selectedPhotos?.length || 0) > 0 || (f.printCart?.length || 0) > 0) && gLocs.has((f.location || '').toLowerCase()))
       .map(([k]) => k);
   }
   return result;
