@@ -3174,7 +3174,7 @@ function updateCart() {
     comboMsg = `🎉 <strong>${comboActive.combo.label}</strong> active — $${comboActive.combo.price} total for both portrait sessions (saves $${comboActive.discount})`;
   }
   const upsellEl = document.getElementById('cart-upsell-text');
-  const parts = [comboMsg || upgradeMsg, printMsg, shippingMsg].filter(Boolean);
+  const parts = [comboMsg, printMsg, shippingMsg].filter(Boolean);
   upsellEl.innerHTML = parts.join(`<span style="margin:0 8px;opacity:0.35;">|</span>`);
   document.getElementById('cart-bar').classList.add('show');
   document.getElementById('main-container').style.paddingBottom = '80px';
