@@ -1157,15 +1157,22 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
                 ]
             return result
 
-        act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
-        if act_key:
-            return _act_result(activities[act_key])
-        # Fall back to activity_groups — derived from categories + explicit overrides
+        # Category pricing wins: locations inherit their category's tiers
         for act_name, group_locs in _activity_groups.items():
             if location.strip().lower() in [l.lower() for l in group_locs]:
                 pk_act = next((k for k in activities if k.lower() == act_name.lower()), None)
                 if pk_act:
-                    return _act_result(activities[pk_act])
+                    result = dict(activities[pk_act])
+                    # Merge in location-level flags (time_search, clip, etc.) if present
+                    loc_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
+                    if loc_key and activities[loc_key].get("flags"):
+                        result = dict(result)
+                        result["flags"] = {**activities[loc_key]["flags"], **result.get("flags", {})}
+                    return _act_result(result)
+        # Fall back to direct location match (location-specific pricing)
+        act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
+        if act_key:
+            return _act_result(activities[act_key])
         # Fall back to item_list name when location has no direct pricing
         if date:
             try:
