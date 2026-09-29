@@ -526,7 +526,7 @@ function calcPriceFor(count, pricing) {
   if (!pricing || !pricing.tiers || count === 0) return 0;
   const tiers      = pricing.tiers;
   const allTier    = tiers.find(t => t.count === 'all');
-  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => a.count - b.count);
+  const maxTiers   = tiers.filter(t => t.max).map(t => ({ ...t, count: t.count === 'all' ? 30 : t.count })).sort((a, b) => a.count - b.count);
   const singleTier = tiers.find(t => t.count === 1);
   const singleUnit = singleTier ? singleTier.price : 25;
   let best = count * singleUnit;
