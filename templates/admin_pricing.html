@@ -998,7 +998,7 @@ function renderActEditor(actName, containerId){
     <tbody>
       ${tiers.map((t,i)=>`<tr>
         <td><input type="text" value="${esc(t.label||'')}" style="width:130px" oninput="actField('${esc(actName)}',${i},'label',this.value)"></td>
-        <td>${t.count==='all'?'<span style="color:rgba(255,255,255,.4);font-size:12px">All</span>':`<input type="number" value="${t.count}" min="1" style="width:58px" oninput="actField('${esc(actName)}',${i},'count',+this.value)">`}</td>
+        <td><input type="number" value="${t.count==='all'?30:t.count}" min="1" style="width:58px" oninput="actField('${esc(actName)}',${i},'count',+this.value);actField('${esc(actName)}',${i},'max',true)"></td>
         <td><span class="dollar">$</span><input type="number" value="${t.price}" min="0" oninput="actField('${esc(actName)}',${i},'price',+this.value)"></td>
         <td style="display:flex;gap:.25rem;align-items:center">
           <button class="btn btn-ghost btn-sm" style="padding:.15rem .4rem;font-size:.7rem" ${i===0?'disabled':''} onclick="moveActTier('${esc(actName)}','${containerId}',${i},-1)">&#9650;</button>
@@ -1030,8 +1030,8 @@ function moveActTier(actName,containerId,i,dir){
 function addActTierFor(actName,containerId){
   if(!pricingData.activities[actName]) pricingData.activities[actName]={tiers:[]};
   const tiers = pricingData.activities[actName].tiers;
-  const hasAll = tiers.some(t=>t.count==='all');
-  if(!hasAll) tiers.push({label:'All',count:'all',price:90});
+  const hasMax = tiers.some(t=>t.count==='all'||t.max);
+  if(!hasMax) tiers.push({label:'All Photos',count:30,price:115,max:true});
   else tiers.push({label:'New Tier',count:1,price:25});
   renderActEditor(actName,containerId);
 }
