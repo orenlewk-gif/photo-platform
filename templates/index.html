@@ -4646,15 +4646,15 @@ function openQuickShop(i) {
     }
   } else if (currentPricing && currentPricing.tiers) {
     digEl.innerHTML = currentPricing.tiers.map((t, tidx) => {
-      const isAll    = t.count === 'all';
+      const isAll    = t.count === 'all' && !t.max;
       const isSingle = t.count === 1;
       const isMax    = !!t.max;
-      const label    = isAll ? `All Photos — $${t.price}` : `${t.label} — $${t.price}`;
+      const label    = `${t.label} — $${t.price}`;
       const btnLabel = isAll ? 'Add All Photos' : (isSingle ? 'Select Photo' : 'Select Photos');
       let clickFn;
-      if (isAll)    clickFn = `selectAllFromQS(${i})`;
+      if (isAll)         clickFn = `selectAllFromQS(${i})`;
       else if (isSingle) clickFn = `selectPhotoFromQS(${i}); closeQuickShop();`;
-      else          clickFn = `lockTierFromQS(${tidx})`;
+      else               clickFn = `lockTierFromQS(${tidx})`;
       return `<div class="qs-row">
         <span class="qs-row-label">${label}</span>
         <button class="qs-add-btn" onclick="${clickFn}">${btnLabel}</button>
