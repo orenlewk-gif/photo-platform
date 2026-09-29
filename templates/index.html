@@ -2593,11 +2593,11 @@ function renderThumbs(photos) {
 // ── Photo selection ──
 function getMaxSelectionLimit() {
   if (!currentPricing?.tiers) return null;
-  // Only numeric-count max tiers count as a selection cap; "all" tiers are price caps only
   const maxTiers = currentPricing.tiers
-    .filter(t => t.max && typeof t.count === 'number')
-    .sort((a, b) => b.count - a.count);
-  return maxTiers.length ? maxTiers[0].count : null;
+    .filter(t => t.max)
+    .map(t => typeof t.count === 'number' ? t.count : 30)
+    .sort((a, b) => b - a);
+  return maxTiers.length ? maxTiers[0] : null;
 }
 
 function showToast(msg) {
@@ -3114,8 +3114,8 @@ function updateCart() {
   // Count text: show current-folder activity when present; fall back to global cart summary
   const currentFolderEmpty = count === 0 && printCount === 0 && frameCart.length === 0 && !lockedTier;
   let summary = [];
-  if (lockedTier && typeof lockedTier.count === 'number' && count < lockedTier.count) {
-    summary.push(`${lockedTier.label} — ${count}/${lockedTier.count} photos selected`);
+  if (lockedTier && typeof lockedTier.count === 'number') {
+    summary.push(`${count}/${lockedTier.count} photos selected`);
   } else if (count > 0) {
     summary.push(`${count} photo${count!==1?'s':''}`);
   }
@@ -4865,7 +4865,8 @@ function selectPhotoFromQS(i) {
 
 function lockTierFromQS(tierIdx) {
   const t = currentPricing.tiers[tierIdx];
-  lockedTier = { count: t.count, price: t.price, label: t.label, isMax: !!t.max };
+  const count = (t.max && t.count === 'all') ? 30 : t.count;
+  lockedTier = { count, price: t.price, label: t.label, isMax: !!t.max };
   closeQuickShop();
   updateCart();
 }
