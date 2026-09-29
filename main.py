@@ -1160,9 +1160,8 @@ def get_pricing(request: Request, location: str = Query(None), date: str = Query
         act_key = next((k for k in activities if k.lower() == location.strip().lower()), None)
         if act_key:
             return _act_result(activities[act_key])
-        # Fall back to activity_groups — explicit location→activity mapping
-        activity_groups = pricing.get("activity_groups", {})
-        for act_name, group_locs in activity_groups.items():
+        # Fall back to activity_groups — derived from categories + explicit overrides
+        for act_name, group_locs in _activity_groups.items():
             if location.strip().lower() in [l.lower() for l in group_locs]:
                 pk_act = next((k for k in activities if k.lower() == act_name.lower()), None)
                 if pk_act:
