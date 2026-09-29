@@ -1024,7 +1024,7 @@ function moveActTier(actName,containerId,i,dir){
   const j = i + dir;
   if(j < 0 || j >= tiers.length) return;
   [tiers[i], tiers[j]] = [tiers[j], tiers[i]];
-  renderActTiers(actName, containerId);
+  renderActEditor(actName, containerId);
 }
 
 function addActTierFor(actName,containerId){
