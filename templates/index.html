@@ -2033,7 +2033,8 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
     ${folderInfoHtml}
     ${previewBanner}
     <div class="pose-intro">
-      Our portrait photos are sold by the pose. Below you will see sets of poses. A pose is considered a group of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose in either digital or print format. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click the circle to add a single photo. <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
+      ${!folderInfoHtml ? `Our portrait photos are sold by the pose. Below you will see sets of poses. A pose is considered a group of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose in either digital or print format. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click the circle to add a single photo. ` : ''}
+      <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button>
     </div>
     <div class="pose-select-all-row">
       <button class="pose-select-all-btn" id="pose-select-all-btn" onclick="toggleAllPoses()">Buy All Poses</button>
@@ -3441,16 +3442,24 @@ function renderCartView() {
           </div>`;
         });
       } else {
-        // Other folders: simplified view with remove button
+        // Other folders: simplified view with remove button + logo toggle
         html += `<div style="margin-top:0.75rem;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);">Prints</div>`;
         folderPrints.forEach((p, pidx) => {
-          html += `<div class="cartview-print-row">
-            <div class="cartview-print-info">
-              <div class="cv-size">${p.size} Print</div>
-              <div class="cv-frame">${p.filename}${p.frame && p.frame !== 'No Frame' ? ' + Frame' : ''}</div>
+          html += `<div style="border-bottom:1px solid rgba(255,255,255,0.07);padding:0.5rem 0;">
+            <div class="cartview-print-row" style="border-bottom:none;padding:0;">
+              <div class="cartview-print-info">
+                <div class="cv-size">${p.size} Print</div>
+                <div class="cv-frame">${p.filename}${p.frame && p.frame !== 'No Frame' ? ' + Frame' : ''}</div>
+              </div>
+              <span class="cartview-print-price">$${(p.price + p.framePrice).toFixed(2)}</span>
+              <button class="cartview-rm-btn" onclick="removeFolderPrint('${escQ(key)}',${pidx})">Remove</button>
             </div>
-            <span class="cartview-print-price">$${(p.price + p.framePrice).toFixed(2)}</span>
-            <button class="cartview-rm-btn" onclick="removeFolderPrint('${escQ(key)}',${pidx})">Remove</button>
+            <div class="cv-logo-row">
+              ${p._logo
+                ? `<span class="cv-logo-label">Logo +$${(p._logoPrice||LOGO_FEE).toFixed(2)}</span><button class="cv-logo-remove" onclick="toggleFolderPrintLogo('${escQ(key)}',${pidx})" title="Remove logo">×</button>`
+                : `<button class="cv-logo-add" onclick="toggleFolderPrintLogo('${escQ(key)}',${pidx})">+ Add logo (+$${LOGO_FEE})</button>`
+              }
+            </div>
           </div>`;
         });
       }
@@ -3570,6 +3579,16 @@ function removeFolderPrint(key, idx) {
   if (!folderCarts[key].selectedPaths?.length && !folderCarts[key].printCart?.length) {
     delete folderCarts[key];
   }
+  renderCartView();
+  updateCart();
+}
+
+function toggleFolderPrintLogo(key, idx) {
+  const p = folderCarts[key]?.printCart?.[idx];
+  if (!p) return;
+  p._logo = !p._logo;
+  p._logoPrice = p._logo ? LOGO_FEE : 0;
+  p.price = p._logo ? p.price + LOGO_FEE : p.price - LOGO_FEE;
   renderCartView();
   updateCart();
 }
