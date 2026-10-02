@@ -102,7 +102,10 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #upload-progress{display:none;margin-bottom:.85rem}
 .prog-bar-wrap{background:rgba(255,255,255,.08);border-radius:100px;height:5px;overflow:hidden;margin-bottom:.32rem}
 .prog-bar-fill{height:100%;background:#F5C518;border-radius:100px;transition:width .25s;width:0}
+.prog-label-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .prog-label{font-size:.75rem;color:rgba(255,255,255,.4)}
+#upload-cancel-btn{font-size:.7rem;color:rgba(255,255,255,.35);background:none;border:none;cursor:pointer;padding:0;line-height:1;white-space:nowrap}
+#upload-cancel-btn:hover{color:rgba(255,255,255,.7)}
 #upload-action-btn{width:100%;background:#F5C518;color:#07151f;border:none;border-radius:8px;
   padding:.68rem;font-weight:700;font-size:.92rem;cursor:pointer}
 #upload-action-btn:disabled{opacity:.45;cursor:not-allowed}
@@ -407,7 +410,10 @@ input[type=file]{display:none}
 
         <div id="upload-progress">
           <div class="prog-bar-wrap"><div class="prog-bar-fill" id="prog-fill"></div></div>
-          <div class="prog-label" id="prog-label">Uploading…</div>
+          <div class="prog-label-row">
+            <div class="prog-label" id="prog-label">Uploading…</div>
+            <button id="upload-cancel-btn" onclick="cancelUpload()" style="display:none">Cancel</button>
+          </div>
         </div>
 
         <button id="upload-action-btn" onclick="startUpload()" disabled>Upload</button>
@@ -2248,7 +2254,11 @@ function updateUploadBtn() {
 }
 
 let _uploadActive = false;
+let _uploadAbortCtrl = null;
 function _beforeUnloadGuard(e) { e.preventDefault(); e.returnValue = ''; }
+function cancelUpload() {
+  if (_uploadAbortCtrl) _uploadAbortCtrl.abort();
+}
 
 async function startUpload() {
   const date=document.getElementById('upload-date').value;
@@ -2337,8 +2347,10 @@ async function startUpload() {
   const totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
   if (!totalFiles) { showToast('No photos to upload','error'); return; }
   _uploadActive = true;
+  _uploadAbortCtrl = new AbortController();
   window.addEventListener('beforeunload', _beforeUnloadGuard);
   const btn=document.getElementById('upload-action-btn'); btn.disabled=true;
+  const cancelBtn=document.getElementById('upload-cancel-btn'); cancelBtn.style.display='';
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
   let done=0, failed=0;
@@ -2363,17 +2375,31 @@ async function startUpload() {
     urls.forEach((u,i)=>allItems.push({...u,folder,file:files[i]}));
   }
   // A non-2xx PUT response doesn't throw in fetch(), so it must be checked explicitly
+  const _sig = _uploadAbortCtrl.signal;
   async function putOne(it) {
+    if (_sig.aborted) { done++; failed++; setProgress(); return; }
     for (let attempt=0; attempt<2 && !it.ok; attempt++) {
       try {
-        const res = await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}});
+        const res = await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'},signal:_sig});
         if (res.ok) it.ok = true;
-      } catch (e) { /* retry once below */ }
+      } catch (e) { if (_sig.aborted) break; /* retry once on non-abort error */ }
     }
     done++; if (!it.ok) failed++; setProgress();
   }
-  for (let i=0;i<allItems.length;i+=CONCURRENCY)
+  for (let i=0;i<allItems.length;i+=CONCURRENCY) {
+    if (_sig.aborted) break;
     await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>putOne(it)));
+  }
+  if (_sig.aborted) {
+    label.textContent = 'Upload cancelled';
+    fill.style.width = '0';
+    cancelBtn.style.display = 'none';
+    _uploadActive = false; _uploadAbortCtrl = null;
+    window.removeEventListener('beforeunload', _beforeUnloadGuard);
+    btn.disabled = false;
+    setTimeout(()=>{ progWrap.style.display='none'; }, 1500);
+    return;
+  }
   // Index, set group size, and push live for each folder
   const isZip = _isZipUpload();
   const byFolder={};
@@ -2397,6 +2423,7 @@ async function startUpload() {
     const isPortraitUpload = PORTRAIT_LOCS.has(location.trim().toLowerCase());
     if (!isPortraitUpload) {
       const batchCount = (byFolder[folder]||[]).length;
+      cancelBtn.style.display = 'none';
       label.textContent = `Computing visual search for ${batchCount} photo${batchCount===1?'':'s'}…`;
       const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({date,location,folder})}).catch(()=>null);
@@ -2415,8 +2442,9 @@ async function startUpload() {
     label.textContent = `Done — ${totalLive} photos live`;
     showToast(`${done} photos uploaded and live`);
   }
-  _uploadActive = false;
+  _uploadActive = false; _uploadAbortCtrl = null;
   window.removeEventListener('beforeunload', _beforeUnloadGuard);
+  cancelBtn.style.display = 'none';
   await loadSidebar();
   const firstBatch=batches[0];
   if (firstBatch) setTimeout(()=>openFolder(date,location,firstBatch.folder||''),400);
