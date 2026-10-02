@@ -407,12 +407,13 @@ def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
         x1, y1, x2, y2 = (v * inv for v in best_box)
         bh  = y2 - y1
         pad = (x2 - x1) * 0.05
-        # Top 65% of the person bbox covers the torso/jacket
+        # Skip the top 18% (head/helmet) and crop to 72% — isolates the torso/jacket
+        # in both selfies (face-heavy) and full-body ski shots
         return pil_image.crop((
             max(0,  x1 - pad),
-            max(0,  y1),
+            max(0,  y1 + bh * 0.18),
             min(w,  x2 + pad),
-            min(h,  y1 + bh * 0.65),
+            min(h,  y1 + bh * 0.72),
         ))
     except Exception as e:
         print(f"crop_to_outfit failed: {e}")
@@ -1260,7 +1261,15 @@ async def outfit_search_backfill(request: Request):
         global data
         count  = 0
         errors = 0
+        pricing    = _load_pricing()
+        clip_locs  = {
+            name.lower()
+            for name, cfg in pricing.get("activities", {}).items()
+            if cfg.get("flags", {}).get("clip")
+        }
         for item in data:
+            if item.get("location", "").lower() not in clip_locs:
+                continue
             if item.get("dino_embedding") is not None:
                 continue
             try:
@@ -1279,7 +1288,17 @@ async def outfit_search_backfill(request: Request):
         except Exception as e:
             print(f"Backfill save failed: {e}")
 
-    total_missing = sum(1 for i in data if i.get("dino_embedding") is None)
+    pricing   = _load_pricing()
+    clip_locs = {
+        name.lower()
+        for name, cfg in pricing.get("activities", {}).items()
+        if cfg.get("flags", {}).get("clip")
+    }
+    total_missing = sum(
+        1 for i in data
+        if i.get("location", "").lower() in clip_locs
+        and i.get("dino_embedding") is None
+    )
     threading.Thread(target=_run, daemon=True).start()
     return {"started": True, "photos_to_embed": total_missing}
 
