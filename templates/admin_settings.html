@@ -214,6 +214,7 @@ html.embedded #layout{height:100vh}
     <div class="subtabs">
       <button class="subtab active" onclick="switchTab('general',this)">General</button>
       <button class="subtab" onclick="switchTab('presets',this)">Text Presets</button>
+      <button class="subtab" onclick="switchTab('search',this)">Search</button>
     </div>
 
     <!-- ── GENERAL TAB ── -->
@@ -390,6 +391,15 @@ html.embedded #layout{height:100vh}
         </div>
       </div>
     </div><!-- /tab-presets -->
+
+    <div id="tab-search" class="tab-panel">
+      <div class="settings-section">
+        <div class="section-title">Outfit / Visual Search</div>
+        <div class="section-desc">Winter Action photos need a visual embedding to appear in outfit search results. New photos get embedded automatically when published. Use this to backfill existing photos that were uploaded before outfit search was added.</div>
+        <button class="btn-add" id="btn-backfill" onclick="runBackfill()">Compute embeddings for Winter Action photos</button>
+        <span id="backfill-status" style="font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.75rem"></span>
+      </div>
+    </div><!-- /tab-search -->
 
   </div>
 </div>
@@ -798,6 +808,26 @@ async function applyBulkPreset() {
     setTimeout(() => { status.textContent = ''; }, 3000);
   } else {
     status.textContent = 'Apply failed';
+  }
+}
+
+async function runBackfill() {
+  const btn = document.getElementById('btn-backfill');
+  const st  = document.getElementById('backfill-status');
+  if (btn) btn.disabled = true;
+  if (st)  st.textContent = 'Starting…';
+  try {
+    const r = await fetch('/api/outfit-search/backfill', { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) {
+      if (st) st.textContent = `Running in background — ${d.photos_to_embed} photo${d.photos_to_embed!==1?'s':''} to embed. Check server logs for progress.`;
+    } else {
+      if (st) st.textContent = d.error || 'Failed';
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    if (st)  st.textContent = 'Request failed';
+    if (btn) btn.disabled = false;
   }
 }
 </script>

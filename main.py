@@ -32,7 +32,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://bigskyphotos.com"],
-    allow_methods=["GET"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -340,6 +340,92 @@ def get_model():
         processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         print("CLIP model loaded.")
     return model, processor
+
+
+# ── DINOv2 (outfit/visual similarity search) ─────────────────────────────────
+_dino_model = None
+_dino_proc  = None
+
+def get_dino_model():
+    global _dino_model, _dino_proc
+    if _dino_model is None:
+        from transformers import AutoImageProcessor, AutoModel
+        print("Loading DINOv2 model...")
+        _dino_proc  = AutoImageProcessor.from_pretrained("facebook/dinov2-small")
+        _dino_model = AutoModel.from_pretrained("facebook/dinov2-small")
+        _dino_model.eval()
+        print("DINOv2 model loaded.")
+    return _dino_model, _dino_proc
+
+
+# ── Person detector (jacket crop) ────────────────────────────────────────────
+_det_model = None
+_det_proc  = None
+
+def get_detector():
+    global _det_model, _det_proc
+    if _det_model is None:
+        from transformers import AutoImageProcessor, AutoModelForObjectDetection
+        print("Loading person detector...")
+        _det_proc  = AutoImageProcessor.from_pretrained("hustvl/yolos-tiny")
+        _det_model = AutoModelForObjectDetection.from_pretrained("hustvl/yolos-tiny")
+        _det_model.eval()
+        print("Person detector loaded.")
+    return _det_model, _det_proc
+
+def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
+    """Detect the largest person, return an upper-body crop (jacket zone).
+    Falls back to the full image when no person is found."""
+    try:
+        m, p = get_detector()
+        w, h = pil_image.size
+        # Shrink for fast inference; scale bboxes back afterward
+        scale  = min(640 / w, 640 / h, 1.0)
+        small  = pil_image.resize((int(w * scale), int(h * scale)), Image.LANCZOS) if scale < 1 else pil_image
+        inputs = p(images=small, return_tensors="pt")
+        with torch.no_grad():
+            outputs = m(**inputs)
+        target_sizes = torch.tensor([[small.height, small.width]])
+        results = p.post_process_object_detection(outputs, threshold=0.5, target_sizes=target_sizes)[0]
+
+        best_box  = None
+        best_area = 0.0
+        for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
+            name = m.config.id2label.get(label.item(), "").lower()
+            if name != "person":
+                continue
+            x1, y1, x2, y2 = box.tolist()
+            area = (x2 - x1) * (y2 - y1)
+            if area > best_area:
+                best_area = area
+                best_box  = (x1, y1, x2, y2)
+
+        if best_box is None:
+            return pil_image  # no person — use full image (e.g. jacket laid flat)
+
+        inv = 1.0 / scale
+        x1, y1, x2, y2 = (v * inv for v in best_box)
+        bh  = y2 - y1
+        pad = (x2 - x1) * 0.05
+        # Top 65% of the person bbox covers the torso/jacket
+        return pil_image.crop((
+            max(0,  x1 - pad),
+            max(0,  y1),
+            min(w,  x2 + pad),
+            min(h,  y1 + bh * 0.65),
+        ))
+    except Exception as e:
+        print(f"crop_to_outfit failed: {e}")
+        return pil_image
+
+
+def compute_dino_embedding(pil_image: Image.Image) -> list:
+    cropped = crop_to_outfit(pil_image)
+    m, p    = get_dino_model()
+    inputs  = p(images=cropped, return_tensors="pt")
+    with torch.no_grad():
+        out = m(**inputs)
+    return out.last_hidden_state[:, 0, :][0].tolist()  # CLS token, 384-dim
 
 
 data: list = []
@@ -1077,6 +1163,113 @@ def _search(query, last_name, date, location, group=None):
             "h": h,
         })
     return {"count": len(photos), "photos": photos}
+
+
+# ── Outfit / Visual Search (DINOv2) ──────────────────────────────────────────
+
+OUTFIT_LOCATION  = "winter action"
+OUTFIT_THRESHOLD = 0.65
+
+@app.post("/api/outfit-search")
+async def outfit_search(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    if not _search_limiter.is_allowed(ip):
+        return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
+    try:
+        form       = await request.form()
+        img_file   = form.get("image")
+        date_filt  = (form.get("date")  or "").strip()
+        group_filt = (form.get("group") or "").strip().lower()
+
+        if img_file is None:
+            return JSONResponse(status_code=400, content={"error": "No image provided"})
+
+        img_bytes = await img_file.read()
+        pil_img   = Image.open(BytesIO(img_bytes)).convert("RGB")
+        query_emb = torch.tensor(compute_dino_embedding(pil_img)).float()
+
+        results = []
+        for item in data:
+            if item.get("location", "").lower() != OUTFIT_LOCATION:
+                continue
+            if date_filt and item.get("date") != date_filt:
+                continue
+            if group_filt and item.get("group", "").lower() != group_filt:
+                continue
+            emb = item.get("dino_embedding")
+            if emb is None:
+                continue
+            item_emb = torch.tensor(emb).float()
+            score    = torch.cosine_similarity(query_emb.unsqueeze(0), item_emb.unsqueeze(0)).item()
+            results.append((score, item))
+
+        results.sort(reverse=True, key=lambda x: x[0])
+
+        # Return all results above threshold; always at least the top 5 if none qualify
+        filtered = [(s, i) for s, i in results if s >= OUTFIT_THRESHOLD]
+        if not filtered and results:
+            filtered = results[:5]
+
+        paths  = [item["path"] for _, item in filtered]
+        dims   = _dims_for_paths(paths)
+        photos = []
+        for score, item in filtered:
+            w, h = dims.get(item["path"], (0, 0))
+            photos.append({
+                "path":      item["path"],
+                "date":      item["date"],
+                "location":  clean_location(item["location"]),
+                "last_name": item.get("last_name", ""),
+                "group":     item.get("group", ""),
+                "filename":  os.path.basename(item["path"]),
+                "score":     round(score, 4),
+                "w": w,
+                "h": h,
+            })
+        return {"count": len(photos), "photos": photos}
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        return JSONResponse(status_code=503, content={"error": str(e)})
+
+
+@app.post("/api/outfit-search/backfill")
+async def outfit_search_backfill(request: Request):
+    """Admin: compute DINOv2 embeddings for Winter Action photos that are missing them."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    def _run():
+        global data
+        count  = 0
+        errors = 0
+        for item in data:
+            if item.get("location", "").lower() != OUTFIT_LOCATION:
+                continue
+            if item.get("dino_embedding") is not None:
+                continue
+            try:
+                resp    = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+                pil_img = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
+                item["dino_embedding"] = compute_dino_embedding(pil_img)
+                count += 1
+            except Exception as e:
+                errors += 1
+                print(f"Backfill failed {item['path']}: {e}")
+        try:
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(),
+                          ContentType="application/json")
+            print(f"Backfill complete: {count} embedded, {errors} errors")
+        except Exception as e:
+            print(f"Backfill save failed: {e}")
+
+    total_missing = sum(
+        1 for i in data
+        if i.get("location", "").lower() == OUTFIT_LOCATION
+        and i.get("dino_embedding") is None
+    )
+    threading.Thread(target=_run, daemon=True).start()
+    return {"started": True, "photos_to_embed": total_missing}
 
 
 @app.get("/api/pricing")
@@ -4076,6 +4269,14 @@ async def cull_golive(request: Request):
         m["status"] = "live"
         m["live_key"] = img_key
         if img_key not in existing:
+            dino_emb = None
+            if location.lower() == "winter action":
+                try:
+                    resp     = s3.get_object(Bucket=R2_BUCKET, Key=img_key)
+                    pil_img  = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
+                    dino_emb = compute_dino_embedding(pil_img)
+                except Exception as _de:
+                    print(f"DINOv2 embed failed {img_key}: {_de}")
             data.append({
                 "path":            img_key,
                 "date":            date,
@@ -4083,6 +4284,7 @@ async def cull_golive(request: Request):
                 "last_name":       folder if is_portrait else "",
                 "group":           "" if is_portrait else folder,
                 "embedding":       None,
+                "dino_embedding":  dino_emb,
                 "photographer_id": m.get("photographer_id"),
             })
             existing.add(img_key)

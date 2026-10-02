@@ -108,6 +108,28 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
   display:flex; align-items:center; gap:1.5rem; margin-bottom:1.2rem; flex-wrap:wrap;
 }
 
+/* Outfit search bar */
+.outfit-search-bar {
+  display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;
+  margin-bottom:1rem; padding:0.7rem 1rem;
+  background:rgba(245,197,24,0.05); border:1px solid rgba(245,197,24,0.2);
+  border-radius:10px;
+}
+.outfit-search-label {
+  font-size:0.85rem; font-weight:600; color:rgba(255,255,255,0.7);
+  white-space:nowrap;
+}
+.outfit-upload-label {
+  display:inline-flex; align-items:center; gap:0.4rem;
+  background:rgba(245,197,24,0.12); border:1px solid rgba(245,197,24,0.4);
+  color:#F5C518; font-size:0.82rem; font-weight:600; border-radius:8px;
+  padding:0.4rem 1rem; cursor:pointer; transition:background 0.2s; white-space:nowrap;
+}
+.outfit-upload-label:hover { background:rgba(245,197,24,0.25); }
+.outfit-status {
+  font-size:0.8rem; color:rgba(255,255,255,0.5);
+}
+
 .size-slider-wrap {
   display:flex; align-items:center; gap:0.6rem;
   color:rgba(255,255,255,0.45); font-size:0.8rem; white-space:nowrap;
@@ -1778,6 +1800,7 @@ async function showGallery(date, location, family, ln, group) {
   currentFolderKey   = getFolderKey(date, location, family, group);
   currentFolderLabel = family || group || location || 'Gallery';
   allPhotos = photos;
+  _outfitOriginalPhotos = null;
   loadFolderData(currentFolderKey, photos);
 
   showView('gallery');
@@ -1824,6 +1847,20 @@ async function showGallery(date, location, family, ln, group) {
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
     ${folderInfoHtml}
+    ${currentLocation.toLowerCase() === 'winter action' ? `
+    <div class="outfit-search-bar" id="outfit-search-bar">
+      <span class="outfit-search-label">Find my photos by outfit:</span>
+      <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">
+        Upload outfit photo
+        <input type="file" id="outfit-input" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
+      </label>
+      <span class="outfit-status" id="outfit-status" style="display:none"></span>
+      <label class="outfit-upload-label" id="outfit-again-label" for="outfit-input-again" style="display:none">
+        Search again
+        <input type="file" id="outfit-input-again" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
+      </label>
+      <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.45);font-size:0.8rem;cursor:pointer;padding:0;text-decoration:underline;">× Exit results</button>
+    </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" />
@@ -1852,6 +1889,88 @@ async function showGallery(date, location, family, ln, group) {
     const gallery = document.getElementById('gallery');
     if (gallery) justifyLayout(gallery, allPhotos, cols);
   });
+}
+
+// ── Outfit / Visual Search ────────────────────────────────────────────────────
+
+let _outfitOriginalPhotos = null;
+
+async function doOutfitSearch(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const status      = document.getElementById('outfit-status');
+  const uploadLabel = document.getElementById('outfit-upload-label');
+  const againLabel  = document.getElementById('outfit-again-label');
+  const exitBtn     = document.getElementById('outfit-exit-btn');
+
+  if (uploadLabel) uploadLabel.style.display = 'none';
+  if (againLabel)  againLabel.style.display  = 'none';
+  if (exitBtn)     exitBtn.style.display     = 'none';
+  if (status) { status.textContent = 'Searching…'; status.style.display = ''; }
+
+  if (_outfitOriginalPhotos === null) {
+    _outfitOriginalPhotos = [...allPhotos];
+  }
+
+  try {
+    const fd = new FormData();
+    fd.append('image', file);
+    if ((_outfitOriginalPhotos[0] || allPhotos[0])?.date)
+      fd.append('date', (_outfitOriginalPhotos[0] || allPhotos[0]).date);
+
+    const res = await fetch('/api/outfit-search', { method: 'POST', body: fd });
+    const d   = await res.json();
+
+    if (!res.ok) {
+      if (status) status.textContent = d.error || 'Search failed';
+      if (uploadLabel) uploadLabel.style.display = '';
+      return;
+    }
+
+    if (!d.photos?.length) {
+      if (status) status.textContent = 'No matching photos found';
+      if (againLabel) againLabel.style.display = '';
+      if (exitBtn)    exitBtn.style.display    = '';
+      return;
+    }
+
+    allPhotos = d.photos;
+    const gallery = document.getElementById('gallery');
+    if (gallery) justifyLayout(gallery, allPhotos, _jCols);
+
+    const cnt = document.getElementById('results-count');
+    if (cnt) cnt.textContent = `${d.photos.length} match${d.photos.length!==1?'es':''}`;
+
+    if (status) status.textContent = `${d.photos.length} photo${d.photos.length!==1?'s':''} found`;
+    if (againLabel) againLabel.style.display = '';
+    if (exitBtn)    exitBtn.style.display    = '';
+  } catch (err) {
+    if (status) status.textContent = 'Search error — try again';
+    if (uploadLabel) uploadLabel.style.display = '';
+    console.error('Outfit search error:', err);
+  }
+}
+
+function clearOutfitSearch() {
+  if (_outfitOriginalPhotos !== null) {
+    allPhotos = _outfitOriginalPhotos;
+    _outfitOriginalPhotos = null;
+    const gallery = document.getElementById('gallery');
+    if (gallery) justifyLayout(gallery, allPhotos, _jCols);
+    const cnt = document.getElementById('results-count');
+    if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
+  }
+  const inputs      = ['outfit-input', 'outfit-input-again'].map(id => document.getElementById(id));
+  const status      = document.getElementById('outfit-status');
+  const uploadLabel = document.getElementById('outfit-upload-label');
+  const againLabel  = document.getElementById('outfit-again-label');
+  const exitBtn     = document.getElementById('outfit-exit-btn');
+  inputs.forEach(el => { if (el) el.value = ''; });
+  if (status)      { status.textContent = ''; status.style.display = 'none'; }
+  if (uploadLabel) uploadLabel.style.display = '';
+  if (againLabel)  againLabel.style.display  = 'none';
+  if (exitBtn)     exitBtn.style.display     = 'none';
 }
 
 // ── Time Filter ────────────────────────────────────────────────────────────────
