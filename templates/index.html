@@ -1847,7 +1847,7 @@ async function showGallery(date, location, family, ln, group) {
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
     ${folderInfoHtml}
-    ${currentLocation.toLowerCase() === 'winter action' ? `
+    ${currentPricing?.flags?.clip ? `
     <div class="outfit-search-bar" id="outfit-search-bar">
       <span class="outfit-search-label">Find my photos by outfit:</span>
       <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">

@@ -1204,8 +1204,6 @@ async def outfit_search(request: Request):
 
         results = []
         for item in data:
-            if item.get("location", "").lower() != OUTFIT_LOCATION:
-                continue
             if date_filt and item.get("date") != date_filt:
                 continue
             if group_filt and item.get("group", "").lower() != group_filt:
@@ -1263,8 +1261,6 @@ async def outfit_search_backfill(request: Request):
         count  = 0
         errors = 0
         for item in data:
-            if item.get("location", "").lower() != OUTFIT_LOCATION:
-                continue
             if item.get("dino_embedding") is not None:
                 continue
             try:
@@ -1283,11 +1279,7 @@ async def outfit_search_backfill(request: Request):
         except Exception as e:
             print(f"Backfill save failed: {e}")
 
-    total_missing = sum(
-        1 for i in data
-        if i.get("location", "").lower() == OUTFIT_LOCATION
-        and i.get("dino_embedding") is None
-    )
+    total_missing = sum(1 for i in data if i.get("dino_embedding") is None)
     threading.Thread(target=_run, daemon=True).start()
     return {"started": True, "photos_to_embed": total_missing}
 
@@ -4290,8 +4282,10 @@ async def cull_golive(request: Request):
         m["status"] = "live"
         m["live_key"] = img_key
         if img_key not in existing:
-            dino_emb = None
-            if location.lower() == "winter action":
+            dino_emb  = None
+            _loc_flags = (_load_pricing().get("activities", {})
+                          .get(location, {}).get("flags", {}))
+            if _loc_flags.get("clip"):
                 try:
                     resp     = s3.get_object(Bucket=R2_BUCKET, Key=img_key)
                     pil_img  = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
