@@ -4112,9 +4112,10 @@ async def upload_presign(request: Request):
     new_meta     = []
     urls         = []
 
-    folder      = body.get("folder", "").strip()
-    batch_id    = body.get("batch_id") or str(uuid.uuid4())[:8]
-    batch_total = len(files)
+    is_portrait  = location.strip().lower() in PORTRAIT_LOCATIONS
+    folder       = body.get("folder", "").strip() if is_portrait else ""
+    batch_id     = body.get("batch_id") or str(uuid.uuid4())[:8]
+    batch_total  = len(files)
 
     for f in files:
         filename = os.path.basename(f["name"])
