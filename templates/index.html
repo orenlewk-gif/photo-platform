@@ -108,17 +108,7 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
   display:flex; align-items:center; gap:1.5rem; margin-bottom:1.2rem; flex-wrap:wrap;
 }
 
-/* Outfit search bar */
-.outfit-search-bar {
-  display:flex; align-items:center; gap:0.8rem; flex-wrap:wrap;
-  margin-bottom:1rem; padding:0.7rem 1rem;
-  background:rgba(245,197,24,0.05); border:1px solid rgba(245,197,24,0.2);
-  border-radius:10px;
-}
-.outfit-search-label {
-  font-size:0.85rem; font-weight:600; color:rgba(255,255,255,0.7);
-  white-space:nowrap;
-}
+/* Outfit search */
 .outfit-upload-label {
   display:inline-flex; align-items:center; gap:0.4rem;
   background:rgba(245,197,24,0.12); border:1px solid rgba(245,197,24,0.4);
@@ -1848,18 +1838,17 @@ async function showGallery(date, location, family, ln, group) {
     </div>
     ${folderInfoHtml}
     ${currentPricing?.flags?.clip ? `
-    <div class="outfit-search-bar" id="outfit-search-bar">
-      <span class="outfit-search-label">Find my photos by outfit:</span>
+    <div style="text-align:center;margin:0 0 1.1rem">
       <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">
         Upload outfit photo
         <input type="file" id="outfit-input" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
       </label>
-      <span class="outfit-status" id="outfit-status" style="display:none"></span>
       <label class="outfit-upload-label" id="outfit-again-label" for="outfit-input-again" style="display:none">
         Search again
         <input type="file" id="outfit-input-again" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
       </label>
-      <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.45);font-size:0.8rem;cursor:pointer;padding:0;text-decoration:underline;">× Exit results</button>
+      <span class="outfit-status" id="outfit-status" style="display:none;font-size:.82rem;color:rgba(255,255,255,.5);margin-left:.6rem"></span>
+      <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.4);font-size:0.78rem;cursor:pointer;padding:0;text-decoration:underline;margin-left:.75rem">× Exit results</button>
     </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
