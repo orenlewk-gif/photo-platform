@@ -1176,10 +1176,12 @@ async def outfit_search(request: Request):
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
-        form       = await request.form()
-        img_file   = form.get("image")
-        date_filt  = (form.get("date")  or "").strip()
-        group_filt = (form.get("group") or "").strip().lower()
+        form        = await request.form()
+        img_file    = form.get("image")
+        date_filt   = (form.get("date")       or "").strip()
+        group_filt  = (form.get("group")      or "").strip().lower()
+        time_from   = form.get("time_from")   # minutes since midnight (int string), optional
+        time_to     = form.get("time_to")     # minutes since midnight (int string), optional
 
         if img_file is None:
             return JSONResponse(status_code=400, content={"error": "No image provided"})
@@ -1187,6 +1189,18 @@ async def outfit_search(request: Request):
         img_bytes = await img_file.read()
         pil_img   = Image.open(BytesIO(img_bytes)).convert("RGB")
         query_emb = torch.tensor(compute_dino_embedding(pil_img)).float()
+
+        # Build a filename→minutes lookup if a time range was passed
+        time_lookup: dict = {}
+        if time_from and time_to and date_filt:
+            cache_key = (date_filt, OUTFIT_LOCATION)
+            time_lookup = _folder_times_cache.get(cache_key) or {}
+
+        try:
+            t_lo = int(time_from) if time_from else None
+            t_hi = int(time_to)   + 14 if time_to else None  # include full 15-min bucket
+        except (ValueError, TypeError):
+            t_lo = t_hi = None
 
         results = []
         for item in data:
@@ -1196,6 +1210,12 @@ async def outfit_search(request: Request):
                 continue
             if group_filt and item.get("group", "").lower() != group_filt:
                 continue
+            # Time filter — only applied when a range is active and times are cached
+            if t_lo is not None and t_hi is not None and time_lookup:
+                fname = os.path.basename(item["path"])
+                t = time_lookup.get(fname)
+                if t is not None and not (t_lo <= t <= t_hi):
+                    continue
             emb = item.get("dino_embedding")
             if emb is None:
                 continue

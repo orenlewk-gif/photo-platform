@@ -1916,8 +1916,18 @@ async function doOutfitSearch(input) {
   try {
     const fd = new FormData();
     fd.append('image', file);
-    if ((_outfitOriginalPhotos[0] || allPhotos[0])?.date)
-      fd.append('date', (_outfitOriginalPhotos[0] || allPhotos[0]).date);
+    const basePhotos = _outfitOriginalPhotos || allPhotos;
+    if (basePhotos[0]?.date) fd.append('date', basePhotos[0].date);
+    // Pass active time filter range if set to anything other than full span
+    const fromSel = document.getElementById('tf-from');
+    const toSel   = document.getElementById('tf-to');
+    const allOpts = fromSel ? [...fromSel.options].map(o => o.value) : [];
+    const isFullRange = !allOpts.length
+      || (fromSel.value === allOpts[0] && toSel.value === allOpts[allOpts.length - 1]);
+    if (!isFullRange && fromSel?.value && toSel?.value) {
+      fd.append('time_from', fromSel.value);
+      fd.append('time_to',   toSel.value);
+    }
 
     const res = await fetch('/api/outfit-search', { method: 'POST', body: fd });
     const d   = await res.json();
