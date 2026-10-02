@@ -1906,8 +1906,9 @@ async function doOutfitSearch(input) {
     const fd = new FormData();
     fd.append('image', file);
     const basePhotos = _outfitOriginalPhotos || allPhotos;
-    if (basePhotos[0]?.date) fd.append('date',  basePhotos[0].date);
-    if (currentGroup)        fd.append('group', currentGroup);
+    if (basePhotos[0]?.date) fd.append('date',     basePhotos[0].date);
+    if (currentLocation)     fd.append('location', currentLocation);
+    if (currentGroup)        fd.append('group',    currentGroup);
 
     const res = await fetch('/api/outfit-search', { method: 'POST', body: fd });
     const d   = await res.json();

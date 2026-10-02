@@ -1168,7 +1168,6 @@ def _search(query, last_name, date, location, group=None):
 
 # ── Outfit / Visual Search (DINOv2) ──────────────────────────────────────────
 
-OUTFIT_LOCATION  = "winter action"
 OUTFIT_THRESHOLD = 0.65
 
 @app.post("/api/outfit-search")
@@ -1180,6 +1179,7 @@ async def outfit_search(request: Request):
         form        = await request.form()
         img_file    = form.get("image")
         date_filt   = (form.get("date")       or "").strip()
+        loc_filt    = (form.get("location")   or "").strip().lower()
         group_filt  = (form.get("group")      or "").strip().lower()
         time_from   = form.get("time_from")   # minutes since midnight (int string), optional
         time_to     = form.get("time_to")     # minutes since midnight (int string), optional
@@ -1193,8 +1193,8 @@ async def outfit_search(request: Request):
 
         # Build a filename→minutes lookup if a time range was passed
         time_lookup: dict = {}
-        if time_from and time_to and date_filt:
-            cache_key = (date_filt, OUTFIT_LOCATION)
+        if time_from and time_to and date_filt and loc_filt:
+            cache_key = (date_filt, loc_filt)
             time_lookup = _folder_times_cache.get(cache_key) or {}
 
         try:
@@ -1206,6 +1206,8 @@ async def outfit_search(request: Request):
         results = []
         for item in data:
             if date_filt and item.get("date") != date_filt:
+                continue
+            if loc_filt and item.get("location", "").lower() != loc_filt:
                 continue
             if group_filt and item.get("group", "").lower() != group_filt:
                 continue
@@ -4302,8 +4304,12 @@ async def cull_golive(request: Request):
         m["live_key"] = img_key
         if img_key not in existing:
             dino_emb  = None
-            _loc_flags = (_load_pricing().get("activities", {})
-                          .get(location, {}).get("flags", {}))
+            _activities = _load_pricing().get("activities", {})
+            _loc_flags  = next(
+                (cfg.get("flags", {}) for name, cfg in _activities.items()
+                 if name.lower() == location.lower()),
+                {}
+            )
             if _loc_flags.get("clip"):
                 try:
                     resp     = s3.get_object(Bucket=R2_BUCKET, Key=img_key)
