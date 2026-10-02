@@ -5383,10 +5383,11 @@ async def admin_upload_presign(request: Request):
     body     = await request.json()
     date     = body.get("date", "")
     location = body.get("location", "").strip()
-    folder   = body.get("folder", "").strip()
     files    = body.get("files", [])
     if not date or not location or not files:
         return JSONResponse(status_code=400, content={"error": "Missing date, location, or files"})
+    is_portrait = _is_portrait_location(location)
+    folder      = body.get("folder", "").strip() if is_portrait else ""
     loc_slug    = location.lower().replace(" ", "-")
     folder_slug = folder.lower().replace(" ", "-") if folder else ""
     urls = []
@@ -5412,13 +5413,13 @@ async def admin_upload_index(request: Request):
     body     = await request.json()
     date     = body.get("date", "")
     location = body.get("location", "").strip()
-    folder   = body.get("folder", "").strip()
     keys     = body.get("keys", [])
     poses    = body.get("poses", None)  # from UI pose assignment; None means use XMP detection
     times    = body.get("times", {})   # {filename: minutes_since_midnight} from client EXIF read
     if not date or not location or not keys:
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
     is_portrait = _is_portrait_location(location)
+    folder   = body.get("folder", "").strip() if is_portrait else ""
     existing    = {item["path"] for item in data}
     added       = 0
     location = clean_location(location)
@@ -5538,6 +5539,14 @@ async def admin_push_live(request: Request):
         if not has_pricing:
             return JSONResponse(status_code=400, content={"error": f"No pricing configured for {location} — set it up in Pricing"})
 
+    _activities = _load_pricing().get("activities", {})
+    _loc_flags  = next(
+        (cfg.get("flags", {}) for name, cfg in _activities.items()
+         if name.lower() == location.lower()),
+        {}
+    )
+    needs_embed = _loc_flags.get("clip", False)
+
     pushed = 0
     for item in data:
         if (item.get("draft")
@@ -5545,6 +5554,13 @@ async def admin_push_live(request: Request):
                 and item["location"].strip().lower() == location.lower()
                 and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()):
             del item["draft"]
+            if needs_embed and item.get("dino_embedding") is None:
+                try:
+                    resp    = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+                    pil_img = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
+                    item["dino_embedding"] = compute_dino_embedding(pil_img)
+                except Exception as _de:
+                    print(f"DINOv2 embed failed {item['path']}: {_de}")
             pushed += 1
     if pushed:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
