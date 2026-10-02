@@ -2342,7 +2342,7 @@ async function startUpload() {
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
   let done=0, failed=0;
-  const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
+  const setProgress=()=>{ const p=Math.round(done/totalFiles*80); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
   setProgress();
   // Save group sizes immediately so local viewer shows correct pricing right away
   if (_isZipUpload()) {
@@ -2396,9 +2396,13 @@ async function startUpload() {
     }
     const isPortraitUpload = PORTRAIT_LOCS.has(location.trim().toLowerCase());
     if (!isPortraitUpload) {
+      const batchCount = (byFolder[folder]||[]).length;
+      label.textContent = `Computing visual search for ${batchCount} photo${batchCount===1?'':'s'}…`;
+      fill.style.width = '85%';
       const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({date,location,folder})}).catch(()=>null);
       if (lr?.ok) { const ld=await lr.json(); totalLive+=ld.pushed||0; }
+      fill.style.width = '100%';
     }
   }
   const succeeded = done - failed;

@@ -359,69 +359,11 @@ def get_dino_model():
 
 
 # ── Person detector (jacket crop) ────────────────────────────────────────────
-_det_model = None
-_det_proc  = None
-
-def get_detector():
-    global _det_model, _det_proc
-    if _det_model is None:
-        from transformers import AutoImageProcessor, AutoModelForObjectDetection
-        print("Loading person detector...")
-        _det_proc  = AutoImageProcessor.from_pretrained("hustvl/yolos-tiny")
-        _det_model = AutoModelForObjectDetection.from_pretrained("hustvl/yolos-tiny")
-        _det_model.eval()
-        print("Person detector loaded.")
-    return _det_model, _det_proc
-
-def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
-    """Detect the largest person, return an upper-body crop (jacket zone).
-    Falls back to the full image when no person is found."""
-    try:
-        m, p = get_detector()
-        w, h = pil_image.size
-        # Shrink for fast inference; scale bboxes back afterward
-        scale  = min(640 / w, 640 / h, 1.0)
-        small  = pil_image.resize((int(w * scale), int(h * scale)), Image.LANCZOS) if scale < 1 else pil_image
-        inputs = p(images=small, return_tensors="pt")
-        with torch.no_grad():
-            outputs = m(**inputs)
-        target_sizes = torch.tensor([[small.height, small.width]])
-        results = p.post_process_object_detection(outputs, threshold=0.5, target_sizes=target_sizes)[0]
-
-        best_box  = None
-        best_area = 0.0
-        for score, label, box in zip(results["scores"], results["labels"], results["boxes"]):
-            name = m.config.id2label.get(label.item(), "").lower()
-            if name != "person":
-                continue
-            x1, y1, x2, y2 = box.tolist()
-            area = (x2 - x1) * (y2 - y1)
-            if area > best_area:
-                best_area = area
-                best_box  = (x1, y1, x2, y2)
-
-        if best_box is None:
-            return pil_image  # no person — use full image (e.g. jacket laid flat)
-
-        inv = 1.0 / scale
-        x1, y1, x2, y2 = (v * inv for v in best_box)
-        bh  = y2 - y1
-        pad = (x2 - x1) * 0.05
-        # Skip the top 18% (head/helmet) and crop to 72% — isolates the torso/jacket
-        # in both selfies (face-heavy) and full-body ski shots
-        return pil_image.crop((
-            max(0,  x1 - pad),
-            max(0,  y1 + bh * 0.18),
-            min(w,  x2 + pad),
-            min(h,  y1 + bh * 0.72),
-        ))
-    except Exception as e:
-        print(f"crop_to_outfit failed: {e}")
-        return pil_image
-
-
 def compute_dino_embedding(pil_image: Image.Image) -> list:
-    cropped = crop_to_outfit(pil_image)
+    w, h = pil_image.size
+    # Fixed crop: full width, skip top 10% (sky/background) and bottom 25% (feet/skis).
+    # Wider than a person-detected crop to handle subjects at any horizontal position.
+    cropped = pil_image.crop((0, int(h * 0.10), w, int(h * 0.75)))
     m, p    = get_dino_model()
     inputs  = p(images=cropped, return_tensors="pt")
     with torch.no_grad():
@@ -5547,7 +5489,8 @@ async def admin_push_live(request: Request):
     )
     needs_embed = _loc_flags.get("clip", False)
 
-    pushed = 0
+    pushed  = 0
+    embedded = 0
     for item in data:
         if (item.get("draft")
                 and item["date"] == date
@@ -5559,13 +5502,14 @@ async def admin_push_live(request: Request):
                     resp    = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
                     pil_img = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
                     item["dino_embedding"] = compute_dino_embedding(pil_img)
+                    embedded += 1
                 except Exception as _de:
                     print(f"DINOv2 embed failed {item['path']}: {_de}")
             pushed += 1
     if pushed:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
-    return {"pushed": pushed}
+    return {"pushed": pushed, "embedded": embedded}
 
 @app.post("/api/admin/discard-draft")
 async def admin_discard_draft(request: Request):
