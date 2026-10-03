@@ -1840,7 +1840,7 @@ async function showGallery(date, location, family, ln, group) {
     ${currentPricing?.flags?.clip ? `
     <div style="text-align:center;margin:0 0 1.1rem">
       <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">
-        Upload outfit photo
+        Find my photos by outfit
         <input type="file" id="outfit-input" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
       </label>
       <label class="outfit-upload-label" id="outfit-again-label" for="outfit-input-again" style="display:none">
@@ -1849,6 +1849,7 @@ async function showGallery(date, location, family, ln, group) {
       </label>
       <span class="outfit-status" id="outfit-status" style="display:none;font-size:.82rem;color:rgba(255,255,255,.5);margin-left:.6rem"></span>
       <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.4);font-size:0.78rem;cursor:pointer;padding:0;text-decoration:underline;margin-left:.75rem">× Exit results</button>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.4);margin-top:.45rem">Best results: photo of your jacket, or have a friend take your photo</div>
     </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">

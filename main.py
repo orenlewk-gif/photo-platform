@@ -1259,9 +1259,14 @@ async def outfit_search(request: Request):
         if img_file is None:
             return JSONResponse(status_code=400, content={"error": "No image provided"})
 
-        img_bytes = await img_file.read()
-        pil_img   = Image.open(BytesIO(img_bytes)).convert("RGB")
-        query_emb = torch.tensor(compute_dino_embedding(pil_img)).float()
+        img_bytes  = await img_file.read()
+        pil_img    = Image.open(BytesIO(img_bytes)).convert("RGB")
+        pil_img    = _resize_for_embed(pil_img)   # resize but no torso crop on query
+        m, p       = get_dino_model()
+        inputs     = p(images=pil_img, return_tensors="pt")
+        with torch.no_grad():
+            out    = m(**inputs)
+        query_emb  = out.last_hidden_state[:, 0, :][0].float()
 
         # Build a filename→minutes lookup if a time range was passed
         time_lookup: dict = {}
