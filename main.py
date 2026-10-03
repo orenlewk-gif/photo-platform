@@ -360,27 +360,34 @@ def get_dino_model():
 
 # ── MediaPipe pose detector (jacket crop) ────────────────────────────────────
 
-_mp_pose_detector = None
+_mp_thread_local = threading.local()
 
 def get_pose_detector():
-    global _mp_pose_detector
-    if _mp_pose_detector is None:
+    """Thread-local MediaPipe Pose instance so parallel workers don't share state."""
+    if not hasattr(_mp_thread_local, 'pose'):
         import mediapipe as mp
-        print("Loading MediaPipe pose detector...")
-        _mp_pose_detector = mp.solutions.pose.Pose(
+        _mp_thread_local.pose = mp.solutions.pose.Pose(
             static_image_mode=True,
-            model_complexity=0,          # Lite model — fastest on CPU (~50-100ms)
+            model_complexity=0,
             enable_segmentation=False,
             min_detection_confidence=0.4,
         )
-        print("MediaPipe pose detector loaded.")
-    return _mp_pose_detector
+    return _mp_thread_local.pose
+
+
+def _resize_for_embed(img: Image.Image, max_side: int = 640) -> Image.Image:
+    w, h = img.size
+    if max(w, h) <= max_side:
+        return img
+    scale = max_side / max(w, h)
+    return img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
 
 def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
     """Crop to jacket/torso zone using MediaPipe shoulder + hip keypoints.
     Falls back to a fixed centre crop when no person is detected."""
     import numpy as np
+    pil_image = _resize_for_embed(pil_image)
     w, h = pil_image.size
     try:
         import mediapipe as mp
@@ -432,7 +439,66 @@ def compute_dino_embedding(pil_image: Image.Image) -> list:
     inputs  = p(images=cropped, return_tensors="pt")
     with torch.no_grad():
         out = m(**inputs)
-    return out.last_hidden_state[:, 0, :][0].tolist()  # CLS token, 384-dim
+    return out.last_hidden_state[:, 0, :][0].tolist()
+
+
+def _compute_dino_embeddings_batch(pil_images: list) -> list:
+    """Single DINOv2 forward pass for a list of PIL images."""
+    m, p = get_dino_model()
+    inputs = p(images=pil_images, return_tensors="pt")
+    with torch.no_grad():
+        out = m(**inputs)
+    return out.last_hidden_state[:, 0, :].tolist()
+
+
+def embed_items_fast(items: list, batch_size: int = 16) -> int:
+    """
+    Parallel R2 fetch + parallel MediaPipe crop + batch DINOv2.
+    Updates item['dino_embedding'] in place. Returns count embedded.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    def fetch_one(item):
+        try:
+            resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+            return item, resp["Body"].read()
+        except Exception as e:
+            print(f"R2 fetch failed {item['path']}: {e}")
+            return item, None
+
+    def crop_one(args):
+        item, img_bytes = args
+        if img_bytes is None:
+            return item, None
+        try:
+            pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+            return item, crop_to_outfit(pil)
+        except Exception as e:
+            print(f"Crop failed {item['path']}: {e}")
+            return item, None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        fetched = list(ex.map(fetch_one, items))
+
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        cropped = list(ex.map(crop_one, fetched))
+
+    valid = [(item, crop) for item, crop in cropped if crop is not None]
+    if not valid:
+        return 0
+
+    count = 0
+    for i in range(0, len(valid), batch_size):
+        batch_items, batch_crops = zip(*valid[i:i + batch_size])
+        try:
+            embs = _compute_dino_embeddings_batch(list(batch_crops))
+            for item, emb in zip(batch_items, embs):
+                item["dino_embedding"] = emb
+                count += 1
+        except Exception as e:
+            print(f"Batch embed failed (offset {i}): {e}")
+
+    return count
 
 
 data: list = []
@@ -4293,6 +4359,15 @@ async def cull_golive(request: Request):
     existing    = {item["path"] for item in data}
     published   = []
 
+    _activities = _load_pricing().get("activities", {})
+    _loc_flags  = next(
+        (cfg.get("flags", {}) for name, cfg in _activities.items()
+         if name.lower() == location.lower()),
+        {}
+    )
+    needs_embed = _loc_flags.get("clip", False)
+    to_embed    = []
+
     for m in to_pub:
         if folder_slug:
             img_key = f"images/{date}/{loc_slug}/{folder_slug}/{m['filename']}"
@@ -4309,30 +4384,19 @@ async def cull_golive(request: Request):
         m["status"] = "live"
         m["live_key"] = img_key
         if img_key not in existing:
-            dino_emb  = None
-            _activities = _load_pricing().get("activities", {})
-            _loc_flags  = next(
-                (cfg.get("flags", {}) for name, cfg in _activities.items()
-                 if name.lower() == location.lower()),
-                {}
-            )
-            if _loc_flags.get("clip"):
-                try:
-                    resp     = s3.get_object(Bucket=R2_BUCKET, Key=img_key)
-                    pil_img  = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
-                    dino_emb = compute_dino_embedding(pil_img)
-                except Exception as _de:
-                    print(f"DINOv2 embed failed {img_key}: {_de}")
-            data.append({
+            new_item = {
                 "path":            img_key,
                 "date":            date,
                 "location":        location,
                 "last_name":       folder if is_portrait else "",
                 "group":           "" if is_portrait else folder,
                 "embedding":       None,
-                "dino_embedding":  dino_emb,
+                "dino_embedding":  None,
                 "photographer_id": m.get("photographer_id"),
-            })
+            }
+            data.append(new_item)
+            if needs_embed:
+                to_embed.append(new_item)
             existing.add(img_key)
         published.append(img_key)
 
@@ -4340,6 +4404,14 @@ async def cull_golive(request: Request):
     s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                   Body=json.dumps(data).encode(),
                   ContentType="application/json")
+
+    if to_embed:
+        embedded = embed_items_fast(to_embed)
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(),
+                      ContentType="application/json")
+        print(f"Cull go-live embed done: {embedded}/{len(to_embed)}")
+
     return {"published": len(published)}
 
 # ── Trash ──
@@ -5553,8 +5625,8 @@ async def admin_push_live(request: Request):
     )
     needs_embed = _loc_flags.get("clip", False)
 
-    pushed  = 0
-    embedded = 0
+    pushed        = 0
+    to_embed      = []
     for item in data:
         if (item.get("draft")
                 and item["date"] == date
@@ -5562,18 +5634,21 @@ async def admin_push_live(request: Request):
                 and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()):
             del item["draft"]
             if needs_embed and item.get("dino_embedding") is None:
-                try:
-                    resp    = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-                    pil_img = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
-                    item["dino_embedding"] = compute_dino_embedding(pil_img)
-                    embedded += 1
-                except Exception as _de:
-                    print(f"DINOv2 embed failed {item['path']}: {_de}")
+                to_embed.append(item)
             pushed += 1
+
     if pushed:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
-    return {"pushed": pushed, "embedded": embedded}
+
+    embedded = 0
+    if to_embed:
+        embedded = embed_items_fast(to_embed)
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+        print(f"Push-live embed done: {embedded}/{len(to_embed)}")
+
+    return {"pushed": pushed, "embedding": embedded}
 
 @app.post("/api/admin/discard-draft")
 async def admin_discard_draft(request: Request):
