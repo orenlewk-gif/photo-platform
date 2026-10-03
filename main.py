@@ -1110,7 +1110,7 @@ def _search(query, last_name, date, location, group=None):
 
 # ── Outfit / Visual Search (DINOv2) ──────────────────────────────────────────
 
-OUTFIT_THRESHOLD = 0.65
+OUTFIT_THRESHOLD = 0.72
 
 @app.post("/api/outfit-search")
 async def outfit_search(request: Request):
@@ -1168,8 +1168,8 @@ async def outfit_search(request: Request):
 
         results.sort(reverse=True, key=lambda x: x[0])
 
-        # Return all results above threshold; always at least the top 5 if none qualify
-        filtered = [(s, i) for s, i in results if s >= OUTFIT_THRESHOLD]
+        # Return results above threshold (max 20), fallback to top 5 if none qualify
+        filtered = [(s, i) for s, i in results if s >= OUTFIT_THRESHOLD][:20]
         if not filtered and results:
             filtered = results[:5]
 
