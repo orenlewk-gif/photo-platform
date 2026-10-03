@@ -10,3 +10,5 @@ requests
 python-dotenv
 watchdog
 python-multipart
+mediapipe
+numpy

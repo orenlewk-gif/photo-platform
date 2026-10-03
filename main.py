@@ -358,12 +358,76 @@ def get_dino_model():
     return _dino_model, _dino_proc
 
 
-# ── Person detector (jacket crop) ────────────────────────────────────────────
-def compute_dino_embedding(pil_image: Image.Image) -> list:
+# ── MediaPipe pose detector (jacket crop) ────────────────────────────────────
+
+_mp_pose_detector = None
+
+def get_pose_detector():
+    global _mp_pose_detector
+    if _mp_pose_detector is None:
+        import mediapipe as mp
+        print("Loading MediaPipe pose detector...")
+        _mp_pose_detector = mp.solutions.pose.Pose(
+            static_image_mode=True,
+            model_complexity=0,          # Lite model — fastest on CPU (~50-100ms)
+            enable_segmentation=False,
+            min_detection_confidence=0.4,
+        )
+        print("MediaPipe pose detector loaded.")
+    return _mp_pose_detector
+
+
+def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
+    """Crop to jacket/torso zone using MediaPipe shoulder + hip keypoints.
+    Falls back to a fixed centre crop when no person is detected."""
+    import numpy as np
     w, h = pil_image.size
-    # Fixed crop: full width, skip top 10% (sky/background) and bottom 25% (feet/skis).
-    # Wider than a person-detected crop to handle subjects at any horizontal position.
-    cropped = pil_image.crop((0, int(h * 0.10), w, int(h * 0.75)))
+    try:
+        import mediapipe as mp
+        pose   = get_pose_detector()
+        LM     = mp.solutions.pose.PoseLandmark
+        result = pose.process(np.array(pil_image.convert("RGB")))
+
+        if result.pose_landmarks:
+            lm  = result.pose_landmarks.landmark
+            VIS = 0.4  # minimum confidence to trust a landmark
+
+            ls, rs = lm[LM.LEFT_SHOULDER],  lm[LM.RIGHT_SHOULDER]
+            lhip,  rhip  = lm[LM.LEFT_HIP], lm[LM.RIGHT_HIP]
+
+            if ls.visibility > VIS and rs.visibility > VIS:
+                x_left  = min(ls.x, rs.x)
+                x_right = max(ls.x, rs.x)
+                y_top   = min(ls.y, rs.y)
+
+                # Use hip landmarks if visible; otherwise estimate torso height
+                visible_hips = [p for p in (lhip, rhip) if p.visibility > VIS]
+                if visible_hips:
+                    y_bot = max(p.y for p in visible_hips)
+                else:
+                    y_bot = min(y_top + 0.35, 1.0)  # rough torso-length estimate
+
+                torso_h = max(y_bot - y_top, 0.05)
+                pad_x   = (x_right - x_left) * 0.30  # wide enough to include arms
+                pad_y_t = torso_h * 0.15              # a little above shoulders for collar
+                pad_y_b = torso_h * 0.20              # a little below hips for lower jacket
+
+                x1 = max(0, (x_left  - pad_x)   * w)
+                x2 = min(w, (x_right + pad_x)   * w)
+                y1 = max(0, (y_top   - pad_y_t) * h)
+                y2 = min(h, (y_bot   + pad_y_b) * h)
+
+                if (x2 - x1) > 40 and (y2 - y1) > 40:
+                    return pil_image.crop((x1, y1, x2, y2))
+    except Exception as e:
+        print(f"MediaPipe crop failed: {e}")
+
+    # Fallback: fixed crop — full width, top 10% to 75%
+    return pil_image.crop((0, int(h * 0.10), w, int(h * 0.75)))
+
+
+def compute_dino_embedding(pil_image: Image.Image) -> list:
+    cropped = crop_to_outfit(pil_image)
     m, p    = get_dino_model()
     inputs  = p(images=cropped, return_tensors="pt")
     with torch.no_grad():
