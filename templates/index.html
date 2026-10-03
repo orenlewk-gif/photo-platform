@@ -1927,8 +1927,7 @@ async function doOutfitSearch(input) {
     }
 
     allPhotos = d.photos;
-    const gallery = document.getElementById('gallery');
-    if (gallery) justifyLayout(gallery, allPhotos, _jCols);
+    renderThumbs(allPhotos);
 
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${d.photos.length} match${d.photos.length!==1?'es':''}`;
