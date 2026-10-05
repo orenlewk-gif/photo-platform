@@ -119,22 +119,6 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .outfit-status {
   font-size:0.8rem; color:rgba(255,255,255,0.5);
 }
-.jacket-color-row {
-  display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;
-  margin:0.6rem 0 0.2rem;
-}
-.jacket-color-label {
-  font-size:0.75rem; color:rgba(255,255,255,0.45); white-space:nowrap;
-}
-.jacket-swatch {
-  width:22px; height:22px; border-radius:50%; cursor:pointer;
-  border:2px solid transparent; transition:transform 0.15s, border-color 0.15s;
-  flex-shrink:0;
-}
-.jacket-swatch:hover { transform:scale(1.15); }
-.jacket-swatch.active { border-color:#fff; transform:scale(1.18); }
-.jacket-swatch[data-color="white"] { border-color:rgba(255,255,255,0.35); }
-.jacket-swatch[data-color="white"].active { border-color:#fff; }
 
 .size-slider-wrap {
   display:flex; align-items:center; gap:0.6rem;
@@ -1854,21 +1838,24 @@ async function showGallery(date, location, family, ln, group) {
     </div>
     ${folderInfoHtml}
     ${currentPricing?.flags?.clip ? `
-    <div style="text-align:center;margin:0 0 1.1rem">
-      <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">
-        Find my photos by outfit
-        <input type="file" id="outfit-input" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
-      </label>
-      <label class="outfit-upload-label" id="outfit-again-label" for="outfit-input-again" style="display:none">
-        Search again
-        <input type="file" id="outfit-input-again" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
-      </label>
-      <span class="outfit-status" id="outfit-status" style="display:none;font-size:.82rem;color:rgba(255,255,255,.5);margin-left:.6rem"></span>
-      <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.4);font-size:0.78rem;cursor:pointer;padding:0;text-decoration:underline;margin-left:.75rem">× Exit results</button>
-      <div style="font-size:.75rem;color:rgba(255,255,255,.4);margin-top:.45rem">Best results: photo of your jacket, or have a friend take your photo</div>
-      <div class="jacket-color-row" id="jacket-color-row" style="justify-content:center;margin-top:.75rem;display:none">
-        <span class="jacket-color-label">Jacket color:</span>
+    <div style="margin:0 0 1.1rem">
+      <div class="filter-bar" style="margin-bottom:0.6rem">
+        <input type="text" id="filter-input" placeholder="Search by color or gear… e.g. red jacket, yellow helmet, blue pants" />
+        <button class="btn" id="filter-btn" onclick="runColorFilter('${escQ(date||'')}','${escQ(location||'')}')">Search</button>
       </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
+        <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">
+          Find by photo
+          <input type="file" id="outfit-input" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
+        </label>
+        <label class="outfit-upload-label" id="outfit-again-label" for="outfit-input-again" style="display:none">
+          Search again
+          <input type="file" id="outfit-input-again" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
+        </label>
+        <span class="outfit-status" id="outfit-status" style="display:none;font-size:.82rem;color:rgba(255,255,255,.5)"></span>
+        <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.4);font-size:0.78rem;cursor:pointer;padding:0;text-decoration:underline">× Clear</button>
+      </div>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.35);margin-top:.4rem">Tip: describe your jacket color to find your photos</div>
     </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
@@ -1893,7 +1880,12 @@ async function showGallery(date, location, family, ln, group) {
   });
   updateCart();
   if (currentPricing?.flags?.time_search) initTimeFilter(photos, photos[0]?.date, currentLocation);
-  if (currentPricing?.flags?.clip) initJacketColorSwatches(photos);
+  if (currentPricing?.flags?.clip) {
+    const fi = document.getElementById('filter-input');
+    if (fi) fi.addEventListener('keydown', e => {
+      if (e.key === 'Enter') runColorFilter(photos[0]?.date || '', currentLocation || '');
+    });
+  }
   el.querySelector('#size-slider').addEventListener('input', function() {
     const cols    = [6, 5, 4, 3][parseInt(this.value) - 1];
     const gallery = document.getElementById('gallery');
@@ -1983,61 +1975,39 @@ function clearOutfitSearch() {
   if (exitBtn)     exitBtn.style.display     = 'none';
 }
 
-// ── Jacket Color Filter ────────────────────────────────────────────────────────
-const _JACKET_COLORS = {
-  red:    '#e53e3e', orange: '#dd6b20', yellow: '#d4a017',
-  green:  '#38a169', teal:   '#2c9a8f', blue:   '#3182ce',
-  purple: '#805ad5', pink:   '#d53f8c', black:  '#1c1c1e',
-  white:  '#e8e8e8', gray:   '#718096',
-};
+// ── Color / Gear Text Search ──────────────────────────────────────────────────
+async function runColorFilter(date, location) {
+  const input = document.getElementById('filter-input');
+  const btn   = document.getElementById('filter-btn');
+  const q     = input?.value.trim();
+  if (!q) return;
 
-let _jacketColorFilter = null;
-let _jacketBasePhotos  = null;
+  if (btn) btn.disabled = true;
+  if (input) input.disabled = true;
 
-function initJacketColorSwatches(photos) {
-  const row = document.getElementById('jacket-color-row');
-  if (!row) return;
-  const available = [...new Set(photos.map(p => p.jacket_color).filter(Boolean))];
-  if (!available.length) { row.style.display = 'none'; return; }
+  if (_outfitOriginalPhotos === null) _outfitOriginalPhotos = [...allPhotos];
 
-  // Remove old swatches (keep the label)
-  row.querySelectorAll('.jacket-swatch, .jacket-clear-btn').forEach(el => el.remove());
+  try {
+    const params = new URLSearchParams({ query: q });
+    if (date)     params.set('date',     date);
+    if (location) params.set('location', location);
+    const res  = await fetch(`/api/search?${params}`);
+    const d    = await res.json();
+    if (!res.ok) { alert(d.error || 'Search failed'); return; }
 
-  available.sort((a, b) => {
-    const order = ['red','orange','yellow','green','teal','blue','purple','pink','black','white','gray'];
-    return order.indexOf(a) - order.indexOf(b);
-  }).forEach(color => {
-    const s = document.createElement('button');
-    s.className = 'jacket-swatch';
-    s.dataset.color = color;
-    s.title = color.charAt(0).toUpperCase() + color.slice(1);
-    s.style.background = _JACKET_COLORS[color] || '#888';
-    s.onclick = () => toggleJacketColor(color);
-    row.appendChild(s);
-  });
+    allPhotos = d.photos || [];
+    renderThumbs(allPhotos);
+    const cnt = document.getElementById('results-count');
+    if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
 
-  row.style.display = 'flex';
-}
-
-function toggleJacketColor(color) {
-  if (_jacketBasePhotos === null) _jacketBasePhotos = [...allPhotos];
-
-  if (_jacketColorFilter === color) {
-    _jacketColorFilter = null;
-    allPhotos = [..._jacketBasePhotos];
-    _jacketBasePhotos = null;
-  } else {
-    _jacketColorFilter = color;
-    allPhotos = _jacketBasePhotos.filter(p => p.jacket_color === color);
+    const exitBtn = document.getElementById('outfit-exit-btn');
+    if (exitBtn) exitBtn.style.display = '';
+  } catch(e) {
+    alert('Search error — try again');
+  } finally {
+    if (btn)   btn.disabled  = false;
+    if (input) input.disabled = false;
   }
-
-  renderThumbs(allPhotos);
-  const cnt = document.getElementById('results-count');
-  if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
-
-  document.querySelectorAll('.jacket-swatch').forEach(s => {
-    s.classList.toggle('active', s.dataset.color === _jacketColorFilter);
-  });
 }
 
 // ── Time Filter ────────────────────────────────────────────────────────────────

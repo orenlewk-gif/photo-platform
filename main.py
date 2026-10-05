@@ -500,8 +500,8 @@ def _compute_dino_embeddings_batch(pil_images: list) -> list:
 
 def embed_items_fast(items: list, batch_size: int = 16) -> int:
     """
-    Parallel R2 fetch + parallel MediaPipe crop + batch DINOv2.
-    Updates item['dino_embedding'] in place. Returns count embedded.
+    Parallel R2 fetch + batch CLIP image embedding.
+    Updates item['embedding'] in place. Returns count embedded.
     """
     from concurrent.futures import ThreadPoolExecutor
 
@@ -513,39 +513,42 @@ def embed_items_fast(items: list, batch_size: int = 16) -> int:
             print(f"R2 fetch failed {item['path']}: {e}")
             return item, None
 
-    def crop_one(args):
+    def decode_one(args):
         item, img_bytes = args
         if img_bytes is None:
             return item, None
         try:
-            pil    = Image.open(BytesIO(img_bytes)).convert("RGB")
-            cropped = crop_to_outfit(pil)
-            item["jacket_color"] = extract_jacket_color(cropped)
-            return item, cropped
+            pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+            return item, _resize_for_embed(pil, max_side=512)
         except Exception as e:
-            print(f"Crop failed {item['path']}: {e}")
+            print(f"Decode failed {item['path']}: {e}")
             return item, None
 
     with ThreadPoolExecutor(max_workers=8) as ex:
         fetched = list(ex.map(fetch_one, items))
 
     with ThreadPoolExecutor(max_workers=4) as ex:
-        cropped = list(ex.map(crop_one, fetched))
+        decoded = list(ex.map(decode_one, fetched))
 
-    valid = [(item, crop) for item, crop in cropped if crop is not None]
+    valid = [(item, img) for item, img in decoded if img is not None]
     if not valid:
         return 0
 
+    m, p = get_model()
     count = 0
     for i in range(0, len(valid), batch_size):
-        batch_items, batch_crops = zip(*valid[i:i + batch_size])
+        batch_items, batch_imgs = zip(*valid[i:i + batch_size])
         try:
-            embs = _compute_dino_embeddings_batch(list(batch_crops))
+            inputs = p(images=list(batch_imgs), return_tensors="pt", padding=True)
+            with torch.no_grad():
+                vis_out = m.vision_model(**inputs)
+                feat    = m.visual_projection(vis_out.pooler_output)
+            embs = feat.tolist()
             for item, emb in zip(batch_items, embs):
-                item["dino_embedding"] = emb
+                item["embedding"] = emb
                 count += 1
         except Exception as e:
-            print(f"Batch embed failed (offset {i}): {e}")
+            print(f"CLIP batch embed failed (offset {i}): {e}")
 
     return count
 
@@ -1289,7 +1292,7 @@ def _search(query, last_name, date, location, group=None):
 
 # ── Outfit / Visual Search (DINOv2) ──────────────────────────────────────────
 
-OUTFIT_THRESHOLD = 0.72
+OUTFIT_THRESHOLD = 0.82
 
 @app.post("/api/outfit-search")
 async def outfit_search(request: Request):
@@ -1310,12 +1313,12 @@ async def outfit_search(request: Request):
 
         img_bytes  = await img_file.read()
         pil_img    = Image.open(BytesIO(img_bytes)).convert("RGB")
-        pil_img    = _resize_for_embed(pil_img)   # resize but no torso crop on query
-        m, p       = get_dino_model()
+        pil_img    = _resize_for_embed(pil_img, max_side=512)
+        m, p       = get_model()
         inputs     = p(images=pil_img, return_tensors="pt")
         with torch.no_grad():
-            out    = m(**inputs)
-        query_emb  = out.last_hidden_state[:, 0, :][0].float()
+            vis_out   = m.vision_model(**inputs)
+            query_emb = m.visual_projection(vis_out.pooler_output)[0].float()
 
         # Build a filename→minutes lookup if a time range was passed
         time_lookup: dict = {}
@@ -1343,7 +1346,7 @@ async def outfit_search(request: Request):
                 t = time_lookup.get(fname)
                 if t is not None and not (t_lo <= t <= t_hi):
                     continue
-            emb = item.get("dino_embedding")
+            emb = item.get("embedding")
             if emb is None:
                 continue
             item_emb = torch.tensor(emb).float()
@@ -4445,7 +4448,6 @@ async def cull_golive(request: Request):
                 "last_name":       folder if is_portrait else "",
                 "group":           "" if is_portrait else folder,
                 "embedding":       None,
-                "dino_embedding":  None,
                 "photographer_id": m.get("photographer_id"),
             }
             data.append(new_item)
@@ -5687,7 +5689,7 @@ async def admin_push_live(request: Request):
                 and item["location"].strip().lower() == location.lower()
                 and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()):
             del item["draft"]
-            if needs_embed and item.get("dino_embedding") is None:
+            if needs_embed and item.get("embedding") is None:
                 to_embed.append(item)
             pushed += 1
 
