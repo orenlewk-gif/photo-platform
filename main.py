@@ -498,7 +498,9 @@ def _compute_dino_embeddings_batch(pil_images: list) -> list:
     return out.last_hidden_state[:, 0, :].tolist()
 
 
-def embed_items_fast(items: list, batch_size: int = 16) -> int:
+_embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool}
+
+def embed_items_fast(items: list, batch_size: int = 16, job_id: str = None) -> int:
     """
     Parallel R2 fetch + batch CLIP image embedding.
     Updates item['embedding'] in place. Returns count embedded.
@@ -549,7 +551,11 @@ def embed_items_fast(items: list, batch_size: int = 16) -> int:
                 count += 1
         except Exception as e:
             print(f"CLIP batch embed failed (offset {i}): {e}")
+        if job_id and job_id in _embed_jobs:
+            _embed_jobs[job_id]["done"] = count
 
+    if job_id and job_id in _embed_jobs:
+        _embed_jobs[job_id]["finished"] = True
     return count
 
 
@@ -5698,15 +5704,27 @@ async def admin_push_live(request: Request):
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
 
+    job_id = None
     if to_embed:
-        def _embed_bg():
-            count = embed_items_fast(to_embed)
+        job_id = str(uuid.uuid4())[:8]
+        _embed_jobs[job_id] = {"total": len(to_embed), "done": 0, "finished": False}
+        def _embed_bg(jid=job_id):
+            count = embed_items_fast(to_embed, job_id=jid)
             s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                           Body=json.dumps(data).encode(), ContentType="application/json")
             print(f"Push-live embed done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
-    return {"pushed": pushed, "embedding": len(to_embed)}
+    return {"pushed": pushed, "embedding": len(to_embed), "job_id": job_id}
+
+@app.get("/api/admin/embed-status")
+def embed_status(request: Request, job_id: str = Query("")):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    job = _embed_jobs.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return job
 
 @app.post("/api/admin/discard-draft")
 async def admin_discard_draft(request: Request):

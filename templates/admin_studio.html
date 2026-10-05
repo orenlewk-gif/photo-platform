@@ -2256,6 +2256,19 @@ function updateUploadBtn() {
 let _uploadActive = false;
 let _uploadAbortCtrl = null;
 function _beforeUnloadGuard(e) { e.preventDefault(); e.returnValue = ''; }
+async function pollEmbedJob(jobId, total, label) {
+  while (true) {
+    await new Promise(r => setTimeout(r, 2500));
+    try {
+      const res = await fetch(`/api/admin/embed-status?job_id=${jobId}`);
+      if (!res.ok) break;
+      const s = await res.json();
+      label.textContent = `Indexing ${s.done} / ${total} photos for color search…`;
+      if (s.finished) break;
+    } catch(e) { break; }
+  }
+}
+
 function cancelUpload() {
   if (_uploadAbortCtrl) _uploadAbortCtrl.abort();
 }
@@ -2429,7 +2442,9 @@ async function startUpload() {
       if (lr?.ok) {
         const ld = await lr.json();
         totalLive += ld.pushed || 0;
-        if ((ld.embedding || 0) > 0) label.textContent = `${ld.pushed} photos live — color search indexing in background…`;
+        if (ld.job_id) {
+          await pollEmbedJob(ld.job_id, ld.embedding, label);
+        }
       }
     }
   }
