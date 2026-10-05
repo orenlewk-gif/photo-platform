@@ -2424,11 +2424,13 @@ async function startUpload() {
     const isPortraitUpload = PORTRAIT_LOCS.has(location.trim().toLowerCase());
     if (!isPortraitUpload) {
       cancelBtn.style.display = 'none';
-      const batchCount = (byFolder[folder]||[]).length;
-      if (batchCount > 0) label.textContent = `Computing visual search for ${batchCount} photo${batchCount===1?'':'s'}…`;
       const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({date,location,folder})}).catch(()=>null);
-      if (lr?.ok) { const ld=await lr.json(); totalLive+=ld.pushed||0; }
+      if (lr?.ok) {
+        const ld = await lr.json();
+        totalLive += ld.pushed || 0;
+        if ((ld.embedding || 0) > 0) label.textContent = `${ld.pushed} photos live — color search indexing in background…`;
+      }
     }
   }
   const succeeded = done - failed;

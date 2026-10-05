@@ -4462,11 +4462,12 @@ async def cull_golive(request: Request):
                   ContentType="application/json")
 
     if to_embed:
-        embedded = embed_items_fast(to_embed)
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(),
-                      ContentType="application/json")
-        print(f"Cull go-live embed done: {embedded}/{len(to_embed)}")
+        def _embed_bg():
+            count = embed_items_fast(to_embed)
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(), ContentType="application/json")
+            print(f"Cull go-live embed done: {count}/{len(to_embed)}")
+        threading.Thread(target=_embed_bg, daemon=True).start()
 
     return {"published": len(published)}
 
@@ -5697,14 +5698,15 @@ async def admin_push_live(request: Request):
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
 
-    embedded = 0
     if to_embed:
-        embedded = embed_items_fast(to_embed)
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
-        print(f"Push-live embed done: {embedded}/{len(to_embed)}")
+        def _embed_bg():
+            count = embed_items_fast(to_embed)
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(), ContentType="application/json")
+            print(f"Push-live embed done: {count}/{len(to_embed)}")
+        threading.Thread(target=_embed_bg, daemon=True).start()
 
-    return {"pushed": pushed, "embedding": embedded}
+    return {"pushed": pushed, "embedding": len(to_embed)}
 
 @app.post("/api/admin/discard-draft")
 async def admin_discard_draft(request: Request):
