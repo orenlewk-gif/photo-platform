@@ -1261,6 +1261,8 @@ def _search(query, last_name, date, location, group=None):
                 similarity = 0.0
             else:
                 similarity = (t @ img_emb / (t_norm * i_norm)).item()
+            if similarity < 0.20:
+                continue
         else:
             similarity = 0.0
 

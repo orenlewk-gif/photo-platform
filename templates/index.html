@@ -1843,19 +1843,7 @@ async function showGallery(date, location, family, ln, group) {
         <input type="text" id="filter-input" placeholder="Search by color or gear… e.g. red jacket, yellow helmet, blue pants" />
         <button class="btn" id="filter-btn" onclick="runColorFilter('${escQ(date||'')}','${escQ(location||'')}')">Search</button>
       </div>
-      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap">
-        <label class="outfit-upload-label" id="outfit-upload-label" for="outfit-input">
-          Find by photo
-          <input type="file" id="outfit-input" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
-        </label>
-        <label class="outfit-upload-label" id="outfit-again-label" for="outfit-input-again" style="display:none">
-          Search again
-          <input type="file" id="outfit-input-again" accept="image/*" style="display:none" onchange="doOutfitSearch(this)">
-        </label>
-        <span class="outfit-status" id="outfit-status" style="display:none;font-size:.82rem;color:rgba(255,255,255,.5)"></span>
-        <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.4);font-size:0.78rem;cursor:pointer;padding:0;text-decoration:underline">× Clear</button>
-      </div>
-      <div style="font-size:.75rem;color:rgba(255,255,255,.35);margin-top:.4rem">Tip: describe your jacket color to find your photos</div>
+<div style="font-size:.75rem;color:rgba(255,255,255,.35);margin-top:.4rem">Tip: describe your jacket color to find your photos</div>
     </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
