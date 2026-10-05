@@ -383,6 +383,14 @@ def _resize_for_embed(img: Image.Image, max_side: int = 640) -> Image.Image:
     return img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
 
 
+def _center_crop_for_embed(img: Image.Image, crop_ratio: float = 0.6) -> Image.Image:
+    """Crop to the center 60% of the image before embedding — reduces background noise."""
+    w, h = img.size
+    margin_x = int(w * (1 - crop_ratio) / 2)
+    margin_y = int(h * (1 - crop_ratio) / 2)
+    return img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
+
+
 def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
     """Crop to jacket/torso zone using MediaPipe shoulder + hip keypoints.
     Falls back to a fixed centre crop when no person is detected."""
@@ -521,6 +529,7 @@ def embed_items_fast(items: list, batch_size: int = 16, job_id: str = None) -> i
             return item, None
         try:
             pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+            pil = _center_crop_for_embed(pil, crop_ratio=0.6)
             return item, _resize_for_embed(pil, max_side=512)
         except Exception as e:
             print(f"Decode failed {item['path']}: {e}")
