@@ -394,9 +394,9 @@ html.embedded #layout{height:100vh}
 
     <div id="tab-search" class="tab-panel">
       <div class="settings-section">
-        <div class="section-title">Outfit / Visual Search</div>
-        <div class="section-desc">Winter Action photos need a visual embedding to appear in outfit search results. New photos get embedded automatically when published. Use this to backfill existing photos that were uploaded before outfit search was added.</div>
-        <button class="btn-add" id="btn-backfill" onclick="runBackfill()">Compute embeddings for Winter Action photos</button>
+        <div class="section-title">Color Search Index</div>
+        <div class="section-desc">All photos are indexed for color search automatically when published. Use this to backfill the entire library — any photo without an embedding will be queued. This runs in the background and may take several minutes.</div>
+        <button class="btn-add" id="btn-backfill" onclick="runBackfill()">Index all unindexed photos</button>
         <span id="backfill-status" style="font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.75rem"></span>
       </div>
     </div><!-- /tab-search -->
@@ -817,10 +817,15 @@ async function runBackfill() {
   if (btn) btn.disabled = true;
   if (st)  st.textContent = 'Starting…';
   try {
-    const r = await fetch('/api/outfit-search/backfill', { method: 'POST' });
+    const r = await fetch('/api/admin/reembed-all', { method: 'POST' });
     const d = await r.json();
     if (r.ok) {
-      if (st) st.textContent = `Running in background — ${d.photos_to_embed} photo${d.photos_to_embed!==1?'s':''} to embed. Check server logs for progress.`;
+      if (d.queued === 0) {
+        if (st) st.textContent = 'All photos already indexed.';
+        if (btn) btn.disabled = false;
+      } else {
+        if (st) st.textContent = `Running in background — ${d.queued} photo${d.queued!==1?'s':''} queued. Job: ${d.job_id}`;
+      }
     } else {
       if (st) st.textContent = d.error || 'Failed';
       if (btn) btn.disabled = false;

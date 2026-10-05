@@ -5744,6 +5744,26 @@ def embed_status(request: Request, job_id: str = Query("")):
         return JSONResponse(status_code=404, content={"error": "Job not found"})
     return job
 
+@app.post("/api/admin/reembed-all")
+async def admin_reembed_all(request: Request):
+    """Embed all photos in the library that are missing an embedding."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    to_embed = [it for it in data if it.get("embedding") is None and not it.get("draft")]
+    if not to_embed:
+        return {"queued": 0, "message": "All photos already indexed"}
+    job_id = str(uuid.uuid4())[:8]
+    _embed_jobs[job_id] = {"total": len(to_embed), "done": 0, "finished": False}
+    def _bg(jid=job_id):
+        count = embed_items_fast(to_embed, job_id=jid)
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _rebuild_emb_index()
+        print(f"Bulk re-embed done: {count}/{len(to_embed)}")
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"queued": len(to_embed), "job_id": job_id}
+
+
 @app.post("/api/admin/discard-draft")
 async def admin_discard_draft(request: Request):
     global data
