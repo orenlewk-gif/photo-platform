@@ -1230,7 +1230,7 @@ def search(
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
-CLIP_THRESHOLD = 0.20
+CLIP_THRESHOLD = 0.28
 CLIP_TOP_K     = 30
 
 def _search(query, last_name, date, location, group=None):
