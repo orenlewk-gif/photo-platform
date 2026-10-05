@@ -508,7 +508,7 @@ def _compute_dino_embeddings_batch(pil_images: list) -> list:
 
 _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool}
 
-def embed_items_fast(items: list, batch_size: int = 16, job_id: str = None) -> int:
+def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> int:
     """
     Parallel R2 fetch + batch CLIP image embedding.
     Updates item['embedding'] in place. Returns count embedded.
@@ -535,10 +535,10 @@ def embed_items_fast(items: list, batch_size: int = 16, job_id: str = None) -> i
             print(f"Decode failed {item['path']}: {e}")
             return item, None
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=16) as ex:
         fetched = list(ex.map(fetch_one, items))
 
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=8) as ex:
         decoded = list(ex.map(decode_one, fetched))
 
     valid = [(item, img) for item, img in decoded if img is not None]
@@ -4450,13 +4450,7 @@ async def cull_golive(request: Request):
     existing    = {item["path"] for item in data}
     published   = []
 
-    _activities = _load_pricing().get("activities", {})
-    _loc_flags  = next(
-        (cfg.get("flags", {}) for name, cfg in _activities.items()
-         if name.lower() == location.lower()),
-        {}
-    )
-    needs_embed = _loc_flags.get("clip", False)
+    needs_embed = True
     to_embed    = []
 
     for m in to_pub:
@@ -5709,13 +5703,7 @@ async def admin_push_live(request: Request):
         if not has_pricing:
             return JSONResponse(status_code=400, content={"error": f"No pricing configured for {location} — set it up in Pricing"})
 
-    _activities = _load_pricing().get("activities", {})
-    _loc_flags  = next(
-        (cfg.get("flags", {}) for name, cfg in _activities.items()
-         if name.lower() == location.lower()),
-        {}
-    )
-    needs_embed = _loc_flags.get("clip", False)
+    needs_embed = True
 
     pushed        = 0
     to_embed      = []
