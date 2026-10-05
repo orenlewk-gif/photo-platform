@@ -433,6 +433,53 @@ def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
     return pil_image.crop((0, int(h * 0.10), w, int(h * 0.75)))
 
 
+def extract_jacket_color(torso_crop: Image.Image) -> str:
+    """Dominant jacket color from the upper portion of a torso crop."""
+    import numpy as np
+    w, h = torso_crop.size
+    # Centre strip, upper 60% (jacket, not pants)
+    x0, x1 = int(w * 0.12), int(w * 0.88)
+    y1      = int(h * 0.60)
+    region  = torso_crop.crop((x0, 0, x1, y1)).resize((48, 48), Image.LANCZOS)
+    px      = np.array(region.convert("RGB"), dtype=np.float32).reshape(-1, 3)
+
+    r, g, b = px[:, 0] / 255, px[:, 1] / 255, px[:, 2] / 255
+    maxc = np.maximum.reduce([r, g, b])
+    minc = np.minimum.reduce([r, g, b])
+    diff = maxc - minc
+    v    = maxc
+    s    = np.where(maxc > 0, diff / maxc, 0)
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        rc = np.where(diff > 0, (maxc - r) / diff, 0)
+        gc = np.where(diff > 0, (maxc - g) / diff, 0)
+        bc = np.where(diff > 0, (maxc - b) / diff, 0)
+    hraw = np.where(maxc == r, bc - gc,
+           np.where(maxc == g, 2 + rc - bc, 4 + gc - rc))
+    hue  = ((hraw / 6) % 1.0) * 360
+
+    mask   = (s > 0.22) & (v > 0.15) & (v < 0.97)
+    colored = hue[mask]
+
+    if len(colored) < px.shape[0] * 0.08:
+        mv = float(np.mean(v))
+        if mv < 0.28: return "black"
+        if mv > 0.78: return "white"
+        return "gray"
+
+    hist, _ = np.histogram(colored, bins=24, range=(0, 360))
+    dh      = int(np.argmax(hist)) * 15 + 7
+    if dh < 15 or dh >= 345: return "red"
+    if dh < 40:  return "orange"
+    if dh < 70:  return "yellow"
+    if dh < 155: return "green"
+    if dh < 195: return "teal"
+    if dh < 255: return "blue"
+    if dh < 285: return "purple"
+    if dh < 345: return "pink"
+    return "red"
+
+
 def compute_dino_embedding(pil_image: Image.Image) -> list:
     cropped = crop_to_outfit(pil_image)
     m, p    = get_dino_model()
@@ -471,8 +518,10 @@ def embed_items_fast(items: list, batch_size: int = 16) -> int:
         if img_bytes is None:
             return item, None
         try:
-            pil = Image.open(BytesIO(img_bytes)).convert("RGB")
-            return item, crop_to_outfit(pil)
+            pil    = Image.open(BytesIO(img_bytes)).convert("RGB")
+            cropped = crop_to_outfit(pil)
+            item["jacket_color"] = extract_jacket_color(cropped)
+            return item, cropped
         except Exception as e:
             print(f"Crop failed {item['path']}: {e}")
             return item, None

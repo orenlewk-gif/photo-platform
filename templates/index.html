@@ -119,6 +119,22 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .outfit-status {
   font-size:0.8rem; color:rgba(255,255,255,0.5);
 }
+.jacket-color-row {
+  display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;
+  margin:0.6rem 0 0.2rem;
+}
+.jacket-color-label {
+  font-size:0.75rem; color:rgba(255,255,255,0.45); white-space:nowrap;
+}
+.jacket-swatch {
+  width:22px; height:22px; border-radius:50%; cursor:pointer;
+  border:2px solid transparent; transition:transform 0.15s, border-color 0.15s;
+  flex-shrink:0;
+}
+.jacket-swatch:hover { transform:scale(1.15); }
+.jacket-swatch.active { border-color:#fff; transform:scale(1.18); }
+.jacket-swatch[data-color="white"] { border-color:rgba(255,255,255,0.35); }
+.jacket-swatch[data-color="white"].active { border-color:#fff; }
 
 .size-slider-wrap {
   display:flex; align-items:center; gap:0.6rem;
@@ -1850,6 +1866,9 @@ async function showGallery(date, location, family, ln, group) {
       <span class="outfit-status" id="outfit-status" style="display:none;font-size:.82rem;color:rgba(255,255,255,.5);margin-left:.6rem"></span>
       <button id="outfit-exit-btn" onclick="clearOutfitSearch()" style="display:none;background:none;border:none;color:rgba(255,255,255,.4);font-size:0.78rem;cursor:pointer;padding:0;text-decoration:underline;margin-left:.75rem">× Exit results</button>
       <div style="font-size:.75rem;color:rgba(255,255,255,.4);margin-top:.45rem">Best results: photo of your jacket, or have a friend take your photo</div>
+      <div class="jacket-color-row" id="jacket-color-row" style="justify-content:center;margin-top:.75rem;display:none">
+        <span class="jacket-color-label">Jacket color:</span>
+      </div>
     </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
@@ -1874,6 +1893,7 @@ async function showGallery(date, location, family, ln, group) {
   });
   updateCart();
   if (currentPricing?.flags?.time_search) initTimeFilter(photos, photos[0]?.date, currentLocation);
+  if (currentPricing?.flags?.clip) initJacketColorSwatches(photos);
   el.querySelector('#size-slider').addEventListener('input', function() {
     const cols    = [6, 5, 4, 3][parseInt(this.value) - 1];
     const gallery = document.getElementById('gallery');
@@ -1947,8 +1967,7 @@ function clearOutfitSearch() {
   if (_outfitOriginalPhotos !== null) {
     allPhotos = _outfitOriginalPhotos;
     _outfitOriginalPhotos = null;
-    const gallery = document.getElementById('gallery');
-    if (gallery) justifyLayout(gallery, allPhotos, _jCols);
+    renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
   }
@@ -1962,6 +1981,63 @@ function clearOutfitSearch() {
   if (uploadLabel) uploadLabel.style.display = '';
   if (againLabel)  againLabel.style.display  = 'none';
   if (exitBtn)     exitBtn.style.display     = 'none';
+}
+
+// ── Jacket Color Filter ────────────────────────────────────────────────────────
+const _JACKET_COLORS = {
+  red:    '#e53e3e', orange: '#dd6b20', yellow: '#d4a017',
+  green:  '#38a169', teal:   '#2c9a8f', blue:   '#3182ce',
+  purple: '#805ad5', pink:   '#d53f8c', black:  '#1c1c1e',
+  white:  '#e8e8e8', gray:   '#718096',
+};
+
+let _jacketColorFilter = null;
+let _jacketBasePhotos  = null;
+
+function initJacketColorSwatches(photos) {
+  const row = document.getElementById('jacket-color-row');
+  if (!row) return;
+  const available = [...new Set(photos.map(p => p.jacket_color).filter(Boolean))];
+  if (!available.length) { row.style.display = 'none'; return; }
+
+  // Remove old swatches (keep the label)
+  row.querySelectorAll('.jacket-swatch, .jacket-clear-btn').forEach(el => el.remove());
+
+  available.sort((a, b) => {
+    const order = ['red','orange','yellow','green','teal','blue','purple','pink','black','white','gray'];
+    return order.indexOf(a) - order.indexOf(b);
+  }).forEach(color => {
+    const s = document.createElement('button');
+    s.className = 'jacket-swatch';
+    s.dataset.color = color;
+    s.title = color.charAt(0).toUpperCase() + color.slice(1);
+    s.style.background = _JACKET_COLORS[color] || '#888';
+    s.onclick = () => toggleJacketColor(color);
+    row.appendChild(s);
+  });
+
+  row.style.display = 'flex';
+}
+
+function toggleJacketColor(color) {
+  if (_jacketBasePhotos === null) _jacketBasePhotos = [...allPhotos];
+
+  if (_jacketColorFilter === color) {
+    _jacketColorFilter = null;
+    allPhotos = [..._jacketBasePhotos];
+    _jacketBasePhotos = null;
+  } else {
+    _jacketColorFilter = color;
+    allPhotos = _jacketBasePhotos.filter(p => p.jacket_color === color);
+  }
+
+  renderThumbs(allPhotos);
+  const cnt = document.getElementById('results-count');
+  if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
+
+  document.querySelectorAll('.jacket-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === _jacketColorFilter);
+  });
 }
 
 // ── Time Filter ────────────────────────────────────────────────────────────────
