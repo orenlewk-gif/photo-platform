@@ -562,6 +562,27 @@ def embed_items_fast(items: list, batch_size: int = 16, job_id: str = None) -> i
 data: list = []
 _data_ready = threading.Event()
 
+# Vectorized CLIP embedding index — rebuilt after data loads or embeddings update
+_emb_matrix: "torch.Tensor | None" = None
+_emb_items:  list = []
+_emb_lock    = threading.Lock()
+
+def _rebuild_emb_index():
+    global _emb_matrix, _emb_items
+    items = [it for it in data if it.get("embedding") is not None]
+    if not items:
+        with _emb_lock:
+            _emb_matrix = None
+            _emb_items  = []
+        return
+    mat   = torch.tensor([it["embedding"] for it in items], dtype=torch.float32)
+    norms = mat.norm(dim=1, keepdim=True).clamp(min=1e-8)
+    mat   = mat / norms
+    with _emb_lock:
+        _emb_matrix = mat
+        _emb_items  = items
+    print(f"CLIP index: {len(items)} photos indexed")
+
 def _load_data_bg() -> None:
     global data
     if os.path.exists("images.json"):
@@ -571,6 +592,7 @@ def _load_data_bg() -> None:
             data = loaded
             print(f"Loaded {len(data)} photos from local file.")
             _data_ready.set()
+            _rebuild_emb_index()
             return
         except (json.JSONDecodeError, ValueError) as e:
             print(f"WARNING: local images.json corrupt ({e}), trying R2...")
@@ -583,6 +605,7 @@ def _load_data_bg() -> None:
     except Exception as e:
         print(f"WARNING: could not load images.json ({e}), starting empty")
     _data_ready.set()
+    _rebuild_emb_index()
 
 threading.Thread(target=_load_data_bg, daemon=True).start()
 # Wait up to 8 s so the first request isn't served with empty data,
@@ -1207,77 +1230,71 @@ def search(
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
+CLIP_THRESHOLD = 0.20
+CLIP_TOP_K     = 30
+
 def _search(query, last_name, date, location, group=None):
     if not query and not last_name:
         return JSONResponse(status_code=400, content={"error": "Provide query or last_name"})
 
-    # Text embedding
-    text_embedding = None
+    ln_filter = last_name.strip().lower() if last_name else ""
+
     if query:
+        # Encode query text
         m, p = get_model()
         inputs = p(text=[query], return_tensors="pt", padding=True)
         with torch.no_grad():
-            # Use text_model + text_projection directly — avoids API differences
-            # across transformers versions where get_text_features may return
-            # a BaseModelOutputWithPooling object instead of a plain tensor.
-            text_out  = m.text_model(**inputs)
-            pooled    = text_out.pooler_output          # (batch, hidden_dim)
-            feat      = m.text_projection(pooled)       # (batch, 512)
-            text_embedding = feat[0].float()            # (512,)
+            text_out = m.text_model(**inputs)
+            feat     = m.text_projection(text_out.pooler_output)
+            t        = feat[0].float().reshape(1, -1)
+            t        = t / t.norm(dim=1, keepdim=True).clamp(min=1e-8)
 
-    ln_filter = last_name.strip().lower() if last_name else ""
+        # Grab the pre-built normalized index
+        with _emb_lock:
+            matrix = _emb_matrix
+            index_items = list(_emb_items)
 
-    results = []
-    for item in data:
-        # Date filter
-        if date and item["date"] != date:
-            continue
-        # Location filter
-        if location and clean_location(item["location"]) != location:
-            continue
-        # Group filter — only return photos from this trail/time slot
-        if group and item.get("group","").strip().lower() != group.lower():
-            continue
-        # Last name filter — only return photos that belong to this family
-        if ln_filter:
+        if matrix is None:
+            return {"count": 0, "photos": []}
+
+        # Single matrix multiply — all similarities at once
+        sims = (matrix @ t.T).squeeze(1).tolist()
+
+        scored = []
+        for sim, item in zip(sims, index_items):
+            if sim < CLIP_THRESHOLD:
+                continue
+            if date and item["date"] != date:
+                continue
+            if location and clean_location(item["location"]) != location:
+                continue
+            if group and item.get("group", "").strip().lower() != group.lower():
+                continue
+            if ln_filter:
+                item_ln = item.get("last_name", "").strip().lower()
+                if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
+                    continue
+                sim += (fuzz.partial_ratio(ln_filter, item_ln) / 100) * 0.15
+            scored.append((sim, item))
+
+        scored.sort(reverse=True, key=lambda x: x[0])
+        results = scored[:CLIP_TOP_K]
+
+    else:
+        # Last name only — scan data, sort by filename
+        results = []
+        for item in data:
+            if date and item["date"] != date:
+                continue
+            if location and clean_location(item["location"]) != location:
+                continue
+            if group and item.get("group", "").strip().lower() != group.lower():
+                continue
             item_ln = item.get("last_name", "").strip().lower()
             if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
                 continue
-
-        # Score — skip photos with no CLIP embedding during descriptive search
-        if text_embedding is not None:
-            if item.get("embedding") is None:
-                continue
-            img_emb = torch.tensor(item["embedding"]).float().reshape(-1)
-            t = text_embedding.reshape(-1)
-            # Pad / trim so shapes always match (both should be 512)
-            if t.shape[0] != img_emb.shape[0]:
-                min_dim = min(t.shape[0], img_emb.shape[0])
-                t = t[:min_dim]
-                img_emb = img_emb[:min_dim]
-            t_norm = t.norm()
-            i_norm = img_emb.norm()
-            if t_norm == 0 or i_norm == 0:
-                similarity = 0.0
-            else:
-                similarity = (t @ img_emb / (t_norm * i_norm)).item()
-            if similarity < 0.20:
-                continue
-        else:
-            similarity = 0.0
-
-        boost = 0.0
-        if ln_filter:
-            item_ln = item.get("last_name", "").strip().lower()
-            if item_ln:
-                boost += (fuzz.partial_ratio(ln_filter, item_ln) / 100) * 0.15
-
-        results.append((similarity + boost, item))
-
-    # When no text query (last name only), sort by filename; otherwise sort by score
-    if text_embedding is not None:
-        results.sort(reverse=True, key=lambda x: x[0])
-    else:
+            boost = (fuzz.partial_ratio(ln_filter, item_ln) / 100) * 0.15
+            results.append((boost, item))
         results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
 
     paths  = [item["path"] for _, item in results]
@@ -4474,6 +4491,7 @@ async def cull_golive(request: Request):
             count = embed_items_fast(to_embed)
             s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                           Body=json.dumps(data).encode(), ContentType="application/json")
+            _rebuild_emb_index()
             print(f"Cull go-live embed done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
@@ -5714,6 +5732,7 @@ async def admin_push_live(request: Request):
             count = embed_items_fast(to_embed, job_id=jid)
             s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                           Body=json.dumps(data).encode(), ContentType="application/json")
+            _rebuild_emb_index()
             print(f"Push-live embed done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
