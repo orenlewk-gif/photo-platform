@@ -1239,7 +1239,7 @@ def search(
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
-CLIP_THRESHOLD = 0.28
+CLIP_THRESHOLD = 0.15
 CLIP_TOP_K     = 30
 
 def _search(query, last_name, date, location, group=None):
@@ -1264,8 +1264,10 @@ def _search(query, last_name, date, location, group=None):
             index_items = list(_emb_items)
 
         if matrix is None:
+            print(f"CLIP search: matrix is None (no embeddings loaded)")
             return {"count": 0, "photos": []}
 
+        print(f"CLIP search: '{query}' — {len(index_items)} photos in index, threshold={CLIP_THRESHOLD}")
         # Single matrix multiply — all similarities at once
         sims = (matrix @ t.T).squeeze(1).tolist()
 
@@ -1287,6 +1289,7 @@ def _search(query, last_name, date, location, group=None):
             scored.append((sim, item))
 
         scored.sort(reverse=True, key=lambda x: x[0])
+        print(f"CLIP search: '{query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
         results = scored[:CLIP_TOP_K]
 
     else:
