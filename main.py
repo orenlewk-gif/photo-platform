@@ -4593,6 +4593,16 @@ async def cull_golive(request: Request):
             if needs_embed:
                 to_embed.append(new_item)
             existing.add(img_key)
+        else:
+            # Re-upload of existing path — re-embed to pick up color data
+            for it in data:
+                if it["path"] == img_key:
+                    it["embedding"]     = None
+                    it["dominant_hue"]  = None
+                    it["dominant_sat"]  = None
+                    if needs_embed:
+                        to_embed.append(it)
+                    break
         published.append(img_key)
 
     _save_pending_meta(meta)
