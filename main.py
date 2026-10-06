@@ -6678,14 +6678,24 @@ async def rename_activity(request: Request):
                   Body=json.dumps(data).encode(),
                   ContentType="application/json")
 
-    # Rename / merge the pricing config key
+    # Rename / merge the pricing config key and update category acts list
     pricing = _load_pricing()
     acts    = pricing.get("activities", {})
     if old_name in acts:
         old_cfg = acts.pop(old_name)
-        if new_name not in acts:          # don't clobber existing config
+        if new_name not in acts:
             acts[new_name] = old_cfg
+    elif new_name not in acts:
+        acts[new_name] = {}
     pricing["activities"] = acts
+    for cat in pricing.get("activity_categories", []):
+        cat_acts = cat.get("acts", [])
+        if old_name in cat_acts:
+            idx = cat_acts.index(old_name)
+            if new_name not in cat_acts:
+                cat_acts[idx] = new_name
+            else:
+                cat_acts.pop(idx)
     _save_pricing(pricing)
 
     return {"renamed": True, "photos_updated": updated}
