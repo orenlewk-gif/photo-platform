@@ -214,6 +214,7 @@ html.embedded #layout{height:100vh}
     <div class="subtabs">
       <button class="subtab active" onclick="switchTab('general',this)">General</button>
       <button class="subtab" onclick="switchTab('presets',this)">Text Presets</button>
+      <button class="subtab" onclick="switchTab('classify',this)">Color Labels</button>
     </div>
 
     <!-- ── GENERAL TAB ── -->
@@ -390,6 +391,24 @@ html.embedded #layout{height:100vh}
         </div>
       </div>
     </div><!-- /tab-presets -->
+
+    <!-- ── COLOR LABELS TAB ── -->
+    <div id="tab-classify" class="tab-panel">
+      <div class="settings-section">
+        <div class="section-title">Color Label Backfill</div>
+        <div class="section-desc">Run Haiku vision classification on indexed photos that don't yet have clothing color labels. Haiku reads each photo and records jacket, pants, and helmet colors. Use the location filter to process only winter action folders — leave blank to process everything. Progress saves every 16 photos.</div>
+        <div style="margin-top:1rem;display:flex;flex-direction:column;gap:.75rem;max-width:480px">
+          <div>
+            <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.35rem">Location filter (optional)</label>
+            <input id="classify-location" type="text" placeholder="e.g. Whitefish Mountain" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:.5rem .8rem;color:#fff;font-size:.88rem;font-family:inherit" />
+          </div>
+          <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+            <button class="btn-save" id="btn-classify" onclick="runClassifyBackfill()" style="background:#1a5cc8">Start Classification</button>
+            <span id="classify-status" style="font-size:.85rem;color:rgba(255,255,255,.55)"></span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /tab-classify -->
 
 
   </div>
@@ -799,6 +818,57 @@ async function applyBulkPreset() {
     setTimeout(() => { status.textContent = ''; }, 3000);
   } else {
     status.textContent = 'Apply failed';
+  }
+}
+
+async function runClassifyBackfill() {
+  const btn      = document.getElementById('btn-classify');
+  const st       = document.getElementById('classify-status');
+  const locInput = document.getElementById('classify-location');
+  const location = locInput ? locInput.value.trim() : '';
+  if (btn) btn.disabled = true;
+  if (st)  st.textContent = 'Starting…';
+  try {
+    const r = await fetch('/api/admin/classify-backfill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location }),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      if (d.queued === 0) {
+        if (st)  st.textContent = d.message || 'All matching photos already classified.';
+        if (btn) btn.disabled = false;
+      } else {
+        const locStr = location ? ` (${location})` : '';
+        if (st) st.textContent = `Running${locStr} — ${d.queued} photo${d.queued!==1?'s':''} queued. Job: ${d.job_id}`;
+        pollClassifyStatus(d.job_id);
+      }
+    } else {
+      if (st)  st.textContent = d.error || 'Failed';
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    if (st)  st.textContent = 'Request failed';
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function pollClassifyStatus(jobId) {
+  const st  = document.getElementById('classify-status');
+  const btn = document.getElementById('btn-classify');
+  try {
+    const r = await fetch(`/api/admin/embed-status?job_id=${jobId}`);
+    const d = await r.json();
+    if (d.finished) {
+      if (st)  st.textContent = `Done — ${d.done} photo${d.done!==1?'s':''} classified.`;
+      if (btn) btn.disabled = false;
+    } else {
+      if (st) st.textContent = `Classifying… ${d.done}/${d.total}`;
+      setTimeout(() => pollClassifyStatus(jobId), 4000);
+    }
+  } catch (e) {
+    if (st) st.textContent = 'Status check failed';
   }
 }
 

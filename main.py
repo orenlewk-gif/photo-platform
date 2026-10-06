@@ -54,7 +54,8 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
     config=BotocoreConfig(signature_version="s3v4", max_pool_connections=50),
 )
-R2_BUCKET    = os.getenv("R2_BUCKET_NAME", "crystal-images")
+R2_BUCKET          = os.getenv("R2_BUCKET_NAME", "crystal-images")
+ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 PRICING_KEY  = "meta/pricing.json"
 
 # ── Activity Pricing (R2) ─────────────────────────────────────────────────────
@@ -588,6 +589,147 @@ def _compute_dino_embeddings_batch(pil_images: list) -> list:
 
 _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool}
 
+# ── Haiku Vision Classification ───────────────────────────────────────────────
+
+_HAIKU_COLOR_ENUM = [
+    "red", "orange", "yellow", "green", "blue", "purple", "pink",
+    "white", "black", "gray", "brown", "navy", "teal", "none", "unclear",
+]
+
+_HAIKU_TOOL = {
+    "name": "record_colors",
+    "description": "Record clothing colors for each person visible in this ski or snowboard photo.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "people": {
+                "type": "array",
+                "description": "One entry per distinct person visible in the photo",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "is_main_subject": {
+                            "type": "boolean",
+                            "description": "True for the primary skier/snowboarder this photo is focused on",
+                        },
+                        "jacket_colors": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
+                            "description": "Colors of the jacket or top layer",
+                        },
+                        "pants_colors": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
+                            "description": "Colors of the ski pants or lower body",
+                        },
+                        "helmet_colors": {
+                            "type": "array",
+                            "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
+                            "description": "Colors of the helmet",
+                        },
+                    },
+                    "required": ["is_main_subject", "jacket_colors", "pants_colors", "helmet_colors"],
+                },
+            },
+        },
+        "required": ["people"],
+    },
+}
+
+# Color families — similar shades treated as equivalent during filtering
+_COLOR_FAMILY: dict[str, set] = {
+    "blue":   {"blue", "navy"},
+    "navy":   {"navy", "blue"},
+    "red":    {"red", "maroon"},
+    "maroon": {"maroon", "red"},
+    "green":  {"green", "teal"},
+    "teal":   {"teal", "green"},
+    "gray":   {"gray"},
+    "purple": {"purple", "violet"},
+    "violet": {"violet", "purple"},
+}
+
+def _color_family(color: str) -> set:
+    return _COLOR_FAMILY.get(color, {color})
+
+
+def classify_photo_colors(img_bytes: bytes) -> dict | None:
+    """Call claude-haiku to get jacket/pants/helmet color labels for a ski photo."""
+    if not ANTHROPIC_API_KEY:
+        return None
+    try:
+        pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+        pil.thumbnail((768, 768), Image.LANCZOS)
+        buf = BytesIO()
+        pil.save(buf, format="JPEG", quality=75)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+
+        payload = {
+            "model": "claude-haiku-4-5-20251001",
+            "max_tokens": 512,
+            "tools": [_HAIKU_TOOL],
+            "tool_choice": {"type": "tool", "name": "record_colors"},
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "List every skier or snowboarder visible in this photo. "
+                            "For each person, set is_main_subject=true only for the one this photo "
+                            "is clearly focused on (closest to camera, most prominent). "
+                            "Record jacket, pants, and helmet colors for each person. "
+                            "Use 'none' if a garment is not visible. "
+                            "Use 'unclear' if visible but color is too ambiguous to name. "
+                            "You may list multiple colors for patterned or multi-tone garments."
+                        ),
+                    },
+                ],
+            }],
+        }
+        headers = {
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        resp = None
+        for attempt in range(4):
+            resp = http_requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=headers,
+                json=payload,
+                timeout=30,
+            )
+            if resp.status_code == 429:
+                wait = 2 ** attempt
+                print(f"Haiku rate limit (attempt {attempt + 1}), retrying in {wait}s")
+                _time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            break
+        if resp is None or resp.status_code == 429:
+            return None
+        for block in resp.json().get("content", []):
+            if block.get("type") == "tool_use" and block.get("name") == "record_colors":
+                people = block.get("input", {}).get("people", [])
+                if not people:
+                    return None
+                main = next((p for p in people if p.get("is_main_subject")), people[0])
+                return {
+                    "jacket_colors": main.get("jacket_colors", []),
+                    "pants_colors":  main.get("pants_colors", []),
+                    "helmet_colors": main.get("helmet_colors", []),
+                }
+        return None
+    except Exception as e:
+        print(f"Haiku classify failed: {e}")
+        return None
+
+
 def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> int:
     """
     Parallel R2 fetch + batch CLIP image embedding.
@@ -612,6 +754,17 @@ def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> i
             dom_hue, dom_sat = extract_dominant_color(pil)
             item["dominant_hue"] = dom_hue
             item["dominant_sat"] = dom_sat
+            # Haiku vision classification — skip portraits and already-labeled photos
+            _is_portrait_loc = item.get("location", "").strip().lower() in {
+                loc.strip().lower() for loc in PORTRAIT_LOCATIONS
+            }
+            if ANTHROPIC_API_KEY and item.get("jacket_colors") is None and not _is_portrait_loc:
+                colors = classify_photo_colors(img_bytes)
+                if colors:
+                    item["jacket_colors"] = colors.get("jacket_colors", [])
+                    item["pants_colors"]  = colors.get("pants_colors", [])
+                    item["helmet_colors"] = colors.get("helmet_colors", [])
+                    print(f"Haiku: {item['path'].split('/')[-1]} → jacket={item['jacket_colors']} pants={item['pants_colors']} helmet={item['helmet_colors']}")
             pil = _center_crop_for_embed(pil, crop_ratio=0.6)
             return item, _resize_for_embed(pil, max_side=512)
         except Exception as e:
@@ -1306,20 +1459,24 @@ def pos_families(date: str = Query(""), location: str = Query("")):
 
 @app.get("/api/search")
 def search(
-    request:   Request,
-    query:     str  = Query(None),
-    last_name: str  = Query(None),
-    date:      str  = Query(None),
-    location:  str  = Query(None),
-    group:     str  = Query(None),
-    time_from: int  = Query(None),
-    time_to:   int  = Query(None),
+    request:      Request,
+    query:        str  = Query(None),
+    last_name:    str  = Query(None),
+    date:         str  = Query(None),
+    location:     str  = Query(None),
+    group:        str  = Query(None),
+    time_from:    int  = Query(None),
+    time_to:      int  = Query(None),
+    jacket_color: str  = Query(None),
+    pants_color:  str  = Query(None),
+    helmet_color: str  = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
-        return _search(query, last_name, date, location, group, time_from, time_to)
+        return _search(query, last_name, date, location, group, time_from, time_to,
+                       jacket_color=jacket_color, pants_color=pants_color, helmet_color=helmet_color)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
@@ -1327,9 +1484,11 @@ def search(
 CLIP_THRESHOLD = 0.20
 CLIP_TOP_K     = 40
 
-def _search(query, last_name, date, location, group=None, time_from=None, time_to=None):
-    if not query and not last_name:
-        return JSONResponse(status_code=400, content={"error": "Provide query or last_name"})
+def _search(query, last_name, date, location, group=None, time_from=None, time_to=None,
+            jacket_color=None, pants_color=None, helmet_color=None):
+    has_labels = any([jacket_color, pants_color, helmet_color])
+    if not query and not last_name and not has_labels:
+        return JSONResponse(status_code=400, content={"error": "Provide query, last_name, or color filter"})
 
     # Build time lookup if a range was supplied
     time_map = None
@@ -1397,8 +1556,39 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             scored.append((sim, item))
 
         scored.sort(reverse=True, key=lambda x: x[0])
+        # Apply Haiku color label filters on top of CLIP results
+        if jacket_color:
+            _jf = _color_family(jacket_color)
+            scored = [(s, it) for s, it in scored if any(c in _jf for c in (it.get("jacket_colors") or []))]
+        if pants_color:
+            _pf = _color_family(pants_color)
+            scored = [(s, it) for s, it in scored if any(c in _pf for c in (it.get("pants_colors") or []))]
+        if helmet_color:
+            _hf = _color_family(helmet_color)
+            scored = [(s, it) for s, it in scored if any(c in _hf for c in (it.get("helmet_colors") or []))]
         print(f"CLIP search: '{clip_query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
         results = scored[:CLIP_TOP_K]
+
+    elif has_labels:
+        # Color chip only — scan folder, filter strictly by Haiku labels
+        results = []
+        for item in data:
+            if item.get("draft"):
+                continue
+            if date and item["date"] != date:
+                continue
+            if location and clean_location(item["location"]) != location:
+                continue
+            if group and item.get("group", "").strip().lower() != group.lower():
+                continue
+            if jacket_color and not any(c in _color_family(jacket_color) for c in (item.get("jacket_colors") or [])):
+                continue
+            if pants_color and not any(c in _color_family(pants_color) for c in (item.get("pants_colors") or [])):
+                continue
+            if helmet_color and not any(c in _color_family(helmet_color) for c in (item.get("helmet_colors") or [])):
+                continue
+            results.append((0.0, item))
+        results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
 
     else:
         # Last name only — scan data, sort by filename
@@ -4594,12 +4784,15 @@ async def cull_golive(request: Request):
                 to_embed.append(new_item)
             existing.add(img_key)
         else:
-            # Re-upload of existing path — re-embed to pick up color data
+            # Re-upload of existing path — re-embed and re-classify
             for it in data:
                 if it["path"] == img_key:
                     it["embedding"]     = None
                     it["dominant_hue"]  = None
                     it["dominant_sat"]  = None
+                    it["jacket_colors"] = None
+                    it["pants_colors"]  = None
+                    it["helmet_colors"] = None
                     if needs_embed:
                         to_embed.append(it)
                     break
@@ -5934,6 +6127,142 @@ async def admin_recolor_all(request: Request):
 
     threading.Thread(target=_bg, daemon=True).start()
     return {"queued": len(to_color), "job_id": job_id}
+
+
+@app.post("/api/admin/classify-backfill")
+async def admin_classify_backfill(request: Request):
+    """Haiku classification backfill: label jacket/pants/helmet colors for photos
+    that have an embedding but no jacket_colors label yet.
+    Optionally filter by location (e.g. 'Whitefish Mountain') to process only
+    specific resort folders instead of the entire library."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not ANTHROPIC_API_KEY:
+        return JSONResponse(status_code=400, content={"error": "ANTHROPIC_API_KEY not configured"})
+    body             = await request.json()
+    location_filter  = (body.get("location") or "").strip().lower()
+    batch_limit      = int(body.get("limit") or 0)  # 0 = no limit
+
+    _portrait_locs_lower = {loc.strip().lower() for loc in PORTRAIT_LOCATIONS}
+    candidates = [
+        it for it in data
+        if not it.get("draft")
+        and it.get("embedding") is not None
+        and it.get("jacket_colors") is None
+        and it.get("location", "").strip().lower() not in _portrait_locs_lower
+        and (not location_filter or location_filter in it.get("location", "").lower())
+    ]
+    to_classify = candidates[:batch_limit] if batch_limit > 0 else candidates
+    remaining   = max(0, len(candidates) - len(to_classify))
+
+    if not to_classify:
+        return {"queued": 0, "message": "All matching photos already classified", "remaining": 0}
+
+    job_id = str(uuid.uuid4())[:8]
+    _embed_jobs[job_id] = {"total": len(to_classify), "done": 0, "finished": False}
+
+    def _bg(jid=job_id):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_and_classify(item):
+            try:
+                resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+                raw  = resp["Body"].read()
+                colors = classify_photo_colors(raw)
+                if colors:
+                    item["jacket_colors"] = colors.get("jacket_colors", [])
+                    item["pants_colors"]  = colors.get("pants_colors", [])
+                    item["helmet_colors"] = colors.get("helmet_colors", [])
+                return True
+            except Exception as e:
+                print(f"classify-backfill failed {item['path']}: {e}")
+                return False
+
+        done = 0
+        batch_size = 16  # keep Haiku API concurrency reasonable
+        for i in range(0, len(to_classify), batch_size):
+            batch = to_classify[i:i + batch_size]
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                results = list(ex.map(_fetch_and_classify, batch))
+            done += sum(results)
+            if jid in _embed_jobs:
+                _embed_jobs[jid]["done"] = done
+            # Save progress every batch so partial results survive a restart
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(), ContentType="application/json")
+
+        if jid in _embed_jobs:
+            _embed_jobs[jid]["finished"] = True
+        print(f"Classify backfill done: {done}/{len(to_classify)}")
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"queued": len(to_classify), "remaining": remaining, "job_id": job_id}
+
+
+@app.post("/api/admin/classify-folder")
+async def admin_classify_folder(request: Request):
+    """Haiku classification for a specific folder (date + location + folder name).
+    Processes only photos in that folder that don't yet have color labels."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not ANTHROPIC_API_KEY:
+        return JSONResponse(status_code=400, content={"error": "ANTHROPIC_API_KEY not configured"})
+    body     = await request.json()
+    date     = (body.get("date") or "").strip()
+    location = (body.get("location") or "").strip().lower()
+    folder   = (body.get("folder") or "").strip().lower()
+
+    if not date or not location:
+        return JSONResponse(status_code=400, content={"error": "date and location required"})
+
+    to_classify = [
+        it for it in data
+        if not it.get("draft")
+        and it.get("embedding") is not None
+        and it.get("jacket_colors") is None
+        and it["date"] == date
+        and it.get("location", "").strip().lower() == location
+        and (not folder or (it.get("last_name","") or it.get("group","")).strip().lower() == folder)
+    ]
+    if not to_classify:
+        return {"queued": 0, "message": "All photos in this folder already classified"}
+
+    job_id = str(uuid.uuid4())[:8]
+    _embed_jobs[job_id] = {"total": len(to_classify), "done": 0, "finished": False}
+
+    def _bg(jid=job_id):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_and_classify(item):
+            try:
+                resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+                raw  = resp["Body"].read()
+                colors = classify_photo_colors(raw)
+                if colors:
+                    item["jacket_colors"] = colors.get("jacket_colors", [])
+                    item["pants_colors"]  = colors.get("pants_colors", [])
+                    item["helmet_colors"] = colors.get("helmet_colors", [])
+                return True
+            except Exception as e:
+                print(f"classify-folder failed {item['path']}: {e}")
+                return False
+
+        done = 0
+        for i in range(0, len(to_classify), 16):
+            batch = to_classify[i:i + 16]
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                results = list(ex.map(_fetch_and_classify, batch))
+            done += sum(results)
+            if jid in _embed_jobs:
+                _embed_jobs[jid]["done"] = done
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+        if jid in _embed_jobs:
+            _embed_jobs[jid]["finished"] = True
+        print(f"Classify folder done: {done}/{len(to_classify)}")
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"queued": len(to_classify), "job_id": job_id}
 
 
 @app.post("/api/admin/discard-draft")

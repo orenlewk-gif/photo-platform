@@ -71,6 +71,9 @@ body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:1
 .btn-delete{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);color:#ef4444}
 .btn-delete:hover{background:rgba(239,68,68,.25)}
 .btn-delete:disabled{opacity:.4;cursor:not-allowed}
+.btn-classify-colors{background:rgba(26,92,200,.15);border:1px solid rgba(26,92,200,.5);color:#6ea8ff}
+.btn-classify-colors:hover{background:rgba(26,92,200,.28)}
+.btn-classify-colors:disabled{opacity:.4;cursor:not-allowed}
 
 .empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center;font-size:.9rem}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -179,6 +182,9 @@ function folderRow(f) {
        <button class="btn btn-discard" onclick="discardDraft('${esc(f.folder_key)}', this)">Discard</button>`
     : '';
   const deleteHtml = `<button class="btn btn-delete" onclick="deleteFolder('${esc(f.folder_key)}', this)">Delete</button>`;
+  const classifyHtml = (!f.is_portrait && !f.is_zip && !isDraft)
+    ? `<button class="btn btn-classify-colors" onclick="classifyFolderColors('${esc(f.folder_key)}', this)" title="Run Haiku color classification on this folder">Classify Colors</button>`
+    : '';
 
   return `<div class="folder-row ${statusCls}" id="frow_${btoa(f.folder_key).replace(/=/g,'')}">
     <span class="status-badge ${badgeCls}">${badgeText}</span>
@@ -186,6 +192,7 @@ function folderRow(f) {
     <span class="folder-count">${f.photo_count} photos</span>
     ${groupSizeHtml}
     ${pushLiveHtml}
+    ${classifyHtml}
     ${deleteHtml}
     ${previewHtml}
   </div>`;
@@ -361,6 +368,57 @@ function showToast(msg) {
   el.textContent = msg;
   el.classList.add('show');
   setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+async function classifyFolderColors(folderKey, btn) {
+  const f = allFolders.find(x => x.folder_key === folderKey);
+  if (!f) return;
+  btn.disabled = true;
+  btn.textContent = 'Classifying…';
+  try {
+    const res = await fetch('/api/admin/classify-folder', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ date: f.date, location: f.location, folder: f.name })
+    });
+    const d = await res.json();
+    if (res.ok) {
+      if (d.queued === 0) {
+        showToast(d.message || 'Already classified');
+        btn.textContent = 'Classify Colors';
+        btn.disabled = false;
+      } else {
+        showToast(`Classifying ${d.queued} photos…`);
+        pollFolderClassify(d.job_id, btn);
+      }
+    } else {
+      showToast(d.error || 'Classification failed');
+      btn.textContent = 'Classify Colors';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    showToast('Request failed');
+    btn.textContent = 'Classify Colors';
+    btn.disabled = false;
+  }
+}
+
+async function pollFolderClassify(jobId, btn) {
+  try {
+    const r = await fetch(`/api/admin/embed-status?job_id=${jobId}`);
+    const d = await r.json();
+    if (d.finished) {
+      showToast(`Done — ${d.done} photos classified`);
+      btn.textContent = 'Classify Colors';
+      btn.disabled = false;
+    } else {
+      btn.textContent = `${d.done}/${d.total}…`;
+      setTimeout(() => pollFolderClassify(jobId, btn), 3000);
+    }
+  } catch(e) {
+    btn.textContent = 'Classify Colors';
+    btn.disabled = false;
+  }
 }
 </script>
 </body>
