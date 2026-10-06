@@ -404,17 +404,23 @@ def extract_dominant_color(img: Image.Image):
     Returns (None, None) when no clear dominant color is found."""
     import colorsys
     w, h = img.size
-    # Crop: skip top 15% (sky/helmet) and bottom 10% (skis/ground), trim sides
-    crop = img.crop((int(w * 0.15), int(h * 0.15), int(w * 0.85), int(h * 0.90)))
+    # Crop: skip top 30% (sky/helmet) and bottom 10% (skis/ground), trim sides
+    crop = img.crop((int(w * 0.15), int(h * 0.30), int(w * 0.85), int(h * 0.90)))
     crop = crop.convert("RGB").resize((64, 64), Image.LANCZOS)
     pixels = list(crop.getdata())
 
     hue_list, sat_list = [], []
     for r, g, b in pixels:
         h_f, s_f, v_f = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-        if s_f >= _COLOR_MIN_SAT and 0.08 < v_f < 0.97:
-            hue_list.append(h_f * 360.0)
-            sat_list.append(s_f)
+        # Skip: achromatic (snow/grey), very dark, very bright
+        if s_f < _COLOR_MIN_SAT or v_f <= 0.08 or v_f >= 0.97:
+            continue
+        # Skip: bright sky-blue (high value + sky hue = sky not jacket)
+        hue_deg = h_f * 360.0
+        if v_f > 0.80 and 185.0 <= hue_deg <= 230.0:
+            continue
+        hue_list.append(hue_deg)
+        sat_list.append(s_f)
 
     if len(hue_list) < _COLOR_MIN_PIX:
         return None, None
