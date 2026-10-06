@@ -683,9 +683,13 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
                             "Record jacket, pants, and helmet colors for each person. "
+                            "Focus on the true base color of each garment — ignore snow reflections, "
+                            "shadows, sun glare, or sheen on the fabric that may shift the apparent hue. "
+                            "A jacket that is blue should be labeled blue even if bright snow or backlighting "
+                            "makes it appear washed out, warm, or orange-tinted in this frame. "
                             "Use 'none' if a garment is not visible. "
-                            "Use 'unclear' if visible but color is too ambiguous to name. "
-                            "You may list multiple colors for patterned or multi-tone garments."
+                            "Use 'unclear' only if the base color is genuinely impossible to determine. "
+                            "You may list multiple colors for truly patterned or multi-tone garments."
                         ),
                     },
                 ],
