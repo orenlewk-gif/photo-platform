@@ -198,6 +198,7 @@ html.embedded #layout{height:100vh}
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
       <a href="/admin/orders" class="nav-link">Orders</a>
       <a href="/admin/links" class="nav-link">Links</a>
+      
       <a href="/admin/settings" class="nav-link active-page">Settings</a>
       <a href="/admin/activities" class="nav-link">Activities</a>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
@@ -407,6 +408,13 @@ html.embedded #layout{height:100vh}
             <span id="classify-status" style="font-size:.85rem;color:rgba(255,255,255,.55)"></span>
           </div>
         </div>
+      </div>
+
+      <!-- Classified folders -->
+      <div class="settings-section" style="margin-top:1.5rem">
+        <div class="section-title">Classified Folders</div>
+        <div class="section-desc">Folders that have been through Haiku color classification. Click a folder to review and edit labels.</div>
+        <div id="classified-folders-list" style="margin-top:1rem"></div>
       </div>
     </div><!-- /tab-classify -->
 
@@ -921,6 +929,167 @@ async function runRecolor() {
     if (btn) btn.disabled = false;
   }
 }
+
+// ── Classified folders ────────────────────────────────────────────────────────
+const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','navy','teal'];
+const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa'};
+let _classifiedFolders = [];
+let _folderPhotos = {};   // folderKey → photos array
+let _editState = {};      // path → {jacket, pants, sport}
+
+async function loadClassifiedFolders() {
+  const el = document.getElementById('classified-folders-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/admin/folders');
+    const d = await r.json();
+    _classifiedFolders = (d.folders || []).filter(f =>
+      !f.is_portrait && !f.is_zip && !f.draft && f.classified_count > 0
+    ).sort((a,b) => b.date.localeCompare(a.date));
+    if (!_classifiedFolders.length) { el.innerHTML = '<div style="color:rgba(255,255,255,.3);font-size:.85rem">No classified folders yet.</div>'; return; }
+    el.innerHTML = _classifiedFolders.map(f => {
+      const key = f.folder_key;
+      const rowId = 'cfl_' + btoa(key).replace(/[^a-zA-Z0-9]/g,'');
+      return `<div style="margin-bottom:.5rem">
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .75rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;cursor:pointer" onclick="toggleClassifiedFolder('${key.replace(/'/g,"\\'")}','${rowId}')">
+          <span style="flex:1;font-size:.85rem;color:rgba(255,255,255,.8)">${f.name || f.location} <span style="color:rgba(255,255,255,.35);font-size:.75rem">${f.date}</span></span>
+          <span style="font-size:.75rem;color:rgba(255,255,255,.35)">${f.classified_count} labeled</span>
+          <span style="font-size:.75rem;color:rgba(255,255,255,.3)" id="arr_${rowId}">▶</span>
+        </div>
+        <div id="${rowId}" style="display:none;padding:.5rem 0 0 .5rem"></div>
+      </div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="color:rgba(255,100,100,.6);font-size:.85rem">Failed to load folders.</div>'; }
+}
+
+async function toggleClassifiedFolder(folderKey, rowId) {
+  const panel = document.getElementById(rowId);
+  const arr   = document.getElementById('arr_' + rowId);
+  if (!panel) return;
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    if (arr) arr.textContent = '▶';
+    return;
+  }
+  if (arr) arr.textContent = '▼';
+  if (_folderPhotos[folderKey]) { renderFolderPhotoGrid(folderKey, rowId); return; }
+  panel.innerHTML = '<div style="color:rgba(255,255,255,.3);font-size:.8rem;padding:.5rem">Loading…</div>';
+  panel.style.display = '';
+  const f = _classifiedFolders.find(x => x.folder_key === folderKey);
+  if (!f) return;
+  const params = new URLSearchParams({date: f.date, location: f.location, group: f.name || ''});
+  try {
+    const r = await fetch('/api/admin/folder-photos?' + params);
+    const d = await r.json();
+    _folderPhotos[folderKey] = (d.photos || []).filter(p => p.jacket !== null);
+    renderFolderPhotoGrid(folderKey, rowId);
+  } catch(e) { panel.innerHTML = '<div style="color:rgba(255,100,100,.6);font-size:.8rem">Failed to load.</div>'; }
+}
+
+function renderFolderPhotoGrid(folderKey, rowId) {
+  const panel  = document.getElementById(rowId);
+  const photos = _folderPhotos[folderKey] || [];
+  if (!photos.length) { panel.innerHTML = '<div style="color:rgba(255,255,255,.3);font-size:.8rem;padding:.5rem">No labeled photos.</div>'; panel.style.display=''; return; }
+  const grid = photos.map(p => {
+    const itemId = 'cpi_' + btoa(p.path).replace(/[^a-zA-Z0-9]/g,'');
+    const jacketDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
+    const pantsDots  = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
+    const sportLabel = p.sport === 'ski' ? 'ski' : p.sport === 'snowboard' ? 'sb' : '';
+    return `<div id="${itemId}" style="display:inline-block;vertical-align:top;width:90px;margin:.2rem;text-align:center">
+      <div style="position:relative;width:90px;height:90px;border-radius:5px;overflow:hidden;cursor:pointer;border:2px solid rgba(255,255,255,.1)" onclick="openCFEditor('${folderKey}','${p.path.replace(/'/g,"\\'")}','${rowId}')">
+        <img src="https://photos.bigskyphotos.com/${p.path}" style="width:100%;height:100%;object-fit:cover">
+        <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);padding:2px 3px;font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.7)">${p.file.replace(/\.[^.]+$/,'')}</div>
+        ${sportLabel ? `<div style="position:absolute;top:3px;right:4px;font-size:7px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);border-radius:3px;padding:1px 3px;letter-spacing:.5px">${sportLabel}</div>` : ''}
+      </div>
+      <div style="font-size:9px;margin-top:2px">${jacketDots||'—'} / ${pantsDots||'—'}</div>
+    </div>`;
+  }).join('');
+  panel.innerHTML = `<div style="margin:.25rem 0">${grid}</div>`;
+  panel.style.display = '';
+}
+
+function openCFEditor(folderKey, path, rowId) {
+  document.querySelectorAll('.cf-editor').forEach(el => el.remove());
+  const itemId = 'cpi_' + btoa(path).replace(/[^a-zA-Z0-9]/g,'');
+  const item   = document.getElementById(itemId);
+  if (!item) return;
+  const photos = _folderPhotos[folderKey] || [];
+  const p      = photos.find(x => x.path === path) || {};
+  if (!_editState[path]) _editState[path] = {jacket:[...(p.jacket||[])], pants:[...(p.pants||[])], sport:p.sport||null};
+  const cur = _editState[path];
+
+  const colorRow = (label, key) => {
+    const pills = _ALL_COLORS.map(c => {
+      const on = cur[key].includes(c) ? ' on' : '';
+      return `<span class="cf-pill${on}" onclick="toggleCFColor('${path}','${key}','${c}',this)" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid ${on?' #F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem">
+        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${c}</span>`;
+    }).join('');
+    return `<div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">${label}</span>${pills}</div>`;
+  };
+  const sportPills = ['ski','snowboard'].map(s => {
+    const on = cur.sport===s;
+    return `<span onclick="toggleCFSport('${path}','${s}',this)" style="display:inline-block;padding:2px 10px;border-radius:10px;border:1.5px solid ${on?'#F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem">${s}</span>`;
+  }).join('');
+
+  const div = document.createElement('div');
+  div.className = 'cf-editor';
+  div.style.cssText = 'background:rgba(8,18,30,.97);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.75rem;margin:.5rem 0;font-size:.78rem';
+  div.innerHTML = `<div style="font-size:.72rem;font-weight:600;color:rgba(255,255,255,.4);margin-bottom:.5rem">${path.split('/').pop()}</div>
+    ${colorRow('Jacket','jacket')}${colorRow('Pants','pants')}
+    <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
+    <div style="display:flex;gap:.5rem;margin-top:.4rem">
+      <button onclick="saveCFEdit('${folderKey}','${path}','${rowId}',this)" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Save</button>
+      <button onclick="this.closest('.cf-editor').remove()" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
+    </div>`;
+  item.after(div);
+}
+
+function toggleCFColor(path, key, color, el) {
+  const cur = _editState[path]; if (!cur) return;
+  const idx = cur[key].indexOf(color);
+  const on  = idx < 0;
+  if (on) cur[key].push(color); else cur[key].splice(idx,1);
+  el.style.borderColor  = on ? '#F5C518' : 'rgba(255,255,255,.12)';
+  el.style.background   = on ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
+  el.style.color        = on ? '#F5C518' : 'rgba(255,255,255,.5)';
+}
+
+function toggleCFSport(path, sport, el) {
+  const cur = _editState[path]; if (!cur) return;
+  const on  = cur.sport !== sport;
+  cur.sport = on ? sport : null;
+  el.closest('div').querySelectorAll('span[onclick^="toggleCFSport"]').forEach(e => {
+    const isSel = e.textContent.trim() === cur.sport;
+    e.style.borderColor = isSel ? '#F5C518' : 'rgba(255,255,255,.12)';
+    e.style.background  = isSel ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
+    e.style.color       = isSel ? '#F5C518' : 'rgba(255,255,255,.5)';
+  });
+}
+
+async function saveCFEdit(folderKey, path, rowId, btn) {
+  const cur = _editState[path]; if (!cur) return;
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/admin/set-photo-colors', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport}),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    // Update cached photo
+    const p = (_folderPhotos[folderKey]||[]).find(x=>x.path===path);
+    if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; }
+    delete _editState[path];
+    btn.closest('.cf-editor').remove();
+    renderFolderPhotoGrid(folderKey, rowId);
+  } catch(e) { btn.disabled=false; btn.textContent='Save'; alert('Save failed: '+e.message); }
+}
+
+// Load classified folders when Color Labels tab opens
+const _origSwitchTab = window.switchTab;
+window.switchTab = function(tab, el) {
+  _origSwitchTab && _origSwitchTab(tab, el);
+  if (tab === 'classify') loadClassifiedFolders();
+};
 </script>
 <script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 </body>

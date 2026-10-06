@@ -2051,6 +2051,7 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
             "file":   item["path"].split("/")[-1],
             "jacket": item.get("jacket_colors"),
             "pants":  item.get("pants_colors"),
+            "sport":  item.get("sport"),
         })
     results.sort(key=lambda x: x["file"])
     return {"photos": results}
@@ -6899,20 +6900,25 @@ def api_admin_folders(request: Request):
         if fk not in folders:
             loc_lower = location.lower()
             is_zip = loc_lower in ZIP_LOCS_SET
+            is_portrait = loc_lower in PORTRAIT_LOCATIONS
             folders[fk] = {
-                "folder_key":  fk,
-                "date":        date,
-                "location":    location,
-                "name":        name,
-                "photo_count": 0,
-                "draft_count": 0,
-                "is_zip":      is_zip,
-                "group_size":  folder_meta.get(fk, {}).get("group_size") if is_zip else None,
-                "_preview":    None,
+                "folder_key":       fk,
+                "date":             date,
+                "location":         location,
+                "name":             name,
+                "photo_count":      0,
+                "draft_count":      0,
+                "classified_count": 0,
+                "is_zip":           is_zip,
+                "is_portrait":      is_portrait,
+                "group_size":       folder_meta.get(fk, {}).get("group_size") if is_zip else None,
+                "_preview":         None,
             }
         folders[fk]["photo_count"] += 1
         if item.get("draft"):
             folders[fk]["draft_count"] += 1
+        if item.get("jacket_colors") is not None:
+            folders[fk]["classified_count"] += 1
         if folders[fk]["_preview"] is None:
             folders[fk]["_preview"] = item.get("path")
     from urllib.parse import quote as _quote
