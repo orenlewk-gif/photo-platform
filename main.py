@@ -2107,6 +2107,26 @@ async def admin_reclassify_photos(request: Request):
     return {"queued": len(targets), "job_id": job_id}
 
 
+@app.post("/api/admin/set-photo-colors")
+async def admin_set_photo_colors(request: Request):
+    """Manually set jacket/pants/sport labels on a single photo."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    path = body.get("path", "").strip()
+    if not path:
+        return JSONResponse(status_code=400, content={"error": "path required"})
+    item = next((it for it in data if it["path"] == path), None)
+    if not item:
+        return JSONResponse(status_code=404, content={"error": "Photo not found"})
+    if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
+    if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
+    if "sport"         in body: item["sport"]          = body["sport"] or None
+    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                  Body=json.dumps(data).encode(), ContentType="application/json")
+    return {"ok": True, "path": path}
+
+
 @app.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
     """Return distinct jacket/pants colors and sport types found in labeled photos for a folder."""
