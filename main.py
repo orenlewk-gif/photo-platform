@@ -2016,7 +2016,7 @@ async def admin_color_labels(request: Request, date: str = Query(""), location: 
             continue
         if date and item.get("date") != date:
             continue
-        if loc_lower and clean_location(item.get("location", "")) != loc_lower:
+        if loc_lower and clean_location(item.get("location", "")).lower() != loc_lower:
             continue
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
@@ -2040,7 +2040,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             continue
         if date and item.get("date") != date:
             continue
-        if loc_lower and clean_location(item.get("location", "")) != loc_lower:
+        if loc_lower and clean_location(item.get("location", "")).lower() != loc_lower:
             continue
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
