@@ -1240,7 +1240,7 @@ def search(
         return JSONResponse(status_code=503, content={"error": str(e)})
 
 CLIP_THRESHOLD = 0.20
-CLIP_TOP_K     = 60
+CLIP_TOP_K     = 500
 
 def _search(query, last_name, date, location, group=None):
     if not query and not last_name:
