@@ -1965,10 +1965,22 @@ function clearOutfitSearch() {
 
 // ── Color / Gear Text Search ──────────────────────────────────────────────────
 async function runColorFilter(date, location) {
-  const input = document.getElementById('filter-input');
-  const btn   = document.getElementById('filter-btn');
-  const q     = input?.value.trim();
+  const input   = document.getElementById('filter-input');
+  const btn     = document.getElementById('filter-btn');
+  const fromSel = document.getElementById('tf-from');
+  const toSel   = document.getElementById('tf-to');
+  const q       = input?.value.trim();
   if (!q) return;
+
+  // If time filter is visible, require ≤ 30 minute window
+  const bar = document.getElementById('time-filter-bar');
+  if (bar && bar.style.display !== 'none' && fromSel && toSel) {
+    const rangeMin = parseInt(toSel.value) - parseInt(fromSel.value);
+    if (rangeMin > 30) {
+      alert('Narrow your time range to 30 minutes or less before searching by color.');
+      return;
+    }
+  }
 
   if (btn) btn.disabled = true;
   if (input) input.disabled = true;
@@ -1979,6 +1991,10 @@ async function runColorFilter(date, location) {
     const params = new URLSearchParams({ query: q });
     if (date)     params.set('date',     date);
     if (location) params.set('location', location);
+    if (fromSel && toSel && bar && bar.style.display !== 'none') {
+      params.set('time_from', fromSel.value);
+      params.set('time_to',   String(parseInt(toSel.value) + 4));
+    }
     const res  = await fetch(`/api/search?${params}`);
     const d    = await res.json();
     if (!res.ok) { alert(d.error || 'Search failed'); return; }
@@ -2052,11 +2068,11 @@ async function initTimeFilter(photos, date, location) {
   const minTime = Math.min(...realTimes);
   const maxTime = Math.max(...realTimes);
 
-  // Generate 15-minute bucket boundaries
-  const startBucket = Math.floor(minTime / 15) * 15;
-  const endBucket   = Math.ceil(maxTime / 15) * 15;
+  // Generate 5-minute bucket boundaries
+  const startBucket = Math.floor(minTime / 5) * 5;
+  const endBucket   = Math.ceil(maxTime / 5) * 5;
   const buckets = [];
-  for (let m = startBucket; m <= endBucket; m += 15) buckets.push(m);
+  for (let m = startBucket; m <= endBucket; m += 5) buckets.push(m);
 
   const fromSel = document.getElementById('tf-from');
   const toSel   = document.getElementById('tf-to');
@@ -2070,7 +2086,7 @@ async function initTimeFilter(photos, date, location) {
 
   function applyFilter() {
     const lo    = parseInt(fromSel.value, 10);
-    const hi    = parseInt(toSel.value,   10) + 14; // include full 15-min bucket
+    const hi    = parseInt(toSel.value,   10) + 4; // include full 5-min bucket
     const isAll = fromSel.value === String(startBucket) && toSel.value === String(endBucket);
 
     let shown = 0;

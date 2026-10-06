@@ -1229,22 +1229,32 @@ def search(
     date:      str  = Query(None),
     location:  str  = Query(None),
     group:     str  = Query(None),
+    time_from: int  = Query(None),
+    time_to:   int  = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
-        return _search(query, last_name, date, location, group)
+        return _search(query, last_name, date, location, group, time_from, time_to)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
-CLIP_THRESHOLD = 0.20
-CLIP_TOP_K     = 500
+CLIP_THRESHOLD = 0.25
+CLIP_TOP_K     = 40
 
-def _search(query, last_name, date, location, group=None):
+def _search(query, last_name, date, location, group=None, time_from=None, time_to=None):
     if not query and not last_name:
         return JSONResponse(status_code=400, content={"error": "Provide query or last_name"})
+
+    # Build time lookup if a range was supplied
+    time_map = None
+    if time_from is not None and time_to is not None and date and location:
+        cache_key = (date, location.strip().lower())
+        cached = _folder_times_cache.get(cache_key)
+        if cached:
+            time_map = cached
 
     ln_filter = last_name.strip().lower() if last_name else ""
 
@@ -1281,6 +1291,11 @@ def _search(query, last_name, date, location, group=None):
                 continue
             if group and item.get("group", "").strip().lower() != group.lower():
                 continue
+            if time_map is not None:
+                fname = item["path"].split("/")[-1]
+                t = time_map.get(fname)
+                if t is not None and not (time_from <= t <= time_to):
+                    continue
             if ln_filter:
                 item_ln = item.get("last_name", "").strip().lower()
                 if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
