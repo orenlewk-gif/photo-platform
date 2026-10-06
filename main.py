@@ -615,12 +615,12 @@ _HAIKU_TOOL = {
                         "jacket_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Color(s) of the garment covering the UPPER body — chest, torso, arms. This is the ski jacket or top layer above the waist.",
+                            "description": "Color(s) of the SKI JACKET — identified by the SLEEVES and ARMS. Look at what the person's arms are going through. That garment is the jacket.",
                         },
                         "pants_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Color(s) of the garment covering the LOWER body — hips, thighs, legs below the waist. These are the ski pants.",
+                            "description": "Color(s) of the SKI PANTS — identified by the THIGHS and KNEES. Look at what covers the person's legs from the hip down. That garment is the pants.",
                         },
                     },
                     "required": ["is_main_subject", "jacket_colors", "pants_colors"],
@@ -677,10 +677,10 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "List every skier or snowboarder visible in this photo. "
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
-                            "Record the colors for each person's jacket and pants. "
-                            "jacket_colors = the garment on the UPPER body (chest, torso, arms — above the waist). "
-                            "pants_colors = the garment on the LOWER body (hips, legs — below the waist). "
-                            "Do not swap these: look at the top half of the body for the jacket, the bottom half for the pants. "
+                            "Record the jacket and pants colors for each person. "
+                            "JACKET: find the person's arms and sleeves — whatever garment the arms go through is the jacket. "
+                            "PANTS: find the person's thighs and knees — whatever covers the legs from hip to boot is the pants. "
+                            "Use the sleeves and thighs as your anchor, even if the person is crouched, airborne, or at an angle. "
                             "These are outdoor mountain ski photos. Bright snow, harsh sunlight, and backlighting "
                             "heavily distort apparent color. Identify the TRUE BASE COLOR of each garment — "
                             "the color it would be hanging indoors under neutral light. "
