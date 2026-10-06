@@ -1051,9 +1051,9 @@ function checkBundleUpsell() {
     if (present.length > 0 && missing.length > 0) {
       const _displayName = g => g.replace(/^(Winter|Summer|Fall|Spring|Autumn)\s+/i, '');
       const missingLabel = missing.map(_displayName).join(' or ');
-      const msg = `Did you get any <strong>${missingLabel}</strong> photos taken?<br>
+      const msg = `Did you have any <strong>${missingLabel}</strong> photos taken?<br>
         Add them to your cart and receive <strong>${pctOff}% off your order!</strong><br>
-        <span style="font-size:.82em;opacity:.65">Cannot be combined with discount codes.</span>`;
+        <span style="font-size:.82em;opacity:.65">Cannot be combined with any other discount codes.</span>`;
       document.getElementById('bundle-upsell-msg').innerHTML = msg;
       const backLink = document.getElementById('bundle-upsell-back');
       if (backLink) backLink.href = cartData.returnUrl || '/';

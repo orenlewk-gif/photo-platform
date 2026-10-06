@@ -1844,6 +1844,7 @@ async function showGallery(date, location, family, ln, group) {
         <button class="btn" id="filter-btn" onclick="runColorFilter('${escQ(date||'')}','${escQ(location||'')}')">Search</button>
       </div>
 <div style="font-size:.75rem;color:rgba(255,255,255,.35);margin-top:.4rem">Tip: describe your jacket color to find your photos</div>
+<div id="clip-search-notice" style="display:none;font-size:.78rem;color:rgba(255,255,255,.5);margin-top:.5rem"></div>
     </div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
@@ -1950,6 +1951,8 @@ function clearOutfitSearch() {
     renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
+    const notice = document.getElementById('clip-search-notice');
+    if (notice) notice.style.display = 'none';
   }
   const inputs      = ['outfit-input', 'outfit-input-again'].map(id => document.getElementById(id));
   const status      = document.getElementById('outfit-status');
@@ -2003,6 +2006,16 @@ async function runColorFilter(date, location) {
     renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
+
+    const notice = document.getElementById('clip-search-notice');
+    if (notice) {
+      if (allPhotos.length === 0) {
+        notice.textContent = 'No photos matched — try a different color or broaden your time range.';
+      } else {
+        notice.textContent = `Found ${allPhotos.length} best match${allPhotos.length!==1?'es':''} for "${q}" — results may not include every photo.`;
+      }
+      notice.style.display = '';
+    }
 
     const exitBtn = document.getElementById('outfit-exit-btn');
     if (exitBtn) exitBtn.style.display = '';
