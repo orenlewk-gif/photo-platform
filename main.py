@@ -1241,7 +1241,7 @@ def search(
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
-CLIP_THRESHOLD = 0.22
+CLIP_THRESHOLD = 0.20
 CLIP_TOP_K     = 40
 
 def _search(query, last_name, date, location, group=None, time_from=None, time_to=None):
@@ -1259,9 +1259,11 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
     ln_filter = last_name.strip().lower() if last_name else ""
 
     if query:
+        # Augment short queries for better CLIP clothing/color retrieval
+        clip_query = f"a person wearing {query}" if len(query.split()) <= 3 else query
         # Encode query text
         m, p = get_model()
-        inputs = p(text=[query], return_tensors="pt", padding=True)
+        inputs = p(text=[clip_query], return_tensors="pt", padding=True)
         with torch.no_grad():
             text_out = m.text_model(**inputs)
             feat     = m.text_projection(text_out.pooler_output)
@@ -1277,7 +1279,7 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             print(f"CLIP search: matrix is None (no embeddings loaded)")
             return {"count": 0, "photos": []}
 
-        print(f"CLIP search: '{query}' — {len(index_items)} photos in index, threshold={CLIP_THRESHOLD}")
+        print(f"CLIP search: '{clip_query}' — {len(index_items)} photos in index, threshold={CLIP_THRESHOLD}")
         # Single matrix multiply — all similarities at once
         sims = (matrix @ t.T).squeeze(1).tolist()
 
@@ -1304,7 +1306,7 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             scored.append((sim, item))
 
         scored.sort(reverse=True, key=lambda x: x[0])
-        print(f"CLIP search: '{query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
+        print(f"CLIP search: '{clip_query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
         results = scored[:CLIP_TOP_K]
 
     else:
