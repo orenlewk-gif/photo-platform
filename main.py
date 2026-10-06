@@ -615,12 +615,12 @@ _HAIKU_TOOL = {
                         "jacket_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Colors of the jacket or top layer",
+                            "description": "Color(s) of the garment covering the UPPER body — chest, torso, arms. This is the ski jacket or top layer above the waist.",
                         },
                         "pants_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Colors of the ski pants or lower body",
+                            "description": "Color(s) of the garment covering the LOWER body — hips, thighs, legs below the waist. These are the ski pants.",
                         },
                     },
                     "required": ["is_main_subject", "jacket_colors", "pants_colors"],
@@ -677,19 +677,19 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "List every skier or snowboarder visible in this photo. "
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
-                            "Record the jacket color (torso) and pants color (legs) for each person. "
-                            "These are outdoor mountain ski photos with bright snow, harsh sunlight, and "
-                            "backlighting — the lighting heavily distorts apparent color. "
-                            "Your job is to identify the TRUE BASE COLOR of each garment as the manufacturer made it, "
-                            "not the color the lighting makes it appear in this frame. "
-                            "Ask yourself: if this jacket were hanging indoors in neutral light, what color would it be? "
-                            "Common errors to avoid: "
-                            "a blue jacket near bright snow may look orange, brown, or gray — it is still blue. "
-                            "Black or dark pants in bright sun may look brown, red, or pink — they are still black. "
-                            "A white jacket in shade may look gray or blue — it is still white. "
-                            "Only label a color you actually see in the fabric itself. "
+                            "Record the colors for each person's jacket and pants. "
+                            "jacket_colors = the garment on the UPPER body (chest, torso, arms — above the waist). "
+                            "pants_colors = the garment on the LOWER body (hips, legs — below the waist). "
+                            "Do not swap these: look at the top half of the body for the jacket, the bottom half for the pants. "
+                            "These are outdoor mountain ski photos. Bright snow, harsh sunlight, and backlighting "
+                            "heavily distort apparent color. Identify the TRUE BASE COLOR of each garment — "
+                            "the color it would be hanging indoors under neutral light. "
+                            "Common lighting errors to correct: "
+                            "blue fabric near snow can look orange or brown — label it blue. "
+                            "Black or dark fabric in bright sun can look red or pink — label it black. "
+                            "White fabric in shade can look gray or blue — label it white. "
                             "Use 'none' if the garment is not visible. "
-                            "Use 'unclear' only if you truly cannot determine the base color at all. "
+                            "Use 'unclear' only if the base color is truly impossible to determine. "
                             "You may list two colors for genuinely patterned or two-tone garments."
                         ),
                     },
