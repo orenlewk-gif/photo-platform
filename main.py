@@ -598,7 +598,7 @@ _HAIKU_COLOR_ENUM = [
 
 _HAIKU_TOOL = {
     "name": "record_colors",
-    "description": "Record jacket and pants colors for each person visible in this ski or snowboard photo.",
+    "description": "Record jacket and pants colors, and sport (ski or snowboard), for each person visible in this ski or snowboard photo.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -612,6 +612,11 @@ _HAIKU_TOOL = {
                             "type": "boolean",
                             "description": "True for the primary skier/snowboarder this photo is focused on",
                         },
+                        "sport": {
+                            "type": "string",
+                            "enum": ["ski", "snowboard", "unclear"],
+                            "description": "Whether this person is on skis (two narrow boards) or a snowboard (one wide board). Look at their feet/equipment.",
+                        },
                         "jacket_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
@@ -623,7 +628,7 @@ _HAIKU_TOOL = {
                             "description": "Color(s) of the SKI PANTS — identified by the THIGHS and KNEES. Look at what covers the person's legs from the hip down. That garment is the pants.",
                         },
                     },
-                    "required": ["is_main_subject", "jacket_colors", "pants_colors"],
+                    "required": ["is_main_subject", "sport", "jacket_colors", "pants_colors"],
                 },
             },
         },
@@ -725,6 +730,7 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                     return None
                 main = next((p for p in people if p.get("is_main_subject")), people[0])
                 return {
+                    "sport":         main.get("sport", "unclear"),
                     "jacket_colors": main.get("jacket_colors", []),
                     "pants_colors":  main.get("pants_colors", []),
                 }
@@ -765,9 +771,10 @@ def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> i
             if ANTHROPIC_API_KEY and item.get("jacket_colors") is None and not _is_portrait_loc:
                 colors = classify_photo_colors(img_bytes)
                 if colors:
+                    item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    print(f"Haiku: {item['path'].split('/')[-1]} → jacket={item['jacket_colors']} pants={item['pants_colors']}")
+                    print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             pil = _center_crop_for_embed(pil, crop_ratio=0.6)
             return item, _resize_for_embed(pil, max_side=512)
         except Exception as e:
@@ -1472,13 +1479,14 @@ def search(
     time_to:      int  = Query(None),
     jacket_color: str  = Query(None),
     pants_color:  str  = Query(None),
+    sport:        str  = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
         return _search(query, last_name, date, location, group, time_from, time_to,
-                       jacket_color=jacket_color, pants_color=pants_color)
+                       jacket_color=jacket_color, pants_color=pants_color, sport=sport)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
@@ -1487,8 +1495,8 @@ CLIP_THRESHOLD = 0.20
 CLIP_TOP_K     = 40
 
 def _search(query, last_name, date, location, group=None, time_from=None, time_to=None,
-            jacket_color=None, pants_color=None):
-    has_labels = any([jacket_color, pants_color])
+            jacket_color=None, pants_color=None, sport=None):
+    has_labels = any([jacket_color, pants_color, sport])
     if not query and not last_name and not has_labels:
         return JSONResponse(status_code=400, content={"error": "Provide query, last_name, or color filter"})
 
@@ -1565,6 +1573,8 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
         if pants_color:
             _pf = _color_family(pants_color)
             scored = [(s, it) for s, it in scored if any(c in _pf for c in (it.get("pants_colors") or []))]
+        if sport:
+            scored = [(s, it) for s, it in scored if it.get("sport") == sport]
         print(f"CLIP search: '{clip_query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
         results = scored[:CLIP_TOP_K]
 
@@ -1583,6 +1593,8 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             if jacket_color and not any(c in _color_family(jacket_color) for c in (item.get("jacket_colors") or [])):
                 continue
             if pants_color and not any(c in _color_family(pants_color) for c in (item.get("pants_colors") or [])):
+                continue
+            if sport and item.get("sport") != sport:
                 continue
             results.append((0.0, item))
         results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
@@ -2070,6 +2082,7 @@ async def admin_reclassify_photos(request: Request):
         return JSONResponse(status_code=404, content={"error": "No matching photos found"})
 
     for it in targets:
+        it["sport"]         = None
         it["jacket_colors"] = None
         it["pants_colors"]  = None
 
@@ -2084,9 +2097,10 @@ async def admin_reclassify_photos(request: Request):
                 raw  = resp["Body"].read()
                 colors = classify_photo_colors(raw)
                 if colors:
+                    it["sport"]         = colors.get("sport", "unclear")
                     it["jacket_colors"] = colors.get("jacket_colors", [])
                     it["pants_colors"]  = colors.get("pants_colors", [])
-                    print(f"Re-classify: {it['path'].split('/')[-1]} → jacket={it['jacket_colors']} pants={it['pants_colors']}")
+                    print(f"Re-classify: {it['path'].split('/')[-1]} → sport={it['sport']} jacket={it['jacket_colors']} pants={it['pants_colors']}")
                 done += 1
                 if jid in _embed_jobs:
                     _embed_jobs[jid]["done"] = done
@@ -2103,8 +2117,9 @@ async def admin_reclassify_photos(request: Request):
 
 @app.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
-    """Return distinct jacket/pants colors found in labeled photos for a folder."""
+    """Return distinct jacket/pants colors and sport types found in labeled photos for a folder."""
     jacket, pants = set(), set()
+    has_ski = has_snowboard = False
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
     for item in data:
@@ -2122,10 +2137,14 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         for c in (item.get("pants_colors") or []):
             if c not in ("none", "unclear"):
                 pants.add(c)
+        sp = item.get("sport")
+        if sp == "ski":        has_ski = True
+        elif sp == "snowboard": has_snowboard = True
     order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","navy","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
-    return {"jacket": sort_colors(jacket), "pants": sort_colors(pants)}
+    return {"jacket": sort_colors(jacket), "pants": sort_colors(pants),
+            "has_ski": has_ski, "has_snowboard": has_snowboard}
 
 
 @app.get("/api/folder-times")
@@ -6294,6 +6313,7 @@ async def admin_classify_backfill(request: Request):
                 raw  = resp["Body"].read()
                 colors = classify_photo_colors(raw)
                 if colors:
+                    item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
                 return True
@@ -6362,6 +6382,7 @@ async def admin_classify_folder(request: Request):
                 raw  = resp["Body"].read()
                 colors = classify_photo_colors(raw)
                 if colors:
+                    item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
                 return True

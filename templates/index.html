@@ -126,17 +126,26 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 }
 .size-slider-wrap span { font-size:1rem; }
 
+/* Filter toggle button */
+.filter-toggle-btn { display:inline-flex; align-items:center; font-size:0.72rem; font-weight:600; letter-spacing:0.4px; padding:5px 13px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.55); cursor:pointer; font-family:inherit; transition:background 0.12s, color 0.12s, border-color 0.12s; }
+.filter-toggle-btn:hover { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.85); }
+.filter-toggle-btn.open { border-color:rgba(245,197,24,0.5); color:rgba(245,197,24,0.9); background:rgba(245,197,24,0.08); }
 /* Color chip filter */
-.color-filter-wrap { margin:0.75rem 0 0.35rem; }
-.color-filter-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem; flex-wrap:wrap; }
+.color-filter-wrap { margin:0.25rem 0 0.35rem; }
+.color-filter-row { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.45rem; flex-wrap:wrap; }
 .color-filter-label { font-size:0.6rem; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:rgba(255,255,255,0.25); width:44px; flex-shrink:0; }
-.color-swatch { width:22px; height:22px; border-radius:50%; border:2px solid transparent; cursor:pointer; transition:transform 0.12s, border-color 0.12s, box-shadow 0.12s; flex-shrink:0; position:relative; }
-.color-swatch:hover { transform:scale(1.18); border-color:rgba(255,255,255,0.35); }
-.color-swatch.swatch-active { border-color:#F5C518; box-shadow:0 0 0 2px rgba(245,197,24,0.3); transform:scale(1.15); }
-.color-swatch-tip { position:absolute; bottom:calc(100% + 5px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#fff; font-size:0.62rem; padding:2px 6px; border-radius:4px; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 0.1s; letter-spacing:0.5px; }
-.color-swatch:hover .color-swatch-tip { opacity:1; }
+.color-swatch { display:inline-flex; align-items:center; gap:5px; padding:3px 9px 3px 5px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05); cursor:pointer; transition:background 0.12s, border-color 0.12s; }
+.color-swatch:hover { background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.3); }
+.color-swatch.swatch-active { border-color:#F5C518; background:rgba(245,197,24,0.12); }
+.swatch-dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+.swatch-name { font-size:0.67rem; font-weight:500; color:rgba(255,255,255,0.6); letter-spacing:0.3px; }
+.color-swatch.swatch-active .swatch-name { color:#F5C518; }
 .chip-clear-btn { font-size:0.68rem; color:rgba(255,255,255,0.25); background:none; border:none; cursor:pointer; padding:0 0.2rem; margin-left:0.3rem; font-family:inherit; }
 .chip-clear-btn:hover { color:rgba(255,255,255,0.55); }
+.sport-filter-row { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.45rem; }
+.sport-btn { font-size:0.68rem; font-weight:600; letter-spacing:0.5px; padding:3px 12px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.55); cursor:pointer; transition:background 0.12s, border-color 0.12s, color 0.12s; font-family:inherit; }
+.sport-btn:hover { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.85); }
+.sport-btn.active { background:rgba(245,197,24,0.15); border-color:#F5C518; color:#F5C518; }
 
 /* Time filter bar */
 .time-filter-bar {
@@ -1804,6 +1813,8 @@ async function showGallery(date, location, family, ln, group) {
   allPhotos = photos;
   _outfitOriginalPhotos = null;
   _activeColorFilters = { jacket: null, pants: null };
+  _activeSport = null;
+  _filterPanelOpen = false;
   loadFolderData(currentFolderKey, photos);
 
   showView('gallery');
@@ -1851,7 +1862,13 @@ async function showGallery(date, location, family, ln, group) {
     </div>
     ${folderInfoHtml}
     ${(!family && !ln) ? `
-    <div id="color-filter-container" style="margin:0 0 0.9rem"></div>` : ''}
+    <div id="filter-toggle-wrap" style="display:none;margin:0 0 0.4rem">
+      <button class="filter-toggle-btn" id="filter-toggle-btn" onclick="toggleFilterPanel()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="vertical-align:-2px;margin-right:5px"><path d="M2 4h12M4 8h8M6 12h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span id="filter-toggle-label">Show Filters</span>
+      </button>
+    </div>
+    <div id="color-filter-container" style="display:none;margin:0 0 0.9rem"></div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" />
@@ -2049,10 +2066,25 @@ const _CHIP_COLORS = [
 ];
 
 let _activeColorFilters = { jacket: null, pants: null };
+let _activeSport = null;
 let _chipContext = { date: '', location: '', group: '' };
+
+let _filterPanelOpen = false;
+
+function toggleFilterPanel() {
+  const container = document.getElementById('color-filter-container');
+  const btn       = document.getElementById('filter-toggle-btn');
+  const label     = document.getElementById('filter-toggle-label');
+  if (!container) return;
+  _filterPanelOpen = !_filterPanelOpen;
+  container.style.display = _filterPanelOpen ? '' : 'none';
+  if (btn) btn.classList.toggle('open', _filterPanelOpen);
+  if (label) label.textContent = _filterPanelOpen ? 'Hide Filters' : 'Show Filters';
+}
 
 async function loadColorFilter(date, location, group) {
   const container = document.getElementById('color-filter-container');
+  const toggleWrap = document.getElementById('filter-toggle-wrap');
   if (!container) return;
   _chipContext = { date, location, group };
   try {
@@ -2067,16 +2099,22 @@ async function loadColorFilter(date, location, group) {
       { key: 'jacket', colors: d.jacket || [] },
       { key: 'pants',  colors: d.pants  || [] },
     ].filter(c => c.colors.length > 0);
-    if (!cats.length) { container.innerHTML = ''; return; }
     let html = '<div class="color-filter-wrap">';
+    if (d.has_ski || d.has_snowboard) {
+      html += '<div class="sport-filter-row"><span class="color-filter-label">sport</span>';
+      if (d.has_ski)       html += `<button class="sport-btn" id="sport-ski"       onclick="selectSport('ski')">Ski</button>`;
+      if (d.has_snowboard) html += `<button class="sport-btn" id="sport-snowboard" onclick="selectSport('snowboard')">Snowboard</button>`;
+      html += '</div>';
+    }
+    if (!cats.length && !d.has_ski && !d.has_snowboard) { container.innerHTML = ''; return; }
     for (const { key, colors } of cats) {
       html += `<div class="color-filter-row"><span class="color-filter-label">${key}</span>`;
       for (const name of colors) {
         const hex = (_CHIP_COLORS.find(c => c.name === name) || {}).hex || '#888';
         html += `<button class="color-swatch" data-cat="${key}" data-color="${name}"
-          style="background:${hex}" title="${name}"
           onclick="selectColorSwatch('${key}','${name}')">
-          <span class="color-swatch-tip">${name}</span>
+          <span class="swatch-dot" style="background:${hex}"></span>
+          <span class="swatch-name">${name}</span>
         </button>`;
       }
       html += '</div>';
@@ -2084,6 +2122,9 @@ async function loadColorFilter(date, location, group) {
     html += '<button class="chip-clear-btn" id="chip-clear-btn" style="display:none" onclick="clearAllChips()">clear</button>';
     html += '</div>';
     container.innerHTML = html;
+    if (toggleWrap) toggleWrap.style.display = '';
+    // keep panel state after reload
+    container.style.display = _filterPanelOpen ? '' : 'none';
   } catch(e) {}
 }
 
@@ -2096,7 +2137,22 @@ function selectColorSwatch(cat, color) {
   document.querySelectorAll(`.color-swatch[data-cat="${cat}"]`).forEach(el => {
     el.classList.toggle('swatch-active', el.dataset.color === _activeColorFilters[cat]);
   });
-  const anyActive = Object.values(_activeColorFilters).some(v => v !== null);
+  const anyActive = Object.values(_activeColorFilters).some(v => v !== null) || _activeSport;
+  const clearBtn = document.getElementById('chip-clear-btn');
+  if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
+  if (anyActive) {
+    runLabelFilter(_chipContext.date, _chipContext.location, _chipContext.group);
+  } else {
+    _restoreFromChipFilter();
+  }
+}
+
+function selectSport(sport) {
+  _activeSport = (_activeSport === sport) ? null : sport;
+  document.querySelectorAll('.sport-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.id === 'sport-' + _activeSport);
+  });
+  const anyActive = Object.values(_activeColorFilters).some(v => v !== null) || _activeSport;
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
   if (anyActive) {
@@ -2108,7 +2164,9 @@ function selectColorSwatch(cat, color) {
 
 function clearAllChips() {
   _activeColorFilters = { jacket: null, pants: null };
+  _activeSport = null;
   document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('swatch-active'));
+  document.querySelectorAll('.sport-btn').forEach(btn => btn.classList.remove('active'));
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = 'none';
   _restoreFromChipFilter();
@@ -2133,6 +2191,7 @@ async function runLabelFilter(date, location, group) {
     if (group)    params.set('group',    group);
     if (_activeColorFilters.jacket) params.set('jacket_color', _activeColorFilters.jacket);
     if (_activeColorFilters.pants)  params.set('pants_color',  _activeColorFilters.pants);
+    if (_activeSport)               params.set('sport',         _activeSport);
 
     const res = await fetch(`/api/search?${params}`);
     const d   = await res.json();
