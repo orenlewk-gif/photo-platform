@@ -598,7 +598,7 @@ _HAIKU_COLOR_ENUM = [
 
 _HAIKU_TOOL = {
     "name": "record_colors",
-    "description": "Record clothing colors for each person visible in this ski or snowboard photo.",
+    "description": "Record jacket and pants colors for each person visible in this ski or snowboard photo.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -622,13 +622,8 @@ _HAIKU_TOOL = {
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
                             "description": "Colors of the ski pants or lower body",
                         },
-                        "helmet_colors": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Colors of the helmet",
-                        },
                     },
-                    "required": ["is_main_subject", "jacket_colors", "pants_colors", "helmet_colors"],
+                    "required": ["is_main_subject", "jacket_colors", "pants_colors"],
                 },
             },
         },
@@ -654,7 +649,7 @@ def _color_family(color: str) -> set:
 
 
 def classify_photo_colors(img_bytes: bytes) -> dict | None:
-    """Call claude-haiku to get jacket/pants/helmet color labels for a ski photo."""
+    """Call claude-haiku to get jacket/pants color labels for a ski photo."""
     if not ANTHROPIC_API_KEY:
         return None
     try:
@@ -682,12 +677,14 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "List every skier or snowboarder visible in this photo. "
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
-                            "Record jacket, pants, and helmet colors for each person. "
+                            "Record jacket and pants colors for each person. "
+                            "The jacket covers the torso; the pants cover the legs. "
                             "Focus on the true base color of each garment — ignore snow reflections, "
                             "shadows, sun glare, or sheen on the fabric that may shift the apparent hue. "
                             "A jacket that is blue should be labeled blue even if bright snow or backlighting "
                             "makes it appear washed out, warm, or orange-tinted in this frame. "
-                            "Use 'none' if a garment is not visible. "
+                            "Dark pants that appear nearly black should be labeled black, not brown or gray. "
+                            "Use 'none' if a garment is not visible or outside the frame. "
                             "Use 'unclear' only if the base color is genuinely impossible to determine. "
                             "You may list multiple colors for truly patterned or multi-tone garments."
                         ),
@@ -726,7 +723,6 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                 return {
                     "jacket_colors": main.get("jacket_colors", []),
                     "pants_colors":  main.get("pants_colors", []),
-                    "helmet_colors": main.get("helmet_colors", []),
                 }
         return None
     except Exception as e:
@@ -767,8 +763,7 @@ def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> i
                 if colors:
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["helmet_colors"] = colors.get("helmet_colors", [])
-                    print(f"Haiku: {item['path'].split('/')[-1]} → jacket={item['jacket_colors']} pants={item['pants_colors']} helmet={item['helmet_colors']}")
+                    print(f"Haiku: {item['path'].split('/')[-1]} → jacket={item['jacket_colors']} pants={item['pants_colors']}")
             pil = _center_crop_for_embed(pil, crop_ratio=0.6)
             return item, _resize_for_embed(pil, max_side=512)
         except Exception as e:
@@ -1473,14 +1468,13 @@ def search(
     time_to:      int  = Query(None),
     jacket_color: str  = Query(None),
     pants_color:  str  = Query(None),
-    helmet_color: str  = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
         return _search(query, last_name, date, location, group, time_from, time_to,
-                       jacket_color=jacket_color, pants_color=pants_color, helmet_color=helmet_color)
+                       jacket_color=jacket_color, pants_color=pants_color)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
@@ -1489,8 +1483,8 @@ CLIP_THRESHOLD = 0.20
 CLIP_TOP_K     = 40
 
 def _search(query, last_name, date, location, group=None, time_from=None, time_to=None,
-            jacket_color=None, pants_color=None, helmet_color=None):
-    has_labels = any([jacket_color, pants_color, helmet_color])
+            jacket_color=None, pants_color=None):
+    has_labels = any([jacket_color, pants_color])
     if not query and not last_name and not has_labels:
         return JSONResponse(status_code=400, content={"error": "Provide query, last_name, or color filter"})
 
@@ -1567,9 +1561,6 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
         if pants_color:
             _pf = _color_family(pants_color)
             scored = [(s, it) for s, it in scored if any(c in _pf for c in (it.get("pants_colors") or []))]
-        if helmet_color:
-            _hf = _color_family(helmet_color)
-            scored = [(s, it) for s, it in scored if any(c in _hf for c in (it.get("helmet_colors") or []))]
         print(f"CLIP search: '{clip_query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
         results = scored[:CLIP_TOP_K]
 
@@ -1588,8 +1579,6 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             if jacket_color and not any(c in _color_family(jacket_color) for c in (item.get("jacket_colors") or [])):
                 continue
             if pants_color and not any(c in _color_family(pants_color) for c in (item.get("pants_colors") or [])):
-                continue
-            if helmet_color and not any(c in _color_family(helmet_color) for c in (item.get("helmet_colors") or [])):
                 continue
             results.append((0.0, item))
         results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
@@ -2028,15 +2017,90 @@ async def admin_color_labels(request: Request, date: str = Query(""), location: 
             "file": item["path"].split("/")[-1],
             "jacket": item.get("jacket_colors"),
             "pants":  item.get("pants_colors"),
-            "helmet": item.get("helmet_colors"),
         })
     return {"count": len(results), "photos": results}
 
 
+@app.get("/api/admin/folder-photos")
+async def admin_folder_photos(request: Request, date: str = Query(""), location: str = Query(""), group: str = Query("")):
+    """Return photo paths and thumbnail URLs for a folder. Admin only."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    loc_lower = location.strip().lower()
+    grp_lower = group.strip().lower()
+    results = []
+    for item in data:
+        if item.get("draft"):
+            continue
+        if date and item.get("date") != date:
+            continue
+        if loc_lower and clean_location(item.get("location", "")).lower() != loc_lower:
+            continue
+        if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
+            continue
+        results.append({
+            "path":   item["path"],
+            "file":   item["path"].split("/")[-1],
+            "jacket": item.get("jacket_colors"),
+            "pants":  item.get("pants_colors"),
+        })
+    results.sort(key=lambda x: x["file"])
+    return {"photos": results}
+
+
+@app.post("/api/admin/reclassify-photos")
+async def admin_reclassify_photos(request: Request):
+    """Clear and re-run Haiku classification on a specific list of photo paths."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not ANTHROPIC_API_KEY:
+        return JSONResponse(status_code=400, content={"error": "ANTHROPIC_API_KEY not configured"})
+    body  = await request.json()
+    paths = body.get("paths", [])
+    if not paths:
+        return JSONResponse(status_code=400, content={"error": "No paths provided"})
+
+    path_set = set(paths)
+    targets  = [it for it in data if it["path"] in path_set]
+    if not targets:
+        return JSONResponse(status_code=404, content={"error": "No matching photos found"})
+
+    for it in targets:
+        it["jacket_colors"] = None
+        it["pants_colors"]  = None
+
+    job_id = str(uuid.uuid4())[:8]
+    _embed_jobs[job_id] = {"total": len(targets), "done": 0, "finished": False}
+
+    def _bg(jid=job_id):
+        done = 0
+        for it in targets:
+            try:
+                resp = s3.get_object(Bucket=R2_BUCKET, Key=it["path"])
+                raw  = resp["Body"].read()
+                colors = classify_photo_colors(raw)
+                if colors:
+                    it["jacket_colors"] = colors.get("jacket_colors", [])
+                    it["pants_colors"]  = colors.get("pants_colors", [])
+                    print(f"Re-classify: {it['path'].split('/')[-1]} → jacket={it['jacket_colors']} pants={it['pants_colors']}")
+                done += 1
+                if jid in _embed_jobs:
+                    _embed_jobs[jid]["done"] = done
+            except Exception as e:
+                print(f"reclassify failed {it['path']}: {e}")
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+        if jid in _embed_jobs:
+            _embed_jobs[jid]["finished"] = True
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"queued": len(targets), "job_id": job_id}
+
+
 @app.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
-    """Return distinct jacket/pants/helmet colors found in labeled photos for a folder."""
-    jacket, pants, helmet = set(), set(), set()
+    """Return distinct jacket/pants colors found in labeled photos for a folder."""
+    jacket, pants = set(), set()
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
     for item in data:
@@ -2054,13 +2118,10 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         for c in (item.get("pants_colors") or []):
             if c not in ("none", "unclear"):
                 pants.add(c)
-        for c in (item.get("helmet_colors") or []):
-            if c not in ("none", "unclear"):
-                helmet.add(c)
     order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","navy","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
-    return {"jacket": sort_colors(jacket), "pants": sort_colors(pants), "helmet": sort_colors(helmet)}
+    return {"jacket": sort_colors(jacket), "pants": sort_colors(pants)}
 
 
 @app.get("/api/folder-times")
@@ -4852,7 +4913,6 @@ async def cull_golive(request: Request):
                     it["dominant_sat"]  = None
                     it["jacket_colors"] = None
                     it["pants_colors"]  = None
-                    it["helmet_colors"] = None
                     if needs_embed:
                         to_embed.append(it)
                     break
@@ -6232,7 +6292,6 @@ async def admin_classify_backfill(request: Request):
                 if colors:
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["helmet_colors"] = colors.get("helmet_colors", [])
                 return True
             except Exception as e:
                 print(f"classify-backfill failed {item['path']}: {e}")
@@ -6301,7 +6360,6 @@ async def admin_classify_folder(request: Request):
                 if colors:
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["helmet_colors"] = colors.get("helmet_colors", [])
                 return True
             except Exception as e:
                 print(f"classify-folder failed {item['path']}: {e}")

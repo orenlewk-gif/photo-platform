@@ -74,6 +74,18 @@ body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:1
 .btn-classify-colors{background:rgba(26,92,200,.15);border:1px solid rgba(26,92,200,.5);color:#6ea8ff}
 .btn-classify-colors:hover{background:rgba(26,92,200,.28)}
 .btn-classify-colors:disabled{opacity:.4;cursor:not-allowed}
+.btn-select-photos{background:rgba(100,100,100,.15);border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6)}
+.btn-select-photos:hover{background:rgba(255,255,255,.1)}
+.photo-selector{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:.75rem;margin:.25rem 0 .5rem}
+.photo-selector-grid{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.6rem}
+.photo-sel-item{position:relative;width:80px;height:80px;cursor:pointer;border-radius:5px;overflow:hidden;border:2px solid transparent;flex-shrink:0}
+.photo-sel-item img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-sel-item.selected{border-color:#F5C518}
+.photo-sel-item .sel-check{position:absolute;top:3px;right:3px;width:16px;height:16px;background:#F5C518;border-radius:50%;display:none;align-items:center;justify-content:center;font-size:10px;color:#000;font-weight:900}
+.photo-sel-item.selected .sel-check{display:flex}
+.photo-sel-item .sel-label{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);font-size:8px;color:rgba(255,255,255,.7);padding:1px 3px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.photo-sel-actions{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.sel-count{font-size:.78rem;color:rgba(255,255,255,.45)}
 
 .empty{color:rgba(255,255,255,.3);padding:3rem;text-align:center;font-size:.9rem}
 .toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);background:#1a3347;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.65rem 1.25rem;font-size:.875rem;color:#fff;z-index:2000;pointer-events:none;opacity:0;transition:opacity .25s}
@@ -183,10 +195,12 @@ function folderRow(f) {
     : '';
   const deleteHtml = `<button class="btn btn-delete" onclick="deleteFolder('${esc(f.folder_key)}', this)">Delete</button>`;
   const classifyHtml = (!f.is_portrait && !f.is_zip && !isDraft)
-    ? `<button class="btn btn-classify-colors" onclick="classifyFolderColors('${esc(f.folder_key)}', this)" title="Run Haiku color classification on this folder">Classify Colors</button>`
+    ? `<button class="btn btn-classify-colors" onclick="classifyFolderColors('${esc(f.folder_key)}', this)" title="Run Haiku color classification on this folder">Classify Colors</button>
+       <button class="btn btn-select-photos" onclick="togglePhotoSelector('${esc(f.folder_key)}', this)">Select Photos</button>`
     : '';
 
-  return `<div class="folder-row ${statusCls}" id="frow_${btoa(f.folder_key).replace(/=/g,'')}">
+  const rowId = `frow_${btoa(f.folder_key).replace(/=/g,'')}`;
+  return `<div class="folder-row ${statusCls}" id="${rowId}">
     <span class="status-badge ${badgeCls}">${badgeText}</span>
     <span class="folder-name">${f.name || '—'}</span>
     <span class="folder-count">${f.photo_count} photos</span>
@@ -195,7 +209,8 @@ function folderRow(f) {
     ${classifyHtml}
     ${deleteHtml}
     ${previewHtml}
-  </div>`;
+  </div>
+  <div class="photo-selector" id="sel_${rowId}" style="display:none"></div>`;
 }
 
 function toggleDate(header) {
@@ -418,6 +433,138 @@ async function pollFolderClassify(jobId, btn) {
   } catch(e) {
     btn.textContent = 'Classify Colors';
     btn.disabled = false;
+  }
+}
+
+// ── Photo selector for targeted re-classification ─────────────────────────────
+const _selState = {}; // folderKey → Set of selected paths
+
+async function togglePhotoSelector(folderKey, btn) {
+  const rowId  = `frow_${btoa(folderKey).replace(/=/g,'')}`;
+  const panel  = document.getElementById('sel_' + rowId);
+  if (!panel) return;
+  if (panel.style.display !== 'none') {
+    panel.style.display = 'none';
+    btn.textContent = 'Select Photos';
+    return;
+  }
+  btn.textContent = 'Loading…';
+  btn.disabled = true;
+  const f = allFolders.find(x => x.folder_key === folderKey);
+  if (!f) return;
+  const params = new URLSearchParams({date: f.date, location: f.location, group: f.name || ''});
+  try {
+    const r = await fetch('/api/admin/folder-photos?' + params);
+    const d = await r.json();
+    if (!_selState[folderKey]) _selState[folderKey] = new Set();
+    panel.innerHTML = renderPhotoSelector(folderKey, d.photos || []);
+    panel.style.display = '';
+    btn.textContent = 'Select Photos';
+    btn.disabled = false;
+  } catch(e) {
+    showToast('Failed to load photos');
+    btn.textContent = 'Select Photos';
+    btn.disabled = false;
+  }
+}
+
+function renderPhotoSelector(folderKey, photos) {
+  if (!photos.length) return '<div style="color:rgba(255,255,255,.4);font-size:.8rem">No photos found</div>';
+  const sel = _selState[folderKey] || new Set();
+  const thumbBase = 'https://photos.bigskyphotos.com/';
+  const grid = photos.map(p => {
+    const isSel = sel.has(p.path);
+    const hasLabel = p.jacket !== null;
+    const labelTip = hasLabel
+      ? `J:${(p.jacket||[]).join(',')||'—'}`
+      : 'unlabeled';
+    return `<div class="photo-sel-item${isSel?' selected':''}" onclick="toggleSelPhoto('${folderKey}','${p.path.replace(/'/g,"\\'")}',this)" title="${p.file} · ${labelTip}">
+      <img src="${thumbBase}${p.path}" loading="lazy">
+      <span class="sel-check">✓</span>
+      <span class="sel-label">${p.file.replace(/\.[^.]+$/,'')}</span>
+    </div>`;
+  }).join('');
+  return `<div class="photo-selector-grid">${grid}</div>
+    <div class="photo-sel-actions">
+      <button class="btn btn-ghost" onclick="selectAllSel('${folderKey}')">Select All</button>
+      <button class="btn btn-ghost" onclick="clearAllSel('${folderKey}')">Clear</button>
+      <span class="sel-count" id="selcount_${folderKey}">0 selected</span>
+      <button class="btn btn-classify-colors" id="selbtn_${folderKey}" onclick="reclassifySelected('${folderKey}')" disabled>Re-classify Selected</button>
+    </div>`;
+}
+
+function toggleSelPhoto(folderKey, path, el) {
+  if (!_selState[folderKey]) _selState[folderKey] = new Set();
+  const sel = _selState[folderKey];
+  if (sel.has(path)) { sel.delete(path); el.classList.remove('selected'); }
+  else               { sel.add(path);    el.classList.add('selected'); }
+  updateSelCount(folderKey);
+}
+
+function selectAllSel(folderKey) {
+  const panel = document.querySelector(`[id^="sel_frow_"]`);
+  document.querySelectorAll('.photo-sel-item').forEach(el => {
+    const onclick = el.getAttribute('onclick') || '';
+    const match = onclick.match(/'([^']+)','([^']+)'/);
+    if (match && match[1] === folderKey) {
+      _selState[folderKey].add(match[2]);
+      el.classList.add('selected');
+    }
+  });
+  updateSelCount(folderKey);
+}
+
+function clearAllSel(folderKey) {
+  if (_selState[folderKey]) _selState[folderKey].clear();
+  document.querySelectorAll('.photo-sel-item').forEach(el => el.classList.remove('selected'));
+  updateSelCount(folderKey);
+}
+
+function updateSelCount(folderKey) {
+  const n    = (_selState[folderKey] || new Set()).size;
+  const cnt  = document.getElementById('selcount_' + folderKey);
+  const btn  = document.getElementById('selbtn_'   + folderKey);
+  if (cnt) cnt.textContent = `${n} selected`;
+  if (btn) { btn.disabled = n === 0; btn.textContent = n ? `Re-classify ${n} Photo${n===1?'':'s'}` : 'Re-classify Selected'; }
+}
+
+async function reclassifySelected(folderKey) {
+  const sel = _selState[folderKey];
+  if (!sel || !sel.size) return;
+  const btn = document.getElementById('selbtn_' + folderKey);
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  try {
+    const r = await fetch('/api/admin/reclassify-photos', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({paths: [...sel]}),
+    });
+    const d = await r.json();
+    if (!r.ok) { showToast(d.error || 'Failed'); btn.disabled = false; return; }
+    showToast(`Re-classifying ${d.queued} photos…`);
+    pollReclassify(d.job_id, folderKey, btn);
+  } catch(e) {
+    showToast('Request failed');
+    btn.disabled = false;
+    updateSelCount(folderKey);
+  }
+}
+
+async function pollReclassify(jobId, folderKey, btn) {
+  try {
+    const r = await fetch(`/api/admin/embed-status?job_id=${jobId}`);
+    const d = await r.json();
+    if (d.finished) {
+      showToast(`Done — ${d.done} photos re-classified`);
+      _selState[folderKey] = new Set();
+      updateSelCount(folderKey);
+    } else {
+      btn.textContent = `${d.done}/${d.total}…`;
+      setTimeout(() => pollReclassify(jobId, folderKey, btn), 2000);
+    }
+  } catch(e) {
+    updateSelCount(folderKey);
   }
 }
 </script>

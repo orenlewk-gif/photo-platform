@@ -1803,7 +1803,7 @@ async function showGallery(date, location, family, ln, group) {
   currentFolderLabel = family || group || location || 'Gallery';
   allPhotos = photos;
   _outfitOriginalPhotos = null;
-  _activeColorFilters = { jacket: null, pants: null, helmet: null };
+  _activeColorFilters = { jacket: null, pants: null };
   loadFolderData(currentFolderKey, photos);
 
   showView('gallery');
@@ -2048,7 +2048,7 @@ const _CHIP_COLORS = [
   { name:'teal',   hex:'#0f8080' },
 ];
 
-let _activeColorFilters = { jacket: null, pants: null, helmet: null };
+let _activeColorFilters = { jacket: null, pants: null };
 let _chipContext = { date: '', location: '', group: '' };
 
 async function loadColorFilter(date, location, group) {
@@ -2066,7 +2066,6 @@ async function loadColorFilter(date, location, group) {
     const cats = [
       { key: 'jacket', colors: d.jacket || [] },
       { key: 'pants',  colors: d.pants  || [] },
-      { key: 'helmet', colors: d.helmet || [] },
     ].filter(c => c.colors.length > 0);
     if (!cats.length) { container.innerHTML = ''; return; }
     let html = '<div class="color-filter-wrap">';
@@ -2108,7 +2107,7 @@ function selectColorSwatch(cat, color) {
 }
 
 function clearAllChips() {
-  _activeColorFilters = { jacket: null, pants: null, helmet: null };
+  _activeColorFilters = { jacket: null, pants: null };
   document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('swatch-active'));
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = 'none';
@@ -2134,7 +2133,6 @@ async function runLabelFilter(date, location, group) {
     if (group)    params.set('group',    group);
     if (_activeColorFilters.jacket) params.set('jacket_color', _activeColorFilters.jacket);
     if (_activeColorFilters.pants)  params.set('pants_color',  _activeColorFilters.pants);
-    if (_activeColorFilters.helmet) params.set('helmet_color', _activeColorFilters.helmet);
 
     const res = await fetch(`/api/search?${params}`);
     const d   = await res.json();
