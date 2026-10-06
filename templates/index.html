@@ -1977,7 +1977,7 @@ async function runColorFilter(date, location) {
   if (bar && bar.style.display !== 'none' && fromSel && toSel) {
     const rangeMin = parseInt(toSel.value) - parseInt(fromSel.value);
     if (rangeMin > 30) {
-      alert('Narrow your time range to 30 minutes or less before searching by color.');
+      showToast('Select a time range of 30 minutes or less to search by color.');
       return;
     }
   }
