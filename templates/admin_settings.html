@@ -399,6 +399,12 @@ html.embedded #layout{height:100vh}
         <button class="btn-add" id="btn-backfill" onclick="runBackfill()">Index all unindexed photos</button>
         <span id="backfill-status" style="font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.75rem"></span>
       </div>
+      <div class="settings-section" style="margin-top:1.2rem">
+        <div class="section-title">Color Detection Backfill</div>
+        <div class="section-desc">Analyzes the dominant jacket color in every already-indexed photo. Run this once after updating the app to enable precise color filtering. Fast — no GPU required.</div>
+        <button class="btn-add" id="btn-recolor" onclick="runRecolor()">Analyze colors in all indexed photos</button>
+        <span id="recolor-status" style="font-size:.78rem;color:rgba(255,255,255,.35);margin-left:.75rem"></span>
+      </div>
     </div><!-- /tab-search -->
 
   </div>
@@ -822,6 +828,31 @@ async function runBackfill() {
     if (r.ok) {
       if (d.queued === 0) {
         if (st) st.textContent = 'All photos already indexed.';
+        if (btn) btn.disabled = false;
+      } else {
+        if (st) st.textContent = `Running in background — ${d.queued} photo${d.queued!==1?'s':''} queued. Job: ${d.job_id}`;
+      }
+    } else {
+      if (st) st.textContent = d.error || 'Failed';
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    if (st)  st.textContent = 'Request failed';
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function runRecolor() {
+  const btn = document.getElementById('btn-recolor');
+  const st  = document.getElementById('recolor-status');
+  if (btn) btn.disabled = true;
+  if (st)  st.textContent = 'Starting…';
+  try {
+    const r = await fetch('/api/admin/recolor-all', { method: 'POST' });
+    const d = await r.json();
+    if (r.ok) {
+      if (d.queued === 0) {
+        if (st) st.textContent = 'All indexed photos already have color data.';
         if (btn) btn.disabled = false;
       } else {
         if (st) st.textContent = `Running in background — ${d.queued} photo${d.queued!==1?'s':''} queued. Job: ${d.job_id}`;

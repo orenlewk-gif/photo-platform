@@ -375,6 +375,80 @@ def get_pose_detector():
     return _mp_thread_local.pose
 
 
+# ── HSV color extraction ──────────────────────────────────────────────────────
+
+# Hue ranges (degrees, 0-360). Pairs that wrap (e.g. red) are split into two.
+COLOR_RANGES: dict[str, list[tuple[float, float]]] = {
+    "red":     [(345, 360), (0, 15)],
+    "orange":  [(15, 45)],
+    "yellow":  [(45, 75)],
+    "green":   [(75, 160)],
+    "teal":    [(150, 200)],
+    "cyan":    [(150, 200)],
+    "aqua":    [(150, 200)],
+    "blue":    [(185, 265)],
+    "purple":  [(255, 295)],
+    "violet":  [(255, 295)],
+    "pink":    [(295, 345)],
+    "magenta": [(280, 345)],
+    "navy":    [(210, 245)],
+    "maroon":  [(345, 360), (0, 10)],
+}
+_COLOR_MIN_SAT = 0.22   # below this saturation = white / grey / black
+_COLOR_MIN_PIX = 12     # need at least this many saturated pixels in crop
+
+
+def extract_dominant_color(img: Image.Image):
+    """Return (dominant_hue_degrees, avg_saturation) from a torso-zone crop,
+    filtering out achromatic pixels (snow, sky, dark gear).
+    Returns (None, None) when no clear dominant color is found."""
+    import colorsys
+    w, h = img.size
+    # Crop: skip top 15% (sky/helmet) and bottom 10% (skis/ground), trim sides
+    crop = img.crop((int(w * 0.15), int(h * 0.15), int(w * 0.85), int(h * 0.90)))
+    crop = crop.convert("RGB").resize((64, 64), Image.LANCZOS)
+    pixels = list(crop.getdata())
+
+    hue_list, sat_list = [], []
+    for r, g, b in pixels:
+        h_f, s_f, v_f = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+        if s_f >= _COLOR_MIN_SAT and 0.08 < v_f < 0.97:
+            hue_list.append(h_f * 360.0)
+            sat_list.append(s_f)
+
+    if len(hue_list) < _COLOR_MIN_PIX:
+        return None, None
+
+    # Bucket hues into 10-degree bins; pick the most-populated bin
+    buckets: dict[int, int] = {}
+    for hue in hue_list:
+        key = int(hue / 10) * 10
+        buckets[key] = buckets.get(key, 0) + 1
+    dominant_bucket = max(buckets, key=buckets.get)
+    dominant_hue = float(dominant_bucket + 5)
+    avg_sat = sum(sat_list) / len(sat_list)
+    return dominant_hue, avg_sat
+
+
+def _hue_in_ranges(hue: float, ranges: list) -> bool:
+    for lo, hi in ranges:
+        if lo <= hi:
+            if lo <= hue <= hi:
+                return True
+        else:
+            if hue >= lo or hue <= hi:
+                return True
+    return False
+
+
+def _detect_color(query: str):
+    """Return hue ranges if any word in the query names a known color, else None."""
+    for word in query.lower().split():
+        if word in COLOR_RANGES:
+            return COLOR_RANGES[word]
+    return None
+
+
 def _resize_for_embed(img: Image.Image, max_side: int = 640) -> Image.Image:
     w, h = img.size
     if max(w, h) <= max_side:
@@ -529,6 +603,9 @@ def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> i
             return item, None
         try:
             pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+            dom_hue, dom_sat = extract_dominant_color(pil)
+            item["dominant_hue"] = dom_hue
+            item["dominant_sat"] = dom_sat
             pil = _center_crop_for_embed(pil, crop_ratio=0.6)
             return item, _resize_for_embed(pil, max_side=512)
         except Exception as e:
@@ -1279,7 +1356,8 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             print(f"CLIP search: matrix is None (no embeddings loaded)")
             return {"count": 0, "photos": []}
 
-        print(f"CLIP search: '{clip_query}' — {len(index_items)} photos in index, threshold={CLIP_THRESHOLD}")
+        color_ranges = _detect_color(query)
+        print(f"CLIP search: '{clip_query}' — {len(index_items)} photos in index, threshold={CLIP_THRESHOLD}, color_filter={bool(color_ranges)}")
         # Single matrix multiply — all similarities at once
         sims = (matrix @ t.T).squeeze(1).tolist()
 
@@ -1287,6 +1365,13 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
         for sim, item in zip(sims, index_items):
             if sim < CLIP_THRESHOLD:
                 continue
+            if color_ranges is not None:
+                dom_hue = item.get("dominant_hue")
+                dom_sat = item.get("dominant_sat") or 0
+                if dom_hue is None or dom_sat < _COLOR_MIN_SAT:
+                    pass  # no color data yet — don't exclude, let CLIP decide
+                elif not _hue_in_ranges(dom_hue, color_ranges):
+                    continue
             if date and item["date"] != date:
                 continue
             if location and clean_location(item["location"]) != location:
@@ -5782,6 +5867,57 @@ async def admin_reembed_all(request: Request):
         print(f"Bulk re-embed done: {count}/{len(to_embed)}")
     threading.Thread(target=_bg, daemon=True).start()
     return {"queued": len(to_embed), "job_id": job_id}
+
+
+@app.post("/api/admin/recolor-all")
+async def admin_recolor_all(request: Request):
+    """CPU-only backfill: extract dominant color for photos that have an embedding
+    but no dominant_hue yet. Fast — no GPU required."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    to_color = [it for it in data if it.get("embedding") is not None
+                and it.get("dominant_hue") is None and not it.get("draft")]
+    if not to_color:
+        return {"queued": 0, "message": "All indexed photos already have color data"}
+
+    job_id = str(uuid.uuid4())[:8]
+    _embed_jobs[job_id] = {"total": len(to_color), "done": 0, "finished": False}
+
+    def _bg(jid=job_id):
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _fetch_and_color(item):
+            try:
+                resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+                raw  = resp["Body"].read()
+                pil  = Image.open(BytesIO(raw)).convert("RGB")
+                hue, sat = extract_dominant_color(pil)
+                item["dominant_hue"] = hue
+                item["dominant_sat"] = sat
+                return True
+            except Exception as e:
+                print(f"recolor failed {item['path']}: {e}")
+                return False
+
+        done = 0
+        batch_size = 64
+        for i in range(0, len(to_color), batch_size):
+            batch = to_color[i:i + batch_size]
+            with ThreadPoolExecutor(max_workers=16) as ex:
+                results = list(ex.map(_fetch_and_color, batch))
+            done += sum(results)
+            if jid in _embed_jobs:
+                _embed_jobs[jid]["done"] = done
+
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _rebuild_emb_index()
+        if jid in _embed_jobs:
+            _embed_jobs[jid]["finished"] = True
+        print(f"Recolor done: {done}/{len(to_color)}")
+
+    threading.Thread(target=_bg, daemon=True).start()
+    return {"queued": len(to_color), "job_id": job_id}
 
 
 @app.post("/api/admin/discard-draft")
