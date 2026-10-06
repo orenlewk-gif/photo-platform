@@ -935,7 +935,8 @@ const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','whi
 const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa'};
 let _classifiedFolders = [];
 let _folderPhotos = {};   // folderKey → photos array
-let _editState = {};      // path → {jacket, pants, sport}
+let _editState = {};      // path → {jacket, pants, sport, _folderKey, _rowId}
+const _autoSaveTimers = {};
 
 async function loadClassifiedFolders() {
   const el = document.getElementById('classified-folders-list');
@@ -1015,7 +1016,7 @@ function openCFEditor(folderKey, path, rowId) {
   if (!item) return;
   const photos = _folderPhotos[folderKey] || [];
   const p      = photos.find(x => x.path === path) || {};
-  if (!_editState[path]) _editState[path] = {jacket:[...(p.jacket||[])], pants:[...(p.pants||[])], sport:p.sport||null};
+  if (!_editState[path]) _editState[path] = {jacket:[...(p.jacket||[])], pants:[...(p.pants||[])], sport:p.sport||null, _folderKey:folderKey, _rowId:rowId};
   const cur = _editState[path];
 
   const colorRow = (label, key) => {
@@ -1034,12 +1035,15 @@ function openCFEditor(folderKey, path, rowId) {
   const div = document.createElement('div');
   div.className = 'cf-editor';
   div.style.cssText = 'background:rgba(8,18,30,.97);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.75rem;margin:.5rem 0;font-size:.78rem';
-  div.innerHTML = `<div style="font-size:.72rem;font-weight:600;color:rgba(255,255,255,.4);margin-bottom:.5rem">${path.split('/').pop()}</div>
+  const statusId = 'cfs_' + btoa(path).replace(/[^a-zA-Z0-9]/g,'');
+  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+      <span style="font-size:.72rem;font-weight:600;color:rgba(255,255,255,.4)">${path.split('/').pop()}</span>
+      <span id="${statusId}" style="font-size:.7rem;color:rgba(255,255,255,.3)"></span>
+    </div>
     ${colorRow('Jacket','jacket')}${colorRow('Pants','pants')}
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
-    <div style="display:flex;gap:.5rem;margin-top:.4rem">
-      <button onclick="saveCFEdit('${folderKey}','${path}','${rowId}',this)" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Save</button>
-      <button onclick="this.closest('.cf-editor').remove()" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
+    <div style="margin-top:.4rem">
+      <button onclick="this.closest('.cf-editor').remove()" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Done</button>
     </div>`;
   item.after(div);
 }
@@ -1052,6 +1056,7 @@ function toggleCFColor(path, key, color, el) {
   el.style.borderColor  = on ? '#F5C518' : 'rgba(255,255,255,.12)';
   el.style.background   = on ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
   el.style.color        = on ? '#F5C518' : 'rgba(255,255,255,.5)';
+  _autoSavePath(path);
 }
 
 function toggleCFSport(path, sport, el) {
@@ -1064,6 +1069,31 @@ function toggleCFSport(path, sport, el) {
     e.style.background  = isSel ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
     e.style.color       = isSel ? '#F5C518' : 'rgba(255,255,255,.5)';
   });
+  _autoSavePath(path);
+}
+
+function _autoSavePath(path) {
+  const statusId = 'cfs_' + btoa(path).replace(/[^a-zA-Z0-9]/g,'');
+  const statusEl = document.getElementById(statusId);
+  if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = 'rgba(255,255,255,.3)'; }
+  clearTimeout(_autoSaveTimers[path]);
+  _autoSaveTimers[path] = setTimeout(async () => {
+    const cur = _editState[path]; if (!cur) return;
+    try {
+      const r = await fetch('/api/admin/set-photo-colors', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport}),
+      });
+      if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch(_){} throw new Error(msg); }
+      const p = (_folderPhotos[cur._folderKey]||[]).find(x=>x.path===path);
+      if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; }
+      renderFolderPhotoGrid(cur._folderKey, cur._rowId);
+      if (statusEl) { statusEl.textContent = 'Saved'; statusEl.style.color = '#3a5';
+        setTimeout(()=>{ if(statusEl) statusEl.textContent=''; }, 1500); }
+    } catch(e) {
+      if (statusEl) { statusEl.textContent = 'Error saving'; statusEl.style.color = '#e04'; }
+    }
+  }, 500);
 }
 
 async function saveCFEdit(folderKey, path, rowId, btn) {
@@ -1074,7 +1104,7 @@ async function saveCFEdit(folderKey, path, rowId, btn) {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport}),
     });
-    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch(_){} throw new Error(msg); }
     // Update cached photo
     const p = (_folderPhotos[folderKey]||[]).find(x=>x.path===path);
     if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; }
