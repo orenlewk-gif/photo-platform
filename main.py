@@ -1259,8 +1259,8 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
     ln_filter = last_name.strip().lower() if last_name else ""
 
     if query:
-        # Augment short queries for better CLIP clothing/color retrieval
-        clip_query = f"a person wearing {query}" if len(query.split()) <= 3 else query
+        # Augment bare color words — multi-word queries are already specific enough
+        clip_query = f"a person wearing {query}" if len(query.split()) == 1 else query
         # Encode query text
         m, p = get_model()
         inputs = p(text=[clip_query], return_tensors="pt", padding=True)
