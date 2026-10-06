@@ -127,15 +127,16 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .size-slider-wrap span { font-size:1rem; }
 
 /* Color chip filter */
-.color-chips-section { margin:0.9rem 0 0.2rem; }
-.color-chips-row { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.45rem; flex-wrap:wrap; }
-.color-chips-cat { font-size:0.62rem; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:rgba(255,255,255,0.3); width:46px; flex-shrink:0; }
-.color-chip { display:flex; align-items:center; gap:5px; padding:3px 9px; border-radius:16px; border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04); cursor:pointer; font-size:0.72rem; color:rgba(255,255,255,0.5); transition:border-color 0.13s, background 0.13s, color 0.13s; white-space:nowrap; font-family:inherit; }
-.color-chip:hover { border-color:rgba(255,255,255,0.22); background:rgba(255,255,255,0.09); color:rgba(255,255,255,0.85); }
-.color-chip.chip-active { border-color:#F5C518; background:rgba(245,197,24,0.13); color:#F5C518; }
-.color-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; border:1px solid rgba(255,255,255,0.15); }
-.chip-clear-btn { font-size:0.7rem; color:rgba(255,255,255,0.3); background:none; border:none; cursor:pointer; padding:0 0.3rem; text-decoration:underline; }
-.chip-clear-btn:hover { color:rgba(255,255,255,0.6); }
+.color-filter-wrap { margin:0.75rem 0 0.35rem; }
+.color-filter-row { display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem; flex-wrap:wrap; }
+.color-filter-label { font-size:0.6rem; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:rgba(255,255,255,0.25); width:44px; flex-shrink:0; }
+.color-swatch { width:22px; height:22px; border-radius:50%; border:2px solid transparent; cursor:pointer; transition:transform 0.12s, border-color 0.12s, box-shadow 0.12s; flex-shrink:0; position:relative; }
+.color-swatch:hover { transform:scale(1.18); border-color:rgba(255,255,255,0.35); }
+.color-swatch.swatch-active { border-color:#F5C518; box-shadow:0 0 0 2px rgba(245,197,24,0.3); transform:scale(1.15); }
+.color-swatch-tip { position:absolute; bottom:calc(100% + 5px); left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:#fff; font-size:0.62rem; padding:2px 6px; border-radius:4px; white-space:nowrap; pointer-events:none; opacity:0; transition:opacity 0.1s; letter-spacing:0.5px; }
+.color-swatch:hover .color-swatch-tip { opacity:1; }
+.chip-clear-btn { font-size:0.68rem; color:rgba(255,255,255,0.25); background:none; border:none; cursor:pointer; padding:0 0.2rem; margin-left:0.3rem; font-family:inherit; }
+.chip-clear-btn:hover { color:rgba(255,255,255,0.55); }
 
 /* Time filter bar */
 .time-filter-bar {
@@ -1850,10 +1851,7 @@ async function showGallery(date, location, family, ln, group) {
     </div>
     ${folderInfoHtml}
     ${(!family && !ln) ? `
-    <div style="margin:0 0 1.1rem">
-      ${buildColorChips(escQ(date||''), escQ(location||''), escQ(group||''))}
-<div id="clip-search-notice" style="display:none;font-size:.78rem;color:rgba(255,255,255,.5);margin-top:.5rem"></div>
-    </div>` : ''}
+    <div id="color-filter-container" style="margin:0 0 0.9rem"></div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" />
@@ -1877,6 +1875,9 @@ async function showGallery(date, location, family, ln, group) {
   });
   updateCart();
   if (currentPricing?.flags?.time_search) initTimeFilter(photos, photos[0]?.date, currentLocation);
+  if (!family && !ln && date && location) {
+    loadColorFilter(escQ(date), escQ(location), escQ(group||''));
+  }
   el.querySelector('#size-slider').addEventListener('input', function() {
     const cols    = [6, 5, 4, 3][parseInt(this.value) - 1];
     const gallery = document.getElementById('gallery');
@@ -2048,39 +2049,59 @@ const _CHIP_COLORS = [
 ];
 
 let _activeColorFilters = { jacket: null, pants: null, helmet: null };
+let _chipContext = { date: '', location: '', group: '' };
 
-function buildColorChips(date, location, group) {
-  const cats = ['jacket', 'pants', 'helmet'];
-  let html = '<div class="color-chips-section">';
-  for (const cat of cats) {
-    html += `<div class="color-chips-row"><span class="color-chips-cat">${cat}</span>`;
-    for (const { name, hex } of _CHIP_COLORS) {
-      html += `<button class="color-chip" data-cat="${cat}" data-color="${name}"
-        onclick="selectColorChip('${cat}','${name}','${date}','${location}','${group||''}')">
-        <span class="color-dot" style="background:${hex}"></span>${name}
-      </button>`;
+async function loadColorFilter(date, location, group) {
+  const container = document.getElementById('color-filter-container');
+  if (!container) return;
+  _chipContext = { date, location, group };
+  try {
+    const params = new URLSearchParams();
+    if (date)     params.set('date',     date);
+    if (location) params.set('location', location);
+    if (group)    params.set('group',    group);
+    const res = await fetch(`/api/folder-colors?${params}`);
+    if (!res.ok) return;
+    const d = await res.json();
+    const cats = [
+      { key: 'jacket', colors: d.jacket || [] },
+      { key: 'pants',  colors: d.pants  || [] },
+      { key: 'helmet', colors: d.helmet || [] },
+    ].filter(c => c.colors.length > 0);
+    if (!cats.length) { container.innerHTML = ''; return; }
+    let html = '<div class="color-filter-wrap">';
+    for (const { key, colors } of cats) {
+      html += `<div class="color-filter-row"><span class="color-filter-label">${key}</span>`;
+      for (const name of colors) {
+        const hex = (_CHIP_COLORS.find(c => c.name === name) || {}).hex || '#888';
+        html += `<button class="color-swatch" data-cat="${key}" data-color="${name}"
+          style="background:${hex}" title="${name}"
+          onclick="selectColorSwatch('${key}','${name}')">
+          <span class="color-swatch-tip">${name}</span>
+        </button>`;
+      }
+      html += '</div>';
     }
+    html += '<button class="chip-clear-btn" id="chip-clear-btn" style="display:none" onclick="clearAllChips()">clear</button>';
     html += '</div>';
-  }
-  html += '<button class="chip-clear-btn" id="chip-clear-btn" style="display:none" onclick="clearAllChips()">Clear filters</button>';
-  html += '</div>';
-  return html;
+    container.innerHTML = html;
+  } catch(e) {}
 }
 
-function selectColorChip(cat, color, date, location, group) {
+function selectColorSwatch(cat, color) {
   if (_activeColorFilters[cat] === color) {
     _activeColorFilters[cat] = null;
   } else {
     _activeColorFilters[cat] = color;
   }
-  document.querySelectorAll(`.color-chip[data-cat="${cat}"]`).forEach(el => {
-    el.classList.toggle('chip-active', el.dataset.color === _activeColorFilters[cat]);
+  document.querySelectorAll(`.color-swatch[data-cat="${cat}"]`).forEach(el => {
+    el.classList.toggle('swatch-active', el.dataset.color === _activeColorFilters[cat]);
   });
   const anyActive = Object.values(_activeColorFilters).some(v => v !== null);
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
   if (anyActive) {
-    runLabelFilter(date, location, group);
+    runLabelFilter(_chipContext.date, _chipContext.location, _chipContext.group);
   } else {
     _restoreFromChipFilter();
   }
@@ -2088,7 +2109,7 @@ function selectColorChip(cat, color, date, location, group) {
 
 function clearAllChips() {
   _activeColorFilters = { jacket: null, pants: null, helmet: null };
-  document.querySelectorAll('.color-chip').forEach(el => el.classList.remove('chip-active'));
+  document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('swatch-active'));
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = 'none';
   _restoreFromChipFilter();
@@ -2101,8 +2122,6 @@ function _restoreFromChipFilter() {
     renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
-    const notice = document.getElementById('clip-search-notice');
-    if (notice) notice.style.display = 'none';
   }
 }
 
@@ -2125,13 +2144,6 @@ async function runLabelFilter(date, location, group) {
     renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
-    const notice = document.getElementById('clip-search-notice');
-    if (notice) {
-      notice.textContent = allPhotos.length === 0
-        ? 'No photos matched — try different colors.'
-        : `${allPhotos.length} photo${allPhotos.length!==1?'s':''} matching your color selection.`;
-      notice.style.display = '';
-    }
   } catch(e) {
     showToast('Filter error — try again');
   }

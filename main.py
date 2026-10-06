@@ -2003,6 +2003,62 @@ def _times_r2_key(date: str, location: str) -> str:
     slug = location.strip().lower().replace(" ", "-")
     return f"meta/times/{date}/{slug}.json"
 
+@app.get("/api/admin/color-labels")
+async def admin_color_labels(request: Request, date: str = Query(""), location: str = Query(""), group: str = Query("")):
+    """Return per-photo color labels for a folder. Admin only."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    loc_lower = location.strip().lower()
+    grp_lower = group.strip().lower()
+    results = []
+    for item in data:
+        if item.get("draft"):
+            continue
+        if date and item.get("date") != date:
+            continue
+        if loc_lower and clean_location(item.get("location", "")) != loc_lower:
+            continue
+        if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
+            continue
+        results.append({
+            "file": item["path"].split("/")[-1],
+            "jacket": item.get("jacket_colors"),
+            "pants":  item.get("pants_colors"),
+            "helmet": item.get("helmet_colors"),
+        })
+    return {"count": len(results), "photos": results}
+
+
+@app.get("/api/folder-colors")
+def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
+    """Return distinct jacket/pants/helmet colors found in labeled photos for a folder."""
+    jacket, pants, helmet = set(), set(), set()
+    loc_lower = location.strip().lower()
+    grp_lower = group.strip().lower()
+    for item in data:
+        if item.get("draft"):
+            continue
+        if date and item.get("date") != date:
+            continue
+        if loc_lower and clean_location(item.get("location", "")) != loc_lower:
+            continue
+        if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
+            continue
+        for c in (item.get("jacket_colors") or []):
+            if c not in ("none", "unclear"):
+                jacket.add(c)
+        for c in (item.get("pants_colors") or []):
+            if c not in ("none", "unclear"):
+                pants.add(c)
+        for c in (item.get("helmet_colors") or []):
+            if c not in ("none", "unclear"):
+                helmet.add(c)
+    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","navy","teal"]
+    def sort_colors(s):
+        return sorted(s, key=lambda c: order.index(c) if c in order else 99)
+    return {"jacket": sort_colors(jacket), "pants": sort_colors(pants), "helmet": sort_colors(helmet)}
+
+
 @app.get("/api/folder-times")
 def get_folder_times(date: str = Query(...), location: str = Query(...)):
     """Return EXIF capture times (minutes since midnight) for photos in a time-search folder.
