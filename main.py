@@ -5952,6 +5952,15 @@ async def admin_recolor_all(request: Request):
     return {"queued": len(to_color), "job_id": job_id}
 
 
+@app.get("/api/admin/embed-status")
+def admin_embed_status(job_id: str = Query(...)):
+    """Return progress for a background classification/embed job."""
+    job = _embed_jobs.get(job_id)
+    if not job:
+        return {"done": 0, "total": 0, "finished": True}
+    return {"done": job["done"], "total": job["total"], "finished": job.get("finished", False)}
+
+
 @app.post("/api/admin/classify-backfill")
 async def admin_classify_backfill(request: Request):
     """Haiku classification backfill: label jacket/pants/helmet colors for photos
