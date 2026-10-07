@@ -544,7 +544,7 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 
 _HAIKU_COLOR_ENUM = [
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
-    "white", "black", "gray", "brown", "navy", "teal", "tan", "none", "unclear",
+    "white", "black", "gray", "brown", "teal", "tan", "none", "unclear",
 ]
 
 _HAIKU_TOOL = {
@@ -589,8 +589,7 @@ _HAIKU_TOOL = {
 
 # Color families — similar shades treated as equivalent during filtering
 _COLOR_FAMILY: dict[str, set] = {
-    "blue":   {"blue", "navy"},
-    "navy":   {"navy", "blue"},
+    "blue":   {"blue", "navy"},   # navy kept for existing labeled photos
     "red":    {"red", "maroon"},
     "maroon": {"maroon", "red"},
     "green":  {"green", "teal"},
@@ -1836,7 +1835,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         sp = item.get("sport")
         if sp == "ski":        has_ski = True
         elif sp == "snowboard": has_snowboard = True
-    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","navy","teal"]
+    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","teal","tan"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
     return {"jacket": sort_colors(jacket), "pants": sort_colors(pants),
