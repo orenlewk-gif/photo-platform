@@ -998,12 +998,14 @@ function renderFolderPhotoGrid(folderKey, rowId) {
     const jacketDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
     const pantsDots  = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
     const sportLabel = p.sport === 'ski' ? 'ski' : p.sport === 'snowboard' ? 'sb' : '';
+    const escapedPath = p.path.replace(/'/g,"\\'");
     return `<div id="${itemId}" style="display:inline-block;vertical-align:top;width:140px;margin:.3rem;text-align:center">
-      <div style="position:relative;width:140px;height:140px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid ${isSel?'#F5C518':'rgba(255,255,255,.1)'};box-shadow:${isSel?'0 0 0 2px rgba(245,197,24,.4)':''}" onclick="handleCFClick(event,'${folderKey}','${p.path.replace(/'/g,"\\'")}','${rowId}','${itemId}')">
+      <div style="position:relative;width:140px;height:140px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid ${isSel?'#F5C518':'rgba(255,255,255,.1)'};box-shadow:${isSel?'0 0 0 2px rgba(245,197,24,.4)':''}" onclick="handleCFClick(event,'${folderKey}','${escapedPath}','${rowId}','${itemId}')">
         <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" style="width:100%;height:100%;object-fit:cover">
         <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);padding:2px 4px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.7)">${p.file.replace(/\.[^.]+$/,'')}</div>
         ${sportLabel ? `<div style="position:absolute;top:4px;right:5px;font-size:8px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);border-radius:3px;padding:1px 4px;letter-spacing:.5px">${sportLabel}</div>` : ''}
         ${isSel ? `<div style="position:absolute;top:4px;left:5px;width:16px;height:16px;border-radius:50%;background:#F5C518;display:flex;align-items:center;justify-content:center;font-size:10px;color:#000;font-weight:700">✓</div>` : ''}
+        <button onclick="event.stopPropagation();_openPhotoZoom('${escapedPath}')" title="Enlarge" style="position:absolute;bottom:22px;right:4px;width:22px;height:22px;border-radius:4px;background:rgba(0,0,0,.65);border:1px solid rgba(255,255,255,.25);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:13px;color:#fff;line-height:1">&#128269;</button>
       </div>
       <div style="font-size:10px;margin-top:3px">${jacketDots||'—'} / ${pantsDots||'—'}</div>
     </div>`;
@@ -1018,6 +1020,24 @@ function renderFolderPhotoGrid(folderKey, rowId) {
   <div style="margin:.25rem 0">${grid}</div>`;
   panel.style.display = '';
   _updateBulkBar(folderKey, rowId);
+}
+
+function _openPhotoZoom(path) {
+  let modal = document.getElementById('cf-zoom-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'cf-zoom-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    modal.onclick = () => modal.style.display = 'none';
+    const img = document.createElement('img');
+    img.id = 'cf-zoom-img';
+    img.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,.6)';
+    modal.appendChild(img);
+    document.body.appendChild(modal);
+  }
+  const img = document.getElementById('cf-zoom-img');
+  img.src = '/api/admin/photo?path=' + encodeURIComponent(path) + '&size=medium';
+  modal.style.display = 'flex';
 }
 
 function handleCFClick(e, folderKey, path, rowId, itemId) {
