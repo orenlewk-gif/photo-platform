@@ -571,12 +571,14 @@ _HAIKU_TOOL = {
                         "jacket_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Color(s) of the SKI JACKET — identified by the SLEEVES and ARMS. Look at what the person's arms are going through. That garment is the jacket.",
+                            "maxItems": 1,
+                            "description": "The single most dominant color of the SKI JACKET — identified by the SLEEVES and ARMS. Pick ONE color only: whichever covers the most fabric area.",
                         },
                         "pants_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "description": "Color(s) of the SKI PANTS — identified by the THIGHS and KNEES. Look at what covers the person's legs from the hip down. That garment is the pants.",
+                            "maxItems": 1,
+                            "description": "The single most dominant color of the SKI PANTS — identified by the THIGHS and KNEES. Pick ONE color only: whichever covers the most fabric area.",
                         },
                     },
                     "required": ["is_main_subject", "sport", "jacket_colors", "pants_colors"],
@@ -635,10 +637,10 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "is clearly focused on (closest to camera, most prominent). "
                             "Ski/snowboard action photo. For each person: "
                             "1) sport: look at their feet — two narrow boards = ski, one wide board = snowboard. "
-                            "2) jacket_colors: look at the sleeves/arms. What color is that fabric? "
-                            "3) pants_colors: look at the thighs/knees. What color is that fabric? "
+                            "2) jacket_colors: look at the sleeves/arms. Pick the SINGLE dominant color of that fabric. "
+                            "3) pants_colors: look at the thighs/knees. Pick the SINGLE dominant color of that fabric. "
                             "Only label the clothing fabric. Ignore snow, sky, trees, and equipment. "
-                            "Use 'none' if not visible. List two colors only for truly multi-color garments."
+                            "Use 'none' if not visible. Always choose ONE color — the one covering the most area."
                         ),
                     },
                 ],
