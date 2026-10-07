@@ -5955,7 +5955,6 @@ async def admin_classify_backfill(request: Request):
     candidates = [
         it for it in data
         if not it.get("draft")
-        and it.get("embedding") is not None
         and it.get("jacket_colors") is None
         and it.get("location", "").strip().lower() not in _portrait_locs_lower
         and (not location_filter or location_filter in it.get("location", "").lower())
@@ -6026,7 +6025,6 @@ async def admin_classify_folder(request: Request):
     to_classify = [
         it for it in data
         if not it.get("draft")
-        and it.get("embedding") is not None
         and it.get("jacket_colors") is None
         and it["date"] == date
         and it.get("location", "").strip().lower() == location
