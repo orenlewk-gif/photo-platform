@@ -135,6 +135,10 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .sport-btn { font-size:0.68rem; font-weight:600; letter-spacing:0.5px; padding:3px 12px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.55); cursor:pointer; transition:background 0.12s, border-color 0.12s, color 0.12s; font-family:inherit; }
 .sport-btn:hover { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.85); }
 .sport-btn.active { background:rgba(245,197,24,0.15); border-color:#F5C518; color:#F5C518; }
+.date-filter-row { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.55rem; flex-wrap:wrap; }
+.date-pill { font-size:0.67rem; font-weight:500; padding:2px 10px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.05); color:rgba(255,255,255,0.5); cursor:pointer; transition:background 0.12s, border-color 0.12s, color 0.12s; font-family:inherit; letter-spacing:0.3px; }
+.date-pill:hover { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.8); }
+.date-pill.active { border-color:#F5C518; background:rgba(245,197,24,0.12); color:#F5C518; }
 
 /* Time filter bar */
 .time-filter-bar {
@@ -1926,32 +1930,52 @@ function toggleFilterPanel() {
   if (label) label.textContent = _filterPanelOpen ? 'Hide Filters' : 'Show Filters';
 }
 
+function _fmtDate(d) {
+  const [, m, day] = d.split('-');
+  const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[parseInt(m)]} ${parseInt(day)}`;
+}
+
 async function loadColorFilter(date, location, group) {
   const container = document.getElementById('color-filter-container');
   const toggleWrap = document.getElementById('filter-toggle-wrap');
   if (!container) return;
   _chipContext = { date, location, group };
   try {
-    const params = new URLSearchParams();
-    if (date)     params.set('date',     date);
-    if (location) params.set('location', location);
-    if (group)    params.set('group',    group);
-    const res = await fetch(`/api/folder-colors?${params}`);
-    if (!res.ok) return;
-    const d = await res.json();
+    const [colorsRes, datesRes] = await Promise.all([
+      fetch(`/api/folder-colors?${new URLSearchParams(Object.fromEntries(Object.entries({date, location, group}).filter(([,v])=>v)))}`),
+      location ? fetch(`/api/folder-dates?location=${encodeURIComponent(location)}`) : Promise.resolve(null),
+    ]);
+    if (!colorsRes.ok) return;
+    const d = await colorsRes.json();
+    const datesData = datesRes ? await datesRes.json() : { dates: [] };
+    const availDates = datesData.dates || [];
+
     _colorCombos = d.combos || { jacket_to_pants: {}, pants_to_jacket: {} };
     const cats = [
       { key: 'jacket', colors: d.jacket || [] },
       { key: 'pants',  colors: d.pants  || [] },
     ].filter(c => c.colors.length > 0);
+
     let html = '<div class="color-filter-wrap">';
+
+    if (availDates.length > 1) {
+      html += '<div class="date-filter-row"><span class="color-filter-label">date</span>';
+      html += `<button class="date-pill${!date ? ' active' : ''}" onclick="selectFilterDate('')">All</button>`;
+      for (const dt of availDates) {
+        html += `<button class="date-pill${date === dt ? ' active' : ''}" onclick="selectFilterDate('${dt}')">${_fmtDate(dt)}</button>`;
+      }
+      html += '</div>';
+    }
+
     if (d.has_ski || d.has_snowboard) {
       html += '<div class="sport-filter-row"><span class="color-filter-label">sport</span>';
       if (d.has_ski)       html += `<button class="sport-btn" id="sport-ski"       onclick="selectSport('ski')">Ski</button>`;
       if (d.has_snowboard) html += `<button class="sport-btn" id="sport-snowboard" onclick="selectSport('snowboard')">Snowboard</button>`;
       html += '</div>';
     }
-    if (!cats.length && !d.has_ski && !d.has_snowboard) { container.innerHTML = ''; return; }
+
+    if (!cats.length && !d.has_ski && !d.has_snowboard && availDates.length <= 1) { container.innerHTML = ''; return; }
     for (const { key, colors } of cats) {
       html += `<div class="color-filter-row"><span class="color-filter-label">${key}</span>`;
       for (const name of colors) {
@@ -1968,9 +1992,23 @@ async function loadColorFilter(date, location, group) {
     html += '</div>';
     container.innerHTML = html;
     if (toggleWrap) toggleWrap.style.display = '';
-    // keep panel state after reload
     container.style.display = _filterPanelOpen ? '' : 'none';
   } catch(e) {}
+}
+
+async function selectFilterDate(date) {
+  _activeColorFilters = { jacket: null, pants: null };
+  _activeSport = null;
+  _chipContext.date = date;
+  await loadColorFilter(date, _chipContext.location, _chipContext.group);
+  // reload gallery for new date scope
+  if (_outfitOriginalPhotos !== null) {
+    allPhotos = _outfitOriginalPhotos;
+    _outfitOriginalPhotos = null;
+  }
+  if (date || _chipContext.location) {
+    await runLabelFilter(date, _chipContext.location, _chipContext.group);
+  }
 }
 
 function _updateChipAvailability() {

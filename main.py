@@ -1857,6 +1857,21 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
     }
 
 
+@app.get("/api/folder-dates")
+def get_folder_dates(location: str = Query("")):
+    """Return distinct dates that have photos at a given location, newest first."""
+    loc_lower = location.strip().lower()
+    if not loc_lower:
+        return {"dates": []}
+    dates = sorted(
+        {item["date"] for item in data
+         if not item.get("draft")
+         and clean_location(item.get("location", "")).lower() == loc_lower},
+        reverse=True,
+    )
+    return {"dates": dates}
+
+
 @app.get("/api/folder-times")
 def get_folder_times(date: str = Query(...), location: str = Query(...)):
     """Return EXIF capture times (minutes since midnight) for photos in a time-search folder.
