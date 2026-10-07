@@ -593,7 +593,7 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 
 _HAIKU_COLOR_ENUM = [
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
-    "white", "black", "gray", "brown", "navy", "teal", "none", "unclear",
+    "white", "black", "gray", "brown", "navy", "teal", "tan", "none", "unclear",
 ]
 
 _HAIKU_TOOL = {
