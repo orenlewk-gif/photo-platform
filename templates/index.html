@@ -1911,6 +1911,7 @@ const _CHIP_COLORS = [
 let _activeColorFilters = { jacket: null, pants: null };
 let _activeSport = null;
 let _chipContext = { date: '', location: '', group: '' };
+let _colorCombos = { jacket_to_pants: {}, pants_to_jacket: {} };
 
 let _filterPanelOpen = false;
 
@@ -1938,6 +1939,7 @@ async function loadColorFilter(date, location, group) {
     const res = await fetch(`/api/folder-colors?${params}`);
     if (!res.ok) return;
     const d = await res.json();
+    _colorCombos = d.combos || { jacket_to_pants: {}, pants_to_jacket: {} };
     const cats = [
       { key: 'jacket', colors: d.jacket || [] },
       { key: 'pants',  colors: d.pants  || [] },
@@ -1971,6 +1973,25 @@ async function loadColorFilter(date, location, group) {
   } catch(e) {}
 }
 
+function _updateChipAvailability() {
+  const selJacket = _activeColorFilters.jacket;
+  const selPants  = _activeColorFilters.pants;
+  document.querySelectorAll('.color-swatch').forEach(el => {
+    const cat   = el.dataset.cat;
+    const color = el.dataset.color;
+    let available = true;
+    if (cat === 'pants' && selJacket) {
+      const valid = _colorCombos.jacket_to_pants[selJacket] || [];
+      available = valid.includes(color);
+    } else if (cat === 'jacket' && selPants) {
+      const valid = _colorCombos.pants_to_jacket[selPants] || [];
+      available = valid.includes(color);
+    }
+    el.style.opacity = available ? '' : '0.28';
+    el.style.pointerEvents = available ? '' : 'none';
+  });
+}
+
 function selectColorSwatch(cat, color) {
   if (_activeColorFilters[cat] === color) {
     _activeColorFilters[cat] = null;
@@ -1980,6 +2001,7 @@ function selectColorSwatch(cat, color) {
   document.querySelectorAll(`.color-swatch[data-cat="${cat}"]`).forEach(el => {
     el.classList.toggle('swatch-active', el.dataset.color === _activeColorFilters[cat]);
   });
+  _updateChipAvailability();
   const anyActive = Object.values(_activeColorFilters).some(v => v !== null) || _activeSport;
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
@@ -2008,7 +2030,11 @@ function selectSport(sport) {
 function clearAllChips() {
   _activeColorFilters = { jacket: null, pants: null };
   _activeSport = null;
-  document.querySelectorAll('.color-swatch').forEach(el => el.classList.remove('swatch-active'));
+  document.querySelectorAll('.color-swatch').forEach(el => {
+    el.classList.remove('swatch-active');
+    el.style.opacity = '';
+    el.style.pointerEvents = '';
+  });
   document.querySelectorAll('.sport-btn').forEach(btn => btn.classList.remove('active'));
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = 'none';

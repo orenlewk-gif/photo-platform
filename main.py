@@ -1815,9 +1815,12 @@ async def admin_set_photo_colors(request: Request):
 
 @app.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
-    """Return distinct jacket/pants colors and sport types found in labeled photos for a folder."""
+    """Return distinct jacket/pants colors, sport types, and valid combos for a folder."""
     jacket, pants = set(), set()
     has_ski = has_snowboard = False
+    # combos[jacket_color] = set of pants colors that co-occur with it
+    j_to_p: dict = {}
+    p_to_j: dict = {}
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
     for item in data:
@@ -1829,20 +1832,29 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             continue
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
-        for c in (item.get("jacket_colors") or []):
-            if c not in ("none", "unclear"):
-                jacket.add(c)
-        for c in (item.get("pants_colors") or []):
-            if c not in ("none", "unclear"):
-                pants.add(c)
+        jcs = [c for c in (item.get("jacket_colors") or []) if c not in ("none", "unclear")]
+        pcs = [c for c in (item.get("pants_colors")  or []) if c not in ("none", "unclear")]
+        for c in jcs: jacket.add(c)
+        for c in pcs: pants.add(c)
+        for jc in jcs:
+            j_to_p.setdefault(jc, set()).update(pcs)
+            for pc in pcs:
+                p_to_j.setdefault(pc, set()).add(jc)
         sp = item.get("sport")
         if sp == "ski":        has_ski = True
         elif sp == "snowboard": has_snowboard = True
     order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
-    return {"jacket": sort_colors(jacket), "pants": sort_colors(pants),
-            "has_ski": has_ski, "has_snowboard": has_snowboard}
+    return {
+        "jacket": sort_colors(jacket),
+        "pants":  sort_colors(pants),
+        "has_ski": has_ski, "has_snowboard": has_snowboard,
+        "combos": {
+            "jacket_to_pants": {jc: sort_colors(ps) for jc, ps in j_to_p.items()},
+            "pants_to_jacket": {pc: sort_colors(js) for pc, js in p_to_j.items()},
+        },
+    }
 
 
 @app.get("/api/folder-times")
