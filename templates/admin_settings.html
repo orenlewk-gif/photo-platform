@@ -1085,7 +1085,7 @@ function openBulkCFEditor(folderKey, rowId) {
   ).join('');
   const div = document.createElement('div');
   div.className = 'cf-editor';
-  div.style.cssText = 'background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:8px;padding:.75rem;margin:.5rem 0;font-size:.78rem';
+  div.style.cssText = 'position:sticky;top:0;z-index:11;background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:8px;padding:.75rem;margin:.5rem 0 .25rem;font-size:.78rem';
   const stateVarName = 'bulkState_' + rowId.replace(/[^a-z0-9]/gi,'_');
   window[stateVarName] = bulkState;
   div.innerHTML = `<div style="font-size:.72rem;font-weight:600;color:#F5C518;margin-bottom:.5rem">Editing ${sel.length} photos — set fields to apply (leave empty to skip)</div>
