@@ -1009,8 +1009,9 @@ function renderFolderPhotoGrid(folderKey, rowId) {
     </div>`;
   }).join('');
   const bulkBarId = 'bulk_' + rowId;
-  panel.innerHTML = `<div id="${bulkBarId}" style="display:none;margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3);border-radius:7px;display:flex;align-items:center;gap:.75rem">
-    <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600"></span>
+  const bulkDisplay = sel.size > 0 ? 'flex' : 'none';
+  panel.innerHTML = `<div id="${bulkBarId}" style="display:${bulkDisplay};margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3);border-radius:7px;align-items:center;gap:.75rem">
+    <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600">${sel.size} photo${sel.size!==1?'s':''} selected</span>
     <button onclick="openBulkCFEditor('${folderKey}','${rowId}')" style="padding:3px 12px;border-radius:5px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit">Edit Selected</button>
     <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.78rem;font-family:inherit">Clear</button>
   </div>
@@ -1020,13 +1021,13 @@ function renderFolderPhotoGrid(folderKey, rowId) {
 }
 
 function handleCFClick(e, folderKey, path, rowId, itemId) {
-  if (e.shiftKey) {
+  const hasSel = (_cfSelected[folderKey] || new Set()).size > 0;
+  if (e.shiftKey || hasSel) {
     if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
     const sel = _cfSelected[folderKey];
     if (sel.has(path)) sel.delete(path); else sel.add(path);
     renderFolderPhotoGrid(folderKey, rowId);
   } else {
-    _clearCFSelection(folderKey, rowId, true);
     openCFEditor(folderKey, path, rowId);
   }
 }
