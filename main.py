@@ -2123,8 +2123,10 @@ async def admin_set_photo_colors(request: Request):
     if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
     if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
     if "sport"         in body: item["sport"]          = body["sport"] or None
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(), ContentType="application/json")
+    def _flush():
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                      Body=json.dumps(data).encode(), ContentType="application/json")
+    threading.Thread(target=_flush, daemon=True).start()
     return {"ok": True, "path": path}
 
 

@@ -936,7 +936,7 @@ const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',pu
 let _classifiedFolders = [];
 let _folderPhotos = {};   // folderKey → photos array
 let _editState = {};      // path → {jacket, pants, sport, _folderKey, _rowId}
-const _autoSaveTimers = {};
+let _cfSelected = {};     // folderKey → Set of paths
 
 async function loadClassifiedFolders() {
   const el = document.getElementById('classified-folders-list');
@@ -991,22 +991,143 @@ function renderFolderPhotoGrid(folderKey, rowId) {
   const panel  = document.getElementById(rowId);
   const photos = _folderPhotos[folderKey] || [];
   if (!photos.length) { panel.innerHTML = '<div style="color:rgba(255,255,255,.3);font-size:.8rem;padding:.5rem">No labeled photos.</div>'; panel.style.display=''; return; }
+  const sel = _cfSelected[folderKey] || new Set();
   const grid = photos.map(p => {
-    const itemId = 'cpi_' + btoa(p.path).replace(/[^a-zA-Z0-9]/g,'');
+    const itemId  = 'cpi_' + btoa(p.path).replace(/[^a-zA-Z0-9]/g,'');
+    const isSel   = sel.has(p.path);
     const jacketDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
     const pantsDots  = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
     const sportLabel = p.sport === 'ski' ? 'ski' : p.sport === 'snowboard' ? 'sb' : '';
     return `<div id="${itemId}" style="display:inline-block;vertical-align:top;width:140px;margin:.3rem;text-align:center">
-      <div style="position:relative;width:140px;height:140px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid rgba(255,255,255,.1)" onclick="openCFEditor('${folderKey}','${p.path.replace(/'/g,"\\'")}','${rowId}')">
+      <div style="position:relative;width:140px;height:140px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid ${isSel?'#F5C518':'rgba(255,255,255,.1)'};box-shadow:${isSel?'0 0 0 2px rgba(245,197,24,.4)':''}" onclick="handleCFClick(event,'${folderKey}','${p.path.replace(/'/g,"\\'")}','${rowId}','${itemId}')">
         <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" style="width:100%;height:100%;object-fit:cover">
         <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);padding:2px 4px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.7)">${p.file.replace(/\.[^.]+$/,'')}</div>
         ${sportLabel ? `<div style="position:absolute;top:4px;right:5px;font-size:8px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);border-radius:3px;padding:1px 4px;letter-spacing:.5px">${sportLabel}</div>` : ''}
+        ${isSel ? `<div style="position:absolute;top:4px;left:5px;width:16px;height:16px;border-radius:50%;background:#F5C518;display:flex;align-items:center;justify-content:center;font-size:10px;color:#000;font-weight:700">✓</div>` : ''}
       </div>
       <div style="font-size:10px;margin-top:3px">${jacketDots||'—'} / ${pantsDots||'—'}</div>
     </div>`;
   }).join('');
-  panel.innerHTML = `<div style="margin:.25rem 0">${grid}</div>`;
+  const bulkBarId = 'bulk_' + rowId;
+  panel.innerHTML = `<div id="${bulkBarId}" style="display:none;margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.3);border-radius:7px;display:flex;align-items:center;gap:.75rem">
+    <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600"></span>
+    <button onclick="openBulkCFEditor('${folderKey}','${rowId}')" style="padding:3px 12px;border-radius:5px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit">Edit Selected</button>
+    <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.78rem;font-family:inherit">Clear</button>
+  </div>
+  <div style="margin:.25rem 0">${grid}</div>`;
   panel.style.display = '';
+  _updateBulkBar(folderKey, rowId);
+}
+
+function handleCFClick(e, folderKey, path, rowId, itemId) {
+  if (e.shiftKey) {
+    if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
+    const sel = _cfSelected[folderKey];
+    if (sel.has(path)) sel.delete(path); else sel.add(path);
+    renderFolderPhotoGrid(folderKey, rowId);
+  } else {
+    _clearCFSelection(folderKey, rowId, true);
+    openCFEditor(folderKey, path, rowId);
+  }
+}
+
+function _clearCFSelection(folderKey, rowId, skipRender) {
+  _cfSelected[folderKey] = new Set();
+  if (!skipRender) renderFolderPhotoGrid(folderKey, rowId);
+}
+
+function _updateBulkBar(folderKey, rowId) {
+  const bulkBarId = 'bulk_' + rowId;
+  const bar = document.getElementById(bulkBarId);
+  const cnt = document.getElementById(bulkBarId + '_cnt');
+  const n = (_cfSelected[folderKey] || new Set()).size;
+  if (!bar) return;
+  bar.style.display = n > 0 ? 'flex' : 'none';
+  if (cnt) cnt.textContent = `${n} photo${n!==1?'s':''} selected`;
+}
+
+function openBulkCFEditor(folderKey, rowId) {
+  document.querySelectorAll('.cf-editor').forEach(el => el.remove());
+  const sel = [...(_cfSelected[folderKey] || new Set())];
+  if (!sel.length) return;
+  const bulkState = {jacket: [], pants: [], sport: null};
+  const colorRow = (label, key) => {
+    const pills = _ALL_COLORS.map(c => {
+      const on = bulkState[key].includes(c);
+      return `<span class="cf-pill${on?' on':''}" onclick="toggleBulkColor('${key}','${c}',this,bulkState_${rowId.replace(/[^a-z0-9]/gi,'_')})" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid ${on?'#F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem">
+        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${c}</span>`;
+    }).join('');
+    return `<div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">${label}</span>${pills}</div>`;
+  };
+  const sportPills = ['ski','snowboard'].map(s =>
+    `<span onclick="toggleBulkSport('${s}',this,bulkState_${rowId.replace(/[^a-z0-9]/gi,'_')})" style="display:inline-block;padding:2px 10px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-size:.65rem;color:rgba(255,255,255,.5);margin:.15rem .1rem">${s}</span>`
+  ).join('');
+  const div = document.createElement('div');
+  div.className = 'cf-editor';
+  div.style.cssText = 'background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:8px;padding:.75rem;margin:.5rem 0;font-size:.78rem';
+  const stateVarName = 'bulkState_' + rowId.replace(/[^a-z0-9]/gi,'_');
+  window[stateVarName] = bulkState;
+  div.innerHTML = `<div style="font-size:.72rem;font-weight:600;color:#F5C518;margin-bottom:.5rem">Editing ${sel.length} photos — set fields to apply (leave empty to skip)</div>
+    ${colorRow('Jacket','jacket')}${colorRow('Pants','pants')}
+    <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
+    <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center">
+      <button onclick="applyBulkEdit('${folderKey}','${rowId}','${stateVarName}',this)" style="padding:4px 14px;border-radius:6px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit">Apply to ${sel.length} photos</button>
+      <button onclick="this.closest('.cf-editor').remove()" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
+      <span id="bulk_status_${rowId}" style="font-size:.7rem;color:rgba(255,255,255,.4)"></span>
+    </div>`;
+  const panel = document.getElementById(rowId);
+  if (panel) panel.prepend(div);
+}
+
+function toggleBulkColor(key, color, el, state) {
+  const idx = state[key].indexOf(color);
+  const on  = idx < 0;
+  if (on) state[key].push(color); else state[key].splice(idx,1);
+  el.style.borderColor = on ? '#F5C518' : 'rgba(255,255,255,.12)';
+  el.style.background  = on ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
+  el.style.color       = on ? '#F5C518' : 'rgba(255,255,255,.5)';
+}
+
+function toggleBulkSport(sport, el, state) {
+  const on = state.sport !== sport;
+  state.sport = on ? sport : null;
+  el.closest('div').querySelectorAll('span[onclick^="toggleBulkSport"]').forEach(e => {
+    const isSel = e.textContent.trim() === state.sport;
+    e.style.borderColor = isSel ? '#F5C518' : 'rgba(255,255,255,.12)';
+    e.style.background  = isSel ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
+    e.style.color       = isSel ? '#F5C518' : 'rgba(255,255,255,.5)';
+  });
+}
+
+async function applyBulkEdit(folderKey, rowId, stateVarName, btn) {
+  const state = window[stateVarName];
+  const sel   = [...(_cfSelected[folderKey] || new Set())];
+  if (!sel.length) return;
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const statusEl = document.getElementById('bulk_status_' + rowId);
+  let done = 0;
+  for (const path of sel) {
+    const body = {path};
+    if (state.jacket.length) body.jacket_colors = state.jacket;
+    if (state.pants.length)  body.pants_colors  = state.pants;
+    if (state.sport)         body.sport         = state.sport;
+    try {
+      const r = await fetch('/api/admin/set-photo-colors', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if (r.ok) {
+        const p = (_folderPhotos[folderKey]||[]).find(x=>x.path===path);
+        if (p) {
+          if (state.jacket.length) p.jacket = state.jacket;
+          if (state.pants.length)  p.pants  = state.pants;
+          if (state.sport)         p.sport  = state.sport;
+        }
+        done++;
+      }
+    } catch(_) {}
+    if (statusEl) statusEl.textContent = `${done}/${sel.length} saved`;
+  }
+  document.querySelectorAll('.cf-editor').forEach(el => el.remove());
+  _clearCFSelection(folderKey, rowId, true);
+  renderFolderPhotoGrid(folderKey, rowId);
 }
 
 async function openCFEditor(folderKey, path, rowId) {
