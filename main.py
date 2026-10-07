@@ -8,13 +8,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import json
-import torch
 import re
 import hmac
 import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
-from transformers import CLIPProcessor, CLIPModel
 from rapidfuzz import fuzz
 import os
 import base64
@@ -327,37 +325,8 @@ def image_to_base64(img, max_size=1200):
     return base64.b64encode(buf.getvalue()).decode()
 
 # ─────────────────────────────────────────
-# LOAD MODEL & DATA (once on startup)
+# LOAD DATA (once on startup)
 # ─────────────────────────────────────────
-
-model     = None
-processor = None
-
-def get_model():
-    global model, processor
-    if model is None:
-        print("Loading CLIP model...")
-        model     = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-        processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-        print("CLIP model loaded.")
-    return model, processor
-
-
-# ── DINOv2 (outfit/visual similarity search) ─────────────────────────────────
-_dino_model = None
-_dino_proc  = None
-
-def get_dino_model():
-    global _dino_model, _dino_proc
-    if _dino_model is None:
-        from transformers import AutoImageProcessor, AutoModel
-        print("Loading DINOv2 model...")
-        _dino_proc  = AutoImageProcessor.from_pretrained("facebook/dinov2-small")
-        _dino_model = AutoModel.from_pretrained("facebook/dinov2-small")
-        _dino_model.eval()
-        print("DINOv2 model loaded.")
-    return _dino_model, _dino_proc
-
 
 # ── MediaPipe pose detector (jacket crop) ────────────────────────────────────
 
@@ -569,24 +538,6 @@ def extract_jacket_color(torso_crop: Image.Image) -> str:
     return "red"
 
 
-def compute_dino_embedding(pil_image: Image.Image) -> list:
-    cropped = crop_to_outfit(pil_image)
-    m, p    = get_dino_model()
-    inputs  = p(images=cropped, return_tensors="pt")
-    with torch.no_grad():
-        out = m(**inputs)
-    return out.last_hidden_state[:, 0, :][0].tolist()
-
-
-def _compute_dino_embeddings_batch(pil_images: list) -> list:
-    """Single DINOv2 forward pass for a list of PIL images."""
-    m, p = get_dino_model()
-    inputs = p(images=pil_images, return_tensors="pt")
-    with torch.no_grad():
-        out = m(**inputs)
-    return out.last_hidden_state[:, 0, :].tolist()
-
-
 _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool}
 
 # ── Haiku Vision Classification ───────────────────────────────────────────────
@@ -732,31 +683,21 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
         return None
 
 
-def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> int:
+def embed_items_fast(items: list, job_id: str = None) -> int:
     """
-    Parallel R2 fetch + batch CLIP image embedding.
-    Updates item['embedding'] in place. Returns count embedded.
+    Parallel R2 fetch + dominant color extraction + Haiku classification.
+    Returns count processed.
     """
     from concurrent.futures import ThreadPoolExecutor
 
-    def fetch_one(item):
+    def process_one(item):
         try:
-            resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-            return item, resp["Body"].read()
-        except Exception as e:
-            print(f"R2 fetch failed {item['path']}: {e}")
-            return item, None
-
-    def decode_one(args):
-        item, img_bytes = args
-        if img_bytes is None:
-            return item, None
-        try:
-            pil = Image.open(BytesIO(img_bytes)).convert("RGB")
+            resp      = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
+            img_bytes = resp["Body"].read()
+            pil       = Image.open(BytesIO(img_bytes)).convert("RGB")
             dom_hue, dom_sat = extract_dominant_color(pil)
             item["dominant_hue"] = dom_hue
             item["dominant_sat"] = dom_sat
-            # Haiku vision classification — skip portraits and already-labeled photos
             _is_portrait_loc = item.get("location", "").strip().lower() in {
                 loc.strip().lower() for loc in PORTRAIT_LOCATIONS
             }
@@ -767,39 +708,19 @@ def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> i
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
                     print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
-            pil = _center_crop_for_embed(pil, crop_ratio=0.6)
-            return item, _resize_for_embed(pil, max_side=512)
+            return True
         except Exception as e:
-            print(f"Decode failed {item['path']}: {e}")
-            return item, None
+            print(f"Process failed {item['path']}: {e}")
+            return False
 
-    with ThreadPoolExecutor(max_workers=16) as ex:
-        fetched = list(ex.map(fetch_one, items))
-
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        decoded = list(ex.map(decode_one, fetched))
-
-    valid = [(item, img) for item, img in decoded if img is not None]
-    if not valid:
-        return 0
-
-    m, p = get_model()
     count = 0
-    for i in range(0, len(valid), batch_size):
-        batch_items, batch_imgs = zip(*valid[i:i + batch_size])
-        try:
-            inputs = p(images=list(batch_imgs), return_tensors="pt", padding=True)
-            with torch.no_grad():
-                vis_out = m.vision_model(**inputs)
-                feat    = m.visual_projection(vis_out.pooler_output)
-            embs = feat.tolist()
-            for item, emb in zip(batch_items, embs):
-                item["embedding"] = emb
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futures = {ex.submit(process_one, item): item for item in items}
+        for fut in futures:
+            if fut.result():
                 count += 1
-        except Exception as e:
-            print(f"CLIP batch embed failed (offset {i}): {e}")
-        if job_id and job_id in _embed_jobs:
-            _embed_jobs[job_id]["done"] = count
+                if job_id and job_id in _embed_jobs:
+                    _embed_jobs[job_id]["done"] = count
 
     if job_id and job_id in _embed_jobs:
         _embed_jobs[job_id]["finished"] = True
@@ -808,27 +729,6 @@ def embed_items_fast(items: list, batch_size: int = 32, job_id: str = None) -> i
 
 data: list = []
 _data_ready = threading.Event()
-
-# Vectorized CLIP embedding index — rebuilt after data loads or embeddings update
-_emb_matrix: "torch.Tensor | None" = None
-_emb_items:  list = []
-_emb_lock    = threading.Lock()
-
-def _rebuild_emb_index():
-    global _emb_matrix, _emb_items
-    items = [it for it in data if it.get("embedding") is not None]
-    if not items:
-        with _emb_lock:
-            _emb_matrix = None
-            _emb_items  = []
-        return
-    mat   = torch.tensor([it["embedding"] for it in items], dtype=torch.float32)
-    norms = mat.norm(dim=1, keepdim=True).clamp(min=1e-8)
-    mat   = mat / norms
-    with _emb_lock:
-        _emb_matrix = mat
-        _emb_items  = items
-    print(f"CLIP index: {len(items)} photos indexed")
 
 def _load_data_bg() -> None:
     global data
@@ -839,7 +739,6 @@ def _load_data_bg() -> None:
             data = loaded
             print(f"Loaded {len(data)} photos from local file.")
             _data_ready.set()
-            _rebuild_emb_index()
             return
         except (json.JSONDecodeError, ValueError) as e:
             print(f"WARNING: local images.json corrupt ({e}), trying R2...")
@@ -852,7 +751,6 @@ def _load_data_bg() -> None:
     except Exception as e:
         print(f"WARNING: could not load images.json ({e}), starting empty")
     _data_ready.set()
-    _rebuild_emb_index()
 
 threading.Thread(target=_load_data_bg, daemon=True).start()
 # Wait up to 8 s so the first request isn't served with empty data,
@@ -978,9 +876,8 @@ try:
     _wa  = _wp.setdefault("activities", {}).setdefault("Winter Action", {})
     _wf  = _wa.setdefault("flags", {})
     _dirty = False
-    if not _wf.get("time_search") or not _wf.get("clip"):
+    if not _wf.get("time_search"):
         _wf["time_search"] = True
-        _wf["clip"]        = True
         _dirty = True
     # Ensure the all-photos cap tier always exists (guards against stale admin saves)
     _tiers = list(_wa.get("tiers") or [])
@@ -1462,7 +1359,6 @@ def pos_families(date: str = Query(""), location: str = Query("")):
 @app.get("/api/search")
 def search(
     request:      Request,
-    query:        str  = Query(None),
     last_name:    str  = Query(None),
     date:         str  = Query(None),
     location:     str  = Query(None),
@@ -1477,20 +1373,17 @@ def search(
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
-        return _search(query, last_name, date, location, group, time_from, time_to,
+        return _search(last_name, date, location, group, time_from, time_to,
                        jacket_color=jacket_color, pants_color=pants_color, sport=sport)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
-CLIP_THRESHOLD = 0.20
-CLIP_TOP_K     = 40
-
-def _search(query, last_name, date, location, group=None, time_from=None, time_to=None,
+def _search(last_name, date, location, group=None, time_from=None, time_to=None,
             jacket_color=None, pants_color=None, sport=None):
     has_labels = any([jacket_color, pants_color, sport])
-    if not query and not last_name and not has_labels:
-        return JSONResponse(status_code=400, content={"error": "Provide query, last_name, or color filter"})
+    if not last_name and not has_labels:
+        return JSONResponse(status_code=400, content={"error": "Provide last_name or color filter"})
 
     # Build time lookup if a range was supplied
     time_map = None
@@ -1502,75 +1395,7 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
 
     ln_filter = last_name.strip().lower() if last_name else ""
 
-    if query:
-        # Augment bare color words — multi-word queries are already specific enough
-        clip_query = f"a person wearing {query}" if len(query.split()) == 1 else query
-        # Encode query text
-        m, p = get_model()
-        inputs = p(text=[clip_query], return_tensors="pt", padding=True)
-        with torch.no_grad():
-            text_out = m.text_model(**inputs)
-            feat     = m.text_projection(text_out.pooler_output)
-            t        = feat[0].float().reshape(1, -1)
-            t        = t / t.norm(dim=1, keepdim=True).clamp(min=1e-8)
-
-        # Grab the pre-built normalized index
-        with _emb_lock:
-            matrix = _emb_matrix
-            index_items = list(_emb_items)
-
-        if matrix is None:
-            print(f"CLIP search: matrix is None (no embeddings loaded)")
-            return {"count": 0, "photos": []}
-
-        color_ranges = _detect_color(query)
-        print(f"CLIP search: '{clip_query}' — {len(index_items)} photos in index, threshold={CLIP_THRESHOLD}, color_filter={bool(color_ranges)}")
-        # Single matrix multiply — all similarities at once
-        sims = (matrix @ t.T).squeeze(1).tolist()
-
-        scored = []
-        for sim, item in zip(sims, index_items):
-            if sim < CLIP_THRESHOLD:
-                continue
-            if color_ranges is not None:
-                dom_hue = item.get("dominant_hue")
-                dom_sat = item.get("dominant_sat") or 0
-                if dom_hue is None or dom_sat < _COLOR_MIN_SAT:
-                    pass  # no color data yet — don't exclude, let CLIP decide
-                elif not _hue_in_ranges(dom_hue, color_ranges):
-                    continue
-            if date and item["date"] != date:
-                continue
-            if location and clean_location(item["location"]) != location:
-                continue
-            if group and item.get("group", "").strip().lower() != group.lower():
-                continue
-            if time_map is not None:
-                fname = item["path"].split("/")[-1]
-                t = time_map.get(fname)
-                if t is not None and not (time_from <= t <= time_to):
-                    continue
-            if ln_filter:
-                item_ln = item.get("last_name", "").strip().lower()
-                if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
-                    continue
-                sim += (fuzz.partial_ratio(ln_filter, item_ln) / 100) * 0.15
-            scored.append((sim, item))
-
-        scored.sort(reverse=True, key=lambda x: x[0])
-        # Apply Haiku color label filters on top of CLIP results
-        if jacket_color:
-            _jf = _color_family(jacket_color)
-            scored = [(s, it) for s, it in scored if any(c in _jf for c in (it.get("jacket_colors") or []))]
-        if pants_color:
-            _pf = _color_family(pants_color)
-            scored = [(s, it) for s, it in scored if any(c in _pf for c in (it.get("pants_colors") or []))]
-        if sport:
-            scored = [(s, it) for s, it in scored if it.get("sport") == sport]
-        print(f"CLIP search: '{clip_query}' — {len(scored)} passed threshold, returning top {min(len(scored),CLIP_TOP_K)}")
-        results = scored[:CLIP_TOP_K]
-
-    elif has_labels:
+    if has_labels:
         # Color chip only — scan folder, filter strictly by Haiku labels
         results = []
         for item in data:
@@ -1624,150 +1449,6 @@ def _search(query, last_name, date, location, group=None, time_from=None, time_t
             "h": h,
         })
     return {"count": len(photos), "photos": photos}
-
-
-# ── Outfit / Visual Search (DINOv2) ──────────────────────────────────────────
-
-OUTFIT_THRESHOLD = 0.82
-
-@app.post("/api/outfit-search")
-async def outfit_search(request: Request):
-    ip = request.client.host if request.client else "unknown"
-    if not _search_limiter.is_allowed(ip):
-        return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
-    try:
-        form        = await request.form()
-        img_file    = form.get("image")
-        date_filt   = (form.get("date")       or "").strip()
-        loc_filt    = (form.get("location")   or "").strip().lower()
-        group_filt  = (form.get("group")      or "").strip().lower()
-        time_from   = form.get("time_from")   # minutes since midnight (int string), optional
-        time_to     = form.get("time_to")     # minutes since midnight (int string), optional
-
-        if img_file is None:
-            return JSONResponse(status_code=400, content={"error": "No image provided"})
-
-        img_bytes  = await img_file.read()
-        pil_img    = Image.open(BytesIO(img_bytes)).convert("RGB")
-        pil_img    = _resize_for_embed(pil_img, max_side=512)
-        m, p       = get_model()
-        inputs     = p(images=pil_img, return_tensors="pt")
-        with torch.no_grad():
-            vis_out   = m.vision_model(**inputs)
-            query_emb = m.visual_projection(vis_out.pooler_output)[0].float()
-
-        # Build a filename→minutes lookup if a time range was passed
-        time_lookup: dict = {}
-        if time_from and time_to and date_filt and loc_filt:
-            cache_key = (date_filt, loc_filt)
-            time_lookup = _folder_times_cache.get(cache_key) or {}
-
-        try:
-            t_lo = int(time_from) if time_from else None
-            t_hi = int(time_to)   + 14 if time_to else None  # include full 15-min bucket
-        except (ValueError, TypeError):
-            t_lo = t_hi = None
-
-        results = []
-        for item in data:
-            if date_filt and item.get("date") != date_filt:
-                continue
-            if loc_filt and item.get("location", "").lower() != loc_filt:
-                continue
-            if group_filt and item.get("group", "").lower() != group_filt:
-                continue
-            # Time filter — only applied when a range is active and times are cached
-            if t_lo is not None and t_hi is not None and time_lookup:
-                fname = os.path.basename(item["path"])
-                t = time_lookup.get(fname)
-                if t is not None and not (t_lo <= t <= t_hi):
-                    continue
-            emb = item.get("embedding")
-            if emb is None:
-                continue
-            item_emb = torch.tensor(emb).float()
-            score    = torch.cosine_similarity(query_emb.unsqueeze(0), item_emb.unsqueeze(0)).item()
-            results.append((score, item))
-
-        results.sort(reverse=True, key=lambda x: x[0])
-
-        # Return results above threshold (max 20), fallback to top 5 if none qualify
-        filtered = [(s, i) for s, i in results if s >= OUTFIT_THRESHOLD][:20]
-        if not filtered and results:
-            filtered = results[:5]
-
-        paths  = [item["path"] for _, item in filtered]
-        dims   = _dims_for_paths(paths)
-        photos = []
-        for score, item in filtered:
-            w, h = dims.get(item["path"], (0, 0))
-            photos.append({
-                "path":      item["path"],
-                "date":      item["date"],
-                "location":  clean_location(item["location"]),
-                "last_name": item.get("last_name", ""),
-                "group":     item.get("group", ""),
-                "filename":  os.path.basename(item["path"]),
-                "score":     round(score, 4),
-                "w": w,
-                "h": h,
-            })
-        return {"count": len(photos), "photos": photos}
-    except Exception as e:
-        import traceback; traceback.print_exc()
-        return JSONResponse(status_code=503, content={"error": str(e)})
-
-
-@app.post("/api/outfit-search/backfill")
-async def outfit_search_backfill(request: Request):
-    """Admin: compute DINOv2 embeddings for Winter Action photos that are missing them."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-
-    def _run():
-        global data
-        count  = 0
-        errors = 0
-        pricing    = _load_pricing()
-        clip_locs  = {
-            name.lower()
-            for name, cfg in pricing.get("activities", {}).items()
-            if cfg.get("flags", {}).get("clip")
-        }
-        for item in data:
-            if item.get("location", "").lower() not in clip_locs:
-                continue
-            if item.get("dino_embedding") is not None:
-                continue
-            try:
-                resp    = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-                pil_img = Image.open(BytesIO(resp["Body"].read())).convert("RGB")
-                item["dino_embedding"] = compute_dino_embedding(pil_img)
-                count += 1
-            except Exception as e:
-                errors += 1
-                print(f"Backfill failed {item['path']}: {e}")
-        try:
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(),
-                          ContentType="application/json")
-            print(f"Backfill complete: {count} embedded, {errors} errors")
-        except Exception as e:
-            print(f"Backfill save failed: {e}")
-
-    pricing   = _load_pricing()
-    clip_locs = {
-        name.lower()
-        for name, cfg in pricing.get("activities", {}).items()
-        if cfg.get("flags", {}).get("clip")
-    }
-    total_missing = sum(
-        1 for i in data
-        if i.get("location", "").lower() in clip_locs
-        and i.get("dino_embedding") is None
-    )
-    threading.Thread(target=_run, daemon=True).start()
-    return {"started": True, "photos_to_embed": total_missing}
 
 
 @app.get("/api/pricing")
@@ -4909,8 +4590,6 @@ async def cull_golive(request: Request):
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
     existing    = {item["path"] for item in data}
     published   = []
-
-    needs_embed = True
     to_embed    = []
 
     for m in to_pub:
@@ -4935,24 +4614,20 @@ async def cull_golive(request: Request):
                 "location":        location,
                 "last_name":       folder if is_portrait else "",
                 "group":           "" if is_portrait else folder,
-                "embedding":       None,
                 "photographer_id": m.get("photographer_id"),
             }
             data.append(new_item)
-            if needs_embed:
-                to_embed.append(new_item)
+            to_embed.append(new_item)
             existing.add(img_key)
         else:
-            # Re-upload of existing path — re-embed and re-classify
+            # Re-upload of existing path — re-classify
             for it in data:
                 if it["path"] == img_key:
-                    it["embedding"]     = None
                     it["dominant_hue"]  = None
                     it["dominant_sat"]  = None
                     it["jacket_colors"] = None
                     it["pants_colors"]  = None
-                    if needs_embed:
-                        to_embed.append(it)
+                    to_embed.append(it)
                     break
         published.append(img_key)
 
@@ -4966,8 +4641,7 @@ async def cull_golive(request: Request):
             count = embed_items_fast(to_embed)
             s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                           Body=json.dumps(data).encode(), ContentType="application/json")
-            _rebuild_emb_index()
-            print(f"Cull go-live embed done: {count}/{len(to_embed)}")
+            print(f"Cull go-live classify done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
     return {"published": len(published)}
@@ -6067,7 +5741,6 @@ async def admin_upload_index(request: Request):
                 "location":  location,
                 "last_name": folder if is_portrait else "",
                 "group":     "" if is_portrait else folder,
-                "embedding": None,
             }
             if not is_portrait:
                 entry["draft"] = True
@@ -6128,7 +5801,6 @@ async def admin_reindex_folder(request: Request):
                     "location":  location,
                     "last_name": folder if is_portrait else "",
                     "group":     "" if is_portrait else folder,
-                    "embedding": None,
                     "draft":     True,
                 })
                 existing.add(key)
@@ -6175,65 +5847,30 @@ async def admin_push_live(request: Request):
         if not has_pricing:
             return JSONResponse(status_code=400, content={"error": f"No pricing configured for {location} — set it up in Pricing"})
 
-    needs_embed = True
-
-    pushed        = 0
-    to_embed      = []
+    pushed   = 0
+    to_embed = []
     for item in data:
         if (item.get("draft")
                 and item["date"] == date
                 and item["location"].strip().lower() == location.lower()
                 and (item.get("last_name","") or item.get("group","")).strip().lower() == folder.lower()):
             del item["draft"]
-            if needs_embed and item.get("embedding") is None:
-                to_embed.append(item)
+            to_embed.append(item)
             pushed += 1
 
     if pushed:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
 
-    job_id = None
     if to_embed:
-        job_id = str(uuid.uuid4())[:8]
-        _embed_jobs[job_id] = {"total": len(to_embed), "done": 0, "finished": False}
-        def _embed_bg(jid=job_id):
-            count = embed_items_fast(to_embed, job_id=jid)
+        def _embed_bg():
+            count = embed_items_fast(to_embed)
             s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                           Body=json.dumps(data).encode(), ContentType="application/json")
-            _rebuild_emb_index()
-            print(f"Push-live embed done: {count}/{len(to_embed)}")
+            print(f"Push-live classify done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
-    return {"pushed": pushed, "embedding": len(to_embed), "job_id": job_id}
-
-@app.get("/api/admin/embed-status")
-def embed_status(request: Request, job_id: str = Query("")):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    job = _embed_jobs.get(job_id)
-    if not job:
-        return JSONResponse(status_code=404, content={"error": "Job not found"})
-    return job
-
-@app.post("/api/admin/reembed-all")
-async def admin_reembed_all(request: Request):
-    """Embed all photos in the library that are missing an embedding."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    to_embed = [it for it in data if it.get("embedding") is None and not it.get("draft")]
-    if not to_embed:
-        return {"queued": 0, "message": "All photos already indexed"}
-    job_id = str(uuid.uuid4())[:8]
-    _embed_jobs[job_id] = {"total": len(to_embed), "done": 0, "finished": False}
-    def _bg(jid=job_id):
-        count = embed_items_fast(to_embed, job_id=jid)
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
-        _rebuild_emb_index()
-        print(f"Bulk re-embed done: {count}/{len(to_embed)}")
-    threading.Thread(target=_bg, daemon=True).start()
-    return {"queued": len(to_embed), "job_id": job_id}
+    return {"pushed": pushed}
 
 
 @app.post("/api/admin/recolor-all")
@@ -6278,7 +5915,6 @@ async def admin_recolor_all(request: Request):
 
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
-        _rebuild_emb_index()
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
         print(f"Recolor done: {done}/{len(to_color)}")
