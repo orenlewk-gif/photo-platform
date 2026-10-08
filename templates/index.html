@@ -1909,6 +1909,7 @@ const _CHIP_COLORS = [
   { name:'black',  hex:'#202020' },
   { name:'gray',   hex:'#808080' },
   { name:'brown',  hex:'#7a4820' },
+  { name:'tan',    hex:'#c8a96e', label:'tan/khaki' },
   { name:'teal',   hex:'#0f8080' },
 ];
 
@@ -1979,11 +1980,13 @@ async function loadColorFilter(date, location, group) {
     for (const { key, colors } of cats) {
       html += `<div class="color-filter-row"><span class="color-filter-label">${key}</span>`;
       for (const name of colors) {
-        const hex = (_CHIP_COLORS.find(c => c.name === name) || {}).hex || '#888';
+        const chip = _CHIP_COLORS.find(c => c.name === name) || {};
+        const hex  = chip.hex || '#888';
+        const label = chip.label || name;
         html += `<button class="color-swatch" data-cat="${key}" data-color="${name}"
           onclick="selectColorSwatch('${key}','${name}')">
           <span class="swatch-dot" style="background:${hex}"></span>
-          <span class="swatch-name">${name}</span>
+          <span class="swatch-name">${label}</span>
         </button>`;
       }
       html += '</div>';

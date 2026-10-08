@@ -544,7 +544,7 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 
 _HAIKU_COLOR_ENUM = [
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
-    "white", "black", "gray", "brown", "teal", "none", "unclear",
+    "white", "black", "gray", "brown", "tan", "teal", "none", "unclear",
 ]
 
 _HAIKU_TOOL = {
@@ -592,7 +592,7 @@ _HAIKU_TOOL = {
 # Color families — similar shades treated as equivalent during filtering
 _COLOR_FAMILY: dict[str, set] = {
     "blue":   {"blue", "navy"},         # navy kept for existing labeled photos
-    "brown":  {"brown", "tan"},         # tan kept for existing labeled photos
+    "tan":    {"tan"},
     "red":    {"red", "maroon"},
     "maroon": {"maroon", "red"},
     "green":  {"green", "teal"},
@@ -640,6 +640,7 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "2) jacket_colors: look at the sleeves/arms. Pick the SINGLE dominant color of that fabric. "
                             "3) pants_colors: look at the thighs/knees. Pick the SINGLE dominant color of that fabric. "
                             "Only label the clothing fabric. Ignore snow, sky, trees, and equipment. "
+                            "Use 'tan' for tan, khaki, or beige clothing. "
                             "Use 'none' if not visible. Always choose ONE color — the one covering the most area."
                         ),
                     },
@@ -1843,7 +1844,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         sp = item.get("sport")
         if sp == "ski":        has_ski = True
         elif sp == "snowboard": has_snowboard = True
-    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","teal"]
+    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","tan","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
     return {
