@@ -1805,7 +1805,7 @@ async function showGallery(date, location, family, ln, group) {
   currentFolderLabel = family || group || location || 'Gallery';
   allPhotos = photos;
   _outfitOriginalPhotos = null;
-  _activeColorFilters = { jacket: null, pants: null };
+  _activeColorFilters = { jacket: [], pants: null };
   _activeSport = null;
   _filterPanelOpen = false;
   loadFolderData(currentFolderKey, photos);
