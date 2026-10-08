@@ -636,12 +636,12 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
                             "Ski/snowboard action photo. For each person: "
-                            "1) sport: look at their feet — two narrow boards = ski, one wide board = snowboard. "
-                            "2) jacket_colors: look at the sleeves/arms. Pick ONE dominant color. Pick TWO only if two colors split the jacket roughly equally — never two if one clearly dominates. "
-                            "3) pants_colors: look at the thighs/knees. Pick the SINGLE dominant color of that fabric. "
-                            "Only label the clothing fabric. Ignore snow, sky, trees, and equipment. "
-                            "Use 'tan' for tan, khaki, or beige clothing. "
-                            "Use 'none' if not visible. Always choose ONE color — the one covering the most area."
+                            "1) sport: Skiers wear TWO narrow parallel skis and usually carry poles. Snowboarders stand sideways on ONE wide board and never carry poles. If you see poles, it is definitely ski. If no poles, look at the feet/board — one wide board = snowboard, two narrow boards = ski. "
+                            "2) jacket_colors: look at the sleeves/arms only. Pick ONE dominant color. Pick TWO only if two colors genuinely split the jacket roughly equally — never two if one clearly dominates. "
+                            "3) pants_colors: look at the thighs/knees only. Pick the SINGLE dominant color. "
+                            "Color accuracy rules: label dark charcoal/slate clothing as 'gray' not 'black' or 'green'. Label true black only if the fabric is clearly black. Olive/army/military green = 'green'. Tan/khaki/beige = 'tan'. Do NOT let shadows or snow glare shift your color reading — judge the fabric's actual color. "
+                            "Only label clothing fabric. Ignore snow, sky, trees, goggles, helmets, gloves, and hard equipment. "
+                            "Use 'none' if not visible. Always choose ONE color — the one covering the most fabric area."
                         ),
                     },
                 ],
