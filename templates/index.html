@@ -1916,7 +1916,7 @@ const _CHIP_COLORS = [
 let _activeColorFilters = { jacket: [], pants: null };
 let _activeSport = null;
 let _chipContext = { date: '', location: '', group: '' };
-let _colorCombos = { jacket_to_pants: {}, pants_to_jacket: {} };
+let _colorCombos = { jacket_to_pants: {}, pants_to_jacket: {}, jacket_to_jacket: {} };
 
 let _filterPanelOpen = false;
 
@@ -1952,7 +1952,7 @@ async function loadColorFilter(date, location, group) {
     const datesData = datesRes ? await datesRes.json() : { dates: [] };
     const availDates = datesData.dates || [];
 
-    _colorCombos = d.combos || { jacket_to_pants: {}, pants_to_jacket: {} };
+    _colorCombos = d.combos || { jacket_to_pants: {}, pants_to_jacket: {}, jacket_to_jacket: {} };
     const cats = [
       { key: 'jacket', colors: d.jacket || [] },
       { key: 'pants',  colors: d.pants  || [] },
@@ -2021,8 +2021,15 @@ function _updateChipAvailability() {
     const cat   = el.dataset.cat;
     const color = el.dataset.color;
     let available = true;
-    if (cat === 'pants' && selJackets.length) {
-      // union of pants valid for any selected jacket
+    if (cat === 'jacket' && selJackets.length > 0) {
+      // already selected → always available
+      if (selJackets.includes(color)) {
+        available = true;
+      } else {
+        // show only jacket colors that co-occur with ALL selected jackets
+        available = selJackets.every(j => (_colorCombos.jacket_to_jacket[j] || []).includes(color));
+      }
+    } else if (cat === 'pants' && selJackets.length) {
       const valid = new Set(selJackets.flatMap(j => _colorCombos.jacket_to_pants[j] || []));
       available = valid.has(color);
     } else if (cat === 'jacket' && selPants) {

@@ -1824,9 +1824,9 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
     """Return distinct jacket/pants colors, sport types, and valid combos for a folder."""
     jacket, pants = set(), set()
     has_ski = has_snowboard = False
-    # combos[jacket_color] = set of pants colors that co-occur with it
     j_to_p: dict = {}
     p_to_j: dict = {}
+    j_to_j: dict = {}
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
     for item in data:
@@ -1846,6 +1846,10 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             j_to_p.setdefault(jc, set()).update(pcs)
             for pc in pcs:
                 p_to_j.setdefault(pc, set()).add(jc)
+        for i, jc1 in enumerate(jcs):
+            for jc2 in jcs:
+                if jc1 != jc2:
+                    j_to_j.setdefault(jc1, set()).add(jc2)
         sp = item.get("sport")
         if sp == "ski":        has_ski = True
         elif sp == "snowboard": has_snowboard = True
@@ -1857,8 +1861,9 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         "pants":  sort_colors(pants),
         "has_ski": has_ski, "has_snowboard": has_snowboard,
         "combos": {
-            "jacket_to_pants": {jc: sort_colors(ps) for jc, ps in j_to_p.items()},
-            "pants_to_jacket": {pc: sort_colors(js) for pc, js in p_to_j.items()},
+            "jacket_to_pants":  {jc: sort_colors(ps) for jc, ps in j_to_p.items()},
+            "pants_to_jacket":  {pc: sort_colors(js) for pc, js in p_to_j.items()},
+            "jacket_to_jacket": {jc: sort_colors(js) for jc, js in j_to_j.items()},
         },
     }
 
