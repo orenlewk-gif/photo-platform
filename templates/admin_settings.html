@@ -993,7 +993,7 @@ function renderFolderPhotoGrid(folderKey, rowId) {
   const photos = _folderPhotos[folderKey] || [];
   if (!photos.length) { panel.innerHTML = '<div style="color:rgba(255,255,255,.3);font-size:.8rem;padding:.5rem">No labeled photos.</div>'; panel.style.display=''; return; }
   const sel = _cfSelected[folderKey] || new Set();
-  const grid = photos.map(p => {
+  const grid = photos.map((p, idx) => {
     const itemId  = 'cpi_' + btoa(p.path).replace(/[^a-zA-Z0-9]/g,'');
     const isSel   = sel.has(p.path);
     const jacketDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
@@ -1001,7 +1001,7 @@ function renderFolderPhotoGrid(folderKey, rowId) {
     const sportLabel = p.sport === 'ski' ? 'ski' : p.sport === 'snowboard' ? 'sb' : '';
     const escapedPath = p.path.replace(/'/g,"\\'");
     return `<div id="${itemId}" style="display:inline-block;vertical-align:top;width:140px;margin:.3rem;text-align:center">
-      <div style="position:relative;width:140px;height:140px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid ${isSel?'#F5C518':'rgba(255,255,255,.1)'};box-shadow:${isSel?'0 0 0 2px rgba(245,197,24,.4)':''}" onclick="handleCFClick(event,'${folderKey}','${escapedPath}','${rowId}','${itemId}')">
+      <div style="position:relative;width:140px;height:140px;border-radius:6px;overflow:hidden;cursor:pointer;border:2px solid ${isSel?'#F5C518':'rgba(255,255,255,.1)'};box-shadow:${isSel?'0 0 0 2px rgba(245,197,24,.4)':''}" onclick="handleCFClick(event,'${folderKey}','${escapedPath}','${rowId}','${itemId}',${idx})">
         <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" style="width:100%;height:100%;object-fit:cover">
         <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);padding:2px 4px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.7)">${p.file.replace(/\.[^.]+$/,'')}</div>
         ${sportLabel ? `<div style="position:absolute;top:4px;right:5px;font-size:8px;font-weight:700;color:#fff;background:rgba(0,0,0,.6);border-radius:3px;padding:1px 4px;letter-spacing:.5px">${sportLabel}</div>` : ''}
@@ -1041,20 +1041,37 @@ function _openPhotoZoom(path) {
   modal.style.display = 'flex';
 }
 
-function handleCFClick(e, folderKey, path, rowId, itemId) {
+const _cfLastClicked = {};
+
+function handleCFClick(e, folderKey, path, rowId, itemId, idx) {
   const hasSel = (_cfSelected[folderKey] || new Set()).size > 0;
-  if (e.shiftKey || hasSel) {
+  if (e.shiftKey && _cfLastClicked[folderKey] != null) {
+    // Range select from last click to this click
+    if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
+    const photos = _folderPhotos[folderKey] || [];
+    const from = Math.min(_cfLastClicked[folderKey], idx);
+    const to   = Math.max(_cfLastClicked[folderKey], idx);
+    for (let i = from; i <= to; i++) {
+      if (photos[i]) _cfSelected[folderKey].add(photos[i].path);
+    }
+    renderFolderPhotoGrid(folderKey, rowId);
+  } else if (hasSel) {
+    // Selection mode — toggle individual
     if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
     const sel = _cfSelected[folderKey];
     if (sel.has(path)) sel.delete(path); else sel.add(path);
+    _cfLastClicked[folderKey] = idx;
     renderFolderPhotoGrid(folderKey, rowId);
   } else {
+    // Nothing selected — open single editor
+    _cfLastClicked[folderKey] = idx;
     openCFEditor(folderKey, path, rowId);
   }
 }
 
 function _clearCFSelection(folderKey, rowId, skipRender) {
   _cfSelected[folderKey] = new Set();
+  _cfLastClicked[folderKey] = null;
   if (!skipRender) renderFolderPhotoGrid(folderKey, rowId);
 }
 
