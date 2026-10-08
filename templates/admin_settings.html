@@ -932,7 +932,8 @@ async function runRecolor() {
 
 // ── Classified folders ────────────────────────────────────────────────────────
 const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','tan','teal'];
-const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa',tan:'#d2b48c'};
+const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa',tan:'#c8a96e'};
+const _COLOR_LABEL = {tan:'tan/khaki'};
 let _classifiedFolders = [];
 let _folderPhotos = {};   // folderKey → photos array
 let _editState = {};      // path → {jacket, pants, sport, _folderKey, _rowId}
@@ -1076,7 +1077,7 @@ function openBulkCFEditor(folderKey, rowId) {
     const pills = _ALL_COLORS.map(c => {
       const on = bulkState[key].includes(c);
       return `<span class="cf-pill${on?' on':''}" onclick="toggleBulkColor('${key}','${c}',this,bulkState_${rowId.replace(/[^a-z0-9]/gi,'_')})" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid ${on?'#F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem">
-        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${c}</span>`;
+        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${_COLOR_LABEL[c]||c}</span>`;
     }).join('');
     return `<div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">${label}</span>${pills}</div>`;
   };
@@ -1166,7 +1167,7 @@ async function openCFEditor(folderKey, path, rowId) {
     const pills = _ALL_COLORS.map(c => {
       const on = cur[key].includes(c) ? ' on' : '';
       return `<span class="cf-pill${on}" onclick="toggleCFColor('${path}','${key}','${c}',this)" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid ${on?' #F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem">
-        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${c}</span>`;
+        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${_COLOR_LABEL[c]||c}</span>`;
     }).join('');
     return `<div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">${label}</span>${pills}</div>`;
   };
