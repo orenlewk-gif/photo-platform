@@ -571,8 +571,8 @@ _HAIKU_TOOL = {
                         "jacket_colors": {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "maxItems": 1,
-                            "description": "The single most dominant color of the SKI JACKET — identified by the SLEEVES and ARMS. Pick ONE color only: whichever covers the most fabric area.",
+                            "maxItems": 2,
+                            "description": "The dominant color(s) of the SKI JACKET — identified by the SLEEVES and ARMS. Pick ONE color (the most dominant). Pick TWO only if two colors genuinely split the jacket roughly equally (e.g. half red, half blue). Never pick two if one clearly dominates.",
                         },
                         "pants_colors": {
                             "type": "array",
@@ -637,7 +637,7 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "is clearly focused on (closest to camera, most prominent). "
                             "Ski/snowboard action photo. For each person: "
                             "1) sport: look at their feet — two narrow boards = ski, one wide board = snowboard. "
-                            "2) jacket_colors: look at the sleeves/arms. Pick the SINGLE dominant color of that fabric. "
+                            "2) jacket_colors: look at the sleeves/arms. Pick ONE dominant color. Pick TWO only if two colors split the jacket roughly equally — never two if one clearly dominates. "
                             "3) pants_colors: look at the thighs/knees. Pick the SINGLE dominant color of that fabric. "
                             "Only label the clothing fabric. Ignore snow, sky, trees, and equipment. "
                             "Use 'tan' for tan, khaki, or beige clothing. "
@@ -1368,9 +1368,9 @@ def search(
     group:        str  = Query(None),
     time_from:    int  = Query(None),
     time_to:      int  = Query(None),
-    jacket_color: str  = Query(None),
-    pants_color:  str  = Query(None),
-    sport:        str  = Query(None),
+    jacket_color: list[str] = Query(None),
+    pants_color:  str       = Query(None),
+    sport:        str       = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
     if not _search_limiter.is_allowed(ip):
@@ -1384,7 +1384,9 @@ def search(
 
 def _search(last_name, date, location, group=None, time_from=None, time_to=None,
             jacket_color=None, pants_color=None, sport=None):
-    has_labels = any([jacket_color, pants_color, sport])
+    # jacket_color may be a list (AND logic) or None
+    jacket_colors_filter = [c for c in (jacket_color or []) if c] if isinstance(jacket_color, list) else ([jacket_color] if jacket_color else [])
+    has_labels = any([jacket_colors_filter, pants_color, sport])
     if not last_name and not has_labels:
         return JSONResponse(status_code=400, content={"error": "Provide last_name or color filter"})
 
@@ -1410,7 +1412,10 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
                 continue
             if group and item.get("group", "").strip().lower() != group.lower():
                 continue
-            if jacket_color and not any(c in _color_family(jacket_color) for c in (item.get("jacket_colors") or [])):
+            item_jc = item.get("jacket_colors") or []
+            if jacket_colors_filter and not all(
+                any(c in _color_family(jf) for c in item_jc) for jf in jacket_colors_filter
+            ):
                 continue
             if pants_color and not any(c in _color_family(pants_color) for c in (item.get("pants_colors") or [])):
                 continue

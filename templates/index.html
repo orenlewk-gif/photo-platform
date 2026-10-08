@@ -1913,7 +1913,7 @@ const _CHIP_COLORS = [
   { name:'teal',   hex:'#0f8080' },
 ];
 
-let _activeColorFilters = { jacket: null, pants: null };
+let _activeColorFilters = { jacket: [], pants: null };
 let _activeSport = null;
 let _chipContext = { date: '', location: '', group: '' };
 let _colorCombos = { jacket_to_pants: {}, pants_to_jacket: {} };
@@ -2000,7 +2000,7 @@ async function loadColorFilter(date, location, group) {
 }
 
 async function selectFilterDate(date) {
-  _activeColorFilters = { jacket: null, pants: null };
+  _activeColorFilters = { jacket: [], pants: null };
   _activeSport = null;
   _chipContext.date = date;
   await loadColorFilter(date, _chipContext.location, _chipContext.group);
@@ -2015,15 +2015,16 @@ async function selectFilterDate(date) {
 }
 
 function _updateChipAvailability() {
-  const selJacket = _activeColorFilters.jacket;
-  const selPants  = _activeColorFilters.pants;
+  const selJackets = _activeColorFilters.jacket;  // array
+  const selPants   = _activeColorFilters.pants;
   document.querySelectorAll('.color-swatch').forEach(el => {
     const cat   = el.dataset.cat;
     const color = el.dataset.color;
     let available = true;
-    if (cat === 'pants' && selJacket) {
-      const valid = _colorCombos.jacket_to_pants[selJacket] || [];
-      available = valid.includes(color);
+    if (cat === 'pants' && selJackets.length) {
+      // union of pants valid for any selected jacket
+      const valid = new Set(selJackets.flatMap(j => _colorCombos.jacket_to_pants[j] || []));
+      available = valid.has(color);
     } else if (cat === 'jacket' && selPants) {
       const valid = _colorCombos.pants_to_jacket[selPants] || [];
       available = valid.includes(color);
@@ -2034,16 +2035,23 @@ function _updateChipAvailability() {
 }
 
 function selectColorSwatch(cat, color) {
-  if (_activeColorFilters[cat] === color) {
-    _activeColorFilters[cat] = null;
+  if (cat === 'jacket') {
+    const idx = _activeColorFilters.jacket.indexOf(color);
+    if (idx >= 0) _activeColorFilters.jacket.splice(idx, 1);
+    else _activeColorFilters.jacket.push(color);
   } else {
-    _activeColorFilters[cat] = color;
+    _activeColorFilters[cat] = (_activeColorFilters[cat] === color) ? null : color;
   }
-  document.querySelectorAll(`.color-swatch[data-cat="${cat}"]`).forEach(el => {
-    el.classList.toggle('swatch-active', el.dataset.color === _activeColorFilters[cat]);
+  document.querySelectorAll(`.color-swatch[data-cat="jacket"]`).forEach(el => {
+    el.classList.toggle('swatch-active', _activeColorFilters.jacket.includes(el.dataset.color));
   });
+  if (cat !== 'jacket') {
+    document.querySelectorAll(`.color-swatch[data-cat="${cat}"]`).forEach(el => {
+      el.classList.toggle('swatch-active', el.dataset.color === _activeColorFilters[cat]);
+    });
+  }
   _updateChipAvailability();
-  const anyActive = Object.values(_activeColorFilters).some(v => v !== null) || _activeSport;
+  const anyActive = _activeColorFilters.jacket.length > 0 || _activeColorFilters.pants !== null || _activeSport;
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
   if (anyActive) {
@@ -2058,7 +2066,7 @@ function selectSport(sport) {
   document.querySelectorAll('.sport-btn').forEach(btn => {
     btn.classList.toggle('active', btn.id === 'sport-' + _activeSport);
   });
-  const anyActive = Object.values(_activeColorFilters).some(v => v !== null) || _activeSport;
+  const anyActive = _activeColorFilters.jacket.length > 0 || _activeColorFilters.pants !== null || _activeSport;
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
   if (anyActive) {
@@ -2069,7 +2077,7 @@ function selectSport(sport) {
 }
 
 function clearAllChips() {
-  _activeColorFilters = { jacket: null, pants: null };
+  _activeColorFilters = { jacket: [], pants: null };
   _activeSport = null;
   document.querySelectorAll('.color-swatch').forEach(el => {
     el.classList.remove('swatch-active');
@@ -2099,7 +2107,7 @@ async function runLabelFilter(date, location, group) {
     if (date)     params.set('date',     date);
     if (location) params.set('location', location);
     if (group)    params.set('group',    group);
-    if (_activeColorFilters.jacket) params.set('jacket_color', _activeColorFilters.jacket);
+    _activeColorFilters.jacket.forEach(c => params.append('jacket_color', c));
     if (_activeColorFilters.pants)  params.set('pants_color',  _activeColorFilters.pants);
     if (_activeSport)               params.set('sport',         _activeSport);
 
