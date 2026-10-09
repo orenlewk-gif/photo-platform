@@ -1414,7 +1414,7 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
             if group and item.get("group", "").strip().lower() != group.lower():
                 continue
             item_jc = item.get("jacket_colors") or []
-            if jacket_colors_filter and not any(
+            if jacket_colors_filter and not all(
                 any(c in _color_family(jf) for c in item_jc) for jf in jacket_colors_filter
             ):
                 continue

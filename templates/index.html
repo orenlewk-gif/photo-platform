@@ -476,6 +476,20 @@ input::placeholder { color:rgba(255,255,255,0.3); }
 .msg { text-align:center; color:rgba(255,255,255,0.4); padding:2rem 0; font-size:0.95rem; }
 
 /* ── Cart bar ── */
+.cart-gallery-banner {
+  display:none; position:sticky; top:0; z-index:200;
+  background:#0c2336; border-bottom:2px solid rgba(242,201,76,0.4);
+  padding:0.55rem 1.5rem; align-items:center; gap:1rem;
+  font-size:0.85rem; font-weight:600;
+}
+.cart-gallery-banner.show { display:flex; }
+.cart-gallery-banner span { color:#F5C518; }
+.cart-gallery-banner button {
+  background:none; border:1px solid rgba(255,255,255,0.3); color:rgba(255,255,255,0.75);
+  border-radius:20px; padding:3px 14px; font-size:0.78rem; cursor:pointer;
+  margin-left:auto;
+}
+.cart-gallery-banner button:hover { border-color:#F5C518; color:#F5C518; }
 .cart-bar {
   display:none; position:fixed; bottom:0; left:0; right:0; z-index:9999;
   background:#0c2336; border-top:2px solid rgba(242,201,76,0.4);
@@ -1067,6 +1081,12 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 
 <!-- print-upsell-banner removed; upsell lives in the footer cart bar -->
 
+<!-- Cart gallery banner (shown when viewing only selected photos in gallery) -->
+<div class="cart-gallery-banner" id="cart-gallery-banner">
+  <span id="cart-gallery-banner-text">Viewing selected photos</span>
+  <button onclick="exitCartGalleryView()">Show all</button>
+</div>
+
 <!-- Cart bar -->
 <div class="cart-bar" id="cart-bar">
   <div class="cart-summary">
@@ -1087,7 +1107,10 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   <div class="cartview-modal">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem">
       <h3>Your Cart</h3>
-      <button onclick="closeCartView()" style="background:none;border:none;color:rgba(255,255,255,.45);font-size:0.75rem;cursor:pointer;text-decoration:underline;padding:0;letter-spacing:.5px">Close</button>
+      <div style="display:flex;align-items:center;gap:1rem">
+        <button onclick="enterCartGalleryView()" style="background:none;border:1px solid rgba(255,255,255,0.25);color:rgba(255,255,255,0.65);border-radius:20px;padding:3px 14px;font-size:0.75rem;cursor:pointer;white-space:nowrap" id="browse-selected-btn">Browse selected</button>
+        <button onclick="closeCartView()" style="background:none;border:none;color:rgba(255,255,255,.45);font-size:0.75rem;cursor:pointer;text-decoration:underline;padding:0;letter-spacing:.5px">Close</button>
+      </div>
     </div>
     <div id="cartview-body"></div>
     <div class="cartview-total"></div>
@@ -1381,7 +1404,8 @@ let allPhotos      = [];
 let _jCols         = 4;     // current column count
 let imgCache       = {};
 let cur            = 0;
-let selectedPhotos = new Set();   // stores photo indices for CURRENT folder
+let selectedPhotos = new Set();   // stores photo indices for CURRENT filtered view
+let _cartPhotoMap  = new Map();   // path → photo; persists across filter changes
 let currentPricing  = null;
 let currentLocation = '';        // location string for the current gallery
 let lockedTier      = null;      // tier the customer chose in Quick Shop (current folder)
@@ -1405,7 +1429,7 @@ function getFolderKey(date, location, family, group) {
 // Save the current gallery's selections/package/prints into folderCarts
 function saveCurrentFolder() {
   if (!currentFolderKey) return;
-  const photos = [...selectedPhotos].map(i => allPhotos[i]).filter(Boolean);
+  const photos = [..._cartPhotoMap.values()];
   const hasPose = _poseData && Object.keys(_poseState).length > 0;
   if (!photos.length && !printCart.length && !lockedTier && !hasPose) {
     // Nothing here — remove stale entry so the cart view stays clean
@@ -1448,12 +1472,16 @@ function saveCurrentFolder() {
 function loadFolderData(key, photos) {
   const saved = folderCarts[key];
   selectedPhotos = new Set();
+  _cartPhotoMap  = new Map();
   printCart      = [];
   lockedTier     = null;
   if (!saved) return;
   saved.selectedPaths.forEach(path => {
     const idx = photos.findIndex(p => p.path === path);
-    if (idx !== -1) selectedPhotos.add(idx);
+    if (idx !== -1) {
+      selectedPhotos.add(idx);
+      _cartPhotoMap.set(path, photos[idx]);
+    }
   });
   printCart  = JSON.parse(JSON.stringify(saved.printCart  || []));
   lockedTier = saved.lockedTier ? { ...saved.lockedTier } : null;
@@ -1598,6 +1626,7 @@ function restoreSelectedPhotos() {
     const idx = allPhotos.findIndex(p => p.path === path);
     if (idx === -1) return;
     selectedPhotos.add(idx);
+    _cartPhotoMap.set(path, allPhotos[idx]);
     const card = document.querySelector(`.thumb-card[data-idx="${idx}"]`);
     if (card) card.classList.add('selected');
   });
@@ -1806,6 +1835,7 @@ async function showGallery(date, location, family, ln, group) {
   currentFolderLabel = family || group || location || 'Gallery';
   allPhotos = photos;
   _outfitOriginalPhotos = null;
+  document.getElementById('cart-gallery-banner')?.classList.remove('show');
   _activeColorFilters = { jacket: [], pants: null };
   _activeSport = null;
   _activeInstructorFilter = false;
@@ -2018,6 +2048,7 @@ async function selectFilterDate(date) {
   if (_outfitOriginalPhotos !== null) {
     allPhotos = _outfitOriginalPhotos;
     _outfitOriginalPhotos = null;
+    document.getElementById('cart-gallery-banner')?.classList.remove('show');
   }
   if (date || _chipContext.location) {
     await runLabelFilter(date, _chipContext.location, _chipContext.group);
@@ -2124,6 +2155,9 @@ function _restoreFromChipFilter() {
   if (_outfitOriginalPhotos !== null) {
     allPhotos = _outfitOriginalPhotos;
     _outfitOriginalPhotos = null;
+    document.getElementById('cart-gallery-banner')?.classList.remove('show');
+    selectedPhotos = new Set();
+    allPhotos.forEach((p, i) => { if (_cartPhotoMap.has(p.path)) selectedPhotos.add(i); });
     renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
@@ -2147,6 +2181,9 @@ async function runLabelFilter(date, location, group) {
     if (!res.ok) { showToast(d.error || 'Filter failed'); return; }
 
     allPhotos = d.photos || [];
+    // Remap index-based selection to the new photo list
+    selectedPhotos = new Set();
+    allPhotos.forEach((p, i) => { if (_cartPhotoMap.has(p.path)) selectedPhotos.add(i); });
     renderThumbs(allPhotos);
     const cnt = document.getElementById('results-count');
     if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length!==1?'s':''}`;
@@ -2852,7 +2889,7 @@ function renderThumbs(photos) {
 
   photos.forEach((photo, i) => {
     const card = document.createElement('div');
-    card.className = 'thumb-card' + (selectedPhotos.has(i) ? ' selected' : '');
+    card.className = 'thumb-card' + (_cartPhotoMap.has(photo.path) ? ' selected' : '');
     card.dataset.idx = i;
     card.innerHTML = `
       <div class="card-btn-row">
@@ -2926,9 +2963,13 @@ function toggleSelect(i, e) {
     const adding = !selectedPhotos.has(i);
     for (let j = lo; j <= hi; j++) {
       if (adding) {
-        if (!limit || selectedPhotos.size < limit) selectedPhotos.add(j);
+        if (!limit || selectedPhotos.size < limit) {
+          selectedPhotos.add(j);
+          if (allPhotos[j]) _cartPhotoMap.set(allPhotos[j].path, allPhotos[j]);
+        }
       } else {
         selectedPhotos.delete(j);
+        if (allPhotos[j]) _cartPhotoMap.delete(allPhotos[j].path);
       }
       const c = document.querySelector(`.thumb-card[data-idx="${j}"]`);
       if (c) c.classList.toggle('selected', selectedPhotos.has(j));
@@ -2936,12 +2977,14 @@ function toggleSelect(i, e) {
   } else {
     if (selectedPhotos.has(i)) {
       selectedPhotos.delete(i);
+      if (allPhotos[i]) _cartPhotoMap.delete(allPhotos[i].path);
     } else {
       if (limit && selectedPhotos.size >= limit) {
         showToast(`Maximum ${limit} photos for this activity`);
         return;
       }
       selectedPhotos.add(i);
+      if (allPhotos[i]) _cartPhotoMap.set(allPhotos[i].path, allPhotos[i]);
     }
     const card = document.querySelector(`.thumb-card[data-idx="${i}"]`);
     if (card) card.classList.toggle('selected', selectedPhotos.has(i));
@@ -2956,9 +2999,10 @@ function toggleSelectAll() {
   const allSelected = selectedPhotos.size >= max;
   if (allSelected) {
     selectedPhotos.clear();
+    _cartPhotoMap.clear();
     document.querySelectorAll('.thumb-card').forEach(c => c.classList.remove('selected'));
   } else {
-    allPhotos.forEach((_, i) => { if (i < max) selectedPhotos.add(i); });
+    allPhotos.forEach((p, i) => { if (i < max) { selectedPhotos.add(i); _cartPhotoMap.set(p.path, p); } });
     document.querySelectorAll('.thumb-card').forEach((c, i) => { if (i < max) c.classList.add('selected'); });
   }
   updateCart();
@@ -2967,14 +3011,14 @@ function toggleSelectAll() {
 function selectAllPhotos() {
   const limit = getMaxSelectionLimit();
   const max = limit ? Math.min(limit, allPhotos.length) : allPhotos.length;
-  allPhotos.forEach((_, i) => { if (i < max) selectedPhotos.add(i); });
+  allPhotos.forEach((p, i) => { if (i < max) { selectedPhotos.add(i); _cartPhotoMap.set(p.path, p); } });
   document.querySelectorAll('.thumb-card').forEach((c, i) => { if (i < max) c.classList.add('selected'); });
   updateCart();
 }
 
 function selectUpTo(n) {
   const max = Math.min(n, allPhotos.length);
-  allPhotos.forEach((_, i) => { if (i < max) selectedPhotos.add(i); });
+  allPhotos.forEach((p, i) => { if (i < max) { selectedPhotos.add(i); _cartPhotoMap.set(p.path, p); } });
   document.querySelectorAll('.thumb-card').forEach((c, i) => { if (i < max) c.classList.add('selected'); });
   updateCart();
 }
@@ -3161,6 +3205,7 @@ function adjustFrameCartQty(idx, delta) {
 // Clears current folder's photo selections only (preserves frame cart and other folders)
 function clearPhotoCart() {
   selectedPhotos.clear();
+  _cartPhotoMap.clear();
   printCart  = [];
   lockedTier = null;
   if (currentFolderKey) delete folderCarts[currentFolderKey];
@@ -3172,6 +3217,7 @@ function clearPhotoCart() {
 // Full clear — used by the "Clear" button only (wipes everything including other folders)
 function clearCart() {
   selectedPhotos.clear();
+  _cartPhotoMap.clear();
   printCart    = [];
   frameCart    = [];
   lockedTier   = null;
@@ -3357,7 +3403,7 @@ function updateHeaderCartBtn() {
   // Current folder
   let total = _poseData
     ? (() => { const {fullPoses, singles} = calcPortraitTotal(); return fullPoses + singles; })()
-    : selectedPhotos.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
+    : _cartPhotoMap.size + printCart.length + frameCart.reduce((s, f) => s + f.quantity, 0);
 
   // All other saved folders: photos + prints + pose selections
   Object.entries(folderCarts).forEach(([key, fc]) => {
@@ -3374,7 +3420,7 @@ function updateHeaderCartBtn() {
 function updateCart() {
   if (_poseData) { updatePoseCart(); return; }
   recalcPrintPrices();
-  const count      = selectedPhotos.size;
+  const count      = _cartPhotoMap.size;
   const printCount = printCart.length;
   updateHeaderCartBtn();
 
@@ -3405,7 +3451,7 @@ function updateCart() {
   const comboActive   = checkCombo();
   const comboDiscount = comboActive ? comboActive.discount : 0;
   // Count logo fee only for action photos (not portrait poses)
-  const actionPathSet = new Set([...selectedPhotos].map(i => allPhotos[i]?.path).filter(Boolean));
+  const actionPathSet = new Set(_cartPhotoMap.keys());
   Object.entries(folderCarts).forEach(([key, fc]) => {
     if (key === currentFolderKey || fc.poseState) return;
     (fc.selectedPaths || []).forEach(p => actionPathSet.add(p));
@@ -3512,10 +3558,41 @@ function closeCartView() {
   document.getElementById('cartview-overlay').classList.remove('open');
 }
 
+function enterCartGalleryView() {
+  if (_cartPhotoMap.size === 0) return;
+  closeCartView();
+  if (_outfitOriginalPhotos === null) _outfitOriginalPhotos = [...allPhotos];
+  allPhotos = [..._cartPhotoMap.values()];
+  selectedPhotos = new Set(allPhotos.map((_, i) => i));
+  renderThumbs(allPhotos);
+  const banner = document.getElementById('cart-gallery-banner');
+  const bannerText = document.getElementById('cart-gallery-banner-text');
+  if (bannerText) bannerText.textContent = `Viewing ${allPhotos.length} selected photo${allPhotos.length !== 1 ? 's' : ''}`;
+  if (banner) banner.classList.add('show');
+}
+
+function exitCartGalleryView() {
+  const banner = document.getElementById('cart-gallery-banner');
+  if (banner) banner.classList.remove('show');
+  if (_outfitOriginalPhotos !== null) {
+    allPhotos = _outfitOriginalPhotos;
+    _outfitOriginalPhotos = null;
+    // Remap selection indices to restored photo list
+    selectedPhotos = new Set();
+    allPhotos.forEach((p, i) => { if (_cartPhotoMap.has(p.path)) selectedPhotos.add(i); });
+    renderThumbs(allPhotos);
+    const cnt = document.getElementById('results-count');
+    if (cnt) cnt.textContent = `${allPhotos.length} photo${allPhotos.length !== 1 ? 's' : ''}`;
+  }
+}
+
 function renderCartView() {
   // Flush current folder so the view is accurate
   saveCurrentFolder();
   _cvExpandPoses = [];
+  // Show "Browse selected" only when there are digital photos in the current folder
+  const browseBtn = document.getElementById('browse-selected-btn');
+  if (browseBtn) browseBtn.style.display = _cartPhotoMap.size > 0 ? '' : 'none';
 
   let html = '';
   let grandDigitalPrice = 0;
