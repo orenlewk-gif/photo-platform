@@ -643,7 +643,7 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
                             "Ski/snowboard action photo. For each person: "
-                            "1) sport: Skiers wear TWO narrow parallel skis and usually carry poles. Snowboarders stand sideways on ONE wide board and never carry poles. If you see poles, it is definitely ski. If no poles, look at the feet/board — one wide board = snowboard, two narrow boards = ski. "
+                            "1) sport: Use ALL available signals — (a) STANCE: snowboarders face sideways with their body perpendicular to the slope; skiers face forward with their body pointing downhill. Stance is often the clearest signal. (b) POLES: if poles are visible, it is definitely ski — snowboarders never carry poles. (c) EQUIPMENT: two narrow parallel skis = ski; one wide board with both feet strapped sideways = snowboard. When in doubt, trust stance over equipment. "
                             "2) jacket_colors: look at the sleeves/arms only. Pick ONE dominant color. Pick TWO only if two colors genuinely split the jacket roughly equally — never two if one clearly dominates. "
                             "3) pants_colors: look at the thighs/knees only. Pick the SINGLE dominant color. "
                             "4) bib_color: look for a solid-colored sleeveless vest/bib worn OVER the jacket on the torso (common in ski school). The jacket sleeves are still visible underneath. If a bib is present, record its color. If no bib, use 'none'. "

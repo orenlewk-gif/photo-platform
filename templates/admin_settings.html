@@ -1067,13 +1067,8 @@ function handleCFClick(e, folderKey, path, rowId, itemId, idx) {
       sel.add(path);
     }
     _cfLastClicked[folderKey] = idx;
+    document.querySelectorAll('.cf-editor').forEach(el => el.remove());
     renderFolderPhotoGrid(folderKey, rowId);
-    // Auto-open single editor when exactly 1 selected; close it otherwise
-    if (sel.size === 1 && sel.has(path)) {
-      openCFEditor(folderKey, path, rowId);
-    } else {
-      document.querySelectorAll('.cf-editor').forEach(el => el.remove());
-    }
   }
 }
 
@@ -1097,6 +1092,7 @@ function openBulkCFEditor(folderKey, rowId) {
   document.querySelectorAll('.cf-editor').forEach(el => el.remove());
   const sel = [...(_cfSelected[folderKey] || new Set())];
   if (!sel.length) return;
+  if (sel.length === 1) { openCFEditor(folderKey, sel[0], rowId); return; }
   const bulkState = {jacket: [], pants: [], sport: null, bib: null, instructor: null};
   const colorRow = (label, key) => {
     const pills = _ALL_COLORS.map(c => {
@@ -1317,6 +1313,7 @@ async function _saveOpenEditor() {
     const p = (_folderPhotos[cur._folderKey]||[]).find(x=>x.path===path);
     if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; p.bib=cur.bib; p.instructor=cur.instructor; }
     cur._dirty = false;
+    _clearCFSelection(cur._folderKey, cur._rowId, true);
     renderFolderPhotoGrid(cur._folderKey, cur._rowId);
   } catch(e) {
     if (statusEl) { statusEl.textContent = 'Error saving'; statusEl.style.color = '#e04'; }
