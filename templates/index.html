@@ -2056,8 +2056,7 @@ function _updateChipAvailability() {
         available = selJackets.every(j => (_colorCombos.jacket_to_jacket[j] || []).includes(color));
       }
     } else if (cat === 'pants' && selJackets.length) {
-      const valid = new Set(selJackets.flatMap(j => _colorCombos.jacket_to_pants[j] || []));
-      available = valid.has(color);
+      available = selJackets.every(j => (_colorCombos.jacket_to_pants[j] || []).includes(color));
     } else if (cat === 'jacket' && selPants) {
       const valid = _colorCombos.pants_to_jacket[selPants] || [];
       available = valid.includes(color);
