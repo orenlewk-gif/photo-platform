@@ -1746,7 +1746,7 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
             "sport":      item.get("sport"),
             "instructor": bool(item.get("ski_instructor")),
         })
-    results.sort(key=lambda x: x["file"])
+    results.sort(key=lambda x: natural_sort_key(x["file"]))
     return {"photos": results}
 
 
@@ -1843,8 +1843,9 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             continue
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
-        jcs = [c for c in (item.get("jacket_colors") or []) if c not in ("none", "unclear")]
-        pcs = [c for c in (item.get("pants_colors")  or []) if c not in ("none", "unclear")]
+        _valid = set(_HAIKU_COLOR_ENUM) - {"none", "unclear"}
+        jcs = [c for c in (item.get("jacket_colors") or []) if c in _valid]
+        pcs = [c for c in (item.get("pants_colors")  or []) if c in _valid]
         for c in jcs: jacket.add(c)
         for c in pcs: pants.add(c)
         if item.get("ski_instructor"): has_instructor = True
