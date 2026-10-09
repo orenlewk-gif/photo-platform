@@ -547,11 +547,9 @@ _HAIKU_COLOR_ENUM = [
     "white", "black", "gray", "brown", "tan", "teal", "none", "unclear",
 ]
 
-_HAIKU_BIB_ENUM = ["red", "orange", "yellow", "blue", "purple", "none", "unclear"]
-
 _HAIKU_TOOL = {
     "name": "record_colors",
-    "description": "Record jacket, pants, and bib colors, and sport (ski or snowboard), for each person visible in this ski or snowboard photo.",
+    "description": "Record jacket and pants colors, and sport (ski or snowboard), for each person visible in this ski or snowboard photo.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -582,13 +580,8 @@ _HAIKU_TOOL = {
                             "maxItems": 1,
                             "description": "The single most dominant color of the SKI PANTS — identified by the THIGHS and KNEES. Pick ONE color only: whichever covers the most fabric area.",
                         },
-                        "bib_color": {
-                            "type": "string",
-                            "enum": _HAIKU_BIB_ENUM,
-                            "description": "Color of a ski school bib/vest worn OVER the jacket on the torso. A bib is a solid-colored sleeveless vest layered on top of the jacket — the jacket sleeves are still visible underneath. Only red, orange, yellow, blue, or purple are valid bib colors. Use 'none' if no bib is present.",
-                        },
                     },
-                    "required": ["is_main_subject", "sport", "jacket_colors", "pants_colors", "bib_color"],
+                    "required": ["is_main_subject", "sport", "jacket_colors", "pants_colors"],
                 },
             },
         },
@@ -646,7 +639,6 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "1) sport: Use ALL available signals — (a) STANCE: snowboarders face sideways with their body perpendicular to the slope; skiers face forward with their body pointing downhill. Stance is often the clearest signal. (b) POLES: if poles are visible, it is definitely ski — snowboarders never carry poles. (c) EQUIPMENT: two narrow parallel skis = ski; one wide board with both feet strapped sideways = snowboard. When in doubt, trust stance over equipment. "
                             "2) jacket_colors: look at the sleeves/arms only. Pick ONE dominant color. Pick TWO only if two colors genuinely split the jacket roughly equally — never two if one clearly dominates. "
                             "3) pants_colors: look at the thighs/knees only. Pick the SINGLE dominant color. "
-                            "4) bib_color: look for a solid-colored sleeveless vest/bib worn OVER the jacket on the torso (common in ski school). The jacket sleeves are still visible underneath. If a bib is present, record its color. If no bib, use 'none'. "
                             "Color accuracy rules: label dark charcoal/slate clothing as 'gray' not 'black' or 'green'. Label true black only if the fabric is clearly black. Olive/army/military green = 'green'. Tan/khaki/beige = 'tan'. Do NOT let shadows or snow glare shift your color reading — judge the fabric's actual color. "
                             "Only label clothing fabric. Ignore snow, sky, trees, goggles, helmets, gloves, and hard equipment. "
                             "Use 'none' if not visible. Always choose ONE color — the one covering the most fabric area."
@@ -687,7 +679,6 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                     "sport":         main.get("sport", "unclear"),
                     "jacket_colors": main.get("jacket_colors", []),
                     "pants_colors":  main.get("pants_colors", []),
-                    "bib_color":     main.get("bib_color", "none"),
                 }
         return None
     except Exception as e:
@@ -719,8 +710,7 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["bib_color"]     = colors.get("bib_color", "none")
-                    print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']} bib={item['bib_color']}")
+                    print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
             print(f"Process failed {item['path']}: {e}")
@@ -1381,7 +1371,6 @@ def search(
     jacket_color: list[str] = Query(None),
     pants_color:  str       = Query(None),
     sport:        str       = Query(None),
-    bib_color:      str       = Query(None),
     ski_instructor: bool      = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
@@ -1390,15 +1379,15 @@ def search(
     try:
         return _search(last_name, date, location, group, time_from, time_to,
                        jacket_color=jacket_color, pants_color=pants_color, sport=sport,
-                       bib_color=bib_color, ski_instructor=ski_instructor)
+                       ski_instructor=ski_instructor)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
 def _search(last_name, date, location, group=None, time_from=None, time_to=None,
-            jacket_color=None, pants_color=None, sport=None, bib_color=None, ski_instructor=None):
+            jacket_color=None, pants_color=None, sport=None, ski_instructor=None):
     jacket_colors_filter = [c for c in (jacket_color or []) if c] if isinstance(jacket_color, list) else ([jacket_color] if jacket_color else [])
-    has_labels = any([jacket_colors_filter, pants_color, sport, bib_color, ski_instructor])
+    has_labels = any([jacket_colors_filter, pants_color, sport, ski_instructor])
     if not last_name and not has_labels:
         return JSONResponse(status_code=400, content={"error": "Provide last_name or color filter"})
 
@@ -1432,8 +1421,6 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
             if pants_color and not any(c in _color_family(pants_color) for c in (item.get("pants_colors") or [])):
                 continue
             if sport and item.get("sport") != sport:
-                continue
-            if bib_color and item.get("bib_color") != bib_color:
                 continue
             if ski_instructor and not item.get("ski_instructor"):
                 continue
@@ -1757,7 +1744,6 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
             "jacket":     item.get("jacket_colors"),
             "pants":      item.get("pants_colors"),
             "sport":      item.get("sport"),
-            "bib":        item.get("bib_color", "none"),
             "instructor": bool(item.get("ski_instructor")),
         })
     results.sort(key=lambda x: x["file"])
@@ -1785,7 +1771,6 @@ async def admin_reclassify_photos(request: Request):
         it["sport"]         = None
         it["jacket_colors"] = None
         it["pants_colors"]  = None
-        it["bib_color"]     = None
 
     job_id = str(uuid.uuid4())[:8]
     _embed_jobs[job_id] = {"total": len(targets), "done": 0, "finished": False}
@@ -1801,7 +1786,6 @@ async def admin_reclassify_photos(request: Request):
                     it["sport"]         = colors.get("sport", "unclear")
                     it["jacket_colors"] = colors.get("jacket_colors", [])
                     it["pants_colors"]  = colors.get("pants_colors", [])
-                    it["bib_color"]     = colors.get("bib_color", "none")
                     print(f"Re-classify: {it['path'].split('/')[-1]} → sport={it['sport']} jacket={it['jacket_colors']} pants={it['pants_colors']}")
                 done += 1
                 if jid in _embed_jobs:
@@ -1832,7 +1816,6 @@ async def admin_set_photo_colors(request: Request):
     if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
     if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
     if "sport"         in body: item["sport"]          = body["sport"] or None
-    if "bib_color"       in body: item["bib_color"]       = body["bib_color"] or "none"
     if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
     def _flush():
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
@@ -1844,7 +1827,7 @@ async def admin_set_photo_colors(request: Request):
 @app.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
     """Return distinct jacket/pants colors, sport types, and valid combos for a folder."""
-    jacket, pants, bibs = set(), set(), set()
+    jacket, pants = set(), set()
     has_ski = has_snowboard = has_instructor = False
     j_to_p: dict = {}
     p_to_j: dict = {}
@@ -1862,10 +1845,8 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             continue
         jcs = [c for c in (item.get("jacket_colors") or []) if c not in ("none", "unclear")]
         pcs = [c for c in (item.get("pants_colors")  or []) if c not in ("none", "unclear")]
-        bc  = item.get("bib_color")
         for c in jcs: jacket.add(c)
         for c in pcs: pants.add(c)
-        if bc and bc not in ("none", "unclear", None): bibs.add(bc)
         if item.get("ski_instructor"): has_instructor = True
         for jc in jcs:
             j_to_p.setdefault(jc, set()).update(pcs)
@@ -1884,7 +1865,6 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
     return {
         "jacket": sort_colors(jacket),
         "pants":  sort_colors(pants),
-        "bibs":   sort_colors(bibs),
         "has_ski": has_ski, "has_snowboard": has_snowboard, "has_instructor": has_instructor,
         "combos": {
             "jacket_to_pants":  {jc: sort_colors(ps) for jc, ps in j_to_p.items()},

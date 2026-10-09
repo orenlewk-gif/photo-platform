@@ -932,7 +932,6 @@ async function runRecolor() {
 
 // ── Classified folders ────────────────────────────────────────────────────────
 const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','tan','teal'];
-const _BIB_COLORS = ['red','orange','yellow','blue','purple'];
 const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa',tan:'#c8a96e'};
 const _COLOR_LABEL = {tan:'tan/khaki'};
 let _classifiedFolders = [];
@@ -999,7 +998,7 @@ function renderFolderPhotoGrid(folderKey, rowId) {
     const isSel   = sel.has(p.path);
     const jacketDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
     const pantsDots  = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px"></span>`).join('');
-    const bibDot     = (p.bib && p.bib !== 'none' && p.bib !== 'unclear') ? `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${_HEX[p.bib]||'#888'};margin-right:2px;border:1px solid rgba(255,255,255,.3)" title="bib: ${p.bib}"></span>` : '';
+    const bibDot     = '';
     const sportLabel = p.sport === 'ski' ? 'ski' : p.sport === 'snowboard' ? 'sb' : '';
     const escapedPath = p.path.replace(/'/g,"\\'");
     return `<div id="${itemId}" style="display:inline-block;vertical-align:top;width:140px;margin:.3rem;text-align:center">
@@ -1093,7 +1092,7 @@ function openBulkCFEditor(folderKey, rowId) {
   const sel = [...(_cfSelected[folderKey] || new Set())];
   if (!sel.length) return;
   if (sel.length === 1) { openCFEditor(folderKey, sel[0], rowId); return; }
-  const bulkState = {jacket: [], pants: [], sport: null, bib: null, instructor: null};
+  const bulkState = {jacket: [], pants: [], sport: null, instructor: null};
   const colorRow = (label, key) => {
     const pills = _ALL_COLORS.map(c => {
       const on = bulkState[key].includes(c);
@@ -1110,13 +1109,10 @@ function openBulkCFEditor(folderKey, rowId) {
   div.style.cssText = 'position:sticky;top:0;z-index:11;background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:8px;padding:.75rem;margin:.5rem 0 .25rem;font-size:.78rem';
   const stateVarName = 'bulkState_' + rowId.replace(/[^a-z0-9]/gi,'_');
   window[stateVarName] = bulkState;
-  const bibPillsBulk = _BIB_COLORS.map(c =>
-    `<span data-bib="${c}" onclick="toggleBulkBib('${c}',this,${stateVarName})" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-size:.65rem;color:rgba(255,255,255,.5);margin:.15rem .1rem"><span style="width:8px;height:8px;border-radius:2px;background:${_HEX[c]||'#888'};flex-shrink:0;border:1px solid rgba(255,255,255,.2)"></span>${_COLOR_LABEL[c]||c}</span>`
-  ).join('') + `<span data-bib="none" onclick="toggleBulkBib('none',this,${stateVarName})" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-size:.65rem;color:rgba(255,255,255,.5);margin:.15rem .1rem">none</span>` +
-  `<span data-bulk-instr onclick="toggleBulkInstructor(this,${stateVarName})" style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-size:.65rem;color:rgba(255,255,255,.5);margin:.15rem .5rem">instructor</span>`;
+  const instrPillBulk = `<span data-bulk-instr onclick="toggleBulkInstructor(this,${stateVarName})" style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:10px;border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);cursor:pointer;font-size:.65rem;color:rgba(255,255,255,.5);margin:.15rem .5rem">instructor</span>`;
   div.innerHTML = `<div style="font-size:.72rem;font-weight:600;color:#F5C518;margin-bottom:.5rem">Editing ${sel.length} photos — set fields to apply (leave empty to skip)</div>
     ${colorRow('Jacket','jacket')}${colorRow('Pants','pants')}
-    <div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Bib</span>${bibPillsBulk}</div>
+    <div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Extra</span>${instrPillBulk}</div>
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
     <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center">
       <button onclick="applyBulkEdit('${folderKey}','${rowId}','${stateVarName}',this)" style="padding:4px 14px;border-radius:6px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit">Apply to ${sel.length} photos</button>
@@ -1144,16 +1140,6 @@ function toggleBulkInstructor(el, state) {
   el.style.fontWeight  = state.instructor ? '600' : '400';
 }
 
-function toggleBulkBib(color, el, state) {
-  state.bib = state.bib === color ? null : color;
-  el.closest('div').querySelectorAll('span[data-bib]').forEach(e => {
-    const isSel = e.dataset.bib === state.bib;
-    e.style.borderColor = isSel ? '#F5C518' : 'rgba(255,255,255,.12)';
-    e.style.background  = isSel ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
-    e.style.color       = isSel ? '#F5C518' : 'rgba(255,255,255,.5)';
-  });
-}
-
 function toggleBulkSport(sport, el, state) {
   const on = state.sport !== sport;
   state.sport = on ? sport : null;
@@ -1177,7 +1163,6 @@ async function applyBulkEdit(folderKey, rowId, stateVarName, btn) {
     if (state.jacket.length) body.jacket_colors = state.jacket;
     if (state.pants.length)  body.pants_colors  = state.pants;
     if (state.sport)         body.sport         = state.sport;
-    if (state.bib !== null)       body.bib_color     = state.bib;
     if (state.instructor !== null) body.ski_instructor = state.instructor;
     try {
       const r = await fetch('/api/admin/set-photo-colors', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -1187,7 +1172,6 @@ async function applyBulkEdit(folderKey, rowId, stateVarName, btn) {
           if (state.jacket.length) p.jacket = state.jacket;
           if (state.pants.length)  p.pants  = state.pants;
           if (state.sport)         p.sport  = state.sport;
-          if (state.bib !== null)       p.bib        = state.bib;
           if (state.instructor !== null) p.instructor = state.instructor;
         }
         done++;
@@ -1208,7 +1192,7 @@ async function openCFEditor(folderKey, path, rowId) {
   if (!item) return;
   const photos = _folderPhotos[folderKey] || [];
   const p      = photos.find(x => x.path === path) || {};
-  if (!_editState[path]) _editState[path] = {jacket:[...(p.jacket||[])], pants:[...(p.pants||[])], sport:p.sport||null, bib:p.bib||'none', instructor:!!p.instructor, _folderKey:folderKey, _rowId:rowId};
+  if (!_editState[path]) _editState[path] = {jacket:[...(p.jacket||[])], pants:[...(p.pants||[])], sport:p.sport||null, instructor:!!p.instructor, _folderKey:folderKey, _rowId:rowId};
   const cur = _editState[path];
 
   const colorRow = (label, key) => {
@@ -1228,10 +1212,6 @@ async function openCFEditor(folderKey, path, rowId) {
   div.className = 'cf-editor';
   div.style.cssText = 'background:rgba(8,18,30,.97);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.75rem;margin:.5rem 0;font-size:.78rem';
   const statusId = 'cfs_' + btoa(path).replace(/[^a-zA-Z0-9]/g,'');
-  const bibPills = _BIB_COLORS.map(c => {
-    const on = cur.bib === c;
-    return `<span data-bib="${c}" onclick="toggleCFBib('${path}','${c}',this)" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid ${on?'#F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem"><span style="width:8px;height:8px;border-radius:2px;background:${_HEX[c]||'#888'};flex-shrink:0;border:1px solid rgba(255,255,255,.2)"></span>${_COLOR_LABEL[c]||c}</span>`;
-  }).join('') + (() => { const on = cur.bib === 'none'; return `<span data-bib="none" onclick="toggleCFBib('${path}','none',this)" style="display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;border:1.5px solid ${on?'#F5C518':'rgba(255,255,255,.12)'};background:${on?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${on?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .1rem">none</span>`; })();
   const instrOn = cur.instructor;
   const instrPill = `<span data-instr onclick="toggleCFInstructor('${path}',this)" style="display:inline-flex;align-items:center;gap:3px;padding:2px 9px;border-radius:10px;border:1.5px solid ${instrOn?'#F5C518':'rgba(255,255,255,.12)'};background:${instrOn?'rgba(245,197,24,.12)':'rgba(255,255,255,.05)'};cursor:pointer;font-size:.65rem;color:${instrOn?'#F5C518':'rgba(255,255,255,.5)'};margin:.15rem .5rem;font-weight:${instrOn?'600':'400'}">instructor</span>`;
 
@@ -1240,7 +1220,7 @@ async function openCFEditor(folderKey, path, rowId) {
       <span id="${statusId}" style="font-size:.7rem;color:rgba(255,255,255,.3)"></span>
     </div>
     ${colorRow('Jacket','jacket')}${colorRow('Pants','pants')}
-    <div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Bib</span>${bibPills}${instrPill}</div>
+    <div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Extra</span>${instrPill}</div>
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
     <div style="margin-top:.4rem">
       <button onclick="_saveOpenEditor().catch(()=>{}).finally(()=>this.closest('.cf-editor').remove())" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Done</button>
@@ -1270,18 +1250,6 @@ function toggleCFInstructor(path, el) {
   el.style.fontWeight  = cur.instructor ? '600' : '400';
 }
 
-function toggleCFBib(path, color, el) {
-  const cur = _editState[path]; if (!cur) return;
-  cur.bib = cur.bib === color ? 'none' : color;
-  cur._dirty = true;
-  el.closest('div').querySelectorAll('span[data-bib]').forEach(e => {
-    const isSel = e.dataset.bib === cur.bib;
-    e.style.borderColor = isSel ? '#F5C518' : 'rgba(255,255,255,.12)';
-    e.style.background  = isSel ? 'rgba(245,197,24,.12)' : 'rgba(255,255,255,.05)';
-    e.style.color       = isSel ? '#F5C518' : 'rgba(255,255,255,.5)';
-  });
-}
-
 function toggleCFSport(path, sport, el) {
   const cur = _editState[path]; if (!cur) return;
   const on  = cur.sport !== sport;
@@ -1307,11 +1275,11 @@ async function _saveOpenEditor() {
   try {
     const r = await fetch('/api/admin/set-photo-colors', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport, bib_color: cur.bib, ski_instructor: cur.instructor}),
+      body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport, ski_instructor: cur.instructor}),
     });
     if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch(_){} throw new Error(msg); }
     const p = (_folderPhotos[cur._folderKey]||[]).find(x=>x.path===path);
-    if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; p.bib=cur.bib; p.instructor=cur.instructor; }
+    if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; p.instructor=cur.instructor; }
     cur._dirty = false;
     _clearCFSelection(cur._folderKey, cur._rowId, true);
     renderFolderPhotoGrid(cur._folderKey, cur._rowId);
@@ -1327,11 +1295,11 @@ async function saveCFEdit(folderKey, path, rowId, btn) {
   try {
     const r = await fetch('/api/admin/set-photo-colors', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport, bib_color: cur.bib, ski_instructor: cur.instructor}),
+      body: JSON.stringify({path, jacket_colors: cur.jacket, pants_colors: cur.pants, sport: cur.sport, ski_instructor: cur.instructor}),
     });
     if (!r.ok) { let msg = r.statusText; try { msg = (await r.json()).error || msg; } catch(_){} throw new Error(msg); }
     const p = (_folderPhotos[folderKey]||[]).find(x=>x.path===path);
-    if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; p.bib=cur.bib; p.instructor=cur.instructor; }
+    if (p) { p.jacket=cur.jacket; p.pants=cur.pants; p.sport=cur.sport; p.instructor=cur.instructor; }
     delete _editState[path];
     btn.closest('.cf-editor').remove();
     renderFolderPhotoGrid(folderKey, rowId);
