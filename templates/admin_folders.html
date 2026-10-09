@@ -243,16 +243,38 @@ async function pushLive(folderKey, btn) {
     headers: {'Content-Type':'application/json'},
     body: JSON.stringify({date: f.date, location: f.location, folder: f.name})
   });
-  if (res.ok) {
-    const d = await res.json();
-    showToast(`${d.pushed} photo${d.pushed !== 1 ? 's' : ''} are now live`);
-    const idx = allFolders.findIndex(x => x.folder_key === folderKey);
-    if (idx !== -1) allFolders[idx].draft_count = 0;
-    render(allFolders);
-  } else {
+  if (!res.ok) {
     showToast('Push live failed');
     btn.disabled = false;
     btn.textContent = 'Push Live';
+    return;
+  }
+  const d = await res.json();
+  const idx = allFolders.findIndex(x => x.folder_key === folderKey);
+  if (idx !== -1) allFolders[idx].draft_count = 0;
+
+  if (d.job_id) {
+    btn.textContent = `Classifying 0/${d.classify_total}…`;
+    await pollPushLiveClassify(d.job_id, d.classify_total, btn);
+  } else {
+    render(allFolders);
+    showToast(`${d.pushed} photo${d.pushed !== 1 ? 's' : ''} are now live`);
+  }
+}
+
+async function pollPushLiveClassify(jobId, total, btn) {
+  try {
+    const r = await fetch(`/api/admin/embed-status?job_id=${jobId}`);
+    const s = await r.json();
+    if (s.finished) {
+      render(allFolders);
+      showToast(`${total} photo${total !== 1 ? 's' : ''} live — color classification done`);
+    } else {
+      btn.textContent = `Classifying ${s.done}/${s.total}…`;
+      setTimeout(() => pollPushLiveClassify(jobId, total, btn), 2000);
+    }
+  } catch(e) {
+    setTimeout(() => pollPushLiveClassify(jobId, total, btn), 3000);
   }
 }
 

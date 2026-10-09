@@ -5909,15 +5909,20 @@ async def admin_push_live(request: Request):
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
 
+    job_id = None
     if to_embed:
-        def _embed_bg():
-            count = embed_items_fast(to_embed)
+        job_id = str(uuid.uuid4())[:8]
+        _embed_jobs[job_id] = {"total": len(to_embed), "done": 0, "finished": False}
+        def _embed_bg(jid=job_id):
+            count = embed_items_fast(to_embed, job_id=jid)
             s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                           Body=json.dumps(data).encode(), ContentType="application/json")
+            if jid in _embed_jobs:
+                _embed_jobs[jid]["finished"] = True
             print(f"Push-live classify done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
-    return {"pushed": pushed}
+    return {"pushed": pushed, "job_id": job_id, "classify_total": len(to_embed)}
 
 
 @app.post("/api/admin/recolor-all")
