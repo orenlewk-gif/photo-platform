@@ -1045,34 +1045,40 @@ function _openPhotoZoom(path) {
 const _cfLastClicked = {};
 
 function handleCFClick(e, folderKey, path, rowId, itemId, idx) {
-  const hasSel = (_cfSelected[folderKey] || new Set()).size > 0;
+  if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
+  const sel = _cfSelected[folderKey];
+
   if (e.shiftKey && _cfLastClicked[folderKey] != null) {
-    // Range select from last click to this click
-    if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
+    // Range select from anchor to this photo
     const photos = _folderPhotos[folderKey] || [];
     const from = Math.min(_cfLastClicked[folderKey], idx);
     const to   = Math.max(_cfLastClicked[folderKey], idx);
     for (let i = from; i <= to; i++) {
-      if (photos[i]) _cfSelected[folderKey].add(photos[i].path);
+      if (photos[i]) sel.add(photos[i].path);
     }
-    renderFolderPhotoGrid(folderKey, rowId);
-  } else if (hasSel) {
-    // Selection mode — toggle individual
-    if (!_cfSelected[folderKey]) _cfSelected[folderKey] = new Set();
-    const sel = _cfSelected[folderKey];
-    if (sel.has(path)) sel.delete(path); else sel.add(path);
-    _cfLastClicked[folderKey] = idx;
+    document.querySelectorAll('.cf-editor').forEach(el => el.remove());
     renderFolderPhotoGrid(folderKey, rowId);
   } else {
-    // Nothing selected — open single editor
+    // Toggle this photo's selection
+    if (sel.has(path)) {
+      sel.delete(path);
+    } else {
+      sel.add(path);
+    }
     _cfLastClicked[folderKey] = idx;
-    openCFEditor(folderKey, path, rowId);
+    renderFolderPhotoGrid(folderKey, rowId);
+    // Auto-open single editor when exactly 1 selected; close it otherwise
+    if (sel.size === 1 && sel.has(path)) {
+      openCFEditor(folderKey, path, rowId);
+    } else {
+      document.querySelectorAll('.cf-editor').forEach(el => el.remove());
+    }
   }
 }
 
 function _clearCFSelection(folderKey, rowId, skipRender) {
   _cfSelected[folderKey] = new Set();
-  _cfLastClicked[folderKey] = null;
+  // Keep _cfLastClicked so shift-select anchor persists after bulk edit
   if (!skipRender) renderFolderPhotoGrid(folderKey, rowId);
 }
 
