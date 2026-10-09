@@ -547,6 +547,8 @@ _HAIKU_COLOR_ENUM = [
     "white", "black", "gray", "brown", "tan", "teal", "none", "unclear",
 ]
 
+_HAIKU_BIB_ENUM = ["red", "orange", "yellow", "blue", "purple", "none", "unclear"]
+
 _HAIKU_TOOL = {
     "name": "record_colors",
     "description": "Record jacket, pants, and bib colors, and sport (ski or snowboard), for each person visible in this ski or snowboard photo.",
@@ -582,8 +584,8 @@ _HAIKU_TOOL = {
                         },
                         "bib_color": {
                             "type": "string",
-                            "enum": _HAIKU_COLOR_ENUM,
-                            "description": "Color of a ski school bib/vest worn OVER the jacket on the torso. A bib is a solid-colored sleeveless vest layered on top of the jacket — the jacket sleeves are still visible underneath. Use 'none' if no bib is present.",
+                            "enum": _HAIKU_BIB_ENUM,
+                            "description": "Color of a ski school bib/vest worn OVER the jacket on the torso. A bib is a solid-colored sleeveless vest layered on top of the jacket — the jacket sleeves are still visible underneath. Only red, orange, yellow, blue, or purple are valid bib colors. Use 'none' if no bib is present.",
                         },
                     },
                     "required": ["is_main_subject", "sport", "jacket_colors", "pants_colors", "bib_color"],
@@ -1379,23 +1381,24 @@ def search(
     jacket_color: list[str] = Query(None),
     pants_color:  str       = Query(None),
     sport:        str       = Query(None),
-    bib_color:    str       = Query(None),
+    bib_color:      str       = Query(None),
+    ski_instructor: bool      = Query(None),
 ):
     ip = request.client.host if request.client else "unknown"
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
         return _search(last_name, date, location, group, time_from, time_to,
-                       jacket_color=jacket_color, pants_color=pants_color, sport=sport, bib_color=bib_color)
+                       jacket_color=jacket_color, pants_color=pants_color, sport=sport,
+                       bib_color=bib_color, ski_instructor=ski_instructor)
     except Exception as e:
         import traceback; traceback.print_exc()
         return JSONResponse(status_code=503, content={"error": str(e)})
 
 def _search(last_name, date, location, group=None, time_from=None, time_to=None,
-            jacket_color=None, pants_color=None, sport=None, bib_color=None):
-    # jacket_color may be a list (AND logic) or None
+            jacket_color=None, pants_color=None, sport=None, bib_color=None, ski_instructor=None):
     jacket_colors_filter = [c for c in (jacket_color or []) if c] if isinstance(jacket_color, list) else ([jacket_color] if jacket_color else [])
-    has_labels = any([jacket_colors_filter, pants_color, sport, bib_color])
+    has_labels = any([jacket_colors_filter, pants_color, sport, bib_color, ski_instructor])
     if not last_name and not has_labels:
         return JSONResponse(status_code=400, content={"error": "Provide last_name or color filter"})
 
@@ -1431,6 +1434,8 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
             if sport and item.get("sport") != sport:
                 continue
             if bib_color and item.get("bib_color") != bib_color:
+                continue
+            if ski_instructor and not item.get("ski_instructor"):
                 continue
             results.append((0.0, item))
         results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
@@ -1747,12 +1752,13 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
         results.append({
-            "path":   item["path"],
-            "file":   item["path"].split("/")[-1],
-            "jacket": item.get("jacket_colors"),
-            "pants":  item.get("pants_colors"),
-            "sport":  item.get("sport"),
-            "bib":    item.get("bib_color", "none"),
+            "path":       item["path"],
+            "file":       item["path"].split("/")[-1],
+            "jacket":     item.get("jacket_colors"),
+            "pants":      item.get("pants_colors"),
+            "sport":      item.get("sport"),
+            "bib":        item.get("bib_color", "none"),
+            "instructor": bool(item.get("ski_instructor")),
         })
     results.sort(key=lambda x: x["file"])
     return {"photos": results}
@@ -1826,7 +1832,8 @@ async def admin_set_photo_colors(request: Request):
     if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
     if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
     if "sport"         in body: item["sport"]          = body["sport"] or None
-    if "bib_color"     in body: item["bib_color"]      = body["bib_color"] or "none"
+    if "bib_color"       in body: item["bib_color"]       = body["bib_color"] or "none"
+    if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
     def _flush():
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
@@ -1838,7 +1845,7 @@ async def admin_set_photo_colors(request: Request):
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
     """Return distinct jacket/pants colors, sport types, and valid combos for a folder."""
     jacket, pants, bibs = set(), set(), set()
-    has_ski = has_snowboard = False
+    has_ski = has_snowboard = has_instructor = False
     j_to_p: dict = {}
     p_to_j: dict = {}
     j_to_j: dict = {}
@@ -1859,6 +1866,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         for c in jcs: jacket.add(c)
         for c in pcs: pants.add(c)
         if bc and bc not in ("none", "unclear", None): bibs.add(bc)
+        if item.get("ski_instructor"): has_instructor = True
         for jc in jcs:
             j_to_p.setdefault(jc, set()).update(pcs)
             for pc in pcs:
@@ -1877,7 +1885,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         "jacket": sort_colors(jacket),
         "pants":  sort_colors(pants),
         "bibs":   sort_colors(bibs),
-        "has_ski": has_ski, "has_snowboard": has_snowboard,
+        "has_ski": has_ski, "has_snowboard": has_snowboard, "has_instructor": has_instructor,
         "combos": {
             "jacket_to_pants":  {jc: sort_colors(ps) for jc, ps in j_to_p.items()},
             "pants_to_jacket":  {pc: sort_colors(js) for pc, js in p_to_j.items()},
