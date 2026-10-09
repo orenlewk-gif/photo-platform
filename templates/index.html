@@ -1994,14 +1994,6 @@ async function loadColorFilter(date, location, group) {
     ].filter(c => c.colors.length > 0);
     let html = '<div class="color-filter-wrap">';
 
-    if (availDates.length > 1) {
-      html += '<div class="date-filter-row"><span class="color-filter-label">date</span>';
-      html += `<button class="date-pill${!date ? ' active' : ''}" onclick="selectFilterDate('')">All</button>`;
-      for (const dt of availDates) {
-        html += `<button class="date-pill${date === dt ? ' active' : ''}" onclick="selectFilterDate('${dt}')">${_fmtDate(dt)}</button>`;
-      }
-      html += '</div>';
-    }
 
     if (d.has_ski || d.has_snowboard) {
       html += '<div class="sport-filter-row"><span class="color-filter-label">sport</span>';
