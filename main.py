@@ -544,7 +544,7 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 
 _HAIKU_COLOR_ENUM = [
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
-    "white", "black", "gray", "brown", "tan", "teal", "none", "unclear",
+    "white", "black", "gray", "brown", "tan", "teal", "camo", "none", "unclear",
 ]
 
 _HAIKU_TOOL = {
@@ -576,7 +576,7 @@ _HAIKU_TOOL = {
                             "type": "array",
                             "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
                             "maxItems": 2,
-                            "description": "The dominant color(s) of the SKI JACKET — identified by the SLEEVES and ARMS. Pick ONE color (the most dominant). Pick TWO only if two colors genuinely split the jacket roughly equally (e.g. half red, half blue). Never pick two if one clearly dominates.",
+                            "description": "The dominant color(s) of the SKI JACKET — identified by the SLEEVES and ARMS. Pick ONE color (the most dominant). Pick TWO only if two colors genuinely split the jacket roughly equally (e.g. half red, half blue). Never pick two if one clearly dominates. Use 'camo' if the jacket has a camouflage pattern (mixed green/brown/tan/black irregular patches).",
                         },
                         "pants_colors": {
                             "type": "array",
