@@ -508,8 +508,8 @@ function renderPhotoSelector(folderKey, photos) {
   if (!photos.length) return '<div style="color:rgba(255,255,255,.4);font-size:.8rem">No photos found</div>';
   const sel = _selState[folderKey] || new Set();
   const thumbBase = 'https://photos.bigskyphotos.com/';
-  const COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','navy','teal'];
-  const HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa'};
+  const COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','tan','teal','camo'];
+  const HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',tan:'#c8a96e',teal:'#0aa',camo:'#556b2f'};
   const grid = photos.map(p => {
     const isSel = sel.has(p.path);
     const safeKey = folderKey.replace(/'/g,"\\'");
@@ -589,8 +589,8 @@ async function reclassifySelected(folderKey) {
 }
 
 // ── Manual color editor ───────────────────────────────────────────────────────
-const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','navy','teal'];
-const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',navy:'#036',teal:'#0aa'};
+const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','tan','teal','camo'];
+const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',tan:'#c8a96e',teal:'#0aa',camo:'#556b2f'};
 let _editState = {};  // path → {jacket, pants, sport}
 
 function openColorEditor(folderKey, path) {
