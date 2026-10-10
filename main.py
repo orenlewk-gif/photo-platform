@@ -563,10 +563,14 @@ _HAIKU_TOOL = {
                             "type": "boolean",
                             "description": "True for the primary skier/snowboarder this photo is focused on",
                         },
+                        "equipment_observation": {
+                            "type": "string",
+                            "description": "FILL THIS FIRST. Look at this person's feet and lower body. In one sentence describe exactly what you see: e.g. 'one wide flat board connecting both feet with no gap', or 'two separate narrow planks one under each foot with space between them', or 'poles in both hands and two narrow planks', or 'feet not visible'.",
+                        },
                         "sport": {
                             "type": "string",
                             "enum": ["ski", "snowboard", "unclear"],
-                            "description": "Whether this person is on skis (two narrow boards) or a snowboard (one wide board). Look at their feet/equipment.",
+                            "description": "Based ONLY on your equipment_observation: one wide board connecting both feet = 'snowboard'; poles visible OR two separate narrow planks = 'ski'; feet not visible and no other signal = 'unclear'.",
                         },
                         "jacket_colors": {
                             "type": "array",
@@ -581,7 +585,7 @@ _HAIKU_TOOL = {
                             "description": "The single most dominant color of the SKI PANTS — identified by the THIGHS and KNEES. Pick ONE color only: whichever covers the most fabric area.",
                         },
                     },
-                    "required": ["is_main_subject", "sport", "jacket_colors", "pants_colors"],
+                    "required": ["is_main_subject", "equipment_observation", "sport", "jacket_colors", "pants_colors"],
                 },
             },
         },
@@ -636,7 +640,9 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
                             "For each person, set is_main_subject=true only for the one this photo "
                             "is clearly focused on (closest to camera, most prominent). "
                             "Ski/snowboard action photo. For each person: "
-                            "1) sport — work through these checks in order and stop at the first one you can confirm: (a) POLES — look specifically at both hands: is either hand gripping a thin rod (ski pole) that extends down toward the snow? If yes = 'ski', stop. No poles does NOT mean snowboard — many skiers, especially children, ski without them. (b) EQUIPMENT GAP TEST — look at the bottom of the image where the feet contact the snow/equipment. Is there a visible GAP between the two feet, each on its own separate plank? Gap present = skis = 'ski'. No gap, both feet sharing one continuous wide flat surface = snowboard = 'snowboard'. This gap test is the most reliable visual check: a snowboard has zero gap between feet (both bindings sit on the same object); skis always show two separate planks with space between them. A snowboard is roughly shoulder-width, appears as a single rectangle; skis are wrist-width each, always come in pairs. (c) SHAPE BACKUP — if gap is ambiguous: a snowboard is a single wide colored flat board (often with graphics) and only ONE exists; skis are two narrow parallel planks each extending well past the boot. Edge-on snowboard still appears as one connected object. (d) BODY ORIENTATION — use ONLY as last resort when equipment is completely hidden. Snowboarders ride sideways (chest perpendicular to slope); skiers face downhill. CRITICAL WARNING: do NOT use body orientation to override equipment evidence. Young and beginner skiers commonly have arms outstretched, awkward posture, or body not squarely facing downhill — equipment check always wins. (e) Use 'unclear' only if feet are fully hidden and no other signal is readable. "
+                            "1) equipment_observation: fill this FIRST — look at the lower body and feet. One wide flat board under both feet = describe it. Two separate narrow planks one per foot = describe them. Poles gripped in hands = note that. Feet hidden = say so. Be specific. "
+                            "2) sport: derive from equipment_observation only. One wide board = 'snowboard'. Poles visible OR two separate narrow planks = 'ski'. Do NOT use body orientation to pick sport — a skier may face sideways, a snowboarder may face forward. Equipment only. "
+                            "Note: snowboard boots mount sideways on ONE shared wide board — two boot shapes but one object. Ski = two separate narrow planks each extending past the boot, with a gap between them. "
                             "2) jacket_colors: look at the sleeves/arms only. Pick ONE dominant color. Pick TWO only if two colors genuinely split the jacket roughly equally — never two if one clearly dominates. "
                             "3) pants_colors: look at the thighs/knees only. Pick the SINGLE dominant color. "
                             "Color accuracy rules: label dark charcoal/slate clothing as 'gray' not 'black' or 'green'. Label true black only if the fabric is clearly black. Olive/army/military green = 'green'. Tan/khaki/beige = 'tan'. Do NOT let shadows or snow glare shift your color reading — judge the fabric's actual color. "
