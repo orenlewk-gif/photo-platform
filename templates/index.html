@@ -1843,6 +1843,7 @@ async function showGallery(date, location, family, ln, group) {
   loadFolderData(currentFolderKey, photos);
 
   showView('gallery');
+  window.scrollTo(0, 0);
   setBreadcrumb(crumbs, title);
   document.getElementById('ln-bar').style.display = (family || ln) ? '' : 'none';
 
