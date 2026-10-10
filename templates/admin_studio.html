@@ -2443,7 +2443,7 @@ async function startUpload() {
         const ld = await lr.json();
         totalLive += ld.pushed || 0;
         if (ld.job_id) {
-          await pollEmbedJob(ld.job_id, ld.embedding, label);
+          await pollEmbedJob(ld.job_id, ld.classify_total, label);
         }
       }
     }
