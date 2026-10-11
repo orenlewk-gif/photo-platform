@@ -4,3 +4,8 @@ __pycache__/
 *.pyc
 .env
 .DS_Store
+model_v1.onnx
+model_v1.onnx.data
+model_v1_meta.json
+training_data/
+training/

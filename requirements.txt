@@ -10,3 +10,4 @@ watchdog
 python-multipart
 mediapipe
 numpy
+onnxruntime

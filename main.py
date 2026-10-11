@@ -1,6 +1,7 @@
 import threading
 import zipfile
 import time as _time
+import numpy as np
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import FastAPI, Query, Request, Response
@@ -55,6 +56,22 @@ s3 = boto3.client(
 R2_BUCKET          = os.getenv("R2_BUCKET_NAME", "crystal-images")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 PRICING_KEY  = "meta/pricing.json"
+
+# ── Model file bootstrap — download from R2 on cold start if missing ──────────
+def _ensure_model_files():
+    files = ["model_v1.onnx", "model_v1.onnx.data", "model_v1_meta.json"]
+    missing = [f for f in files if not os.path.exists(f)]
+    if not missing:
+        return
+    print(f"Downloading model files from R2: {missing}")
+    for fname in missing:
+        try:
+            s3.download_file(R2_BUCKET, f"models/{fname}", fname)
+            print(f"  {fname} ready")
+        except Exception as e:
+            print(f"  {fname} download failed: {e}")
+
+_ensure_model_files()
 
 # ── Activity Pricing (R2) ─────────────────────────────────────────────────────
 _pricing_cache: dict = {"data": None, "ts": 0.0}
@@ -610,7 +627,92 @@ def _color_family(color: str) -> set:
     return _COLOR_FAMILY.get(color, {color})
 
 
+# ── ONNX Model Inference ──────────────────────────────────────────────────────
+
+_onnx_session = None
+_onnx_meta    = None
+_onnx_lock    = threading.Lock()
+
+_CLIP_MEAN = np.array([0.48145466, 0.4578275,  0.40821073], dtype=np.float32).reshape(3, 1, 1)
+_CLIP_STD  = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32).reshape(3, 1, 1)
+
+
+def _load_onnx_model():
+    global _onnx_session, _onnx_meta
+    with _onnx_lock:
+        if _onnx_session is not None:
+            return True
+        onnx_path = "model_v1.onnx"
+        meta_path = "model_v1_meta.json"
+        if not (os.path.exists(onnx_path) and os.path.exists(meta_path)):
+            return False
+        try:
+            import onnxruntime as ort
+            _onnx_session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+            with open(meta_path) as f:
+                _onnx_meta = json.load(f)
+            print(f"ONNX model loaded (best_score={_onnx_meta.get('best_score', '?'):.3f})")
+            return True
+        except Exception as e:
+            print(f"ONNX load failed: {e}")
+            return False
+
+
+def _preprocess_image(img_bytes: bytes) -> np.ndarray:
+    pil = Image.open(BytesIO(img_bytes)).convert("RGB").resize((224, 224), Image.LANCZOS)
+    arr = np.array(pil, dtype=np.float32).transpose(2, 0, 1) / 255.0  # HWC -> CHW
+    arr = (arr - _CLIP_MEAN) / _CLIP_STD
+    return arr[np.newaxis]  # (1, 3, 224, 224)
+
+
+def _sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
+    if not _load_onnx_model():
+        return None
+    try:
+        inp = _preprocess_image(img_bytes)
+        j_logits, p_logits, s_logits = _onnx_session.run(
+            ["jacket_logits", "pants_logits", "sport_logits"],
+            {"pixel_values": inp},
+        )
+        colors     = _onnx_meta["all_colors"]
+        sports     = _onnx_meta["sports"]
+        threshold  = 0.45  # slightly below 0.5 to improve recall on rare colors
+
+        j_prob = _sigmoid(j_logits[0])
+        p_prob = _sigmoid(p_logits[0])
+
+        # Pick top-1 jacket color; add second only if ≥0.45 and close to top
+        j_sorted = np.argsort(j_prob)[::-1]
+        jacket = [colors[j_sorted[0]]] if j_prob[j_sorted[0]] >= threshold else ["none"]
+        if (len(j_sorted) > 1 and j_prob[j_sorted[1]] >= threshold
+                and j_prob[j_sorted[0]] - j_prob[j_sorted[1]] < 0.25):
+            jacket.append(colors[j_sorted[1]])
+
+        p_sorted = np.argsort(p_prob)[::-1]
+        pants = [colors[p_sorted[0]]] if p_prob[p_sorted[0]] >= threshold else ["none"]
+
+        sport_idx = int(np.argmax(s_logits[0]))
+        sport = sports[sport_idx]
+
+        return {"sport": sport, "jacket_colors": jacket, "pants_colors": pants}
+    except Exception as e:
+        print(f"ONNX classify failed: {e}")
+        return None
+
+
 def classify_photo_colors(img_bytes: bytes) -> dict | None:
+    """Classify ski photo using ONNX model (falls back to Haiku if unavailable)."""
+    result = classify_photo_colors_onnx(img_bytes)
+    if result is not None:
+        return result
+    return _classify_photo_colors_haiku(img_bytes)
+
+
+def _classify_photo_colors_haiku(img_bytes: bytes) -> dict | None:
     """Call claude-haiku to get jacket/pants color labels for a ski photo."""
     if not ANTHROPIC_API_KEY:
         return None
@@ -710,14 +812,15 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
             _is_portrait_loc = item.get("location", "").strip().lower() in {
                 loc.strip().lower() for loc in PORTRAIT_LOCATIONS
             }
-            if ANTHROPIC_API_KEY and item.get("jacket_colors") is None and not _is_portrait_loc:
+            if item.get("jacket_colors") is None and not _is_portrait_loc:
                 colors = classify_photo_colors(img_bytes)
                 if colors:
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["classifier"]    = "haiku"
-                    print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+                    using_onnx = _onnx_session is not None
+                    item["classifier"]    = "model_v1" if using_onnx else "haiku"
+                    print(f"{'Model' if using_onnx else 'Haiku'}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
             print(f"Process failed {item['path']}: {e}")
