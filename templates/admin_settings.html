@@ -1014,12 +1014,19 @@ function renderFolderPhotoGrid(folderKey, rowId) {
   }).join('');
   const bulkBarId = 'bulk_' + rowId;
   const bulkDisplay = sel.size > 0 ? 'flex' : 'none';
-  panel.innerHTML = `<div id="${bulkBarId}" style="display:${bulkDisplay};position:sticky;top:0;z-index:10;margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:7px;align-items:center;gap:.75rem">
-    <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600">${sel.size} photo${sel.size!==1?'s':''} selected</span>
-    <button onclick="openBulkCFEditor('${folderKey}','${rowId}')" style="padding:3px 12px;border-radius:5px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit">Edit Selected</button>
-    <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.78rem;font-family:inherit">Clear</button>
-  </div>
-  <div style="margin:.25rem 0">${grid}</div>`;
+  panel.innerHTML = `<div style="display:flex;gap:.75rem;align-items:flex-start">
+    <div style="flex:1;min-width:0">
+      <div id="${bulkBarId}" style="display:${bulkDisplay};position:sticky;top:0;z-index:10;margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:7px;align-items:center;gap:.75rem">
+        <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600">${sel.size} photo${sel.size!==1?'s':''} selected</span>
+        <button onclick="openBulkCFEditor('${folderKey}','${rowId}')" style="padding:3px 12px;border-radius:5px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit">Edit Selected</button>
+        <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.78rem;font-family:inherit">Clear</button>
+      </div>
+      <div style="margin:.25rem 0">${grid}</div>
+    </div>
+    <div id="${rowId}_editor_sidebar" style="width:290px;flex-shrink:0;position:sticky;top:0;align-self:flex-start">
+      <div style="padding:2rem 1rem;font-size:.75rem;color:rgba(255,255,255,.2);text-align:center">Click a photo to edit</div>
+    </div>
+  </div>`;
   panel.style.display = '';
   _updateBulkBar(folderKey, rowId);
 }
@@ -1126,11 +1133,11 @@ function openBulkCFEditor(folderKey, rowId) {
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
     <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center">
       <button onclick="applyBulkEdit('${folderKey}','${rowId}','${stateVarName}',this)" style="padding:4px 14px;border-radius:6px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit">Apply to ${sel.length} photos</button>
-      <button onclick="this.closest('.cf-editor').remove()" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
+      <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
       <span id="bulk_status_${rowId}" style="font-size:.7rem;color:rgba(255,255,255,.4)"></span>
     </div>`;
-  const panel = document.getElementById(rowId);
-  if (panel) panel.prepend(div);
+  const sidebar = document.getElementById(rowId + '_editor_sidebar');
+  if (sidebar) { sidebar.innerHTML = ''; sidebar.appendChild(div); } else { const panel = document.getElementById(rowId); if (panel) panel.prepend(div); }
 }
 
 function toggleBulkColor(key, color, el, state) {
@@ -1160,6 +1167,25 @@ function toggleBulkSport(sport, el, state) {
     e.style.color       = isSel ? '#F5C518' : 'rgba(255,255,255,.5)';
   });
 }
+
+async function _cfDone(folderKey, rowId) {
+  await _saveOpenEditor().catch(() => {});
+  _clearCFSelection(folderKey, rowId, true);
+  renderFolderPhotoGrid(folderKey, rowId);
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.target.tagName === 'BUTTON' && e.target.closest('.cf-editor')) return;
+  const editor = document.querySelector('.cf-editor');
+  if (!editor) return;
+  e.preventDefault();
+  const applyBtn = editor.querySelector('button[onclick*="applyBulkEdit"]');
+  const doneBtn  = editor.querySelector('button[onclick*="_cfDone"]');
+  if (applyBtn && !applyBtn.disabled) applyBtn.click();
+  else if (doneBtn) doneBtn.click();
+});
 
 async function applyBulkEdit(folderKey, rowId, stateVarName, btn) {
   const state = window[stateVarName];
@@ -1231,10 +1257,11 @@ async function openCFEditor(folderKey, path, rowId) {
     <div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Extra</span>${instrPill}</div>
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
     <div style="margin-top:.4rem">
-      <button onclick="_saveOpenEditor().catch(()=>{}).finally(()=>this.closest('.cf-editor').remove())" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Done</button>
+      <button onclick="_cfDone('${folderKey}','${rowId}')" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Done</button>
     </div>`;
   div._cfPath = path;
-  item.after(div);
+  const sidebar = document.getElementById(rowId + '_editor_sidebar');
+  if (sidebar) { sidebar.innerHTML = ''; sidebar.appendChild(div); } else { item.after(div); }
 }
 
 function toggleCFColor(path, key, color, el) {
