@@ -705,10 +705,7 @@ def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
 
 
 def classify_photo_colors(img_bytes: bytes) -> dict | None:
-    """Classify ski photo using ONNX model (falls back to Haiku if unavailable)."""
-    result = classify_photo_colors_onnx(img_bytes)
-    if result is not None:
-        return result
+    """Classify ski photo using Haiku vision."""
     return _classify_photo_colors_haiku(img_bytes)
 
 
@@ -818,9 +815,8 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    using_onnx = _onnx_session is not None
-                    item["classifier"]    = "model_v1" if using_onnx else "haiku"
-                    print(f"{'Model' if using_onnx else 'Haiku'}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+                    item["classifier"] = "haiku"
+                    print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
             print(f"Process failed {item['path']}: {e}")
