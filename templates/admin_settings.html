@@ -1062,12 +1062,22 @@ function handleCFClick(e, folderKey, path, rowId, itemId, idx) {
     // Toggle this photo's selection
     if (sel.has(path)) {
       sel.delete(path);
+      _cfLastClicked[folderKey] = idx;
+      document.querySelectorAll('.cf-editor').forEach(el => el.remove());
+      renderFolderPhotoGrid(folderKey, rowId);
     } else {
       sel.add(path);
+      _cfLastClicked[folderKey] = idx;
+      if (sel.size === 1) {
+        // Single fresh selection — open editor immediately, no extra click needed
+        renderFolderPhotoGrid(folderKey, rowId);
+        openCFEditor(folderKey, path, rowId);
+      } else {
+        // Adding to a multi-selection — close any open single editor
+        document.querySelectorAll('.cf-editor').forEach(el => el.remove());
+        renderFolderPhotoGrid(folderKey, rowId);
+      }
     }
-    _cfLastClicked[folderKey] = idx;
-    document.querySelectorAll('.cf-editor').forEach(el => el.remove());
-    renderFolderPhotoGrid(folderKey, rowId);
   }
 }
 
@@ -1157,16 +1167,15 @@ async function applyBulkEdit(folderKey, rowId, stateVarName, btn) {
   if (!sel.length) return;
   btn.disabled = true; btn.textContent = 'Saving...';
   const statusEl = document.getElementById('bulk_status_' + rowId);
-  let done = 0;
-  for (const path of sel) {
-    const body = {path};
-    if (state.jacket.length) body.jacket_colors = state.jacket;
-    if (state.pants.length)  body.pants_colors  = state.pants;
-    if (state.sport)         body.sport         = state.sport;
-    if (state.instructor !== null) body.ski_instructor = state.instructor;
-    try {
-      const r = await fetch('/api/admin/set-photo-colors', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if (r.ok) {
+  const body = {paths: sel};
+  if (state.jacket.length) body.jacket_colors = state.jacket;
+  if (state.pants.length)  body.pants_colors  = state.pants;
+  if (state.sport)         body.sport         = state.sport;
+  if (state.instructor !== null) body.ski_instructor = state.instructor;
+  try {
+    const r = await fetch('/api/admin/set-photos-colors-bulk', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if (r.ok) {
+      for (const path of sel) {
         const p = (_folderPhotos[folderKey]||[]).find(x=>x.path===path);
         if (p) {
           if (state.jacket.length) p.jacket = state.jacket;
@@ -1174,11 +1183,10 @@ async function applyBulkEdit(folderKey, rowId, stateVarName, btn) {
           if (state.sport)         p.sport  = state.sport;
           if (state.instructor !== null) p.instructor = state.instructor;
         }
-        done++;
       }
-    } catch(_) {}
-    if (statusEl) statusEl.textContent = `${done}/${sel.length} saved`;
-  }
+      if (statusEl) statusEl.textContent = `${sel.length}/${sel.length} saved`;
+    }
+  } catch(_) {}
   document.querySelectorAll('.cf-editor').forEach(el => el.remove());
   _clearCFSelection(folderKey, rowId, true);
   renderFolderPhotoGrid(folderKey, rowId);

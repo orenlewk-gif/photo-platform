@@ -1949,6 +1949,35 @@ async def admin_set_photo_colors(request: Request):
     return {"ok": True, "path": path}
 
 
+@app.post("/api/admin/set-photos-colors-bulk")
+async def admin_set_photos_colors_bulk(request: Request):
+    """Set jacket/pants/sport labels on multiple photos in one R2 write."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    paths = body.get("paths") or []
+    if not paths:
+        return JSONResponse(status_code=400, content={"error": "paths required"})
+    path_index = {it["path"]: it for it in data}
+    updated = []
+    for path in paths:
+        item = path_index.get(path.strip())
+        if not item:
+            continue
+        if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
+        if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
+        if "sport"         in body: item["sport"]          = body["sport"] or None
+        if "ski_instructor" in body: item["ski_instructor"] = bool(body["ski_instructor"])
+        item["manually_corrected"] = True
+        updated.append(path)
+    if updated:
+        def _flush():
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(), ContentType="application/json")
+        threading.Thread(target=_flush, daemon=True).start()
+    return {"ok": True, "updated": len(updated)}
+
+
 @app.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
     """Return distinct jacket/pants colors, sport types, and valid combos for a folder."""
