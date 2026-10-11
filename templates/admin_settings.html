@@ -1014,19 +1014,12 @@ function renderFolderPhotoGrid(folderKey, rowId) {
   }).join('');
   const bulkBarId = 'bulk_' + rowId;
   const bulkDisplay = sel.size > 0 ? 'flex' : 'none';
-  panel.innerHTML = `<div style="display:flex;gap:.75rem;align-items:flex-start">
-    <div style="flex:1;min-width:0">
-      <div id="${bulkBarId}" style="display:${bulkDisplay};position:sticky;top:0;z-index:10;margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:7px;align-items:center;gap:.75rem">
-        <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600">${sel.size} photo${sel.size!==1?'s':''} selected</span>
-        <button onclick="openBulkCFEditor('${folderKey}','${rowId}')" style="padding:3px 12px;border-radius:5px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit">Edit Selected</button>
-        <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.78rem;font-family:inherit">Clear</button>
-      </div>
-      <div style="margin:.25rem 0">${grid}</div>
-    </div>
-    <div id="${rowId}_editor_sidebar" style="width:290px;flex-shrink:0;position:sticky;top:0;align-self:flex-start">
-      <div style="padding:2rem 1rem;font-size:.75rem;color:rgba(255,255,255,.2);text-align:center">Click a photo to edit</div>
-    </div>
-  </div>`;
+  panel.innerHTML = `<div id="${bulkBarId}" style="display:${bulkDisplay};position:sticky;top:0;z-index:10;margin:.25rem 0 .5rem;padding:.4rem .6rem;background:rgba(8,18,30,.97);border:1px solid rgba(245,197,24,.3);border-radius:7px;align-items:center;gap:.75rem">
+    <span id="${bulkBarId}_cnt" style="font-size:.8rem;color:#F5C518;font-weight:600">${sel.size} photo${sel.size!==1?'s':''} selected</span>
+    <button onclick="openBulkCFEditor('${folderKey}','${rowId}')" style="padding:3px 12px;border-radius:5px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.78rem;font-weight:600;font-family:inherit">Edit Selected</button>
+    <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:3px 10px;border-radius:5px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.78rem;font-family:inherit">Clear</button>
+  </div>
+  <div style="margin:.25rem 0">${grid}</div>`;
   panel.style.display = '';
   _updateBulkBar(folderKey, rowId);
 }
@@ -1133,11 +1126,13 @@ function openBulkCFEditor(folderKey, rowId) {
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
     <div style="display:flex;gap:.5rem;margin-top:.4rem;align-items:center">
       <button onclick="applyBulkEdit('${folderKey}','${rowId}','${stateVarName}',this)" style="padding:4px 14px;border-radius:6px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit">Apply to ${sel.length} photos</button>
-      <button onclick="_clearCFSelection('${folderKey}','${rowId}')" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
+      <button onclick="_clearCFSelection('${folderKey}','${rowId}');_cfHidePanel()" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.12);cursor:pointer;font-size:.8rem;font-family:inherit">Cancel</button>
       <span id="bulk_status_${rowId}" style="font-size:.7rem;color:rgba(255,255,255,.4)"></span>
     </div>`;
-  const sidebar = document.getElementById(rowId + '_editor_sidebar');
-  if (sidebar) { sidebar.innerHTML = ''; sidebar.appendChild(div); } else { const panel = document.getElementById(rowId); if (panel) panel.prepend(div); }
+  const fp = _cfPanel();
+  fp.innerHTML = '';
+  fp.appendChild(div);
+  fp.style.display = 'block';
 }
 
 function toggleBulkColor(key, color, el, state) {
@@ -1168,10 +1163,27 @@ function toggleBulkSport(sport, el, state) {
   });
 }
 
+function _cfPanel() {
+  let p = document.getElementById('cf_fixed_panel');
+  if (!p) {
+    p = document.createElement('div');
+    p.id = 'cf_fixed_panel';
+    p.style.cssText = 'display:none;position:fixed;right:20px;top:110px;width:300px;max-height:calc(100vh - 130px);overflow-y:auto;z-index:500;background:rgba(8,18,30,.97);border:1px solid rgba(255,255,255,.15);border-radius:8px;box-shadow:0 4px 24px rgba(0,0,0,.5)';
+    document.body.appendChild(p);
+  }
+  return p;
+}
+
+function _cfHidePanel() {
+  const p = document.getElementById('cf_fixed_panel');
+  if (p) { p.innerHTML = ''; p.style.display = 'none'; }
+}
+
 async function _cfDone(folderKey, rowId) {
   await _saveOpenEditor().catch(() => {});
   _clearCFSelection(folderKey, rowId, true);
   renderFolderPhotoGrid(folderKey, rowId);
+  _cfHidePanel();
 }
 
 document.addEventListener('keydown', function(e) {
@@ -1260,8 +1272,10 @@ async function openCFEditor(folderKey, path, rowId) {
       <button onclick="_cfDone('${folderKey}','${rowId}')" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Done</button>
     </div>`;
   div._cfPath = path;
-  const sidebar = document.getElementById(rowId + '_editor_sidebar');
-  if (sidebar) { sidebar.innerHTML = ''; sidebar.appendChild(div); } else { item.after(div); }
+  const fp = _cfPanel();
+  fp.innerHTML = '';
+  fp.appendChild(div);
+  fp.style.display = 'block';
 }
 
 function toggleCFColor(path, key, color, el) {
