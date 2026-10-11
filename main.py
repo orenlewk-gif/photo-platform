@@ -716,6 +716,7 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
+                    item["classifier"]    = "haiku"
                     print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
@@ -747,6 +748,12 @@ def _load_data_bg() -> None:
                 loaded = json.load(f)
             data = loaded
             print(f"Loaded {len(data)} photos from local file.")
+            backfilled = sum(1 for it in data if it.get("jacket_colors") is not None and "classifier" not in it)
+            for it in data:
+                if it.get("jacket_colors") is not None and "classifier" not in it:
+                    it["classifier"] = "haiku"
+            if backfilled:
+                print(f"Backfilled classifier='haiku' on {backfilled} existing records.")
             _data_ready.set()
             return
         except (json.JSONDecodeError, ValueError) as e:
@@ -759,6 +766,14 @@ def _load_data_bg() -> None:
         print(f"Loaded {len(data)} photos from R2.")
     except Exception as e:
         print(f"WARNING: could not load images.json ({e}), starting empty")
+    # Backfill classifier field on records that were classified before tracking was added
+    backfilled = 0
+    for item in data:
+        if item.get("jacket_colors") is not None and "classifier" not in item:
+            item["classifier"] = "haiku"
+            backfilled += 1
+    if backfilled:
+        print(f"Backfilled classifier='haiku' on {backfilled} existing records.")
     _data_ready.set()
 
 threading.Thread(target=_load_data_bg, daemon=True).start()
@@ -1823,6 +1838,7 @@ async def admin_set_photo_colors(request: Request):
     if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
     if "sport"         in body: item["sport"]          = body["sport"] or None
     if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
+    item["manually_corrected"] = True
     def _flush():
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
                       Body=json.dumps(data).encode(), ContentType="application/json")
