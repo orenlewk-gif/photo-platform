@@ -59,7 +59,7 @@ PRICING_KEY  = "meta/pricing.json"
 
 # ── Model file bootstrap — download from R2 on cold start if missing ──────────
 def _ensure_model_files():
-    files = ["model_v1.onnx", "model_v1.onnx.data", "model_v1_meta.json"]
+    files = ["model_v2.onnx", "model_v2.onnx.data", "model_v2_meta.json"]
     missing = [f for f in files if not os.path.exists(f)]
     if not missing:
         return
@@ -642,8 +642,8 @@ def _load_onnx_model():
     with _onnx_lock:
         if _onnx_session is not None:
             return True
-        onnx_path = "model_v1.onnx"
-        meta_path = "model_v1_meta.json"
+        onnx_path = "model_v2.onnx"
+        meta_path = "model_v2_meta.json"
         if not (os.path.exists(onnx_path) and os.path.exists(meta_path)):
             return False
         try:
@@ -705,8 +705,8 @@ def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
 
 
 def classify_photo_colors(img_bytes: bytes) -> dict | None:
-    """Classify ski photo using Haiku vision."""
-    return _classify_photo_colors_haiku(img_bytes)
+    """Classify ski photo using ONNX model v2."""
+    return classify_photo_colors_onnx(img_bytes)
 
 
 def _classify_photo_colors_haiku(img_bytes: bytes) -> dict | None:
@@ -815,8 +815,8 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["classifier"] = "haiku"
-                    print(f"Haiku: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+                    item["classifier"] = "model_v2"
+                    print(f"model_v2: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
             print(f"Process failed {item['path']}: {e}")
