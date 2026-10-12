@@ -413,7 +413,7 @@ html.embedded #layout{height:100vh}
       <!-- Classified folders -->
       <div class="settings-section" style="margin-top:1.5rem">
         <div class="section-title">Classified Folders</div>
-        <div class="section-desc">Folders that have been through Haiku color classification. Click a folder to review and edit labels.</div>
+        <div class="section-desc">Folders that have been through color classification. Click a folder to review and edit labels. Mark folders done when corrections are complete.</div>
         <div id="classified-folders-list" style="margin-top:1rem"></div>
       </div>
     </div><!-- /tab-classify -->
@@ -952,16 +952,41 @@ async function loadClassifiedFolders() {
     el.innerHTML = _classifiedFolders.map(f => {
       const key = f.folder_key;
       const rowId = 'cfl_' + btoa(key).replace(/[^a-zA-Z0-9]/g,'');
-      return `<div style="margin-bottom:.5rem">
-        <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .75rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;cursor:pointer" onclick="toggleClassifiedFolder('${key.replace(/'/g,"\\'")}','${rowId}')">
-          <span style="flex:1;font-size:.85rem;color:rgba(255,255,255,.8)">${f.name || f.location} <span style="color:rgba(255,255,255,.35);font-size:.75rem">${f.date}</span></span>
-          <span style="font-size:.75rem;color:rgba(255,255,255,.35)">${f.classified_count} labeled</span>
-          <span style="font-size:.75rem;color:rgba(255,255,255,.3)" id="arr_${rowId}">▶</span>
+      const esc = key.replace(/'/g,"\\'");
+      const rev = f.reviewed;
+      return `<div style="margin-bottom:.5rem" id="frow_${rowId}">
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.55rem .75rem;background:${rev?'rgba(80,180,80,.07)':'rgba(255,255,255,.04)'};border:1px solid ${rev?'rgba(80,180,80,.25)':'rgba(255,255,255,.08)'};border-radius:7px">
+          <div style="flex:1;cursor:pointer;min-width:0" onclick="toggleClassifiedFolder('${esc}','${rowId}')">
+            <span style="font-size:.85rem;color:${rev?'rgba(255,255,255,.45)':'rgba(255,255,255,.8)'}">${f.name || f.location} <span style="color:rgba(255,255,255,.35);font-size:.75rem">${f.date}</span></span>
+          </div>
+          <span style="font-size:.75rem;color:rgba(255,255,255,.35);flex-shrink:0">${f.classified_count} labeled</span>
+          <button onclick="toggleReviewed('${esc}','${rowId}')" title="${rev?'Mark as not done':'Mark as done'}" style="flex-shrink:0;padding:2px 8px;border-radius:5px;border:1px solid ${rev?'rgba(80,180,80,.5)':'rgba(255,255,255,.15)'};background:${rev?'rgba(80,180,80,.2)':'transparent'};color:${rev?'#6c6':'rgba(255,255,255,.4)'};font-size:.75rem;cursor:pointer;white-space:nowrap">${rev?'Done':'Mark done'}</button>
+          <span style="font-size:.75rem;color:rgba(255,255,255,.3);cursor:pointer" id="arr_${rowId}" onclick="toggleClassifiedFolder('${esc}','${rowId}')">▶</span>
         </div>
         <div id="${rowId}" style="display:none;padding:.5rem 0 0 .5rem"></div>
       </div>`;
     }).join('');
   } catch(e) { el.innerHTML = '<div style="color:rgba(255,100,100,.6);font-size:.85rem">Failed to load folders.</div>'; }
+}
+
+async function toggleReviewed(folderKey, rowId) {
+  const r = await fetch('/api/admin/toggle-folder-reviewed', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({folder_key:folderKey})});
+  if (!r.ok) return;
+  const d = await r.json();
+  const f = _classifiedFolders.find(x => x.folder_key === folderKey);
+  if (f) f.reviewed = d.reviewed;
+  // re-render just this row header
+  const frow = document.getElementById('frow_' + rowId);
+  if (!frow) return;
+  const esc = folderKey.replace(/'/g,"\\'");
+  const rev = d.reviewed;
+  const fi = _classifiedFolders.find(x => x.folder_key === folderKey);
+  frow.querySelector('div').style.background = rev ? 'rgba(80,180,80,.07)' : 'rgba(255,255,255,.04)';
+  frow.querySelector('div').style.borderColor = rev ? 'rgba(80,180,80,.25)' : 'rgba(255,255,255,.08)';
+  const btn = frow.querySelector('button');
+  if (btn) { btn.textContent = rev ? 'Done' : 'Mark done'; btn.style.background = rev ? 'rgba(80,180,80,.2)' : 'transparent'; btn.style.color = rev ? '#6c6' : 'rgba(255,255,255,.4)'; btn.style.borderColor = rev ? 'rgba(80,180,80,.5)' : 'rgba(255,255,255,.15)'; btn.title = rev ? 'Mark as not done' : 'Mark as done'; }
+  const nameEl = frow.querySelector('[style*="font-size:.85rem"]');
+  if (nameEl) nameEl.style.color = rev ? 'rgba(255,255,255,.45)' : 'rgba(255,255,255,.8)';
 }
 
 async function toggleClassifiedFolder(folderKey, rowId) {

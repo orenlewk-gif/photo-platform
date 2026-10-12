@@ -6776,8 +6776,24 @@ def api_admin_folders(request: Request):
     for f in sorted(folders.values(), key=lambda x: (x["date"], x["location"], x["name"]), reverse=True):
         preview_path = f.pop("_preview", None)
         f["preview_url"] = f"/api/admin/photo?path={_quote(preview_path)}&size=thumb" if preview_path else ""
+        f["reviewed"] = bool(folder_meta.get(f["folder_key"], {}).get("reviewed"))
         result.append(f)
     return {"folders": result}
+
+@app.post("/api/admin/toggle-folder-reviewed")
+async def api_toggle_folder_reviewed(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    fk = body.get("folder_key")
+    if not fk:
+        return JSONResponse(status_code=400, content={"error": "folder_key required"})
+    fm = _load_folder_meta()
+    if fk not in fm:
+        fm[fk] = {}
+    fm[fk]["reviewed"] = not bool(fm[fk].get("reviewed"))
+    _save_folder_meta(fm)
+    return {"ok": True, "reviewed": fm[fk]["reviewed"]}
 
 @app.get("/api/admin/r2-scan")
 def api_admin_r2_scan(request: Request):
