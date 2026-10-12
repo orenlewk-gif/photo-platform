@@ -938,6 +938,7 @@ let _classifiedFolders = [];
 let _folderPhotos = {};   // folderKey → photos array
 let _editState = {};      // path → {jacket, pants, sport, _folderKey, _rowId}
 let _cfSelected = {};     // folderKey → Set of paths
+let _cfClipboard = null;  // {jacket, pants, sport}
 
 async function loadClassifiedFolders() {
   const el = document.getElementById('classified-folders-list');
@@ -1300,14 +1301,38 @@ async function openCFEditor(folderKey, path, rowId) {
     ${colorRow('Jacket','jacket')}${colorRow('Pants','pants')}
     <div style="margin-bottom:.4rem;display:flex;align-items:center;flex-wrap:wrap;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Extra</span>${instrPill}</div>
     <div style="margin-bottom:.5rem;display:flex;align-items:center;gap:.1rem"><span style="font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);width:48px;flex-shrink:0">Sport</span>${sportPills}</div>
-    <div style="margin-top:.4rem">
+    <div style="margin-top:.4rem;display:flex;gap:.4rem;flex-wrap:wrap">
       <button onclick="_cfDone('${folderKey}','${rowId}')" style="padding:4px 14px;border-radius:6px;background:#1a5cc8;color:#fff;border:none;cursor:pointer;font-size:.8rem;font-family:inherit">Done</button>
+      <button onclick="_cfCopy('${path}','${folderKey}','${rowId}')" style="padding:4px 12px;border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.15);cursor:pointer;font-size:.8rem;font-family:inherit">Copy</button>
+      ${_cfClipboard ? `<button onclick="_cfPaste('${path}','${folderKey}','${rowId}')" style="padding:4px 12px;border-radius:6px;background:rgba(245,197,24,.12);color:#F5C518;border:1px solid rgba(245,197,24,.3);cursor:pointer;font-size:.8rem;font-family:inherit">Paste</button>` : ''}
     </div>`;
   div._cfPath = path;
   const fp = _cfPanel();
   fp.innerHTML = '';
   fp.appendChild(div);
   fp.style.display = 'block';
+}
+
+function _cfCopy(path, folderKey, rowId) {
+  const cur = _editState[path]; if (!cur) return;
+  _cfClipboard = {jacket:[...cur.jacket], pants:[...cur.pants], sport:cur.sport};
+  openCFEditor(folderKey, path, rowId);
+}
+
+async function _cfPaste(path, folderKey, rowId) {
+  if (!_cfClipboard) return;
+  if (!_editState[path]) {
+    const photos = _folderPhotos[folderKey] || [];
+    const p = photos.find(x => x.path === path) || {};
+    _editState[path] = {jacket:[...(p.jacket||[])], pants:[...(p.pants||[])], sport:p.sport||null, instructor:!!p.instructor, _folderKey:folderKey, _rowId:rowId};
+  }
+  const cur = _editState[path];
+  cur.jacket = [..._cfClipboard.jacket];
+  cur.pants  = [..._cfClipboard.pants];
+  cur.sport  = _cfClipboard.sport;
+  cur._dirty = true;
+  await _saveOpenEditor().catch(()=>{});
+  openCFEditor(folderKey, path, rowId);
 }
 
 function toggleCFColor(path, key, color, el) {
