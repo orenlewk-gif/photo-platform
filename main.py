@@ -648,7 +648,10 @@ def _load_onnx_model():
             return False
         try:
             import onnxruntime as ort
-            _onnx_session = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+            opts = ort.SessionOptions()
+            opts.intra_op_num_threads = 1
+            opts.inter_op_num_threads = 1
+            _onnx_session = ort.InferenceSession(onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
             with open(meta_path) as f:
                 _onnx_meta = json.load(f)
             print(f"ONNX model loaded (best_score={_onnx_meta.get('best_score', '?'):.3f})")
