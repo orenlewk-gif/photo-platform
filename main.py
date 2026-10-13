@@ -59,7 +59,7 @@ PRICING_KEY  = "meta/pricing.json"
 
 # ── Model file bootstrap — download from R2 on cold start if missing ──────────
 def _ensure_model_files():
-    files = ["model_v2.onnx", "model_v2.onnx.data", "model_v2_meta.json"]
+    files = ["model_v3.onnx", "model_v3.onnx.data", "model_v3_meta.json"]
     missing = [f for f in files if not os.path.exists(f)]
     if not missing:
         return
@@ -642,8 +642,8 @@ def _load_onnx_model():
     with _onnx_lock:
         if _onnx_session is not None:
             return True
-        onnx_path = "model_v2.onnx"
-        meta_path = "model_v2_meta.json"
+        onnx_path = "model_v3.onnx"
+        meta_path = "model_v3_meta.json"
         if not (os.path.exists(onnx_path) and os.path.exists(meta_path)):
             return False
         try:
@@ -2220,6 +2220,31 @@ def get_frames():
     return {"frames": frames}
 
 
+@app.post("/api/admin/frames/prices")
+async def update_frame_prices(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not WC_KEY or not WC_SECRET:
+        return JSONResponse(status_code=503, content={"error": "WooCommerce credentials not configured"})
+    body = await request.json()
+    # body: list of {variation_id: int, price: str}
+    updates = body if isinstance(body, list) else body.get("updates", [])
+    results = []
+    for u in updates:
+        var_id = u.get("variation_id")
+        price  = str(u.get("price", "0"))
+        if not var_id:
+            continue
+        resp = http_requests.put(
+            f"{WC_BASE}/products/{WC_FRAME_PARENT_ID}/variations/{var_id}",
+            json={"regular_price": price},
+            auth=(WC_KEY, WC_SECRET),
+            timeout=15,
+        )
+        results.append({"variation_id": var_id, "ok": resp.status_code in (200, 201)})
+    return {"results": results}
+
+
 @app.get("/api/frame-photos")
 def get_frame_photos():
     frames_dir = "frames"
@@ -2846,6 +2871,423 @@ async def api_pos_customers_update(request: Request):
         ContentType="application/json",
     )
     return {"ok": True, "count": len(customers)}
+
+@app.get("/api/admin/customer/{email}/history")
+async def api_customer_history(email: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    email = email.lower().strip()
+    wc_orders = []
+    if WC_KEY and WC_SECRET:
+        try:
+            # Search by email covers both guest and registered WC customers
+            ord_resp = http_requests.get(
+                f"{WC_BASE}/orders",
+                params={"search": email, "per_page": 100, "orderby": "date", "order": "desc", "status": "any"},
+                auth=(WC_KEY, WC_SECRET),
+                timeout=15,
+            )
+            if ord_resp.ok:
+                wc_orders = [
+                    o for o in ord_resp.json()
+                    if (o.get("billing", {}).get("email") or "").lower() == email
+                ]
+        except Exception as e:
+            print(f"WC order fetch error for {email}: {e}")
+
+    orders_out = []
+    for o in wc_orders:
+        order_id = o.get("id")
+        date_str = (o.get("date_created") or "")[:10]
+        total = float(o.get("total") or 0)
+        items = [li.get("name", "") for li in o.get("line_items", [])][:4]
+        gallery_url = None
+        gallery_expired = False
+        try:
+            token, rec, exp = _get_best_token_for_order(str(order_id))
+            if token and exp:
+                gallery_url = f"/d/{token}"
+                now = datetime.utcnow()
+                exp_naive = exp.replace(tzinfo=None) if hasattr(exp, "tzinfo") and exp.tzinfo else exp
+                gallery_expired = exp_naive < now
+        except Exception:
+            pass
+        orders_out.append({
+            "id": order_id,
+            "date": date_str,
+            "total": total,
+            "status": o.get("status", ""),
+            "items": items,
+            "gallery_url": gallery_url,
+            "gallery_expired": gallery_expired,
+            "source": "woocommerce",
+        })
+
+    # POS orders filtered by email
+    pos_orders_out = []
+    for o in _fetch_pos_orders():
+        if (o.get("email") or "").lower() == email:
+            pos_orders_out.append({
+                "id": o.get("id"),
+                "date": (o.get("date") or o.get("created", ""))[:10],
+                "total": float(o.get("total") or 0),
+                "location": o.get("location", ""),
+                "items": [it.get("label", "") for it in (o.get("items") or [])],
+                "source": "pos",
+            })
+
+    all_totals = [o["total"] for o in orders_out + pos_orders_out]
+    all_dates  = sorted([o["date"] for o in orders_out + pos_orders_out if o.get("date")], reverse=True)
+    stats = {
+        "total_spend": round(sum(all_totals), 2),
+        "order_count": len(all_totals),
+        "last_purchase": all_dates[0] if all_dates else None,
+    }
+    return {"stats": stats, "orders": orders_out, "pos_orders": pos_orders_out}
+
+
+@app.post("/api/admin/customer/{email}/followup")
+async def api_customer_followup(email: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not RESEND_API_KEY:
+        return JSONResponse(status_code=503, content={"error": "Email not configured — RESEND_API_KEY is missing"})
+
+    body  = await request.json()
+    ftype = body.get("type")
+    if ftype not in ("review", "discount", "custom"):
+        return JSONResponse(status_code=400, content={"error": "type must be review, discount, or custom"})
+
+    # Load customer for personalisation
+    if _customers_cache["data"] is None:
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
+            _customers_cache["data"] = json.loads(obj["Body"].read())
+        except Exception:
+            _customers_cache["data"] = []
+    customers = _customers_cache["data"]
+    customer  = next((c for c in customers if (c.get("email") or "").lower() == email.lower()), None)
+    first_name = (customer.get("first") or "").strip() if customer else ""
+    greeting   = f"Hi {first_name}," if first_name else "Hi,"
+
+    if ftype == "review":
+        review_url = (body.get("review_url") or "").strip()
+        if not review_url:
+            return JSONResponse(status_code=400, content={"error": "review_url is required"})
+        subject    = "We'd love your feedback — Crystal Images"
+        html_inner = f"""
+            <p style="margin:0 0 .8rem">{greeting}</p>
+            <p style="margin:0 0 .8rem">Thank you for choosing Crystal Images! We loved capturing your moments.</p>
+            <p style="margin:0 0 1.25rem">If you have a minute, leaving us a quick review would mean the world to us.</p>
+            <p style="margin:0 0 1.25rem"><a href="{review_url}" style="background:#1a73e8;color:#fff;padding:.65rem 1.4rem;border-radius:6px;font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">Leave a Review</a></p>
+            <p style="margin:0">Thank you so much!<br>— The Crystal Images Team</p>"""
+        text_inner = f"{greeting}\n\nThank you for choosing Crystal Images! We loved capturing your moments.\n\nLeave us a review here:\n{review_url}\n\nThank you!\n— The Crystal Images Team"
+
+    elif ftype == "discount":
+        code = (body.get("discount_code") or "").strip().upper()
+        if not code:
+            return JSONResponse(status_code=400, content={"error": "discount_code is required"})
+        codes    = _load_discount_codes()
+        code_obj = next((c for c in codes if c.get("code", "").upper() == code), None)
+        if not code_obj:
+            return JSONResponse(status_code=400, content={"error": f"Code '{code}' not found"})
+        amt      = code_obj.get("amount", 0)
+        ctype    = code_obj.get("type", "percent")
+        amt_str  = f"{amt}% off" if ctype == "percent" else f"${amt} off"
+        expires  = code_obj.get("expires") or ""
+        exp_line = f" — expires {expires}" if expires else ""
+        subject  = "A special offer just for you — Crystal Images"
+        html_inner = f"""
+            <p style="margin:0 0 .8rem">{greeting}</p>
+            <p style="margin:0 0 1rem">Thank you for being a Crystal Images customer! Here's a special discount just for you:</p>
+            <div style="background:#f5f5f5;border-radius:8px;padding:1.25rem;text-align:center;margin:0 0 1.25rem">
+              <div style="font-size:.78rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem">Your discount code</div>
+              <div style="font-size:2rem;font-weight:700;letter-spacing:.12em;color:#111">{code}</div>
+              <div style="font-size:.9rem;color:#555;margin-top:.35rem">{amt_str}{exp_line}</div>
+            </div>
+            <p style="margin:0 0 .8rem">Use this code at checkout on your next order.</p>
+            <p style="margin:0">— The Crystal Images Team</p>"""
+        text_inner = f"{greeting}\n\nHere's a special discount just for you:\n\nCode: {code}\n{amt_str}{exp_line}\n\nUse this at checkout on your next order.\n\n— The Crystal Images Team"
+
+    else:  # custom
+        subject = (body.get("subject") or "").strip()
+        message = (body.get("message") or "").strip()
+        if not subject:
+            return JSONResponse(status_code=400, content={"error": "subject is required"})
+        if not message:
+            return JSONResponse(status_code=400, content={"error": "message is required"})
+        html_inner = f"<p style='margin:0 0 .8rem'>{greeting}</p>" + \
+            "".join(f"<p style='margin:0 0 .8rem'>{line}</p>" for line in message.split("\n") if line.strip())
+        text_inner = f"{greeting}\n\n{message}"
+
+    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">
+<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">
+  <div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:2rem">
+    <p style="margin:0 0 1.5rem;font-size:.78rem;color:#999;text-transform:uppercase;letter-spacing:.5px">Crystal Images</p>
+    {html_inner}
+    <hr style="border:none;border-top:1px solid #eee;margin:1.5rem 0 1rem">
+    <p style="margin:0;font-size:.75rem;color:#aaa">Questions? <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a></p>
+  </div>
+</div></body></html>"""
+
+    try:
+        r = http_requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": text_inner},
+            timeout=10,
+        )
+        if not r.ok:
+            return JSONResponse(status_code=502, content={"error": f"Send failed: {r.text}"})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+    # Record the follow-up on the customer record
+    if customer:
+        if "followups" not in customer:
+            customer["followups"] = []
+        customer["followups"].append({
+            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+            "type": ftype,
+            "subject": subject,
+        })
+        s3.put_object(
+            Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
+            Body=json.dumps(customers, ensure_ascii=False).encode(),
+            ContentType="application/json",
+        )
+
+    return {"ok": True}
+
+
+@app.get("/api/admin/customers/filtered")
+async def api_customers_filtered(request: Request):
+    """Return customer emails + basic info matching date range and/or product type filters."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+    date_from  = request.query_params.get("date_from", "")   # YYYY-MM-DD
+    date_to    = request.query_params.get("date_to", "")     # YYYY-MM-DD
+    types_raw  = request.query_params.get("types", "")       # comma-separated
+    types      = {t.strip().lower() for t in types_raw.split(",") if t.strip()} if types_raw else set()
+
+    want_pos     = not types or "in-person" in types
+    want_digital = not types or "digital"  in types
+    want_prints  = not types or "prints"   in types
+    want_frames  = not types or "frames"   in types
+    want_wc      = want_digital or want_prints or want_frames
+
+    # Load customer directory for name/tag enrichment
+    if _customers_cache["data"] is None:
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
+            _customers_cache["data"] = json.loads(obj["Body"].read())
+        except Exception:
+            _customers_cache["data"] = []
+    cust_by_email = {(c.get("email") or "").lower(): c for c in (_customers_cache["data"] or [])}
+
+    results: dict = {}  # email -> {email, name, sources: set, order_count, total_spend}
+
+    def _upsert(email_raw: str, name: str, source: str, amount: float):
+        key = email_raw.lower()
+        if key not in results:
+            cust = cust_by_email.get(key, {})
+            results[key] = {
+                "email": email_raw,
+                "name": name or f"{cust.get('first','')} {cust.get('last','')}".strip() or email_raw,
+                "tags": cust.get("tags", []),
+                "sources": set(),
+                "order_count": 0,
+                "total_spend": 0.0,
+            }
+        results[key]["sources"].add(source)
+        results[key]["order_count"] += 1
+        results[key]["total_spend"] += amount
+
+    # ── POS orders ────────────────────────────────────────────────────────────
+    if want_pos:
+        for order in _fetch_pos_orders():
+            odate = (order.get("date") or "")[:10]
+            if date_from and odate < date_from:
+                continue
+            if date_to and odate > date_to:
+                continue
+            email = (order.get("email") or "").strip()
+            if not email:
+                continue
+            first = order.get("first", "")
+            last  = order.get("last", "")
+            name  = f"{first} {last}".strip()
+            total = float(order.get("net") or order.get("total") or 0)
+            _upsert(email, name, "pos", total)
+
+    # ── WooCommerce orders ─────────────────────────────────────────────────────
+    if want_wc and WC_KEY and WC_SECRET:
+        try:
+            params: dict = {"per_page": 100, "page": 1, "status": "completed"}
+            if date_from:
+                params["after"] = f"{date_from}T00:00:00"
+            if date_to:
+                params["before"] = f"{date_to}T23:59:59"
+            while True:
+                resp = http_requests.get(
+                    f"{WC_BASE}/orders", params=params,
+                    auth=(WC_KEY, WC_SECRET), timeout=20,
+                )
+                if not resp.ok:
+                    break
+                orders = resp.json()
+                if not orders:
+                    break
+                for o in orders:
+                    email = (o.get("billing") or {}).get("email", "").strip()
+                    if not email:
+                        continue
+                    name = f"{(o.get('billing') or {}).get('first_name','')} {(o.get('billing') or {}).get('last_name','')}".strip()
+                    total = float(o.get("total") or 0)
+                    line_items = o.get("line_items", [])
+                    def _cat(item_name: str) -> str:
+                        n = item_name.lower()
+                        if "frame" in n:
+                            return "frames"
+                        if "print" in n or "4x6" in n or "5x7" in n or "8x10" in n or "11x14" in n:
+                            return "prints"
+                        return "digital"
+                    for li in line_items:
+                        cat = _cat(li.get("name", ""))
+                        if cat == "digital"  and not want_digital:
+                            continue
+                        if cat == "prints"   and not want_prints:
+                            continue
+                        if cat == "frames"   and not want_frames:
+                            continue
+                        _upsert(email, name, cat, total / max(len(line_items), 1))
+                        break  # count order once per type match
+                if len(orders) < 100:
+                    break
+                params["page"] += 1
+        except Exception as e:
+            print(f"WC filtered query error: {e}")
+
+    out = []
+    for r in results.values():
+        out.append({
+            "email":       r["email"],
+            "name":        r["name"],
+            "tags":        r["tags"],
+            "sources":     list(r["sources"]),
+            "order_count": r["order_count"],
+            "total_spend": round(r["total_spend"], 2),
+        })
+    out.sort(key=lambda x: x["name"].lower())
+    return {"customers": out, "count": len(out)}
+
+
+@app.post("/api/admin/customers/bulk-followup")
+async def api_bulk_followup(request: Request):
+    """Send a follow-up email to multiple customers using a saved template."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not RESEND_API_KEY:
+        return JSONResponse(status_code=503, content={"error": "RESEND_API_KEY not configured"})
+
+    body        = await request.json()
+    emails      = body.get("emails", [])
+    template_id = (body.get("template_id") or "").strip()
+    extra_vars  = body.get("variables", {})   # e.g. {review_url, discount_code}
+
+    if not emails:
+        return JSONResponse(status_code=400, content={"error": "emails is required"})
+    if not template_id:
+        return JSONResponse(status_code=400, content={"error": "template_id is required"})
+
+    templates = _load_email_templates()
+    if template_id not in templates:
+        return JSONResponse(status_code=404, content={"error": "Template not found"})
+    tmpl = templates[template_id]
+
+    # Ensure customer cache is loaded
+    if _customers_cache["data"] is None:
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
+            _customers_cache["data"] = json.loads(obj["Body"].read())
+        except Exception:
+            _customers_cache["data"] = []
+    customers = _customers_cache["data"]
+
+    results = []
+    for email in emails:
+        cust = next((c for c in customers if (c.get("email") or "").lower() == email.lower()), None)
+        first_name = (cust.get("first") or "").strip() if cust else ""
+
+        plain_vars = {"first_name": first_name or "there", **{k: str(v) for k, v in extra_vars.items()}}
+
+        # Build html_blocks for known action tokens
+        html_blocks: dict = {}
+        if "review_url" in extra_vars:
+            html_blocks["review_button"] = (
+                f'<p style="margin:0 0 1rem"><a href="{extra_vars["review_url"]}" '
+                f'style="background:#1a73e8;color:#fff;padding:.65rem 1.4rem;border-radius:6px;'
+                f'font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">'
+                f'Leave a Review</a></p>'
+            )
+        if "discount_code" in extra_vars:
+            code = str(extra_vars["discount_code"]).upper()
+            html_blocks["code_box"] = (
+                f'<div style="background:#f5f5f5;border-radius:8px;padding:1.25rem;text-align:center;margin:0 0 1rem">'
+                f'<div style="font-size:.78rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem">Your discount code</div>'
+                f'<div style="font-size:2rem;font-weight:700;letter-spacing:.12em;color:#111">{code}</div>'
+                f'</div>'
+            )
+
+        subject = tmpl["subject"]
+        for k, v in plain_vars.items():
+            subject = subject.replace(f"{{{{{k}}}}}", str(v))
+        body_html, body_text = _render_email_body(tmpl["body"], plain_vars, html_blocks)
+        html = _wrap_email_html(body_html)
+
+        ok = False
+        err = ""
+        try:
+            r = http_requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": body_text},
+                timeout=10,
+            )
+            ok = r.ok
+            if not ok:
+                err = r.text[:200]
+        except Exception as exc:
+            err = str(exc)
+
+        results.append({"email": email, "ok": ok, "error": err})
+
+        # Record follow-up on customer record
+        if ok and cust:
+            if "followups" not in cust:
+                cust["followups"] = []
+            cust["followups"].append({
+                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "type": "bulk",
+                "subject": subject,
+            })
+
+    # Persist any follow-up records
+    if any(r["ok"] for r in results):
+        try:
+            s3.put_object(
+                Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
+                Body=json.dumps(customers, ensure_ascii=False).encode(),
+                ContentType="application/json",
+            )
+        except Exception as e:
+            print(f"bulk-followup customer save error: {e}")
+
+    sent = sum(1 for r in results if r["ok"])
+    return {"ok": True, "sent": sent, "total": len(results), "results": results}
+
 
 @app.post("/api/pos-resend")
 async def api_pos_resend(request: Request):
@@ -7455,44 +7897,202 @@ async def api_save_items_bundles(request: Request):
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM    = os.getenv("RESEND_FROM", "Crystal Images <downloads@bigskyphotos.com>")
 
+# ── Email Templates ────────────────────────────────────────────────────────────
+EMAIL_TEMPLATES_KEY = "settings/email_templates.json"
+
+_EMAIL_TEMPLATE_DEFAULTS: dict = {
+    "package_download": {
+        "id": "package_download", "name": "Package Download", "system": True,
+        "subject": "Your {{title}} photos are ready — Crystal Images",
+        "body": (
+            "Hi {{first_name}},\n\n"
+            "Your photos from Crystal Images are ready. You can view and download all {{photo_count}} file(s) using the link below.\n\n"
+            "{{download_button}}\n\n"
+            "This link expires {{expire_date}}. If you have any trouble, reply to this email or contact us at info@bigskyphotos.com.\n\n"
+            "Photos are for personal use — print, frame, and share freely."
+        ),
+        "tokens": ["first_name", "title", "photo_count", "expire_date", "download_button"],
+    },
+    "pos_receipt": {
+        "id": "pos_receipt", "name": "POS Receipt", "system": True,
+        "subject": "Your Crystal Images Receipt — Order #{{order_id}}",
+        "body": (
+            "Hi {{first_name}},\n\n"
+            "Thank you for your purchase! Here is a summary of your order.\n\n"
+            "{{items_table}}\n\n"
+            "{{download_button}}\n\n"
+            "Questions? Contact us at info@bigskyphotos.com.\n\n"
+            "Photos are for personal use — print, frame, and share freely."
+        ),
+        "tokens": ["first_name", "order_id", "items_table", "download_button"],
+    },
+    "review_request": {
+        "id": "review_request", "name": "Review Request", "system": False,
+        "subject": "We'd love your feedback — Crystal Images",
+        "body": (
+            "Hi {{first_name}},\n\n"
+            "Thank you for choosing Crystal Images! We loved capturing your moments.\n\n"
+            "If you have a minute, leaving us a quick review would mean the world to us.\n\n"
+            "{{review_button}}\n\n"
+            "Thank you so much!\n— The Crystal Images Team"
+        ),
+        "tokens": ["first_name", "review_button"],
+    },
+    "discount_code": {
+        "id": "discount_code", "name": "Discount Code", "system": False,
+        "subject": "A special offer just for you — Crystal Images",
+        "body": (
+            "Hi {{first_name}},\n\n"
+            "Thank you for being a Crystal Images customer! Here's a special discount just for you.\n\n"
+            "{{code_box}}\n\n"
+            "Use this at checkout on your next order.\n\n"
+            "— The Crystal Images Team"
+        ),
+        "tokens": ["first_name", "code_box", "code", "discount_amount"],
+    },
+}
+
+def _load_email_templates() -> dict:
+    """Load stored templates from R2, merged over defaults."""
+    try:
+        obj  = s3.get_object(Bucket=R2_BUCKET, Key=EMAIL_TEMPLATES_KEY)
+        data = json.loads(obj["Body"].read())
+    except Exception:
+        data = {}
+    merged = {k: dict(v) for k, v in _EMAIL_TEMPLATE_DEFAULTS.items()}
+    for tid, tmpl in data.items():
+        if tid in merged:
+            merged[tid].update({k: v for k, v in tmpl.items() if k != "system"})
+        else:
+            merged[tid] = tmpl
+    return merged
+
+def _save_email_templates(templates: dict):
+    s3.put_object(Bucket=R2_BUCKET, Key=EMAIL_TEMPLATES_KEY,
+                  Body=json.dumps(templates, indent=2).encode(), ContentType="application/json")
+
+def _customer_first_name(email: str) -> str:
+    data = _customers_cache.get("data") or []
+    c = next((x for x in data if (x.get("email") or "").lower() == email.lower()), None)
+    return (c.get("first") or "").strip() if c else ""
+
+def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
+    """Return (html, text) from a template body with token substitution."""
+    for key, val in plain_vars.items():
+        body = body.replace(f"{{{{{key}}}}}", str(val) if val is not None else "")
+    parts_html, parts_text = [], []
+    for para in body.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        if para.startswith("{{") and para.endswith("}}"):
+            token = para[2:-2]
+            if token in html_blocks:
+                parts_html.append(html_blocks[token])
+                parts_text.append(plain_vars.get(token, ""))
+                continue
+        inner = para.replace("\n", "<br>")
+        parts_html.append(f'<p style="margin:0 0 .9rem;font-size:.9rem;color:#333;line-height:1.65">{inner}</p>')
+        parts_text.append(para)
+    return "".join(parts_html), "\n\n".join(parts_text)
+
+def _wrap_email_html(body_html: str) -> str:
+    return (
+        '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">'
+        '<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">'
+        '<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:2rem">'
+        '<p style="margin:0 0 1.25rem;font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.5px">Crystal Images</p>'
+        + body_html +
+        '<hr style="border:none;border-top:1px solid #eee;margin:1.5rem 0 1rem">'
+        '<p style="margin:0;font-size:.72rem;color:#aaa">Questions? <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a></p>'
+        '</div></div></body></html>'
+    )
+
+@app.get("/api/admin/email-templates")
+def api_list_email_templates(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"templates": list(_load_email_templates().values())}
+
+@app.put("/api/admin/email-templates/{tid}")
+async def api_update_email_template(tid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body      = await request.json()
+    templates = _load_email_templates()
+    if tid not in templates:
+        return JSONResponse(status_code=404, content={"error": "Template not found"})
+    templates[tid]["subject"] = body.get("subject", templates[tid]["subject"])
+    templates[tid]["body"]    = body.get("body",    templates[tid]["body"])
+    if not templates[tid].get("system") and "name" in body:
+        templates[tid]["name"] = body["name"]
+    _save_email_templates(templates)
+    return {"ok": True, "template": templates[tid]}
+
+@app.post("/api/admin/email-templates")
+async def api_create_email_template(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    name = (body.get("name") or "").strip()
+    if not name:
+        return JSONResponse(status_code=400, content={"error": "name is required"})
+    import uuid as _uuid
+    tid = "custom_" + _uuid.uuid4().hex[:8]
+    templates = _load_email_templates()
+    templates[tid] = {
+        "id": tid, "name": name, "system": False,
+        "subject": body.get("subject", ""),
+        "body":    body.get("body",    ""),
+        "tokens":  ["first_name"],
+    }
+    _save_email_templates(templates)
+    return {"ok": True, "template": templates[tid]}
+
+@app.delete("/api/admin/email-templates/{tid}")
+async def api_delete_email_template(tid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    templates = _load_email_templates()
+    if tid not in templates:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    if templates[tid].get("system"):
+        return JSONResponse(status_code=400, content={"error": "Cannot delete system templates"})
+    del templates[tid]
+    _save_email_templates(templates)
+    return {"ok": True}
+
+
 def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str):
     if not RESEND_API_KEY:
         print("RESEND_API_KEY not set — skipping email")
         return
-    subject = f"Your {title} photos are ready"
-    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">
-<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">
-  <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:2rem 2rem 1.5rem">
-    <p style="margin:0 0 .25rem;font-size:.8rem;color:#999;text-transform:uppercase;letter-spacing:.5px">Crystal Images</p>
-    <h2 style="margin:0 0 1.25rem;font-size:1.2rem;color:#111">{title}</h2>
-    <p style="margin:0 0 1.25rem;font-size:.95rem;color:#333;line-height:1.6">Hi, your photos from Crystal Images are ready. You can view and download all {photo_count} file{'s' if photo_count != 1 else ''} using the link below.</p>
-    <p style="margin:0 0 1.5rem">
-      <a href="{download_url}" style="background:#1a73e8;color:#fff;padding:.65rem 1.5rem;border-radius:6px;font-size:.95rem;font-weight:600;text-decoration:none;display:inline-block">View &amp; Download Photos</a>
-    </p>
-    <p style="margin:0 0 1.5rem;font-size:.82rem;color:#777">This link expires {expire_str}. If you have any trouble accessing your photos, reply to this email or reach us at <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a>.</p>
-    <hr style="border:none;border-top:1px solid #eee;margin:0 0 1rem">
-    <p style="margin:0;font-size:.75rem;color:#aaa;line-height:1.6">Photos are for personal use — print, frame, and share freely. For commercial use, tag @crystalimagesbigsky. Please do not resell original files.</p>
-  </div>
-</div></body></html>"""
-    text = f"""Your {title} photos are ready — Crystal Images
-
-Hi, your photos from Crystal Images are ready to download.
-
-View and download your {photo_count} photo{'s' if photo_count != 1 else ''} here:
-{download_url}
-
-This link expires {expire_str}.
-
-Questions? Reply to this email or contact us at info@bigskyphotos.com.
-
-Photos are for personal use. Please do not resell original files.
-"""
+    tmpl = _load_email_templates().get("package_download", _EMAIL_TEMPLATE_DEFAULTS["package_download"])
+    dl_btn_html = (
+        f'<p style="margin:0 0 1rem"><a href="{download_url}" '
+        f'style="background:#1a73e8;color:#fff;padding:.65rem 1.5rem;border-radius:6px;'
+        f'font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">'
+        f'View &amp; Download Photos</a></p>'
+    )
     for email in to_emails:
+        first = _customer_first_name(email) or "there"
+        plain_vars = {
+            "first_name": first,
+            "title": title,
+            "photo_count": str(photo_count),
+            "expire_date": expire_str,
+        }
+        html_blocks = {"download_button": dl_btn_html}
+        subject = tmpl["subject"]
+        for k, v in plain_vars.items():
+            subject = subject.replace(f"{{{{{k}}}}}", v)
+        body_html, body_text = _render_email_body(tmpl["body"], plain_vars, html_blocks)
+        html = _wrap_email_html(body_html)
         try:
             r = http_requests.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-                json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": text},
+                json={"from": RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": body_text},
                 timeout=10,
             )
             if not r.ok:
@@ -7506,65 +8106,72 @@ def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
                             coupon_discount: float, download_url: str | None):
     if not RESEND_API_KEY or not to_email:
         return
+    tmpl = _load_email_templates().get("pos_receipt", _EMAIL_TEMPLATE_DEFAULTS["pos_receipt"])
     tax = round(total * 0.04, 2)
     grand_total = round(total + tax, 2)
     rows = ""
     for item in items:
-        label = item.get("label", "Item")
-        qty = item.get("qty", 1)
-        price = float(item.get("price", 0))
+        label   = item.get("label", "Item")
+        qty     = item.get("qty", 1)
+        price   = float(item.get("price", 0))
         subtotal = float(item.get("subtotal", price * qty))
-        detail = item.get("detail", "")
-        rows += f"""
-        <tr>
-          <td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem">{label}{(' <span style="font-size:.78rem;color:#888">— ' + detail + '</span>') if detail else ''}</td>
-          <td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:center;color:#666">{qty}</td>
-          <td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:right;font-weight:600">${subtotal:.2f}</td>
-        </tr>"""
+        detail  = item.get("detail", "")
+        rows += (
+            f'<tr>'
+            f'<td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem">'
+            f'{label}'
+            + (f' <span style="font-size:.78rem;color:#888">— {detail}</span>' if detail else '') +
+            f'</td>'
+            f'<td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:center;color:#666">{qty}</td>'
+            f'<td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:right;font-weight:600">${subtotal:.2f}</td>'
+            f'</tr>'
+        )
     coupon_row = ""
     if coupon_code and coupon_discount > 0:
-        coupon_row = f'<tr><td colspan="2" style="padding:.35rem .5rem;font-size:.83rem;color:#888">Coupon {coupon_code.upper()}</td><td style="padding:.35rem .5rem;font-size:.83rem;text-align:right;color:#e05252">-${coupon_discount:.2f}</td></tr>'
-    dl_section = ""
+        coupon_row = (
+            f'<tr><td colspan="2" style="padding:.35rem .5rem;font-size:.83rem;color:#888">Coupon {coupon_code.upper()}</td>'
+            f'<td style="padding:.35rem .5rem;font-size:.83rem;text-align:right;color:#e05252">-${coupon_discount:.2f}</td></tr>'
+        )
+    items_table_html = (
+        f'<table style="width:100%;border-collapse:collapse;margin-bottom:.75rem">'
+        f'<thead><tr style="border-bottom:2px solid #eee">'
+        f'<th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:left;font-weight:500">ITEM</th>'
+        f'<th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:center;font-weight:500">QTY</th>'
+        f'<th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:right;font-weight:500">TOTAL</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table>'
+        f'{coupon_row}'
+        f'<table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem">'
+        f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Subtotal</td>'
+        f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${total:.2f}</td></tr>'
+        f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">4% Resort Tax</td>'
+        f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tax:.2f}</td></tr>'
+        f'<tr style="border-top:2px solid #eee">'
+        f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td>'
+        f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${grand_total:.2f}</td></tr>'
+        f'</table>'
+    )
+    dl_btn_html = ""
     if download_url:
-        dl_section = f"""
-        <p style="margin:1.25rem 0 .5rem;font-size:.9rem;font-weight:600;color:#111">Your Photos</p>
-        <p style="margin:0 0 1.25rem">
-          <a href="{download_url}" style="background:#1a73e8;color:#fff;padding:.55rem 1.25rem;border-radius:6px;font-size:.88rem;font-weight:600;text-decoration:none;display:inline-block">Download Your Photos</a>
-        </p>"""
-    greeting = f"Hi {customer_name.split()[0]}," if customer_name else "Hi,"
-    html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f5f5f5;font-family:Arial,sans-serif">
-<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">
-  <div style="background:#ffffff;border:1px solid #e0e0e0;border-radius:8px;padding:2rem 2rem 1.5rem">
-    <p style="margin:0 0 .15rem;font-size:.75rem;color:#999;text-transform:uppercase;letter-spacing:.5px">Crystal Images</p>
-    <h2 style="margin:0 0 .25rem;font-size:1.15rem;color:#111">Your Receipt</h2>
-    <p style="margin:0 0 1.5rem;font-size:.75rem;color:#aaa">Order {order_id}</p>
-    <p style="margin:0 0 1.25rem;font-size:.9rem;color:#333">{greeting} Thank you — here is a summary of your purchase.</p>
-    <table style="width:100%;border-collapse:collapse;margin-bottom:.75rem">
-      <thead>
-        <tr style="border-bottom:2px solid #eee">
-          <th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:left;font-weight:500">ITEM</th>
-          <th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:center;font-weight:500">QTY</th>
-          <th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:right;font-weight:500">TOTAL</th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>
-    {coupon_row}
-    <table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem">
-      <tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Subtotal</td><td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${total:.2f}</td></tr>
-      <tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">4% Resort Tax</td><td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tax:.2f}</td></tr>
-      <tr style="border-top:2px solid #eee"><td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td><td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${grand_total:.2f}</td></tr>
-    </table>
-    {dl_section}
-    <hr style="border:none;border-top:1px solid #eee;margin:0 0 1rem">
-    <p style="margin:0;font-size:.75rem;color:#aaa;line-height:1.6">Questions? Contact us at <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a>. Photos are for personal use — print, frame, and share freely.</p>
-  </div>
-</div></body></html>"""
+        dl_btn_html = (
+            f'<p style="margin:0 0 .5rem;font-size:.9rem;font-weight:600;color:#111">Your Photos</p>'
+            f'<p style="margin:0 0 1rem"><a href="{download_url}" '
+            f'style="background:#1a73e8;color:#fff;padding:.55rem 1.25rem;border-radius:6px;'
+            f'font-size:.88rem;font-weight:600;text-decoration:none;display:inline-block">'
+            f'Download Your Photos</a></p>'
+        )
+    first_name = (customer_name.split()[0] if customer_name else "") or _customer_first_name(to_email) or "there"
+    plain_vars = {"first_name": first_name, "order_id": order_id}
+    html_blocks = {"items_table": items_table_html, "download_button": dl_btn_html}
+    subject = tmpl["subject"]
+    for k, v in plain_vars.items():
+        subject = subject.replace(f"{{{{{k}}}}}", v)
+    body_html, _ = _render_email_body(tmpl["body"], plain_vars, html_blocks)
+    html = _wrap_email_html(body_html)
     try:
         r = http_requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={"from": RESEND_FROM, "to": [to_email], "subject": f"Your Crystal Images Receipt — {order_id}", "html": html},
+            json={"from": RESEND_FROM, "to": [to_email], "subject": subject, "html": html},
             timeout=10,
         )
         if not r.ok:
