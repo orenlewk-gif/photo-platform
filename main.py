@@ -701,7 +701,9 @@ def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
         sport_idx = int(np.argmax(s_logits[0]))
         sport = sports[sport_idx]
 
-        return {"sport": sport, "jacket_colors": jacket, "pants_colors": pants}
+        def _remap(colors):
+            return ['blue' if c == 'teal' else c for c in colors]
+        return {"sport": sport, "jacket_colors": _remap(jacket), "pants_colors": _remap(pants)}
     except Exception as e:
         print(f"ONNX classify failed: {e}")
         return None
