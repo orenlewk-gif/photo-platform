@@ -384,8 +384,8 @@ async function applyEdit() {
   const statusEl = document.getElementById('panel-status');
   statusEl.textContent = 'Saving…';
   const sel = [..._selected];
-  let ok = 0;
-  for (const path of sel) {
+
+  const results = await Promise.all(sel.map(async path => {
     const body = {path};
     if (state.jacket.length) body.jacket_colors = state.jacket;
     if (state.pants.length)  body.pants_colors  = state.pants;
@@ -394,19 +394,22 @@ async function applyEdit() {
       const r = await fetch('/api/admin/set-photo-colors', {
         method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
       });
-      if (r.ok) {
-        const p = _photos.find(x => x.path === path);
-        if (p) {
-          if (state.jacket.length) p.jacket = state.jacket;
-          if (state.pants.length)  p.pants  = state.pants;
-          if (state.sport)         p.sport  = state.sport;
-        }
-        ok++;
-      }
-    } catch(e) {}
-  }
+      return r.ok;
+    } catch(e) { return false; }
+  }));
+
+  const ok = results.filter(Boolean).length;
+  sel.forEach((path, i) => {
+    if (!results[i]) return;
+    const p = _photos.find(x => x.path === path);
+    if (p) {
+      if (state.jacket.length) p.jacket = state.jacket;
+      if (state.pants.length)  p.pants  = state.pants;
+      if (state.sport)         p.sport  = state.sport;
+    }
+  });
+
   statusEl.textContent = `Saved ${ok}/${sel.length}`;
-  // Refresh tiles without full re-render
   sel.forEach(path => {
     const idx = _photos.findIndex(p => p.path === path);
     if (idx >= 0) refreshTile(idx);
