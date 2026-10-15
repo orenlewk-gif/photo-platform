@@ -298,8 +298,13 @@ function openZoom(path) {
     modal.appendChild(img);
     document.body.appendChild(modal);
   }
-  document.getElementById('ix-zoom-img').src = '/api/admin/photo?path=' + encodeURIComponent(path) + '&size=medium';
+  const img = document.getElementById('ix-zoom-img');
+  // Show thumb immediately (already cached), then upgrade to medium
+  img.src = '/api/admin/photo?path=' + encodeURIComponent(path) + '&size=thumb';
   modal.style.display = 'flex';
+  const med = new Image();
+  med.onload = () => { if (modal.style.display !== 'none') img.src = med.src; };
+  med.src = '/api/admin/photo?path=' + encodeURIComponent(path) + '&size=medium';
 }
 
 function updateSelInfo() {
