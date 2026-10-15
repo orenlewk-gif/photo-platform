@@ -417,31 +417,32 @@ async function applyEdit() {
   statusEl.textContent = 'Saving…';
   const sel = [..._selected];
 
-  const results = await Promise.all(sel.map(async path => {
-    const body = {path};
-    if (state.jacket.length) body.jacket_colors = state.jacket;
-    if (state.pants.length)  body.pants_colors  = state.pants;
-    if (state.sport)         body.sport         = state.sport;
-    try {
-      const r = await fetch('/api/admin/set-photo-colors', {
-        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+  const body = {paths: sel};
+  if (state.jacket.length) body.jacket_colors = state.jacket;
+  if (state.pants.length)  body.pants_colors  = state.pants;
+  if (state.sport)         body.sport         = state.sport;
+
+  try {
+    const r = await fetch('/api/admin/set-photos-colors-bulk', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+    });
+    const d = r.ok ? await r.json() : null;
+    const ok = d ? d.updated : 0;
+    if (r.ok) {
+      sel.forEach(path => {
+        const p = _photos.find(x => x.path === path);
+        if (p) {
+          if (state.jacket.length) p.jacket = state.jacket;
+          if (state.pants.length)  p.pants  = state.pants;
+          if (state.sport)         p.sport  = state.sport;
+        }
       });
-      return r.ok;
-    } catch(e) { return false; }
-  }));
-
-  const ok = results.filter(Boolean).length;
-  sel.forEach((path, i) => {
-    if (!results[i]) return;
-    const p = _photos.find(x => x.path === path);
-    if (p) {
-      if (state.jacket.length) p.jacket = state.jacket;
-      if (state.pants.length)  p.pants  = state.pants;
-      if (state.sport)         p.sport  = state.sport;
     }
-  });
+    statusEl.textContent = `Saved ${ok}/${sel.length}`;
+  } catch(e) {
+    statusEl.textContent = 'Error saving';
+  }
 
-  statusEl.textContent = `Saved ${ok}/${sel.length}`;
   sel.forEach(path => {
     const idx = _photos.findIndex(p => p.path === path);
     if (idx >= 0) refreshTile(idx);
