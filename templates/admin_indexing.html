@@ -217,7 +217,7 @@ function renderGrid() {
     const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
     const labeled = (p.jacket||[]).length || (p.pants||[]).length;
     return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" tabindex="-1">
-      <img src="/thumb/${encodeURIComponent(p.path)}" loading="lazy" onerror="this.style.background='#0a1f30';this.style.minHeight='120px'">
+      <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" loading="lazy" onerror="this.style.background='#0a1f30';this.style.minHeight='120px'">
       <div class="pt-meta">
         <div class="pt-dots">${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}</div>
       </div>
