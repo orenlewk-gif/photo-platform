@@ -165,7 +165,7 @@ function renderFolderList(list) {
   if (!list.length) { el.innerHTML = '<div style="padding:.75rem .85rem;font-size:.78rem;color:rgba(255,255,255,.25)">No folders found</div>'; return; }
   el.innerHTML = list.map(f => {
     const active = _currentFolder && _currentFolder.folder_key === f.folder_key;
-    return `<div class="fl-row${active?' active':''}${f.reviewed?' done':''}" onclick="openFolder(${JSON.stringify(f.folder_key)})">
+    return `<div class="fl-row${active?' active':''}${f.reviewed?' done':''}" data-key="${esc(f.folder_key)}" onclick="openFolder(this.dataset.key)">
       <div class="fl-name">${esc(f.name||f.location||f.folder_key)}</div>
       <div class="fl-meta">${f.date} &middot; ${f.classified_count} labeled${f.reviewed?' &middot; done':''}</div>
     </div>`;
