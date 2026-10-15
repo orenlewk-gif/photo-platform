@@ -295,9 +295,16 @@ function showPanel() {
   const panel = document.getElementById('cf-panel');
 
   const selPhotos = sel.map(path => _photos.find(p => p.path === path)).filter(Boolean);
-  const jCommon = selPhotos.length ? (selPhotos[0].jacket||[]).filter(c => selPhotos.every(p=>(p.jacket||[]).includes(c))) : [];
-  const pCommon = selPhotos.length ? (selPhotos[0].pants||[]).filter(c => selPhotos.every(p=>(p.pants||[]).includes(c))) : [];
-  const sCommon = selPhotos.length && selPhotos.every(p=>p.sport===selPhotos[0].sport) ? selPhotos[0].sport : null;
+  // Intersect only among photos that already have labels; unset photos don't zero out the result
+  const jLabeled = selPhotos.filter(p => (p.jacket||[]).length > 0);
+  const pLabeled = selPhotos.filter(p => (p.pants||[]).length > 0);
+  const intersect = (labeled, key) => labeled.length
+    ? (labeled[0][key]||[]).filter(c => labeled.every(p => (p[key]||[]).includes(c)))
+    : [];
+  const jCommon = intersect(jLabeled, 'jacket');
+  const pCommon = intersect(pLabeled, 'pants');
+  const sLabeled = selPhotos.filter(p => p.sport);
+  const sCommon = sLabeled.length && sLabeled.every(p => p.sport === sLabeled[0].sport) ? sLabeled[0].sport : null;
 
   const state = {jacket:[...jCommon], pants:[...pCommon], sport:sCommon, instructor:null};
   window._panelState = state;
