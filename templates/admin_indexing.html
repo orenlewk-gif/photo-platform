@@ -97,6 +97,7 @@ html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c233
   <div id="sidebar">
     <div id="sidebar-header">
       <input type="text" id="sidebar-search" placeholder="Filter folders…" oninput="filterFolders(this.value)">
+      <div id="total-stats" style="font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.4rem;padding:0 .1rem"></div>
     </div>
     <div id="folder-list"><div style="padding:.75rem .85rem;font-size:.78rem;color:rgba(255,255,255,.25)">Loading…</div></div>
   </div>
@@ -158,6 +159,14 @@ async function loadFolders() {
     .filter(f => !f.is_portrait && !f.is_zip && !f.draft && f.classified_count > 0)
     .sort((a,b) => b.date.localeCompare(a.date));
   renderFolderList(_folders);
+  updateTotalStats();
+}
+
+function updateTotalStats() {
+  const total = _folders.reduce((s, f) => s + (f.classified_count || 0), 0);
+  const done  = _folders.filter(f => f.reviewed).length;
+  document.getElementById('total-stats').textContent =
+    `${total.toLocaleString()} labeled total  ·  ${done}/${_folders.length} folders done`;
 }
 
 function renderFolderList(list) {
@@ -473,6 +482,7 @@ async function toggleReviewed() {
   const f = _folders.find(x => x.folder_key === key);
   if (f) f.reviewed = newVal;
   updateDoneBtn();
+  updateTotalStats();
   filterFolders(document.getElementById('sidebar-search').value);
 }
 
