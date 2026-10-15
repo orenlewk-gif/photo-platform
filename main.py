@@ -7015,6 +7015,12 @@ async def admin_settings_page(request: Request):
     return HTMLResponse(open("templates/admin_settings.html").read())
 
 
+@app.get("/admin/indexing", response_class=HTMLResponse)
+async def admin_indexing_page(request: Request):
+    if not _admin_authed(request):
+        return RedirectResponse("/admin?next=/admin/indexing")
+    return HTMLResponse(open("templates/admin_indexing.html").read())
+
 @app.get("/admin/activities", response_class=HTMLResponse)
 async def admin_activities_page(request: Request):
     if not _admin_authed(request):

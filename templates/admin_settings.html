@@ -200,6 +200,7 @@ html.embedded #layout{height:100vh}
       <a href="/admin/links" class="nav-link">Links</a>
       
       <a href="/admin/settings" class="nav-link active-page">Settings</a>
+      <a href="/admin/indexing" class="nav-link">Label Photos</a>
       <a href="/admin/activities" class="nav-link">Activities</a>
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
       <a href="/admin/trash" class="nav-link">Trash</a>
@@ -216,6 +217,7 @@ html.embedded #layout{height:100vh}
       <button class="subtab active" onclick="switchTab('general',this)">General</button>
       <button class="subtab" onclick="switchTab('presets',this)">Text Presets</button>
       <button class="subtab" onclick="switchTab('classify',this)">Color Labels</button>
+      <button class="subtab" onclick="switchTab('email',this)">Email Templates</button>
     </div>
 
     <!-- ── GENERAL TAB ── -->
@@ -417,6 +419,62 @@ html.embedded #layout{height:100vh}
         <div id="classified-folders-list" style="margin-top:1rem"></div>
       </div>
     </div><!-- /tab-classify -->
+
+    <!-- ── EMAIL TEMPLATES TAB ── -->
+    <div id="tab-email" class="tab-panel">
+      <div class="settings-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
+          <div>
+            <div class="section-title" style="margin-bottom:.25rem">Email Templates</div>
+            <div class="section-desc" style="margin-bottom:0">Edit the emails sent to customers. System templates power automated sends — changes take effect immediately. Create custom templates for bulk follow-ups.</div>
+          </div>
+          <button class="btn-save" onclick="etNewTemplate()" style="white-space:nowrap;flex-shrink:0;margin-left:1.5rem">+ New Template</button>
+        </div>
+
+        <div style="display:flex;gap:1.25rem;align-items:flex-start;min-height:420px">
+
+          <!-- Template list -->
+          <div style="width:220px;flex-shrink:0;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);border-radius:8px;overflow:hidden">
+            <div id="et-list" style="display:flex;flex-direction:column"></div>
+          </div>
+
+          <!-- Editor -->
+          <div id="et-editor" style="flex:1;display:none;flex-direction:column;gap:.9rem">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <div id="et-name-display" style="font-size:.95rem;font-weight:600;color:#fff"></div>
+              <div style="display:flex;gap:.5rem">
+                <button id="et-btn-delete" class="btn-save" onclick="etDelete()" style="background:rgba(220,60,60,.2);border:1px solid rgba(220,60,60,.35);color:#f88;display:none">Delete</button>
+                <button id="et-btn-save" class="btn-save" onclick="etSave()">Save Changes</button>
+              </div>
+            </div>
+            <div id="et-name-field" style="display:none">
+              <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.3rem">Template Name</label>
+              <input id="et-name" type="text" placeholder="My template name" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.5rem .8rem;color:#fff;font-size:.88rem;font-family:inherit">
+            </div>
+            <div>
+              <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.3rem">Subject Line</label>
+              <input id="et-subject" type="text" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.5rem .8rem;color:#fff;font-size:.88rem;font-family:inherit">
+            </div>
+            <div>
+              <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.3rem">Body</label>
+              <textarea id="et-body" rows="14" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.65rem .8rem;color:#fff;font-size:.83rem;font-family:monospace;line-height:1.6;resize:vertical"></textarea>
+            </div>
+            <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:.9rem 1rem">
+              <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.35);margin-bottom:.55rem">Available tokens</div>
+              <div id="et-tokens" style="display:flex;flex-wrap:wrap;gap:.4rem"></div>
+              <div style="margin-top:.65rem;font-size:.75rem;color:rgba(255,255,255,.3);line-height:1.5">
+                Separate paragraphs with a blank line. Block tokens (buttons, tables) must be on their own line.
+              </div>
+            </div>
+            <div id="et-status" style="font-size:.82rem;min-height:1.1rem"></div>
+          </div>
+
+          <div id="et-empty" style="flex:1;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.2);font-size:.9rem">
+            Select a template to edit
+          </div>
+        </div>
+      </div>
+    </div><!-- /tab-email -->
 
 
   </div>
@@ -1135,7 +1193,12 @@ function openBulkCFEditor(folderKey, rowId) {
   const sel = [...(_cfSelected[folderKey] || new Set())];
   if (!sel.length) return;
   if (sel.length === 1) { openCFEditor(folderKey, sel[0], rowId); return; }
-  const bulkState = {jacket: [], pants: [], sport: null, instructor: null};
+  // Pre-populate with colors shared by ALL selected photos
+  const selPhotos = sel.map(path => (_folderPhotos[folderKey]||[]).find(p => p.path === path)).filter(Boolean);
+  const jCommon = selPhotos.length ? (selPhotos[0].jacket||[]).filter(c => selPhotos.every(p => (p.jacket||[]).includes(c))) : [];
+  const pCommon = selPhotos.length ? (selPhotos[0].pants||[]).filter(c => selPhotos.every(p => (p.pants||[]).includes(c))) : [];
+  const sCommon = selPhotos.length && selPhotos.every(p => p.sport === selPhotos[0].sport) ? selPhotos[0].sport : null;
+  const bulkState = {jacket: [...jCommon], pants: [...pCommon], sport: sCommon, instructor: null};
   const colorRow = (label, key) => {
     const pills = _ALL_COLORS.map(c => {
       const on = bulkState[key].includes(c);
@@ -1417,7 +1480,156 @@ const _origSwitchTab = window.switchTab;
 window.switchTab = function(tab, el) {
   _origSwitchTab && _origSwitchTab(tab, el);
   if (tab === 'classify') loadClassifiedFolders();
+  if (tab === 'email')    etLoad();
 };
+</script>
+<script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
+<script>
+// ── Email Templates ───────────────────────────────────────────────────────────
+let _etTemplates = {};
+let _etCurrent   = null;
+let _etDirty     = false;
+
+const ET_TOKEN_LABELS = {
+  first_name:      '{{first_name}} — recipient first name',
+  title:           '{{title}} — event/album title',
+  photo_count:     '{{photo_count}} — number of photos',
+  expire_date:     '{{expire_date}} — download link expiry',
+  order_id:        '{{order_id}} — POS order number',
+  code:            '{{code}} — discount code text',
+  discount_amount: '{{discount_amount}} — discount value',
+  download_button: '{{download_button}} — styled download button',
+  review_button:   '{{review_button}} — styled review button',
+  code_box:        '{{code_box}} — styled discount code display',
+  items_table:     '{{items_table}} — POS order items & totals',
+};
+
+async function etLoad() {
+  if (Object.keys(_etTemplates).length) return; // already loaded
+  const res = await fetch('/api/admin/email-templates');
+  if (!res.ok) return;
+  const d = await res.json();
+  _etTemplates = {};
+  (d.templates || []).forEach(t => { _etTemplates[t.id] = t; });
+  etRenderList();
+}
+
+function etRenderList() {
+  const list = document.getElementById('et-list');
+  const system  = Object.values(_etTemplates).filter(t =>  t.system);
+  const custom  = Object.values(_etTemplates).filter(t => !t.system);
+  let html = '';
+  if (system.length) {
+    html += `<div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.25);padding:.6rem .8rem .3rem">System</div>`;
+    system.forEach(t => {
+      html += `<div class="et-item${_etCurrent===t.id?' active':''}" onclick="etOpen('${esc(t.id)}')" style="padding:.55rem .85rem;cursor:pointer;font-size:.85rem;border-left:3px solid transparent${_etCurrent===t.id?';border-left-color:#1a73e8;background:rgba(26,115,232,.1)':''}">${esc(t.name)}</div>`;
+    });
+  }
+  if (custom.length) {
+    html += `<div style="font-size:.68rem;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.25);padding:.75rem .8rem .3rem;margin-top:.25rem;border-top:1px solid rgba(255,255,255,.07)">Custom</div>`;
+    custom.forEach(t => {
+      html += `<div class="et-item${_etCurrent===t.id?' active':''}" onclick="etOpen('${esc(t.id)}')" style="padding:.55rem .85rem;cursor:pointer;font-size:.85rem;border-left:3px solid transparent${_etCurrent===t.id?';border-left-color:#1a73e8;background:rgba(26,115,232,.1)':''}">${esc(t.name)}</div>`;
+    });
+  }
+  if (!system.length && !custom.length) {
+    html = '<div style="padding:1rem;font-size:.82rem;color:rgba(255,255,255,.25)">No templates</div>';
+  }
+  list.innerHTML = html;
+}
+
+function etOpen(id) {
+  if (_etDirty && !confirm('Discard unsaved changes?')) return;
+  _etCurrent = id;
+  _etDirty   = false;
+  const t = _etTemplates[id];
+  if (!t) return;
+  document.getElementById('et-editor').style.display = 'flex';
+  document.getElementById('et-empty').style.display  = 'none';
+  document.getElementById('et-name-display').textContent = t.name;
+  document.getElementById('et-subject').value = t.subject || '';
+  document.getElementById('et-body').value    = t.body    || '';
+  document.getElementById('et-status').textContent = '';
+  // Name field only for custom templates
+  const nameField = document.getElementById('et-name-field');
+  const delBtn    = document.getElementById('et-btn-delete');
+  nameField.style.display = t.system ? 'none' : 'block';
+  delBtn.style.display    = t.system ? 'none' : 'block';
+  if (!t.system) document.getElementById('et-name').value = t.name;
+  // Token guide
+  const tokens = t.tokens || [];
+  const tokEl  = document.getElementById('et-tokens');
+  if (tokens.length) {
+    tokEl.innerHTML = tokens.map(k =>
+      `<span title="${esc(ET_TOKEN_LABELS[k]||k)}" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:.18rem .5rem;font-size:.72rem;font-family:monospace;color:rgba(255,255,255,.6);cursor:help">{{${esc(k)}}}</span>`
+    ).join('');
+  } else {
+    tokEl.innerHTML = '<span style="color:rgba(255,255,255,.25);font-size:.78rem">No tokens for this template</span>';
+  }
+  etRenderList();
+}
+
+async function etSave() {
+  if (!_etCurrent) return;
+  const t       = _etTemplates[_etCurrent];
+  const subject = document.getElementById('et-subject').value.trim();
+  const body    = document.getElementById('et-body').value;
+  const name    = document.getElementById('et-name').value.trim();
+  const statusEl = document.getElementById('et-status');
+  if (!subject) { statusEl.textContent = 'Subject is required.'; statusEl.style.color='#f88'; return; }
+  const payload = { subject, body };
+  if (!t.system && name) payload.name = name;
+  statusEl.textContent = 'Saving…'; statusEl.style.color = 'rgba(255,255,255,.4)';
+  const res = await fetch(`/api/admin/email-templates/${encodeURIComponent(_etCurrent)}`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
+  });
+  if (res.ok) {
+    const d = await res.json();
+    _etTemplates[_etCurrent] = d.template;
+    _etDirty = false;
+    statusEl.textContent = 'Saved.'; statusEl.style.color = '#6c9';
+    if (!t.system && name) document.getElementById('et-name-display').textContent = name;
+    etRenderList();
+  } else {
+    let msg = res.statusText; try { msg = (await res.json()).error || msg; } catch(_){}
+    statusEl.textContent = 'Error: ' + msg; statusEl.style.color = '#f88';
+  }
+}
+
+async function etDelete() {
+  if (!_etCurrent) return;
+  const t = _etTemplates[_etCurrent];
+  if (!confirm(`Delete template "${t.name}"? This cannot be undone.`)) return;
+  const res = await fetch(`/api/admin/email-templates/${encodeURIComponent(_etCurrent)}`, { method: 'DELETE' });
+  if (res.ok) {
+    delete _etTemplates[_etCurrent];
+    _etCurrent = null;
+    _etDirty   = false;
+    document.getElementById('et-editor').style.display = 'none';
+    document.getElementById('et-empty').style.display  = 'flex';
+    etRenderList();
+  } else {
+    let msg = 'Error'; try { msg = (await res.json()).error || msg; } catch(_){}
+    alert(msg);
+  }
+}
+
+async function etNewTemplate() {
+  const name = prompt('Template name:');
+  if (!name || !name.trim()) return;
+  const res = await fetch('/api/admin/email-templates', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ name: name.trim(), subject: '', body: 'Hi {{first_name}},\n\n' }),
+  });
+  if (res.ok) {
+    const d = await res.json();
+    _etTemplates[d.template.id] = d.template;
+    etRenderList();
+    etOpen(d.template.id);
+  } else {
+    let msg = 'Error'; try { msg = (await res.json()).error || msg; } catch(_){}
+    alert(msg);
+  }
+}
 </script>
 <script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 </body>

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Label Photos — Crystal Images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c2336;color:#e8eaf0;font-size:14px;overflow:hidden}
+
+#topbar{height:46px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
+  display:flex;align-items:center;padding:0 1.25rem;gap:1.5rem;flex-shrink:0;z-index:10}
+#topbar h1{color:#F5C518;font-size:.95rem;font-weight:700}
+#topbar a{color:rgba(255,255,255,.4);font-size:.8rem;text-decoration:none}
+#topbar a:hover{color:#fff}
+#topbar .nav-sep{color:rgba(255,255,255,.12);font-size:.9rem}
+
+#layout{display:flex;height:calc(100vh - 46px);overflow:hidden}
+
+/* ── Sidebar ── */
+#sidebar{width:260px;flex-shrink:0;background:#081929;border-right:1px solid rgba(255,255,255,.07);
+  display:flex;flex-direction:column;overflow:hidden}
+#sidebar-header{padding:.75rem .85rem .6rem;border-bottom:1px solid rgba(255,255,255,.06)}
+#sidebar-search{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+  border-radius:7px;padding:.38rem .65rem;color:#e8eaf0;font-size:.8rem;outline:none;font-family:inherit}
+#sidebar-search:focus{border-color:#F5C518}
+#sidebar-search::placeholder{color:rgba(255,255,255,.25)}
+#folder-list{flex:1;overflow-y:auto;padding:.35rem 0}
+.fl-row{padding:.5rem .85rem;cursor:pointer;transition:background .1s;border-left:3px solid transparent}
+.fl-row:hover{background:rgba(255,255,255,.04)}
+.fl-row.active{background:rgba(245,197,24,.07);border-left-color:#F5C518}
+.fl-row.done{opacity:.5}
+.fl-name{font-size:.82rem;color:#e8eaf0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fl-meta{font-size:.68rem;color:rgba(255,255,255,.33);margin-top:2px}
+
+/* ── Main ── */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#main-header{padding:.75rem 1.25rem .6rem;border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex;align-items:center;gap:1rem;flex-shrink:0;flex-wrap:wrap}
+#folder-title{font-size:.95rem;font-weight:700;color:#e8eaf0;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#folder-stats{font-size:.75rem;color:rgba(255,255,255,.35);flex-shrink:0}
+#btn-done{padding:.3rem .85rem;border-radius:6px;border:1px solid rgba(80,180,80,.4);
+  background:rgba(80,180,80,.1);color:#6c6;font-size:.75rem;cursor:pointer;font-family:inherit;flex-shrink:0}
+#btn-done.done-active{background:rgba(80,180,80,.2);border-color:rgba(80,180,80,.6)}
+#sel-info{font-size:.75rem;color:#F5C518;font-weight:600;flex-shrink:0;min-width:80px}
+#btn-deselect{padding:.25rem .7rem;border-radius:6px;border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:.72rem;cursor:pointer;font-family:inherit;display:none}
+#shortcuts-hint{font-size:.65rem;color:rgba(255,255,255,.2);flex-shrink:0}
+
+#photo-area{flex:1;overflow-y:auto;padding:1rem 1.25rem}
+#photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:.75rem}
+#empty-state{display:flex;align-items:center;justify-content:center;height:100%;
+  color:rgba(255,255,255,.2);font-size:.9rem;flex-direction:column;gap:.5rem}
+
+/* ── Photo tile ── */
+.pt{border-radius:8px;overflow:hidden;cursor:pointer;border:2px solid transparent;
+  transition:border-color .12s,transform .1s;position:relative;background:#0a1f30}
+.pt:hover{border-color:rgba(255,255,255,.2)}
+.pt.selected{border-color:#F5C518}
+.pt.focused{outline:2px solid rgba(245,197,24,.5);outline-offset:2px}
+.pt img{width:100%;aspect-ratio:3/2;object-fit:cover;display:block}
+.pt-meta{padding:.3rem .45rem .35rem;font-size:.65rem}
+.pt-dots{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.pt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.pt-sport{font-size:.6rem;color:rgba(255,255,255,.35);font-weight:600;margin-left:auto}
+.pt-unlabeled{color:rgba(255,255,255,.2);font-size:.65rem}
+
+/* ── Floating edit panel ── */
+#cf-panel{display:none;position:fixed;right:20px;top:60px;width:310px;
+  max-height:calc(100vh - 80px);overflow-y:auto;z-index:500;
+  background:rgba(8,18,30,.97);border:1px solid rgba(255,255,255,.15);
+  border-radius:10px;box-shadow:0 4px 28px rgba(0,0,0,.6);padding:.85rem}
+.cf-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:10px;
+  border:1.5px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);
+  cursor:pointer;font-size:.65rem;color:rgba(255,255,255,.5);margin:.15rem .1rem;transition:all .1s}
+.cf-pill.on{border-color:#F5C518;background:rgba(245,197,24,.12);color:#F5C518}
+.cf-row-label{font-size:.6rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:rgba(255,255,255,.35);width:48px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <h1>Crystal Images</h1>
+  <span class="nav-sep">|</span>
+  <a href="/admin/dashboard">Dashboard</a>
+  <a href="/admin/pricing">Pricing</a>
+  <a href="/admin/photographers">Admin</a>
+  <a href="/admin/orders">Orders</a>
+  <a href="/admin/settings">Settings</a>
+  <a href="/admin/indexing" style="color:#F5C518">Label Photos</a>
+  <a href="/admin/activities">Activities</a>
+  <a href="/admin/signout" style="margin-left:auto">Sign out</a>
+</div>
+
+<div id="layout">
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <input type="text" id="sidebar-search" placeholder="Filter folders…" oninput="filterFolders(this.value)">
+    </div>
+    <div id="folder-list"><div style="padding:.75rem .85rem;font-size:.78rem;color:rgba(255,255,255,.25)">Loading…</div></div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <div id="main-header">
+      <div id="folder-title" style="color:rgba(255,255,255,.25)">Select a folder</div>
+      <div id="folder-stats"></div>
+      <button id="btn-done" style="display:none" onclick="toggleReviewed()">Mark done</button>
+      <div id="sel-info"></div>
+      <button id="btn-deselect" onclick="deselectAll()">Deselect all</button>
+      <div id="shortcuts-hint">Space: select  Arrow: navigate  Esc: clear</div>
+    </div>
+    <div id="photo-area">
+      <div id="empty-state">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+        <div>Select a folder from the sidebar</div>
+      </div>
+      <div id="photo-grid" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Floating edit panel -->
+<div id="cf-panel"></div>
+
+<script>
+if (window.parent !== window) document.documentElement.classList.add('embedded');
+
+const _HEX = {
+  red:'#e05252',orange:'#e87c2e',yellow:'#d4c200',green:'#4caf50',blue:'#3b82f6',
+  purple:'#9c6ee8',pink:'#e87cc8',white:'#e8e8e8',black:'#333',gray:'#888',
+  brown:'#8b5e3c',tan:'#c4a882',teal:'#2dd4bf',camo:'#6b7c45',none:'#444',unclear:'#555',
+};
+const _COLOR_LABEL = {
+  red:'Red',orange:'Orange',yellow:'Yellow',green:'Green',blue:'Blue',purple:'Purple',
+  pink:'Pink',white:'White',black:'Black',gray:'Gray',brown:'Brown',tan:'Tan',
+  teal:'Teal',camo:'Camo',none:'None',unclear:'Unclear',
+};
+const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink',
+                     'white','black','gray','brown','tan','teal','camo','none','unclear'];
+
+let _folders       = [];
+let _currentFolder = null;   // folder object
+let _photos        = [];     // current folder photos
+let _selected      = new Set();
+let _lastClicked   = null;   // path for shift-select anchor
+let _focusedIdx    = -1;     // keyboard nav index
+let _editState     = {};     // path → {jacket, pants, sport, instructor}
+let _clipboard     = null;
+
+// ── Load folders ──────────────────────────────────────────────────────────────
+async function loadFolders() {
+  const res = await fetch('/api/admin/folders');
+  if (!res.ok) return;
+  const d = await res.json();
+  _folders = (d.folders || [])
+    .filter(f => !f.is_portrait && !f.is_zip && !f.draft && f.classified_count > 0)
+    .sort((a,b) => b.date.localeCompare(a.date));
+  renderFolderList(_folders);
+}
+
+function renderFolderList(list) {
+  const el = document.getElementById('folder-list');
+  if (!list.length) { el.innerHTML = '<div style="padding:.75rem .85rem;font-size:.78rem;color:rgba(255,255,255,.25)">No folders found</div>'; return; }
+  el.innerHTML = list.map(f => {
+    const active = _currentFolder && _currentFolder.folder_key === f.folder_key;
+    return `<div class="fl-row${active?' active':''}${f.reviewed?' done':''}" onclick="openFolder(${JSON.stringify(f.folder_key)})">
+      <div class="fl-name">${esc(f.name||f.location||f.folder_key)}</div>
+      <div class="fl-meta">${f.date} &middot; ${f.classified_count} labeled${f.reviewed?' &middot; done':''}</div>
+    </div>`;
+  }).join('');
+}
+
+function filterFolders(q) {
+  if (!q.trim()) { renderFolderList(_folders); return; }
+  const lq = q.toLowerCase();
+  renderFolderList(_folders.filter(f => (f.name||f.location||f.folder_key||'').toLowerCase().includes(lq) || (f.date||'').includes(lq)));
+}
+
+// ── Open folder ───────────────────────────────────────────────────────────────
+async function openFolder(key) {
+  _currentFolder = _folders.find(f => f.folder_key === key);
+  if (!_currentFolder) return;
+  _selected.clear(); _lastClicked = null; _focusedIdx = -1; _editState = {};
+  hidePanel();
+  renderFolderList(document.getElementById('sidebar-search').value ? null : _folders);
+  // Re-render sidebar with active state
+  filterFolders(document.getElementById('sidebar-search').value);
+
+  document.getElementById('folder-title').textContent = _currentFolder.name || _currentFolder.location || key;
+  document.getElementById('folder-stats').textContent = 'Loading…';
+  document.getElementById('btn-done').style.display = 'block';
+  updateDoneBtn();
+  document.getElementById('photo-grid').style.display = 'none';
+  document.getElementById('empty-state').style.display = 'flex';
+  document.getElementById('empty-state').innerHTML = '<div style="color:rgba(255,255,255,.2)">Loading photos…</div>';
+
+  const res = await fetch(`/api/admin/folder-photos?folder_key=${encodeURIComponent(key)}`);
+  if (!res.ok) { document.getElementById('empty-state').innerHTML = '<div style="color:#f88">Failed to load</div>'; return; }
+  const d = await res.json();
+  _photos = (d.photos || []).filter(p => p.jacket !== null);
+  document.getElementById('folder-stats').textContent = `${_photos.length} labeled photos`;
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('photo-grid').style.display = 'grid';
+  renderGrid();
+  updateSelInfo();
+}
+
+// ── Render grid ───────────────────────────────────────────────────────────────
+function renderGrid() {
+  const grid = document.getElementById('photo-grid');
+  grid.innerHTML = _photos.map((p, i) => {
+    const sel = _selected.has(p.path);
+    const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'}" title="${c}"></span>`).join('');
+    const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'};opacity:.6" title="${c}"></span>`).join('');
+    const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
+    const labeled = (p.jacket||[]).length || (p.pants||[]).length;
+    return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" tabindex="-1">
+      <img src="/thumb/${encodeURIComponent(p.path)}" loading="lazy" onerror="this.style.background='#0a1f30';this.style.minHeight='120px'">
+      <div class="pt-meta">
+        <div class="pt-dots">${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refreshTile(idx) {
+  const p = _photos[idx];
+  if (!p) return;
+  const tile = document.querySelector(`.pt[data-idx="${idx}"]`);
+  if (!tile) return;
+  const sel = _selected.has(p.path);
+  tile.className = 'pt' + (sel ? ' selected' : '');
+  const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'}" title="${c}"></span>`).join('');
+  const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'};opacity:.6" title="${c}"></span>`).join('');
+  const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
+  tile.querySelector('.pt-dots').innerHTML = `${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}`;
+}
+
+// ── Photo click / selection ───────────────────────────────────────────────────
+function photoClick(e, idx) {
+  const p = _photos[idx];
+  if (!p) return;
+  if (e.shiftKey && _lastClicked !== null) {
+    const a = Math.min(_lastClicked, idx), b = Math.max(_lastClicked, idx);
+    for (let i = a; i <= b; i++) _selected.add(_photos[i].path);
+    renderGrid();
+  } else {
+    const already = _selected.has(p.path);
+    if (!e.metaKey && !e.ctrlKey) {
+      // Single click without modifier: if only this one selected, deselect (toggle). If others selected, select just this.
+      if (_selected.size === 1 && already) {
+        _selected.clear();
+        hidePanel();
+      } else if (_selected.size > 1 && already) {
+        // keep selection, reopen panel
+      } else {
+        _selected.clear();
+        _selected.add(p.path);
+      }
+    } else {
+      if (already) _selected.delete(p.path); else _selected.add(p.path);
+    }
+    renderGrid();
+  }
+  _lastClicked = idx;
+  _focusedIdx  = idx;
+  updateSelInfo();
+  if (_selected.size > 0) showPanel();
+  else hidePanel();
+}
+
+function deselectAll() {
+  _selected.clear();
+  _lastClicked = null;
+  _focusedIdx = -1;
+  renderGrid();
+  updateSelInfo();
+  hidePanel();
+}
+
+function updateSelInfo() {
+  const n = _selected.size;
+  document.getElementById('sel-info').textContent = n ? `${n} selected` : '';
+  document.getElementById('btn-deselect').style.display = n ? 'inline-block' : 'none';
+}
+
+// ── Edit panel ────────────────────────────────────────────────────────────────
+function showPanel() {
+  const sel = [..._selected];
+  if (!sel.length) { hidePanel(); return; }
+  const panel = document.getElementById('cf-panel');
+
+  const selPhotos = sel.map(path => _photos.find(p => p.path === path)).filter(Boolean);
+  const jCommon = selPhotos.length ? (selPhotos[0].jacket||[]).filter(c => selPhotos.every(p=>(p.jacket||[]).includes(c))) : [];
+  const pCommon = selPhotos.length ? (selPhotos[0].pants||[]).filter(c => selPhotos.every(p=>(p.pants||[]).includes(c))) : [];
+  const sCommon = selPhotos.length && selPhotos.every(p=>p.sport===selPhotos[0].sport) ? selPhotos[0].sport : null;
+
+  const state = {jacket:[...jCommon], pants:[...pCommon], sport:sCommon, instructor:null};
+  window._panelState = state;
+
+  const colorRow = (label, key) => {
+    const pills = _ALL_COLORS.map(c => {
+      const on = state[key].includes(c);
+      return `<span class="cf-pill${on?' on':''}" onclick="toggleColor('${key}','${c}',this)">
+        <span style="width:8px;height:8px;border-radius:50%;background:${_HEX[c]||'#888'};flex-shrink:0"></span>${_COLOR_LABEL[c]||c}</span>`;
+    }).join('');
+    return `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:.1rem;margin-bottom:.4rem">
+      <span class="cf-row-label">${label}</span>${pills}</div>`;
+  };
+
+  const sportPills = ['ski','snowboard'].map(s => {
+    const on = state.sport === s;
+    return `<span class="cf-pill${on?' on':''}" onclick="toggleSport('${s}',this)">${s}</span>`;
+  }).join('');
+
+  const copyBtn = _clipboard ? `<button onclick="pasteCopy()" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);font-size:.72rem;cursor:pointer;font-family:inherit">Paste</button>` : '';
+
+  panel.innerHTML = `
+    <div style="font-size:.72rem;font-weight:600;color:#F5C518;margin-bottom:.6rem">
+      ${sel.length === 1 ? 'Editing 1 photo' : `Editing ${sel.length} photos — shared colors pre-filled`}
+    </div>
+    ${colorRow('Jacket','jacket')}
+    ${colorRow('Pants','pants')}
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:.1rem;margin-bottom:.5rem">
+      <span class="cf-row-label">Sport</span>${sportPills}
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.5rem">
+      <button onclick="applyEdit()" style="padding:4px 14px;border-radius:6px;background:#F5C518;color:#000;border:none;cursor:pointer;font-size:.8rem;font-weight:600;font-family:inherit">Apply${sel.length>1?' to '+sel.length:''}</button>
+      <button onclick="copyEdit()" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);font-size:.72rem;cursor:pointer;font-family:inherit">Copy</button>
+      ${copyBtn}
+      <button onclick="deselectAll()" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);font-size:.72rem;cursor:pointer;font-family:inherit">Cancel</button>
+      <span id="panel-status" style="font-size:.7rem;color:rgba(255,255,255,.4)"></span>
+    </div>`;
+  panel.style.display = 'block';
+}
+
+function hidePanel() {
+  document.getElementById('cf-panel').style.display = 'none';
+}
+
+function toggleColor(key, color, el) {
+  const state = window._panelState;
+  if (!state) return;
+  const idx = state[key].indexOf(color);
+  const on  = idx < 0;
+  if (on) state[key].push(color); else state[key].splice(idx,1);
+  el.classList.toggle('on', on);
+}
+
+function toggleSport(sport, el) {
+  const state = window._panelState;
+  if (!state) return;
+  const on = state.sport !== sport;
+  state.sport = on ? sport : null;
+  document.querySelectorAll('#cf-panel .cf-pill').forEach(p => {
+    if (p.textContent.trim() === 'ski' || p.textContent.trim() === 'snowboard') {
+      p.classList.toggle('on', p.textContent.trim() === state.sport);
+    }
+  });
+}
+
+function copyEdit() {
+  const state = window._panelState;
+  if (state) _clipboard = {jacket:[...state.jacket], pants:[...state.pants], sport:state.sport};
+}
+
+function pasteCopy() {
+  if (!_clipboard) return;
+  const state = window._panelState;
+  if (!state) return;
+  state.jacket = [..._clipboard.jacket];
+  state.pants  = [..._clipboard.pants];
+  state.sport  = _clipboard.sport;
+  showPanel(); // re-render with pasted values
+}
+
+async function applyEdit() {
+  const state = window._panelState;
+  if (!state || !_selected.size) return;
+  const statusEl = document.getElementById('panel-status');
+  statusEl.textContent = 'Saving…';
+  const sel = [..._selected];
+  let ok = 0;
+  for (const path of sel) {
+    const body = {path};
+    if (state.jacket.length) body.jacket_colors = state.jacket;
+    if (state.pants.length)  body.pants_colors  = state.pants;
+    if (state.sport)         body.sport         = state.sport;
+    try {
+      const r = await fetch('/api/admin/set-photo-colors', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body),
+      });
+      if (r.ok) {
+        const p = _photos.find(x => x.path === path);
+        if (p) {
+          if (state.jacket.length) p.jacket = state.jacket;
+          if (state.pants.length)  p.pants  = state.pants;
+          if (state.sport)         p.sport  = state.sport;
+        }
+        ok++;
+      }
+    } catch(e) {}
+  }
+  statusEl.textContent = `Saved ${ok}/${sel.length}`;
+  // Refresh tiles without full re-render
+  sel.forEach(path => {
+    const idx = _photos.findIndex(p => p.path === path);
+    if (idx >= 0) refreshTile(idx);
+  });
+  setTimeout(() => { statusEl.textContent = ''; }, 2000);
+}
+
+// ── Mark reviewed ─────────────────────────────────────────────────────────────
+function updateDoneBtn() {
+  const btn = document.getElementById('btn-done');
+  const rev = _currentFolder && _currentFolder.reviewed;
+  btn.textContent = rev ? 'Done' : 'Mark done';
+  btn.className   = 'id="btn-done"' + (rev ? ' done-active' : '');
+  btn.style.borderColor = rev ? 'rgba(80,180,80,.6)' : 'rgba(80,180,80,.4)';
+  btn.style.background  = rev ? 'rgba(80,180,80,.2)' : 'rgba(80,180,80,.1)';
+  btn.style.color       = rev ? '#6c6' : '#6c6';
+}
+
+async function toggleReviewed() {
+  if (!_currentFolder) return;
+  const key = _currentFolder.folder_key;
+  const newVal = !_currentFolder.reviewed;
+  await fetch('/api/admin/set-folder-reviewed', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({folder_key: key, reviewed: newVal}),
+  });
+  _currentFolder.reviewed = newVal;
+  const f = _folders.find(x => x.folder_key === key);
+  if (f) f.reviewed = newVal;
+  updateDoneBtn();
+  filterFolders(document.getElementById('sidebar-search').value);
+}
+
+// ── Keyboard navigation ───────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'Escape') { deselectAll(); return; }
+  if (!_photos.length) return;
+
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    _focusedIdx = Math.min(_focusedIdx + 1, _photos.length - 1);
+    focusTile(_focusedIdx);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    _focusedIdx = Math.max(_focusedIdx - 1, 0);
+    focusTile(_focusedIdx);
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    if (_focusedIdx < 0) return;
+    const path = _photos[_focusedIdx]?.path;
+    if (!path) return;
+    if (_selected.has(path)) _selected.delete(path);
+    else { _selected.add(path); _lastClicked = _focusedIdx; }
+    renderGrid();
+    focusTile(_focusedIdx);
+    updateSelInfo();
+    if (_selected.size) showPanel(); else hidePanel();
+  } else if (e.key === 'Enter') {
+    if (_selected.size) applyEdit();
+  }
+});
+
+function focusTile(idx) {
+  document.querySelectorAll('.pt.focused').forEach(el => el.classList.remove('focused'));
+  const tile = document.querySelector(`.pt[data-idx="${idx}"]`);
+  if (tile) { tile.classList.add('focused'); tile.scrollIntoView({block:'nearest'}); }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+loadFolders();
+</script>
+</body>
+</html>
