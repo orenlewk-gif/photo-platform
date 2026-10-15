@@ -218,8 +218,11 @@ function renderGrid() {
     const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
     const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
     const labeled = (p.jacket||[]).length || (p.pants||[]).length;
-    return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" ondblclick="openZoom('${esc(p.path)}')" tabindex="-1">
+    return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" tabindex="-1" style="position:relative">
       <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" loading="lazy" onerror="this.style.background='#0a1f30';this.style.minHeight='120px'">
+      <button onclick="event.stopPropagation();openZoom('${esc(p.path)}')" title="Enlarge" style="position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:4px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);cursor:pointer;color:#fff;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="5" r="3.5"/><line x1="7.8" y1="7.8" x2="11" y2="11"/></svg>
+      </button>
       <div class="pt-meta">
         <div class="pt-dots">${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}</div>
       </div>
