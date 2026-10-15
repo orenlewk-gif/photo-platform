@@ -214,11 +214,11 @@ function renderGrid() {
   const grid = document.getElementById('photo-grid');
   grid.innerHTML = _photos.map((p, i) => {
     const sel = _selected.has(p.path);
-    const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'}" title="${c}"></span>`).join('');
-    const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'};opacity:.6" title="${c}"></span>`).join('');
+    const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
+    const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
     const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
     const labeled = (p.jacket||[]).length || (p.pants||[]).length;
-    return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" tabindex="-1">
+    return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" ondblclick="openZoom('${esc(p.path)}')" tabindex="-1">
       <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" loading="lazy" onerror="this.style.background='#0a1f30';this.style.minHeight='120px'">
       <div class="pt-meta">
         <div class="pt-dots">${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}</div>
@@ -234,8 +234,8 @@ function refreshTile(idx) {
   if (!tile) return;
   const sel = _selected.has(p.path);
   tile.className = 'pt' + (sel ? ' selected' : '');
-  const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'}" title="${c}"></span>`).join('');
-  const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span class="pt-dot" style="background:${_HEX[c]||'#888'};opacity:.6" title="${c}"></span>`).join('');
+  const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
+  const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
   const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
   tile.querySelector('.pt-dots').innerHTML = `${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}`;
 }
@@ -280,6 +280,23 @@ function deselectAll() {
   renderGrid();
   updateSelInfo();
   hidePanel();
+}
+
+function openZoom(path) {
+  let modal = document.getElementById('ix-zoom-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ix-zoom-modal';
+    modal.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    modal.onclick = () => modal.style.display = 'none';
+    const img = document.createElement('img');
+    img.id = 'ix-zoom-img';
+    img.style.cssText = 'max-width:92vw;max-height:92vh;object-fit:contain;border-radius:6px;box-shadow:0 8px 40px rgba(0,0,0,.6)';
+    modal.appendChild(img);
+    document.body.appendChild(modal);
+  }
+  document.getElementById('ix-zoom-img').src = '/api/admin/photo?path=' + encodeURIComponent(path) + '&size=medium';
+  modal.style.display = 'flex';
 }
 
 function updateSelInfo() {
