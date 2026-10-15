@@ -196,7 +196,9 @@ async function openFolder(key) {
   document.getElementById('empty-state').style.display = 'flex';
   document.getElementById('empty-state').innerHTML = '<div style="color:rgba(255,255,255,.2)">Loading photos…</div>';
 
-  const res = await fetch(`/api/admin/folder-photos?folder_key=${encodeURIComponent(key)}`);
+  const [fDate, fLoc, fGroup] = key.split('|');
+  const params = new URLSearchParams({date: fDate||'', location: fLoc||'', group: fGroup||''});
+  const res = await fetch(`/api/admin/folder-photos?${params}`);
   if (!res.ok) { document.getElementById('empty-state').innerHTML = '<div style="color:#f88">Failed to load</div>'; return; }
   const d = await res.json();
   _photos = (d.photos || []).filter(p => p.jacket !== null);
@@ -427,7 +429,7 @@ async function toggleReviewed() {
   if (!_currentFolder) return;
   const key = _currentFolder.folder_key;
   const newVal = !_currentFolder.reviewed;
-  await fetch('/api/admin/set-folder-reviewed', {
+  await fetch('/api/admin/toggle-folder-reviewed', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({folder_key: key, reviewed: newVal}),
   });
