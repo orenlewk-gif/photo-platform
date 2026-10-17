@@ -161,3 +161,18 @@ def test_preview_requires_admin(client, sent):
 def test_preview_explains_missing_review_link(admin_client, sent):
     r = admin_client.post("/api/admin/customer/ann@example.com/followup/preview", json={"type": "review"})
     assert r.status_code == 400 and "Settings > Email Templates" in r.json()["error"]
+
+
+def test_discount_email_has_shop_now_button(admin_client, sent, discount_code):
+    admin_client.post("/api/admin/customer/ann@example.com/followup",
+                      json={"type": "discount", "discount_code": "SAVE20"})
+    html, text = sent[0]["html"], sent[0]["text"]
+    assert 'href="https://photos.bigskyphotos.com"' in html and "Shop Now</a>" in html
+    assert "Shop now: https://photos.bigskyphotos.com" in text
+
+
+def test_bulk_discount_email_has_shop_now_button(admin_client, sent, discount_code):
+    admin_client.post("/api/admin/customers/bulk-followup", json={
+        "emails": ["ann@example.com"], "template_id": "discount_code",
+        "variables": {"discount_code": "SAVE20"}})
+    assert "Shop Now</a>" in sent[0]["html"]

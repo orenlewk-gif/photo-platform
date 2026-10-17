@@ -3218,7 +3218,8 @@ def _build_followup_email(email: str, body: dict):
         tmpl = _load_email_templates().get("discount_code") or _EMAIL_TEMPLATE_DEFAULTS["discount_code"]
         detail = _discount_detail(code_obj)
         plain_vars = {"first_name": first_name or "there", "code": code, "discount_amount": detail,
-                      "code_box": f"Your discount code: {code}" + (f" ({detail})" if detail else "")}
+                      "code_box": f"Your discount code: {code}" + (f" ({detail})" if detail else "")
+                                  + f"\nShop now: {SITE_URL}"}
         subject = tmpl["subject"]
         for k, v in plain_vars.items():
             subject = subject.replace(f"{{{{{k}}}}}", v)
@@ -3468,7 +3469,8 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
             html_blocks["code_box"] = _code_box_html(code, detail)
             plain_vars.setdefault("code", code)
             plain_vars.setdefault("discount_amount", detail)
-            plain_vars["code_box"] = f"Your discount code: {code}" + (f" ({detail})" if detail else "")
+            plain_vars["code_box"] = (f"Your discount code: {code}" + (f" ({detail})" if detail else "")
+                                      + f"\nShop now: {SITE_URL}")
 
         subject = tmpl["subject"]
         for k, v in plain_vars.items():
@@ -8293,11 +8295,15 @@ def _discount_detail(code_obj: dict) -> str:
     return label + (f" — expires {expires}" if expires else "")
 
 def _code_box_html(code: str, detail: str = "") -> str:
+    """Discount code box with a Shop Now button to the photo site."""
     return (
         f'<div style="background:#f5f5f5;border-radius:8px;padding:1.25rem;text-align:center;margin:0 0 1rem">'
         f'<div style="font-size:.78rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem">Your discount code</div>'
         f'<div style="font-size:2rem;font-weight:700;letter-spacing:.12em;color:#111">{code}</div>'
         + (f'<div style="font-size:.9rem;color:#555;margin-top:.35rem">{detail}</div>' if detail else '') +
+        f'<div style="margin-top:1rem"><a href="{SITE_URL}" '
+        f'style="background:#1a73e8;color:#fff;padding:.65rem 1.4rem;border-radius:6px;'
+        f'font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">Shop Now</a></div>'
         f'</div>'
     )
 
