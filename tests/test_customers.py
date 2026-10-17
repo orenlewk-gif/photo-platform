@@ -131,7 +131,8 @@ def test_delete_removes_only_that_customer(admin_client):
 def _pos_sale(client, customer, **extra):
     body = {"pin": PIN, "email": customer["email"],
             "name": f'{customer.get("first","")} {customer.get("last","")}'.strip(),
-            "phone": customer.get("phone", ""), "items": [], "total": 25, "customer": customer, **extra}
+            "phone": customer.get("phone", ""), "items": [], "total": 25, "customer": customer,
+            "square_payment_id": "COMP", **extra}
     return client.post("/api/pos-checkout", json=body)
 
 
@@ -166,7 +167,7 @@ def test_shared_email_does_not_rename_the_existing_customer(client):
 
 def test_old_pos_payload_without_customer_object_still_adds_customer(client):
     body = {"pin": PIN, "email": "old@example.com", "name": "Old Style", "phone": "555-0000",
-            "items": [], "total": 10}
+            "items": [], "total": 10, "square_payment_id": "COMP"}
     assert client.post("/api/pos-checkout", json=body).status_code == 200
     old = next(c for c in _r2_customers() if c["email"] == "old@example.com")
     assert (old["first"], old["last"], old["phone"]) == ("Old", "Style", "555-0000")

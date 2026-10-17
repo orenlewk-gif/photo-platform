@@ -2784,6 +2784,20 @@ async def pos_checkout(request: Request):
         if not customer_email:
             return JSONResponse(status_code=400, content={"error": "Customer email required"})
 
+        # Square sales: confirm with Square that it was really paid before recording
+        # the sale or sending photos. "COMP" is a deliberate free sale by staff.
+        square_check = {}
+        if square_id != "COMP":
+            if any(o.get("square_payment_id") == square_id for o in _fetch_pos_orders()):
+                return JSONResponse(status_code=409, content={
+                    "error": "This Square payment was already used for another sale", "verify_failed": True})
+            ok, detail = _square_verify_payment(square_id, int(round(total * 100)))
+            if not ok:
+                return JSONResponse(status_code=402, content={
+                    "error": f"Couldn't confirm the payment with Square: {detail}", "verify_failed": True})
+            square_check = {"square_verified": True, "square_paid": detail["paid_cents"] / 100,
+                            "square_tenders": detail["tender_types"]}
+
         now   = datetime.now(timezone.utc)
         token = str(uuid.uuid4()).replace("-", "")
 
@@ -2827,6 +2841,7 @@ async def pos_checkout(request: Request):
             "square_payment_id": square_id,
             "package_token":     token if photo_paths else "",
             "items":             items,
+            **square_check,
         }
         _store_pos_order(order_record)
 
@@ -2894,21 +2909,27 @@ def _square_headers() -> dict:
     return {"Authorization": f"Bearer {SQUARE_ACCESS_TOKEN}", "Content-Type": "application/json"}
 
 
-def _square_customer_id(info: dict) -> str | None:
-    """Square customer id for this POS customer (matched by email), creating one if needed.
-    Returns None if Square isn't configured or anything goes wrong — the sale still proceeds."""
+class SquareTokenRejected(Exception):
+    """Square refused the access token — payments couldn't be confirmed afterwards."""
+
+
+def _square_customer_id(info: dict) -> tuple:
+    """(Square customer id, problem) for this POS customer, matched by email and created if
+    needed. problem is a short reason when the customer couldn't be attached (the sale can
+    still go ahead without one). Raises SquareTokenRejected if Square refuses the token."""
     email = (info.get("email") or "").strip()
-    if not (SQUARE_ACCESS_TOKEN and email):
-        return None
+    if not email:
+        return None, None
     r = http_requests.post(f"{SQUARE_API_BASE}/customers/search", headers=_square_headers(), timeout=6,
                            json={"query": {"filter": {"email_address": {"exact": email}}}, "limit": 1})
-    if r.ok:
-        found = r.json().get("customers") or []
-        if found:
-            return found[0].get("id")
-    else:
+    if r.status_code == 401:
+        raise SquareTokenRejected()
+    if not r.ok:
         print(f"Square customer search failed ({r.status_code}): {r.text[:200]}")
-        return None
+        return None, f"Square customer search failed ({r.status_code})"
+    found = r.json().get("customers") or []
+    if found:
+        return found[0].get("id"), None
 
     new_customer = {
         "idempotency_key": str(uuid.uuid4()),
@@ -2937,8 +2958,46 @@ def _square_customer_id(info: dict) -> str | None:
         r = http_requests.post(f"{SQUARE_API_BASE}/customers", headers=_square_headers(), timeout=6, json=new_customer)
     if not r.ok:
         print(f"Square customer create failed ({r.status_code}): {r.text[:200]}")
-        return None
-    return (r.json().get("customer") or {}).get("id")
+        try:
+            detail = (r.json().get("errors") or [{}])[0].get("detail") or ""
+        except Exception:
+            detail = ""
+        return None, f"Square couldn't create the customer ({r.status_code}{': ' + detail if detail else ''})"
+    return (r.json().get("customer") or {}).get("id"), None
+
+
+def _square_verify_payment(transaction_id: str, expected_cents: int, attempts: int = 3) -> tuple:
+    """Confirm with Square that this POS transaction was really paid.
+    Returns (True, details) or (False, reason). The Point of Sale API's transaction_id is
+    the Square order id; a just-finished order can take a moment to appear, so retry."""
+    if not transaction_id or transaction_id == "COMP":
+        return False, "No Square transaction ID came back (Square may be in offline mode)"
+    order = None
+    for attempt in range(attempts):
+        r = http_requests.get(f"{SQUARE_API_BASE}/orders/{transaction_id}", headers=_square_headers(), timeout=8)
+        if r.status_code == 401:
+            return False, "Square rejected the access token"
+        if r.ok:
+            order = r.json().get("order") or {}
+            break
+        if r.status_code != 404:
+            return False, f"Square answered {r.status_code} when looking up the payment"
+        if attempt < attempts - 1:
+            _time.sleep(2)
+    if order is None:
+        return False, "Square has no record of this transaction"
+    if SQUARE_LOCATION_ID and order.get("location_id") and order["location_id"] != SQUARE_LOCATION_ID:
+        return False, "The payment was taken at a different Square location"
+    if order.get("state") not in ("COMPLETED", "OPEN"):
+        return False, f"The Square order isn't paid (state: {order.get('state')})"
+    tenders = order.get("tenders") or []
+    if not tenders:
+        return False, "The Square order has no payment on it"
+    paid_cents = sum(int((t.get("amount_money") or {}).get("amount") or 0) for t in tenders)
+    # Square adds resort tax and the tip on top, so paid must be at least the POS total
+    if paid_cents < expected_cents:
+        return False, f"Square shows ${paid_cents / 100:.2f} paid, less than the ${expected_cents / 100:.2f} sale"
+    return True, {"paid_cents": paid_cents, "tender_types": [t.get("type") for t in tenders]}
 
 
 @app.post("/api/pos/square-prepare")
@@ -2948,12 +3007,20 @@ def pos_square_prepare(request: Request, body: dict = Body(...)):
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
     if not SQUARE_APP_ID:
         return JSONResponse(status_code=503, content={"error": "Square isn't set up (SQUARE_APP_ID is missing)"})
-    customer_id = None
+    if not SQUARE_ACCESS_TOKEN:
+        return JSONResponse(status_code=503, content={
+            "error": "Square isn't set up (SQUARE_ACCESS_TOKEN is missing) — payments couldn't be confirmed"})
+    customer_id, customer_problem = None, None
     try:
-        customer_id = _square_customer_id(body.get("customer") or {})
+        customer_id, customer_problem = _square_customer_id(body.get("customer") or {})
+    except SquareTokenRejected:
+        return JSONResponse(status_code=503, content={
+            "error": "Square rejected the access token, so payments couldn't be confirmed. "
+                     "Check it in Dashboard > Settings > Test Square connection before charging."})
     except Exception as e:
         print(f"Square customer lookup failed: {e}")
-    return {"client_id": SQUARE_APP_ID, "customer_id": customer_id}
+        customer_problem = "Couldn't reach Square to add the customer"
+    return {"client_id": SQUARE_APP_ID, "customer_id": customer_id, "customer_problem": customer_problem}
 
 
 @app.get("/api/admin/square/test")

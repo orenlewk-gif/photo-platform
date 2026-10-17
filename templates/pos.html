@@ -3864,7 +3864,7 @@ function buildSquareUrl(clientId, customerId, total, txId){
     version:      '1.3',
     notes:        buildReceiptNotes().slice(0, 500),
     state:        txId,                                 // returned unchanged — ties the result to this sale
-    options: { supported_tender_types: ['CREDIT_CARD', 'CASH', 'OTHER', 'SQUARE_GIFT_CARD'] },
+    options: { supported_tender_types: ['CREDIT_CARD', 'CASH', 'OTHER', 'SQUARE_GIFT_CARD'], auto_return: true },
   };
   if(customerId) data.customer_id = customerId;
   return 'square-commerce-v1://payment/create?data=' + encodeURIComponent(JSON.stringify(data));
@@ -3892,6 +3892,13 @@ async function launchSquare(){
     setLoading(false);
     showToast(e.message);
     return;
+  }
+  if(prep.customer_problem){
+    setLoading(false);
+    const who = `${S.customer.first || ''} ${S.customer.last || ''}`.trim() || S.customer.email;
+    const go = confirm(`Square couldn't add ${who} as a Square customer (${prep.customer_problem}).\n\n`
+      + `Continue to Square without them? They'll still be saved in your Crystal Images customers and get their photos.`);
+    if(!go) return;
   }
 
   const txId = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
@@ -4040,8 +4047,19 @@ async function restoreStateAndComplete(txId){
   if(!saved){ showToast('Session lost — contact manager'); showScreen('s-passcode'); return; }
   restoreFromSaved(saved);
   try { S._savedPin = localStorage.getItem('ci_pos_pin') || S._savedPin; } catch(e){}
-  try { await completeCheckout(txId); }
-  catch(e){ showToast('Error completing order: ' + e.message); showScreen('s-passcode'); }
+  // The server confirms the payment with Square before recording the sale.
+  // A just-finished payment can take a moment to show up, so offer to check again.
+  while(true){
+    try { await completeCheckout(txId); return; }
+    catch(e){
+      if(e.verifyFailed && confirm(`${e.message}\n\nCheck with Square again?`)) continue;
+      showToast(e.verifyFailed
+        ? 'Sale not recorded — the payment wasn\'t confirmed. Check the Square app.'
+        : 'Error completing order: ' + e.message);
+      restoreStateAndShow();
+      return;
+    }
+  }
 }
 
 async function completeCheckout(squareTxId){
@@ -4069,7 +4087,11 @@ async function completeCheckout(squareTxId){
     });
     const data = await res.json();
     setLoading(false);
-    if(!res.ok) throw new Error(data.error || 'Checkout failed');
+    if(!res.ok){
+      const err = new Error(data.error || 'Checkout failed');
+      err.verifyFailed = !!data.verify_failed;
+      throw err;
+    }
     localStorage.removeItem('ci_pos_pending');
     showConfirmation(data);
   } catch(e){
