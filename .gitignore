@@ -12,3 +12,8 @@ model_v2.onnx.data
 model_v2_meta.json
 training_data/
 training/
+model_v3.onnx
+model_v3.onnx.data
+model_v3_meta.json
+.venv/
+.pytest_cache/
