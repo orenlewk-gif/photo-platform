@@ -42,6 +42,10 @@ class FakeSquare:
 
     def get(self, url, headers=None, **kw):
         self.calls.append(("GET", url, None, headers))
+        if "/payments/" in url:
+            pid = url.rsplit("/", 1)[-1]
+            return _Resp(200, {"payment": {"id": pid, "receipt_number": "Kd2P",
+                                           "receipt_url": f"https://squareup.com/receipt/preview/{pid}"}})
         if "/orders/" in url:
             oid = url.rsplit("/", 1)[-1]
             if oid in self.orders:
@@ -363,3 +367,58 @@ def test_unknown_or_stale_sales_cannot_be_finished(client, square, no_pos_orders
     main_module._save_pos_pending(STATE, {**old, "created": "2026-01-01T00:00:00+00:00"})
     assert _complete(client).status_code == 410
     assert _orders() == []
+
+
+# ── Square fees and receipt numbers ──────────────────────────────────────────
+
+def test_fee_info_by_payment_type(main_module):
+    info = main_module._square_fee_info
+    cash = {"tenders": [{"id": "T1", "type": "CASH"}]}
+    card_waiting = {"tenders": [{"id": "T2", "type": "CARD"}]}
+    card_done = {"tenders": [{"id": "T3", "type": "CARD", "processing_fee_money": {"amount": 31}}]}
+    assert info(cash) == {"fee_cents": 0, "fee_final": True, "payment_ids": ["T1"]}
+    assert info(card_waiting)["fee_final"] is False
+    assert info(card_done) == {"fee_cents": 31, "fee_final": True, "payment_ids": ["T3"]}
+
+
+def test_sale_records_square_fee_and_receipt_number(client, square, no_pos_orders):
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": {**_paid_order(cents=2600),
+                              "tenders": [{"id": "PAY1", "type": "CARD", "amount_money": {"amount": 2600},
+                                           "processing_fee_money": {"amount": 80}}]}}
+    assert _checkout(client, "ORDER1").status_code == 200
+    [order] = _orders()
+    assert order["square_fee"] == 0.8 and order["square_fee_final"] is True
+    assert order["square_payment_ids"] == ["PAY1"] and order["square_receipt_number"] == "Kd2P"
+
+
+def test_card_fee_square_fills_in_later_shows_up_on_the_orders_tab(admin_client, square, no_pos_orders,
+                                                                  main_module, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    s3 = boto3.client("s3", region_name="us-east-1")
+    created = datetime.now(timezone.utc) - timedelta(minutes=5)
+    rec = {"id": "pos-fee1", "date": created.strftime("%Y-%m-%d"), "created": created.isoformat(),
+           "name": "Ann Smith", "email": "ann@example.com", "location": "Base", "total": 25.0,
+           "coupon_discount": 0, "square_payment_id": "ORDER1", "square_verified": True,
+           "square_paid": 26.0, "square_fee": 0, "square_fee_final": False, "filenames": "IMG_1.jpg"}
+    key = f"pos_orders/{rec['date']}_pos-fee1.json"
+    s3.put_object(Bucket="test-bucket", Key=key, Body=json.dumps(rec).encode())
+
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": {**_paid_order(cents=2600), "tenders": [{"id": "PAY1", "type": "CARD"}]}}
+    monkeypatch.setattr(main_module, "_fetch_wc_orders", lambda *a, **kw: [])   # no online orders
+    html = admin_client.get("/admin/orders?days=7").text
+    assert ">pending<" in html                                  # Square hasn't filled it in yet
+
+    fake.orders["ORDER1"]["tenders"][0]["processing_fee_money"] = {"amount": 75}
+    html = admin_client.get("/admin/orders?days=7").text
+    assert "$0.75" in html and "$24.25" in html                 # fee, and net = 25.00 - 0.75
+    assert "Kd2P" in html and "<th>Order #</th>" in html and "<th>Card Fee</th>" in html
+    saved = json.loads(s3.get_object(Bucket="test-bucket", Key=key)["Body"].read())
+    assert saved["square_fee"] == 0.75 and saved["square_fee_final"] is True
+
+    calls = len(fake.calls)
+    admin_client.get("/admin/orders?days=7")                    # once final, Square isn't asked again
+    assert len(fake.calls) == calls
+    csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Ann" in l)
+    assert "Square Kd2P" in csv_line and "$0.75" in csv_line

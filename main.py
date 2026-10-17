@@ -2895,7 +2895,12 @@ def _record_pos_sale(body: dict):
                 "error": f"Couldn't confirm the payment with Square: {detail}", "verify_failed": True})
         square_check = {"square_verified": True, "square_paid": detail["paid_cents"] / 100,
                         "square_tip": detail["tip_cents"] / 100, "square_tax": detail["tax_cents"] / 100,
-                        "square_tenders": detail["tender_types"]}
+                        "square_tenders": detail["tender_types"],
+                        "square_payment_ids": detail["payment_ids"],
+                        "square_fee": detail["fee_cents"] / 100,
+                        "square_fee_final": detail["fee_final"]}
+        if detail["payment_ids"]:
+            square_check.update(_square_receipt(detail["payment_ids"][0]))
 
     now   = datetime.now(timezone.utc)
     token = str(uuid.uuid4()).replace("-", "")
@@ -2943,6 +2948,11 @@ def _record_pos_sale(body: dict):
         **square_check,
     }
     _store_pos_order(order_record)
+    if square_check and not square_check["square_fee_final"]:
+        # Square fills the card fee in shortly after the payment; record it then
+        fee_check = threading.Timer(30, _refresh_square_fee, args=(order_record,))
+        fee_check.daemon = True
+        fee_check.start()
 
     # Add the customer to the directory (or refresh their contact info).
     # A failure here must never block the sale.
@@ -3189,7 +3199,83 @@ def _square_verify_payment(transaction_id: str, expected_cents: int, attempts: i
     return True, {"paid_cents": paid_cents,
                   "tip_cents": int((order.get("total_tip_money") or {}).get("amount") or 0),
                   "tax_cents": int((order.get("total_tax_money") or {}).get("amount") or 0),
-                  "tender_types": [t.get("type") for t in tenders]}
+                  "tender_types": [t.get("type") for t in tenders],
+                  **_square_fee_info(order)}
+
+
+# Payment types Square takes no processing fee on
+_SQUARE_NO_FEE_TENDERS = {"CASH", "OTHER", "NO_SALE", "SQUARE_GIFT_CARD"}
+
+
+def _square_fee_info(order: dict) -> dict:
+    """Square's processing fee from an order's payments. Square fills the fee in about
+    ten seconds after a card payment, so fee_final says whether it's there yet."""
+    tenders = order.get("tenders") or []
+    fee_cents, final = 0, True
+    for t in tenders:
+        fee = t.get("processing_fee_money")
+        if fee is not None:
+            fee_cents += int(fee.get("amount") or 0)
+        elif t.get("type") not in _SQUARE_NO_FEE_TENDERS:
+            final = False
+    return {"fee_cents": fee_cents, "fee_final": final,
+            "payment_ids": [t["id"] for t in tenders if t.get("id")]}
+
+
+def _square_receipt(payment_id: str) -> dict:
+    """Square's receipt number (the short code shown in Square's Transactions list) and
+    receipt link for a payment. Best effort: an empty dict if Square can't say."""
+    try:
+        r = http_requests.get(f"{SQUARE_API_BASE}/payments/{payment_id}", headers=_square_headers(), timeout=6)
+        if r.ok:
+            p = r.json().get("payment") or {}
+            return {k: v for k, v in (("square_receipt_number", p.get("receipt_number")),
+                                      ("square_receipt_url", p.get("receipt_url"))) if v}
+    except Exception as e:
+        print(f"Square receipt lookup failed ({payment_id}): {e}")
+    return {}
+
+
+def _refresh_square_fee(order_record: dict) -> dict:
+    """Fill in the Square fee (and receipt number) on a recorded POS sale once Square
+    has them. Saves and returns the updated record; unchanged if Square isn't ready."""
+    try:
+        r = http_requests.get(f"{SQUARE_API_BASE}/orders/{order_record['square_payment_id']}",
+                              headers=_square_headers(), timeout=6)
+        if not r.ok:
+            return order_record
+        info = _square_fee_info(r.json().get("order") or {})
+    except Exception as e:
+        print(f"Square fee lookup failed ({order_record.get('id')}): {e}")
+        return order_record
+    updated = {**order_record, "square_payment_ids": info["payment_ids"]}
+    if info["fee_final"]:
+        updated.update(square_fee=info["fee_cents"] / 100, square_fee_final=True)
+    if not updated.get("square_receipt_number") and info["payment_ids"]:
+        updated.update(_square_receipt(info["payment_ids"][0]))
+    if updated != order_record:
+        _store_pos_order(updated)
+    return updated
+
+
+def _fill_pending_square_fees(pos_orders: list) -> list:
+    """Before showing orders: look up fees Square hadn't filled in when the sale was
+    recorded (e.g. the server restarted before the follow-up check ran)."""
+    now = datetime.now(timezone.utc)
+    def due(o):
+        if not o.get("square_verified") or o.get("square_fee_final") or not o.get("square_payment_id"):
+            return False
+        try:
+            age = now - datetime.fromisoformat(o["created"])
+        except Exception:
+            return False
+        return timedelta(seconds=20) < age < timedelta(days=90)
+    todo = [i for i, o in enumerate(pos_orders) if due(o)]
+    if todo and SQUARE_ACCESS_TOKEN:
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            for i, rec in zip(todo, pool.map(lambda i: _refresh_square_fee(pos_orders[i]), todo)):
+                pos_orders[i] = rec
+    return pos_orders
 
 
 @app.post("/api/pos/square-prepare")
@@ -4439,6 +4525,7 @@ def _order_row(order) -> dict:
     coupon_code  = ", ".join(c.get("code","") for c in coupon_lines) if coupon_lines else meta.get("_coupon_code", "")
     return {
         "order_id":    order.get("id"),
+        "order_no":    f"#{order.get('number') or order.get('id')}",
         "date":        order.get("date_created","")[:10],
         "first":       billing.get("first_name",""),
         "last":        billing.get("last_name",""),
@@ -4517,6 +4604,8 @@ def _pos_order_row(o: dict) -> dict:
     # What the customer actually paid: Square's verified amount (tax + tip included);
     # nothing for comps; for older sales without Square data, the POS total.
     charged  = 0.0 if is_comp else float(o.get("square_paid") or total)
+    fee      = float(o.get("square_fee") or 0)
+    fee_pending = bool(o.get("square_verified")) and not o.get("square_fee_final")
     name     = o.get("name", "")
     parts    = name.split(None, 1) if name else ["", ""]
     return {
@@ -4531,8 +4620,11 @@ def _pos_order_row(o: dict) -> dict:
         "photo_date":  o.get("photo_date",""),
         "total":       total,
         "discount":    discount,
-        "stripe_fee":  0,
-        "net":         0.0 if is_comp else round(total, 2),
+        "stripe_fee":  fee,                        # Square's processing fee
+        "fee_pending": fee_pending,
+        "net":         0.0 if is_comp else round(total - fee, 2),
+        "order_no":    o.get("square_receipt_number", ""),
+        "receipt_url": o.get("square_receipt_url", ""),
         "shipping":    0,
         "ship_addr":   "",
         "coupon_code": o.get("coupon_code",""),
@@ -4661,7 +4753,8 @@ def admin_orders(request: Request, days: int = 30,
         orders = _fetch_wc_orders(after=after)
     rows       = [_order_row(o) for o in orders]
     # In-person (POS) sales in the same period, listed with online orders, newest first
-    pos_rows   = [_pos_order_row(o) for o in _fetch_pos_orders(after=after[:10], before=before[:10] if custom else None)]
+    pos_rows   = [_pos_order_row(o) for o in _fill_pending_square_fees(
+        _fetch_pos_orders(after=after[:10], before=before[:10] if custom else None))]
     rows       = sorted(rows + pos_rows, key=lambda r: r.get("date") or "", reverse=True)
     total_rev  = sum(r.get("charged", r["total"]) for r in rows)
     total_fees = sum(r["stripe_fee"] for r in rows)
@@ -4858,6 +4951,13 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
         charged     = r.get("charged", r["total"])
         tip_str     = f"${r['tip']:.2f}" if r.get("tip") else '—'
         total_str   = "Comp" if r.get("is_comp") else f"${charged:.2f}"
+        if is_pos:
+            fee_str = "pending" if r.get("fee_pending") else (f"${r['stripe_fee']:.2f}" if r['stripe_fee'] else '—')
+        else:
+            fee_str = f"${r['stripe_fee']:.2f}"
+        order_no    = r.get("order_no") or '—'
+        order_cell  = (f'<a href="{r["receipt_url"]}" target="_blank" onclick="event.stopPropagation()" '
+                       f'style="color:inherit">{order_no}</a>') if r.get("receipt_url") else order_no
         detail_data = _json.dumps({
             "name":         f"{r['first']} {r['last']}",
             "email":        r['email'],
@@ -4868,7 +4968,9 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             "total":        total_str,
             "tip":          tip_str,
             "discount":     f"-${r['discount']:.2f}" if r['discount'] else '—',
-            "fee":          "—" if is_pos else f"${r['stripe_fee']:.2f}",
+            "fee":          fee_str,
+            "order_no":     ("Square " + order_no) if is_pos and r.get("order_no") else order_no,
+            "receipt_url":  r.get("receipt_url") or '',
             "net":          f"${r['net']:.2f}",
             "coupon":       r['coupon_code'] or '—',
             "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
@@ -4892,6 +4994,7 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             action_btn = f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
         trs += f"""<tr class="order-row" onclick="showDetail('{detail_data}')" style="cursor:pointer">
           {td(r['date'])}
+          {td(order_cell, 'mono')}
           {td(f"{r['first']} {r['last']}")}
           {td(r['location'] or '—')}
           {td(r['email'])}
@@ -4901,7 +5004,7 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
           {td(total_str)}
           {td(tip_str)}
           {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
-          {td('—' if is_pos else f"${r['stripe_fee']:.2f}", 'fee')}
+          {td(fee_str, 'fee')}
           {td(f"${r['net']:.2f}", 'net')}
           {td(r['coupon_code'] or '—')}
           {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
@@ -5078,8 +5181,9 @@ function showDetail(encoded) {{
   try {{
     const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
     const fields = [
+      ['Order #', d.receipt_url ? `<a href="${{d.receipt_url}}" target="_blank" style="color:inherit">${{d.order_no}}</a>` : d.order_no],
       ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
-      ['Total', d.total], ['Tip', d.tip], ['Discount', d.discount], ['Stripe Fee', d.fee],
+      ['Total', d.total], ['Tip', d.tip], ['Discount', d.discount], ['Card Fee', d.fee],
       ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
       ['Billing Address', d.address],
     ];
@@ -5204,7 +5308,7 @@ async function copyLink(orderId, e) {{
   <div class="stats">
     <div class="stat"><div class="label">Orders</div><div class="val">{len(rows)}</div></div>
     <div class="stat"><div class="label">Revenue</div><div class="val">${total_rev:.2f}</div></div>
-    <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
+    <div class="stat"><div class="label">Card Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
     <div class="stat"><div class="label">Tips</div><div class="val">${total_tips:.2f}</div></div>
   </div>
@@ -5243,11 +5347,11 @@ async function copyLink(orderId, e) {{
   <div class="wrap">
   <table>
     <thead><tr>
-      <th>Date</th><th>Name</th><th>Location</th><th>Email</th><th>Ordered</th><th>Photographer</th>
-      <th>Photo Files</th><th>Total</th><th>Tip</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
+      <th>Date</th><th>Order #</th><th>Name</th><th>Location</th><th>Email</th><th>Ordered</th><th>Photographer</th>
+      <th>Photo Files</th><th>Total</th><th>Tip</th><th>Discount</th><th>Card Fee</th><th>Net</th>
       <th>Coupon</th><th>Shipping</th><th>Address</th><th>Action</th>
     </tr></thead>
-    <tbody>{trs if trs else '<tr><td colspan="16" class="empty">No completed orders in this period.</td></tr>'}</tbody>
+    <tbody>{trs if trs else '<tr><td colspan="17" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
   </div>
   </div>
@@ -5360,9 +5464,9 @@ def admin_export(request: Request, days: int = 30,
         after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         orders = _fetch_wc_orders(after=after)
     rows   = [_order_row(o) for o in orders]
-    rows  += [_pos_order_row(o) for o in _fetch_pos_orders(
+    rows  += [_pos_order_row(o) for o in _fill_pending_square_fees(_fetch_pos_orders(
         after=(date_from if date_from and date_to else (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")),
-        before=(date_to if date_from and date_to else None))]
+        before=(date_to if date_from and date_to else None)))]
     rows.sort(key=lambda r: r.get("date") or "", reverse=True)
     buf    = io.StringIO()
     writer = csv.writer(buf)
@@ -5379,17 +5483,22 @@ def admin_export(request: Request, days: int = 30,
             if name and name not in seen:
                 names.append(name); seen.add(name)
         return " & ".join(names) if names else "Oren Lewkowski"
-    writer.writerow(["Date","First Name","Last Name","Email","Photographer","What Ordered",
+    writer.writerow(["Date","Order #","First Name","Last Name","Email","Photographer","What Ordered",
                      "Photo Files","Location","Photo Date","Total","Tip","Discount",
-                     "Stripe Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
+                     "Card Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
     for r in rows:
         photog = _exp_photog(r["filenames"])
-        writer.writerow([r["date"], r["first"], r["last"], r["email"], photog, r["what"],
+        if r.get("source") == "pos":
+            fee_csv = "pending" if r.get("fee_pending") else (f"${r['stripe_fee']:.2f}" if r["stripe_fee"] else "")
+            order_csv = ("Square " + r["order_no"]) if r.get("order_no") else ""
+        else:
+            fee_csv, order_csv = f"${r['stripe_fee']:.2f}", r.get("order_no", "")
+        writer.writerow([r["date"], order_csv, r["first"], r["last"], r["email"], photog, r["what"],
                          r["filenames"], r["location"], r["photo_date"],
                          "Comp" if r.get("is_comp") else f"${r.get('charged', r['total']):.2f}",
                          f"${r['tip']:.2f}" if r.get("tip") else "",
                          f"-${r['discount']:.2f}" if r["discount"] else "",
-                         f"${r['stripe_fee']:.2f}", f"${r['net']:.2f}",
+                         fee_csv, f"${r['net']:.2f}",
                          r["coupon_code"],
                          f"${r['shipping']:.2f}" if r["shipping"] else "",
                          r["ship_addr"]])

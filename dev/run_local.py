@@ -118,13 +118,24 @@ class FakeHTTP:
         if "squareup.com" in url and url.endswith("/locations"):
             return _FakeResp({"locations": [{"id": "LOCAL_LOC", "name": "Local Test Location"}]})
         if "squareup.com" in url and "/orders/" in url:
-            # Fake paid orders: any id starting SQ_TX_OK is a $1.04 cash payment; others don't exist
+            # Fake paid orders: SQ_TX_OK... is a $1.04 cash payment, SQ_TX_CARD... a $1.04 card
+            # payment with a 33c Square fee; others don't exist
             oid = url.rsplit("/", 1)[-1]
             print(f"[fake Square] order lookup {oid}")
             if oid.startswith("SQ_TX_OK"):
                 return _FakeResp({"order": {"id": oid, "location_id": "LOCAL_LOC", "state": "COMPLETED",
-                                            "tenders": [{"type": "CASH", "amount_money": {"amount": 104}}]}})
+                                            "tenders": [{"id": "PAY_" + oid, "type": "CASH",
+                                                         "amount_money": {"amount": 104}}]}})
+            if oid.startswith("SQ_TX_CARD"):
+                return _FakeResp({"order": {"id": oid, "location_id": "LOCAL_LOC", "state": "COMPLETED",
+                                            "tenders": [{"id": "PAY_" + oid, "type": "CARD",
+                                                         "amount_money": {"amount": 104},
+                                                         "processing_fee_money": {"amount": 33}}]}})
             return _FakeResp({"errors": [{"code": "NOT_FOUND"}]}, status=404)
+        if "squareup.com" in url and "/payments/" in url:
+            pid = url.rsplit("/", 1)[-1]
+            return _FakeResp({"payment": {"id": pid, "receipt_number": pid[-4:].upper(),
+                                          "receipt_url": "https://squareup.com/receipt/preview/" + pid}})
         if url.endswith("/products/1034/variations"):
             return _FakeResp([{"id": vid, "price": p, "regular_price": p, "stock_status": "instock"}
                               for vid, p in FRAME_PRICES.items()])
