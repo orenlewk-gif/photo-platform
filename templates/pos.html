@@ -17,7 +17,7 @@
   --text:#e4ecf4;--muted:#7aadca;--danger:#e05252;--success:#4ccd8a;
   --radius:12px;--font:'Manrope',sans-serif;
 }
-html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font)}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font-family:var(--font);touch-action:manipulation}
 #app{position:relative;width:100%;height:100%;overflow:hidden}
 
 /* ── Screens ── */
@@ -433,8 +433,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 }
 .ap-breadcrumb-btn{background:none;border:none;color:var(--accent);cursor:pointer;font-size:.78rem;padding:0}
 .ap-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:.4rem}
-.ap-photo-item{position:relative;aspect-ratio:1;cursor:pointer;border-radius:8px;overflow:hidden}
-.ap-photo-img{width:100%;height:100%;object-fit:cover;display:block;transition:opacity .15s}
+.ap-photo-item{position:relative;aspect-ratio:1;cursor:pointer;border-radius:8px;overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.ap-photo-img{width:100%;height:100%;object-fit:cover;display:block}
 .ap-photo-overlay{
   position:absolute;inset:0;background:rgba(245,197,24,.35);display:none;
   align-items:center;justify-content:center;border-radius:8px;
@@ -551,12 +551,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .confirm-title{font-size:1.4rem;font-weight:700;margin-bottom:.5rem}
 .confirm-sub{font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:.5rem}
 .confirm-email{color:var(--accent);font-weight:500}
-.confirm-link-box{
-  margin:1.25rem 0;background:var(--surface);border:1px solid var(--border);
-  border-radius:var(--radius);padding:.85rem 1rem;word-break:break-all;
-}
-.confirm-link{color:var(--accent);font-size:.8rem;text-decoration:none}
-.confirm-link:active{opacity:.7}
 .confirm-new-btn{
   width:100%;max-width:320px;background:var(--accent);color:#0a1929;border:none;
   border-radius:var(--radius);padding:.9rem;font-size:1rem;font-weight:700;cursor:pointer;
@@ -1047,10 +1041,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <div class="confirm-check">&#10003;</div>
   <div class="confirm-title">Sale Complete</div>
   <div class="confirm-sub">Receipt sent to <span class="confirm-email" id="confirm-email"></span></div>
-  <div class="confirm-link-box hidden" id="confirm-link-box">
-    <div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem">Download link:</div>
-    <a class="confirm-link" id="confirm-link" href="#" target="_blank"></a>
-  </div>
   <button class="confirm-new-btn" id="confirm-new-btn" onclick="newSale()">Start New Sale</button>
   <div class="confirm-sub hidden" id="confirm-elsewhere" style="margin-top:1rem;max-width:26rem;text-align:center">
     Square opened this page in Safari. You can close this tab and go back to the POS app — it will show the sale as complete.
@@ -2097,7 +2087,7 @@ function renderApResults(){
   }
   el.innerHTML = S.ap.families.map((f,i) => {
     const previews = (f.previews || []).slice(0,4).map(p =>
-      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`
+      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">`
     ).join('');
     return `
       <div class="ap-result-item" onclick="apSelectFamily(${i})" style="flex-direction:column;align-items:flex-start">
@@ -2149,7 +2139,7 @@ function renderApPhotos(){
     const photoNum = numMatch ? numMatch[numMatch.length - 1] : (i + 1);
     return `
       <div class="ap-photo-item" id="apph-${i}" onclick="apTogglePhoto(${i})">
-        <img class="ap-photo-img" src="${url}" loading="lazy" alt="${filename}">
+        <img class="ap-photo-img" src="${url}" loading="lazy" decoding="async" alt="${filename}">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
         <div class="ap-photo-num">${photoNum}</div>
       </div>
@@ -2297,7 +2287,7 @@ function renderPortraitResults(){
   }
   el.innerHTML = S.pr.sessions.map((s,i) => {
     const previews = (s.previews || []).slice(0,4).map(p =>
-      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`
+      `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">`
     ).join('');
     return `
       <div class="ap-result-item" onclick="portraitSelectSession(${i})" style="flex-direction:column;align-items:flex-start">
@@ -2381,14 +2371,14 @@ function renderPortraitPoses(){
   grid.innerHTML = S.pr.poses.map((pose,pi) => {
     const isSel = S.pr.selectedPoses.has(pi);
     const thumbs = pose.photos.slice(0,6).map(p =>
-      `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">`
+      `<img class="pr-pose-thumb" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">`
     ).join('');
     const inlinePhotos = pose.expanded ? pose.photos.map((p,pi2) => {
       const fn = p.filename || (p.path||'').split('/').pop() || '';
       const num = ((fn.match(/\d+/g))||[]).pop() || (pi2+1);
       const sel = S.pr.selected.has(p.path||'');
       return `<div class="ap-photo-item${sel?' selected':''}" id="prph-${pose.id}-${pi2}" onclick="portraitToggle(${pose.id},${pi2})">
-        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" alt="">
+        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
         <div class="ap-photo-num">${num}</div>
       </div>`;
@@ -2701,7 +2691,7 @@ async function ptLocChanged(){
     if(!families.length){ resultsEl.innerHTML = '<div class="ap-loading">No families found</div>'; return; }
     resultsEl.innerHTML = families.map((f,i) => {
       const previews = (f.previews || []).slice(0,4).map(p =>
-        `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="eager" alt="">`
+        `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="eager" decoding="async" alt="">`
       ).join('');
       return `<div class="ap-result-item" data-ptfi="${i}" style="flex-direction:column;align-items:flex-start">
         <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
@@ -2743,7 +2733,7 @@ async function ptSelectFamily(f){
       const fn = p.filename || (p.path||'').split('/').pop() || '';
       const num = ((fn.match(/\d+/g))||[]).pop() || (i+1);
       return `<div class="ap-photo-item" data-ptpi="${i}" style="outline:3px solid transparent;outline-offset:-3px">
-        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="eager" alt="">
+        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="eager" decoding="async" alt="">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
         <div class="ap-photo-num">${num}</div>
       </div>`;
@@ -4196,14 +4186,6 @@ function showConfirmation(data, inOtherBrowser){
   $('confirm-email').textContent = S.customer.email || (S.pendingOrder && S.pendingOrder.email) || data.email || '';
   $('confirm-new-btn').classList.toggle('hidden', !!inOtherBrowser);
   $('confirm-elsewhere').classList.toggle('hidden', !inOtherBrowser);
-  const box = $('confirm-link-box');
-  if(data.download_url){
-    $('confirm-link').textContent = data.download_url;
-    $('confirm-link').href = data.download_url;
-    box.classList.remove('hidden');
-  } else {
-    box.classList.add('hidden');
-  }
   showScreen('s-confirm');
 }
 

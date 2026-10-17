@@ -93,3 +93,19 @@ def test_download_button_survives_a_template_edit_that_drops_it(main_module, sen
                                         "https://photos.example.com/package/tok1", expire_str="November 16, 2026")
     html = sent[0]["html"]
     assert "/package/tok1" in html and "available until November 16, 2026" in html
+
+
+def test_in_person_sales_credit_the_photographer_by_jpeg_code_not_the_seller(admin_client, pos_orders):
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json", Body=json.dumps([
+        {"id": "p1", "name": "Owner Seller", "pin": "1111"},
+        {"id": "p2", "name": "Dana Shooter", "pin": "2222", "file_prefix": "dsc"}]).encode())
+    o = {"id": "pos-dsc1", "date": TODAY, "created": TODAY + "T17:00:00", "name": "Cal Day",
+         "email": "cal@example.com", "location": "Base Area", "total": 1.0, "coupon_discount": 0,
+         "square_payment_id": "ORDER9", "square_paid": 1.04, "photographer_name": "Owner Seller",
+         "filenames": "DSC_7773.JPG, DSC_7775.JPG"}
+    S3.put_object(Bucket="test-bucket", Key=f"pos_orders/{TODAY}_pos-dsc1.json", Body=json.dumps(o).encode())
+    html = admin_client.get("/admin/orders?days=7").text
+    row = html[html.index("Cal Day") - 2000: html.index("Cal Day") + 2000]
+    assert "Dana Shooter" in row and "Owner Seller" not in row
+    csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Cal" in l)
+    assert "Dana Shooter" in csv_line and "Owner Seller" not in csv_line

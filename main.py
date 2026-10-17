@@ -4854,7 +4854,7 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
     for r in rows:
         first_file  = (r['filenames'] or '').split(',')[0].strip() or '—'
         is_pos      = r.get("source") == "pos"
-        photographer = (r.get("photographer") or _detect_photog(r['filenames'])) if is_pos else _detect_photog(r['filenames'])
+        photographer = _detect_photog(r['filenames'])   # commission follows the photo's JPEG code, not who sold it
         charged     = r.get("charged", r["total"])
         tip_str     = f"${r['tip']:.2f}" if r.get("tip") else '—'
         total_str   = "Comp" if r.get("is_comp") else f"${charged:.2f}"
@@ -5383,8 +5383,7 @@ def admin_export(request: Request, days: int = 30,
                      "Photo Files","Location","Photo Date","Total","Tip","Discount",
                      "Stripe Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
     for r in rows:
-        is_pos = r.get("source") == "pos"
-        photog = (r.get("photographer") or _exp_photog(r["filenames"])) if is_pos else _exp_photog(r["filenames"])
+        photog = _exp_photog(r["filenames"])
         writer.writerow([r["date"], r["first"], r["last"], r["email"], photog, r["what"],
                          r["filenames"], r["location"], r["photo_date"],
                          "Comp" if r.get("is_comp") else f"${r.get('charged', r['total']):.2f}",
@@ -9207,6 +9206,9 @@ header h1{{color:#F2C94C;font-size:1.1rem;font-weight:700}}
 header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
 .dla{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:7px;padding:.55rem 1.2rem;
   font-weight:700;font-size:.88rem;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}}
+.dla:disabled{{opacity:.6;cursor:default}}
+.dla.alt{{background:rgba(255,255,255,.1);color:#fff}}
+.acts{{display:flex;gap:.5rem;flex-wrap:wrap}}
 .wrap{{max-width:1400px;margin:0 auto;padding:1.25rem 1rem}}
 .lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;
   padding:.7rem 1rem;margin-bottom:1.1rem;font-size:.76rem;color:rgba(255,255,255,.42);line-height:1.8}}
@@ -9238,7 +9240,11 @@ header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
     <h1>{title_esc}</h1>
     <div class="meta">{len(paths)} photo{'s' if len(paths)!=1 else ''} &nbsp;·&nbsp; Link expires {expire_str}</div>
   </div>
-  <a href="/package/{token}/all" download class="dla">⬇ Download All ({len(paths)} photos)</a>
+  <div class="acts">
+    <button id="save-photos" class="dla" style="display:none" onclick="savePhotosClick()">Save to Photos</button>
+    <a href="/package/{token}/all" download class="dla" id="dl-all">⬇ Download All ({len(paths)} photos)</a>
+  </div>
+  <div id="save-hint" class="meta" style="display:none;width:100%"></div>
 </header>
 <div class="wrap">
   <div class="lic">
@@ -9251,6 +9257,7 @@ header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
 </div>
 <div id="lb">
   <div id="lb-bar">
+    <button id="lb-save" class="dla" style="display:none;padding:.38rem .9rem;font-size:.82rem" onclick="lbSaveClick()">Save to Photos</button>
     <a id="lb-dl" href="#" download>⬇ Download</a>
     <button id="lb-close" onclick="closeLb()">✕</button>
   </div>
@@ -9294,9 +9301,114 @@ document.querySelectorAll('.pi img').forEach((img,i)=>{{
     document.getElementById('lb-img').src='/package/{token}/medium/'+i;
     document.getElementById('lb-dl').href='/package/{token}/file/'+i;
     document.getElementById('lb').classList.add('open');
+    prepareLbSave(i);
   }});
 }});
 function closeLb(){{document.getElementById('lb').classList.remove('open')}}
+
+// ── Save to Photos ──
+// Phones put normal downloads in the Files app, where many people never find them.
+// The share sheet's "Save Images" puts them straight into Photos. Sharing has to
+// start from a tap, so photos are fetched first, then a second tap opens the sheet.
+const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const SAVE_OK = IS_MOBILE && (() => {{
+  try {{
+    const f = new File([new Blob(['x'], {{type: 'image/jpeg'}})], 't.jpg', {{type: 'image/jpeg'}});
+    return !!(navigator.canShare && navigator.canShare({{files: [f]}}));
+  }} catch(e) {{ return false; }}
+}})();
+const BATCH = 10;          // photos per share sheet: keeps memory use reasonable on phones
+let _links = null, _next = 0, _ready = null, _busy = false;
+const $id = id => document.getElementById(id);
+
+async function getLinks() {{
+  if (!_links) {{
+    const r = await fetch('/package/{token}/links');
+    if (!r.ok) throw new Error('This link has expired');
+    _links = (await r.json()).files;
+  }}
+  return _links;
+}}
+
+async function fetchFile(link) {{
+  const r = await fetch(link.url);
+  if (!r.ok) throw new Error('Could not load ' + link.name);
+  return new File([await r.blob()], link.name, {{type: 'image/jpeg'}});
+}}
+
+async function fetchAll(links, onEach) {{
+  const out = new Array(links.length);
+  let i = 0, done = 0;
+  async function worker() {{
+    while (i < links.length) {{
+      const k = i++;
+      out[k] = await fetchFile(links[k]);
+      onEach(++done);
+    }}
+  }}
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  return out;
+}}
+
+function setSave(label, disabled, hint) {{
+  const b = $id('save-photos');
+  b.textContent = label; b.disabled = !!disabled;
+  $id('save-hint').style.display = hint ? '' : 'none';
+  $id('save-hint').textContent = hint || '';
+}}
+
+async function savePhotosClick() {{
+  if (_busy) return;
+  if (_ready) {{                                    // second tap: open the share sheet
+    const files = _ready;
+    try {{
+      await navigator.share({{files}});
+      _ready = null; _next += files.length;
+      const left = _links.length - _next;
+      if (left > 0) setSave(`Save next ${{Math.min(BATCH, left)}} photo${{left === 1 ? '' : 's'}}`, false,
+                            `${{_next}} of ${{_links.length}} saved`);
+      else setSave('All photos saved', true, 'They are in your Photos app.');
+    }} catch(e) {{
+      if (e.name !== 'AbortError') setSave('Save to Photos', false, "Saving didn't work here. Use Download All instead.");
+    }}
+    return;
+  }}
+  _busy = true;                                     // first tap: fetch the next batch
+  try {{
+    const links = (await getLinks()).slice(_next, _next + BATCH);
+    setSave(`Preparing 0 of ${{links.length}}...`, true);
+    _ready = await fetchAll(links, n => setSave(`Preparing ${{n}} of ${{links.length}}...`, true));
+    setSave(`Tap to save ${{_ready.length}} photo${{_ready.length === 1 ? '' : 's'}}`, false,
+            'Then choose "Save Images" (or "Save Image").');
+  }} catch(e) {{
+    setSave('Save to Photos', false, e.message + '. Please try again.');
+  }} finally {{ _busy = false; }}
+}}
+
+// Single photo from the enlarged view
+let _lbFile = null, _lbFor = -1;
+async function prepareLbSave(i) {{
+  if (!SAVE_OK) return;
+  const b = $id('lb-save');
+  b.style.display = ''; b.disabled = true; b.textContent = 'Preparing...';
+  _lbFile = null; _lbFor = i;
+  try {{
+    const f = await fetchFile((await getLinks())[i]);
+    if (_lbFor !== i) return;                       // moved on to another photo
+    _lbFile = f; b.disabled = false; b.textContent = 'Save to Photos';
+  }} catch(e) {{ b.textContent = 'Unavailable'; }}
+}}
+async function lbSaveClick() {{
+  if (!_lbFile) return;
+  try {{ await navigator.share({{files: [_lbFile]}}); }} catch(e) {{}}
+}}
+
+if (SAVE_OK) {{
+  $id('save-photos').style.display = '';
+  $id('dl-all').classList.add('alt');
+  $id('dl-all').textContent = 'Download as zip';
+}}
 document.getElementById('lb').addEventListener('click',e=>{{if(e.target.id==='lb'||e.target.id==='lb-img')closeLb()}});
 document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeLb()}});
 </script>
@@ -9385,6 +9497,49 @@ def package_file(token: str, idx: int):
     return RedirectResponse(presigned)
 
 
+@app.get("/package/{token}/links")
+def package_links(token: str):
+    """Short-lived direct links to the originals, so the page can fetch them for
+    "Save to Photos" straight from storage (fast, and not through this server)."""
+    pkg = _load_pkg(token)
+    if not pkg:
+        return JSONResponse(status_code=404, content={"error": "Invalid"})
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
+            return JSONResponse(status_code=410, content={"error": "Expired"})
+    except Exception:
+        return JSONResponse(status_code=404, content={"error": "Invalid"})
+    files = []
+    for path in pkg.get("paths", []):
+        key = to_r2_key(path)
+        files.append({"name": os.path.basename(key),
+                      "url": s3.generate_presigned_url("get_object", Params={"Bucket": R2_BUCKET, "Key": key},
+                                                       ExpiresIn=3600)})
+    return {"files": files}
+
+
+class _ZipStream:
+    """Write-only target for zipfile that hands back what's been written so far, so a
+    zip can be streamed without keeping the whole file in memory."""
+    def __init__(self):
+        self._parts, self._pos = [], 0
+
+    def write(self, b):
+        self._parts.append(bytes(b))
+        self._pos += len(b)
+        return len(b)
+
+    def tell(self):
+        return self._pos
+
+    def flush(self):
+        pass
+
+    def take(self) -> bytes:
+        out, self._parts = b"".join(self._parts), []
+        return out
+
+
 @app.get("/package/{token}/all")
 def package_all(token: str):
     pkg = _load_pkg(token)
@@ -9399,21 +9554,30 @@ def package_all(token: str):
     safe_title = re.sub(r'[^\w\-_. ]', '', pkg.get("title", "photos"))[:60].strip().replace(" ", "_")
     filename = f"{safe_title}.zip"
 
+    def _fetch(path):
+        try:
+            return path, s3.get_object(Bucket=R2_BUCKET, Key=to_r2_key(path))["Body"].read()
+        except Exception as e:
+            print(f"[zip] skipped {path}: {e}")
+            return path, None
+
     def iter_zip():
-        buf = BytesIO(); last_pos = 0
-        zf = zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED, allowZip64=True)
-        for path in paths:
-            key = to_r2_key(path)
-            try:
-                obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-                zf.writestr(os.path.basename(path), obj["Body"].read())
-                cur_pos = buf.tell(); buf.seek(last_pos)
-                chunk = buf.read(cur_pos - last_pos); last_pos = cur_pos
-                if chunk: yield chunk
-            except Exception:
-                pass
-        zf.close(); buf.seek(last_pos)
-        rem = buf.read()
+        # Fetch a few photos ahead in parallel while earlier ones are being sent,
+        # and send each one as soon as it's added (nothing piles up in memory)
+        out = _ZipStream()
+        zf = zipfile.ZipFile(out, "w", zipfile.ZIP_STORED, allowZip64=True)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            ahead = [pool.submit(_fetch, p) for p in paths[:4]]
+            nxt = len(ahead)
+            while ahead:
+                path, data = ahead.pop(0).result()
+                if nxt < len(paths):
+                    ahead.append(pool.submit(_fetch, paths[nxt])); nxt += 1
+                if data is not None:
+                    zf.writestr(os.path.basename(path), data)
+                    yield out.take()
+        zf.close()
+        rem = out.take()
         if rem: yield rem
 
     from fastapi.responses import StreamingResponse
