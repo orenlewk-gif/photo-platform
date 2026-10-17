@@ -6,114 +6,414 @@
 <title>Customers — Crystal Images</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color:#fff}
+html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c2336;color:#e8eaf0;font-size:14px}
 html.embedded #topbar,html.embedded #sidebar{display:none}
 html.embedded #layout{height:100vh}
+
 #topbar{height:46px;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);
   display:flex;align-items:center;padding:0 1.25rem;gap:1.25rem;flex-shrink:0}
 #topbar h1{color:#F5C518;font-size:1rem;font-weight:700;margin-right:auto}
 #topbar a{color:rgba(255,255,255,.45);font-size:.82rem;text-decoration:none}
 #topbar a:hover{color:#fff}
-#layout{display:flex;height:calc(100vh - 46px)}
-#main{flex:1;overflow-y:auto;padding:2rem}
-.page-title{font-size:1.25rem;font-weight:700;color:#F5C518;margin-bottom:1.5rem}
-.toolbar{display:flex;align-items:center;gap:.75rem;margin-bottom:1.25rem;flex-wrap:wrap}
-.search-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
-  border-radius:8px;padding:.52rem .85rem;color:#fff;font-size:.88rem;outline:none;
-  width:280px;transition:border-color .15s}
-.search-box::placeholder{color:rgba(255,255,255,.3)}
-.search-box:focus{border-color:#F5C518}
-.count-label{font-size:.8rem;color:rgba(255,255,255,.35);margin-left:auto}
-.table-wrap{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;overflow:hidden}
-table{width:100%;border-collapse:collapse}
-thead th{padding:.65rem 1rem;font-size:.72rem;font-weight:700;text-transform:uppercase;
-  letter-spacing:.7px;color:rgba(255,255,255,.35);text-align:left;
-  border-bottom:1px solid rgba(255,255,255,.07);background:#071827}
-tbody tr{border-bottom:1px solid rgba(255,255,255,.05);transition:background .1s;cursor:pointer}
-tbody tr:last-child{border-bottom:none}
-tbody tr:hover{background:rgba(245,197,24,.05)}
-td{padding:.65rem 1rem;font-size:.86rem;color:rgba(255,255,255,.85);vertical-align:middle}
-td.name{font-weight:600;color:#e8eaf0}
-td.email{color:rgba(255,255,255,.5);font-size:.82rem}
-td.phone{color:rgba(255,255,255,.4);font-size:.82rem}
-td.edit-hint{color:rgba(255,255,255,.18);font-size:.75rem;text-align:right;white-space:nowrap}
-.empty-state{padding:3rem;text-align:center;color:rgba(255,255,255,.3);font-size:.9rem}
+
+#layout{display:flex;height:calc(100vh - 46px);overflow:hidden}
+
+/* ── Customer list pane ── */
+#list-pane{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.07);background:#081929}
+#list-header{padding:.85rem 1rem .7rem;border-bottom:1px solid rgba(255,255,255,.06)}
+#search-input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.42rem .75rem;color:#e8eaf0;font-size:13px;outline:none;transition:border-color .15s}
+#search-input::placeholder{color:rgba(255,255,255,.28)}
+#search-input:focus{border-color:#F5C518}
+#count-label{font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.45rem}
+#customer-list{flex:1;overflow-y:auto}
+.cust-row{display:flex;align-items:center;gap:.65rem;padding:.65rem 1rem;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s}
+.cust-row:hover{background:rgba(255,255,255,.04)}
+.cust-row.active{background:rgba(245,197,24,.07);border-right:2px solid #F5C518}
+.cust-avatar{width:34px;height:34px;border-radius:50%;background:#1e3a52;display:flex;align-items:center;justify-content:center;font-size:.88rem;font-weight:700;color:#F5C518;flex-shrink:0;text-transform:uppercase}
+.cust-info{min-width:0;flex:1}
+.cust-name{font-size:.88rem;font-weight:600;color:#e8eaf0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cust-email{font-size:.75rem;color:rgba(255,255,255,.38);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.cust-tags{display:flex;gap:.25rem;flex-wrap:wrap;margin-top:.3rem}
+.ctag{font-size:.65rem;padding:.1rem .4rem;border-radius:9px;background:rgba(245,197,24,.13);color:#F5C518;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.ctag.blue{background:rgba(99,179,237,.15);color:#63b3ed}
+.ctag.green{background:rgba(52,211,153,.12);color:#34d399}
+.ctag.purple{background:rgba(167,139,250,.13);color:#a78bfa}
+.cust-followup-dot{width:6px;height:6px;border-radius:50%;background:#F5C518;flex-shrink:0;margin-top:2px;opacity:.7}
+
+/* ── Detail pane ── */
+#detail-pane{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+#detail-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:rgba(255,255,255,.2);gap:.5rem}
+#detail-empty svg{opacity:.15}
+#detail-content{display:none;flex-direction:column;flex:1}
+
+/* ── Detail header ── */
+#det-header{padding:1.5rem 2rem 1rem;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;gap:1rem}
+#det-avatar{width:48px;height:48px;border-radius:50%;background:#1e3a52;display:flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:700;color:#F5C518;flex-shrink:0;text-transform:uppercase}
+#det-meta{flex:1;min-width:0}
+#det-name{font-size:1.05rem;font-weight:700;color:#e8eaf0;margin-bottom:.15rem}
+#det-email-label{font-size:.8rem;color:rgba(255,255,255,.4)}
+#det-followup-info{font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.25rem}
+#det-actions{display:flex;gap:.5rem;flex-shrink:0}
+
+/* ── Detail body ── */
+#det-body{padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.75rem;flex:1}
+
+.det-section{}
+.det-section-title{font-size:.7rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.75rem}
+
+/* ── Form fields ── */
+.field-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+.field-grid.full{grid-template-columns:1fr}
+.field-wrap{display:flex;flex-direction:column;gap:.3rem}
+.field-wrap label{font-size:.7rem;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.33)}
+.field-wrap input,.field-wrap textarea{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.45rem .7rem;color:#e8eaf0;font-size:13px;outline:none;transition:border-color .15s;font-family:inherit;resize:vertical}
+.field-wrap input:focus,.field-wrap textarea:focus{border-color:#F5C518}
+.field-wrap textarea{min-height:72px}
+
+/* ── Tags ── */
+#tags-cloud{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.65rem}
+.tag-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.25rem .6rem;border-radius:12px;background:rgba(245,197,24,.13);color:#F5C518;font-size:.75rem;font-weight:600;cursor:pointer;transition:background .12s}
+.tag-chip:hover{background:rgba(245,197,24,.22)}
+.tag-chip .rm{color:rgba(255,255,255,.4);font-size:.8rem;line-height:1}
+.tag-presets{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.tag-preset-btn{padding:.22rem .65rem;border-radius:10px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.55);font-size:.72rem;cursor:pointer;transition:background .12s}
+.tag-preset-btn:hover{background:rgba(255,255,255,.1);color:#e8eaf0}
+.tag-add-row{display:flex;gap:.4rem}
+.tag-add-row input{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.35rem .6rem;color:#e8eaf0;font-size:12px;outline:none}
+.tag-add-row input:focus{border-color:#F5C518}
+
+/* ── Stats bar ── */
+.stats-bar{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:.9rem}
+.stat-cell{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:.6rem .75rem;text-align:center}
+.stat-val{font-size:1.05rem;font-weight:700;color:#F5C518}
+.stat-lbl{font-size:.68rem;color:rgba(255,255,255,.33);margin-top:.15rem;text-transform:uppercase;letter-spacing:.5px}
+
+/* ── Order rows ── */
+.order-list{display:flex;flex-direction:column;gap:.4rem}
+.order-row{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;padding:.65rem .9rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.order-date{font-size:.78rem;color:rgba(255,255,255,.4);min-width:80px;flex-shrink:0}
+.order-source{font-size:.65rem;padding:.12rem .45rem;border-radius:8px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);flex-shrink:0}
+.order-source.pos{background:rgba(99,179,237,.1);color:#63b3ed}
+.order-items{flex:1;font-size:.78rem;color:rgba(255,255,255,.55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.order-total{font-size:.88rem;font-weight:600;color:#e8eaf0;flex-shrink:0}
+.order-gallery-btn{font-size:.72rem;padding:.2rem .55rem;border-radius:6px;background:rgba(245,197,24,.13);color:#F5C518;border:none;cursor:pointer;text-decoration:none;flex-shrink:0;display:inline-block}
+.order-gallery-btn.expired{background:rgba(255,255,255,.06);color:rgba(255,255,255,.3);cursor:default}
+#history-loading{font-size:.82rem;color:rgba(255,255,255,.3);padding:.5rem 0}
+
+/* ── Follow-up ── */
+.fu-type-btns{display:flex;gap:.5rem;margin-bottom:1rem}
+.fu-type-btn{flex:1;padding:.5rem;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.05);color:rgba(255,255,255,.55);font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s;text-align:center}
+.fu-type-btn:hover{background:rgba(255,255,255,.09);color:#e8eaf0}
+.fu-type-btn.active{background:rgba(245,197,24,.13);border-color:rgba(245,197,24,.35);color:#F5C518}
+.fu-panel{display:none;flex-direction:column;gap:.65rem}
+.fu-panel.active{display:flex}
+.fu-label{font-size:.7rem;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:rgba(255,255,255,.33);margin-bottom:.25rem}
+.fu-input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.42rem .7rem;color:#e8eaf0;font-size:13px;outline:none;font-family:inherit;width:100%}
+.fu-input:focus{border-color:#F5C518}
+.fu-input.area{min-height:80px;resize:vertical}
+select.fu-input{cursor:pointer}
+.fu-confirm{background:rgba(245,197,24,.08);border:1px solid rgba(245,197,24,.2);border-radius:8px;padding:.7rem .9rem;font-size:.8rem;color:rgba(255,255,255,.6);display:none;margin-top:.25rem}
+.fu-confirm strong{color:#F5C518}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:.4rem;padding:.42rem .9rem;border-radius:7px;font-size:.82rem;font-weight:600;cursor:pointer;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{background:#F5C518;color:#07151f}
+.btn-ghost{background:rgba(255,255,255,.07);color:rgba(255,255,255,.65);border:1px solid rgba(255,255,255,.12)}
+.btn-danger{background:rgba(239,68,68,.12);color:#f87171;border:1px solid rgba(239,68,68,.22)}
+.btn-sm{padding:.3rem .65rem;font-size:.75rem}
+.btn-row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+
+/* ── Toast ── */
 #toast{position:fixed;bottom:1.5rem;left:50%;transform:translateX(-50%);
   background:#1a3a1a;color:#6ee86e;border:1px solid rgba(110,232,110,.25);
-  border-radius:8px;padding:.55rem 1.2rem;font-size:.84rem;font-weight:600;
-  opacity:0;transition:opacity .2s;pointer-events:none;z-index:999}
+  border-radius:8px;padding:.5rem 1.2rem;font-size:.83rem;font-weight:600;
+  opacity:0;transition:opacity .2s;pointer-events:none;z-index:999;white-space:nowrap}
 #toast.show{opacity:1}
 #toast.err{background:#3a1a1a;color:#e86e6e;border-color:rgba(232,110,110,.25)}
 
-/* Edit modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;
-  display:none;align-items:center;justify-content:center}
+/* ── Delete confirm modal ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;display:none;align-items:center;justify-content:center}
 .modal-overlay.open{display:flex}
-.modal-box{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px;
-  padding:1.5rem;width:420px;max-width:calc(100vw - 2rem)}
-.modal-title{font-size:1rem;font-weight:700;color:#F5C518;margin-bottom:1.25rem}
-.form-field{margin-bottom:.85rem}
-.form-field label{display:block;font-size:.7rem;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:rgba(255,255,255,.38);margin-bottom:.35rem}
-.form-field input{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.13);
-  border-radius:7px;padding:.52rem .75rem;color:#fff;font-size:.88rem;outline:none;
-  transition:border-color .15s;font-family:inherit}
-.form-field input:focus{border-color:#F5C518}
-.modal-actions{display:flex;align-items:center;gap:.65rem;margin-top:1.25rem}
-.modal-actions .spacer{flex:1}
-.btn{padding:.5rem 1.1rem;border-radius:7px;font-size:.83rem;font-weight:600;
-  cursor:pointer;border:none;transition:opacity .15s}
-.btn:hover{opacity:.85}
-.btn-primary{background:#F5C518;color:#07151f}
-.btn-ghost{background:rgba(255,255,255,.08);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.14)}
-.btn-danger{background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)}
-.btn-danger:hover{background:rgba(239,68,68,.25)}
+.modal-box{background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:1.5rem;max-width:360px;width:calc(100vw - 2rem)}
+.modal-title{font-size:.95rem;font-weight:700;color:#e8eaf0;margin-bottom:.65rem}
+.modal-body{font-size:.83rem;color:rgba(255,255,255,.55);margin-bottom:1.25rem;line-height:1.5}
+.modal-actions{display:flex;gap:.5rem;justify-content:flex-end}
+
+/* ── Filter section ── */
+#filter-section{padding:.6rem .85rem;border-bottom:1px solid rgba(255,255,255,.06);font-size:.75rem}
+.filter-toggle{display:flex;align-items:center;justify-content:space-between;cursor:pointer;color:rgba(255,255,255,.5);font-size:.75rem;font-weight:600;padding:.15rem 0}
+.filter-toggle:hover{color:rgba(255,255,255,.8)}
+#filter-body{margin-top:.65rem;flex-direction:column;gap:.65rem}
+.filter-row-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.28);margin-bottom:.3rem}
+.filter-quick-btns{display:flex;flex-wrap:wrap;gap:.3rem}
+.fqb{padding:.2rem .55rem;border-radius:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);font-size:.68rem;cursor:pointer;font-family:inherit;transition:all .12s}
+.fqb:hover{background:rgba(255,255,255,.1);color:#e8eaf0}
+.fqb.active{background:rgba(245,197,24,.13);border-color:rgba(245,197,24,.3);color:#F5C518}
+.filter-dates{display:flex;gap:.4rem;align-items:center}
+.filter-dates input[type=date]{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:.25rem .45rem;color:#e8eaf0;font-size:.72rem;font-family:inherit;outline:none;flex:1;color-scheme:dark}
+.filter-dates input[type=date]:focus{border-color:#F5C518}
+.filter-type-row{display:flex;flex-wrap:wrap;gap:.5rem}
+.ftype-cb{display:flex;align-items:center;gap:.3rem;cursor:pointer;color:rgba(255,255,255,.55);font-size:.75rem}
+.ftype-cb input{accent-color:#F5C518;cursor:pointer}
+.filter-apply-row{display:flex;gap:.5rem;align-items:center}
+
+/* ── Bulk bar ── */
+#bulk-bar{padding:.55rem .85rem;border-top:1px solid rgba(255,255,255,.08);background:#061422;display:none;align-items:center;gap:.6rem;font-size:.78rem;flex-shrink:0}
+#bulk-bar.visible{display:flex}
+#bulk-count{color:rgba(255,255,255,.6);flex:1}
+.cb-col{width:22px;flex-shrink:0;display:flex;align-items:center}
+.cb-col input[type=checkbox]{accent-color:#F5C518;cursor:pointer;width:14px;height:14px}
 </style>
 </head>
 <body>
 <div id="topbar">
   <h1>Crystal Images — Dashboard</h1>
-  <a href="/admin/signout">Sign out</a>
+  <a href="/admin/logout">Sign out</a>
 </div>
 <div id="layout">
-  <div id="main">
-    <div class="page-title">Customers</div>
-    <div class="toolbar">
-      <input type="text" class="search-box" id="search-input" placeholder="Search by name or email..." oninput="doSearch(this.value)">
-      <div class="count-label" id="count-label">Loading...</div>
+
+  <!-- ── Left: customer list ── -->
+  <div id="list-pane">
+    <div id="list-header">
+      <input type="text" id="search-input" placeholder="Search name, email or phone…" oninput="doSearch(this.value)" autocomplete="off">
+      <div id="count-label">Loading…</div>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Phone</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="customer-tbody">
-          <tr><td colspan="4" class="empty-state">Loading...</td></tr>
-        </tbody>
-      </table>
+
+    <!-- Filter section -->
+    <div id="filter-section">
+      <div class="filter-toggle" onclick="toggleFilter(this)">
+        <span>Filter by Date &amp; Type</span>
+        <span id="filter-badge" style="background:rgba(245,197,24,.2);color:#F5C518;border-radius:8px;padding:.05rem .45rem;font-size:.65rem;display:none">Active</span>
+        <span id="filter-arrow" style="font-size:.65rem;color:rgba(255,255,255,.3)">&#9660;</span>
+      </div>
+      <div id="filter-body" style="display:none">
+        <div>
+          <div class="filter-row-label">Date Range</div>
+          <div class="filter-quick-btns" style="margin-bottom:.45rem">
+            <button class="fqb" onclick="setDatePreset('today',this)">Today</button>
+            <button class="fqb" onclick="setDatePreset('7d',this)">Last 7 days</button>
+            <button class="fqb" onclick="setDatePreset('30d',this)">Last 30 days</button>
+            <button class="fqb" onclick="setDatePreset('season',this)">Since Nov 1</button>
+            <button class="fqb" onclick="setDatePreset('custom',this)">Custom</button>
+          </div>
+          <div class="filter-dates">
+            <input type="date" id="flt-from" placeholder="From">
+            <span style="color:rgba(255,255,255,.2)">–</span>
+            <input type="date" id="flt-to" placeholder="To">
+          </div>
+        </div>
+        <div>
+          <div class="filter-row-label">Product Type</div>
+          <div class="filter-type-row">
+            <label class="ftype-cb"><input type="checkbox" id="ftype-digital" value="digital"> Digital</label>
+            <label class="ftype-cb"><input type="checkbox" id="ftype-prints"  value="prints"> Prints</label>
+            <label class="ftype-cb"><input type="checkbox" id="ftype-frames"  value="frames"> Frames</label>
+            <label class="ftype-cb"><input type="checkbox" id="ftype-pos"     value="in-person" checked> In-Person</label>
+          </div>
+        </div>
+        <div class="filter-apply-row">
+          <button class="btn btn-primary btn-sm" onclick="applyFilter()">Apply Filter</button>
+          <button class="btn btn-ghost btn-sm" onclick="clearFilter()">Clear</button>
+          <span id="filter-loading" style="color:rgba(255,255,255,.3);display:none">Loading…</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="customer-list"></div>
+
+    <!-- Bulk action bar (shows when checkboxes selected) -->
+    <div id="bulk-bar">
+      <input type="checkbox" id="bulk-select-all" title="Select all" onchange="bulkSelectAll(this.checked)" style="accent-color:#F5C518;cursor:pointer;width:14px;height:14px">
+      <span id="bulk-count">0 selected</span>
+      <button class="btn btn-primary btn-sm" onclick="openBulkSend()">Send Follow-up</button>
+    </div>
+  </div>
+
+  <!-- ── Right: detail pane ── -->
+  <div id="detail-pane">
+    <div id="detail-empty">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+      <div>Select a customer</div>
+    </div>
+
+    <div id="detail-content">
+      <!-- Header -->
+      <div id="det-header">
+        <div id="det-avatar"></div>
+        <div id="det-meta">
+          <div id="det-name"></div>
+          <div id="det-email-label"></div>
+          <div id="det-followup-info"></div>
+        </div>
+        <div id="det-actions">
+          <button class="btn btn-danger btn-sm" onclick="confirmDelete()">Delete</button>
+        </div>
+      </div>
+
+      <div id="det-body">
+
+        <!-- Contact info + Notes -->
+        <div class="det-section">
+          <div class="det-section-title">Contact Info</div>
+          <div class="field-grid">
+            <div class="field-wrap"><label>First Name</label><input type="text" id="ef-first" oninput="markDirty()"></div>
+            <div class="field-wrap"><label>Last Name</label><input type="text" id="ef-last" oninput="markDirty()"></div>
+            <div class="field-wrap"><label>Email</label><input type="email" id="ef-email" oninput="markDirty()"></div>
+            <div class="field-wrap"><label>Phone</label><input type="text" id="ef-phone" oninput="markDirty()"></div>
+          </div>
+          <div class="field-grid full" style="margin-top:.6rem">
+            <div class="field-wrap"><label>Street</label><input type="text" id="ef-street" oninput="markDirty()"></div>
+          </div>
+          <div class="field-grid" style="margin-top:.6rem">
+            <div class="field-wrap"><label>City</label><input type="text" id="ef-city" oninput="markDirty()"></div>
+            <div class="field-wrap"><label>State</label><input type="text" id="ef-state" oninput="markDirty()"></div>
+            <div class="field-wrap"><label>ZIP</label><input type="text" id="ef-zip" oninput="markDirty()"></div>
+          </div>
+          <div id="det-not-saved" style="display:none;margin-top:.6rem;font-size:.75rem;color:#F5C518">Online customer — not in your directory yet. Save to add them.</div>
+        </div>
+
+        <!-- Tags -->
+        <div class="det-section">
+          <div class="det-section-title">Tags</div>
+          <div id="tags-cloud"></div>
+          <div class="tag-presets" id="tag-presets"></div>
+          <div class="tag-add-row">
+            <input type="text" id="tag-custom-input" placeholder="Add custom tag…" maxlength="24" onkeydown="if(event.key==='Enter'){addCustomTag();event.preventDefault()}">
+            <button class="btn btn-ghost btn-sm" onclick="addCustomTag()">Add</button>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="det-section">
+          <div class="det-section-title">Notes</div>
+          <div class="field-wrap">
+            <textarea id="ef-notes" placeholder="Internal notes about this customer…" oninput="markDirty()"></textarea>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn btn-primary" id="save-btn" onclick="saveCustomer()" disabled>Save Changes</button>
+          <span id="save-status" style="font-size:.75rem;color:rgba(255,255,255,.35)"></span>
+        </div>
+
+        <!-- Purchase history -->
+        <div class="det-section">
+          <div class="det-section-title">Purchase History</div>
+          <div id="history-loading">Loading…</div>
+          <div id="history-content" style="display:none">
+            <div class="stats-bar" id="stats-bar"></div>
+            <div class="order-list" id="order-list"></div>
+          </div>
+        </div>
+
+        <!-- Follow-up -->
+        <div class="det-section">
+          <div class="det-section-title">Send Follow-up</div>
+          <div class="fu-type-btns">
+            <button class="fu-type-btn" onclick="setFuType('review')">Review Request</button>
+            <button class="fu-type-btn" onclick="setFuType('discount')">Discount Code</button>
+            <button class="fu-type-btn" onclick="setFuType('custom')">Custom</button>
+          </div>
+
+          <!-- Review -->
+          <div class="fu-panel" id="fu-review">
+            <div>
+              <div class="fu-label">Google Review URL</div>
+              <input type="url" class="fu-input" id="fu-review-url" placeholder="https://g.page/r/…/review">
+            </div>
+            <div class="fu-confirm" id="fu-review-confirm"></div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" onclick="confirmSend('review')">Preview &amp; Send</button>
+            </div>
+          </div>
+
+          <!-- Discount -->
+          <div class="fu-panel" id="fu-discount">
+            <div>
+              <div class="fu-label">Discount Code</div>
+              <select class="fu-input" id="fu-discount-code" onchange="previewDiscount()">
+                <option value="">— select a code —</option>
+              </select>
+            </div>
+            <div class="fu-confirm" id="fu-discount-confirm"></div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" onclick="confirmSend('discount')">Preview &amp; Send</button>
+            </div>
+          </div>
+
+          <!-- Custom -->
+          <div class="fu-panel" id="fu-custom">
+            <div>
+              <div class="fu-label">Subject</div>
+              <input type="text" class="fu-input" id="fu-custom-subject" placeholder="Subject line…">
+            </div>
+            <div>
+              <div class="fu-label">Message</div>
+              <textarea class="fu-input area" id="fu-custom-message" placeholder="Your message…"></textarea>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" onclick="confirmSend('custom')">Preview &amp; Send</button>
+            </div>
+          </div>
+
+          <!-- Send confirm inline -->
+          <div id="fu-send-confirm" style="display:none;margin-top:.75rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:.9rem 1rem">
+            <div style="font-size:.82rem;color:rgba(255,255,255,.7);margin-bottom:.65rem" id="fu-send-preview"></div>
+            <div class="btn-row">
+              <button class="btn btn-primary btn-sm" id="fu-send-btn" onclick="doSend()">Send</button>
+              <button class="btn btn-ghost btn-sm" onclick="cancelSend()">Cancel</button>
+              <span id="fu-send-status" style="font-size:.75rem;color:rgba(255,255,255,.35)"></span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /det-body -->
+    </div><!-- /detail-content -->
+  </div><!-- /detail-pane -->
+</div><!-- /layout -->
+
+<!-- Delete confirm modal -->
+<div id="delete-modal" class="modal-overlay" onclick="if(event.target===this)closeDeleteModal()">
+  <div class="modal-box">
+    <div class="modal-title">Delete Customer</div>
+    <div class="modal-body" id="delete-modal-body"></div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeDeleteModal()">Cancel</button>
+      <button class="btn btn-danger btn-sm" onclick="doDelete()">Delete</button>
     </div>
   </div>
 </div>
 
-<!-- Edit modal -->
-<div id="edit-modal" class="modal-overlay" onclick="if(event.target===this)closeModal()">
-  <div class="modal-box">
-    <div class="modal-title">Edit Customer</div>
-    <div class="form-field"><label>First Name</label><input type="text" id="ef-first"></div>
-    <div class="form-field"><label>Last Name</label><input type="text" id="ef-last"></div>
-    <div class="form-field"><label>Email</label><input type="email" id="ef-email"></div>
-    <div class="form-field"><label>Phone</label><input type="text" id="ef-phone"></div>
-    <div class="form-field"><label>Address</label><input type="text" id="ef-address"></div>
+<!-- Bulk send modal -->
+<div id="bulk-modal" class="modal-overlay" onclick="if(event.target===this)closeBulkModal()" style="z-index:600">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-title">Send Follow-up to Selected Customers</div>
+    <div id="bulk-modal-body" style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1rem">
+      <div>
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.33);margin-bottom:.3rem">Template</div>
+        <select id="bulk-tmpl-select" class="fu-input" style="width:100%">
+          <option value="">Loading templates…</option>
+        </select>
+      </div>
+      <!-- Extra fields shown conditionally by template -->
+      <div id="bulk-extra-review" style="display:none">
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.33);margin-bottom:.3rem">Review URL</div>
+        <input type="url" id="bulk-review-url" class="fu-input" placeholder="https://g.page/…/review">
+      </div>
+      <div id="bulk-extra-discount" style="display:none">
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.33);margin-bottom:.3rem">Discount Code</div>
+        <select id="bulk-discount-select" class="fu-input">
+          <option value="">Loading codes…</option>
+        </select>
+      </div>
+      <div id="bulk-summary" style="font-size:.8rem;color:rgba(255,255,255,.45);padding:.5rem .65rem;background:rgba(255,255,255,.04);border-radius:6px"></div>
+      <div id="bulk-results" style="display:none;max-height:180px;overflow-y:auto;font-size:.75rem;line-height:1.7"></div>
+    </div>
     <div class="modal-actions">
-      <button class="btn btn-danger" onclick="deleteCustomer()">Delete</button>
-      <div class="spacer"></div>
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveCustomer()">Save</button>
+      <button class="btn btn-ghost btn-sm" id="bulk-cancel-btn" onclick="closeBulkModal()">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="bulk-send-btn" onclick="doBulkSend()">Send</button>
     </div>
   </div>
 </div>
@@ -123,135 +423,731 @@ td.edit-hint{color:rgba(255,255,255,.18);font-size:.75rem;text-align:right;white
 <script>
 if (window.parent !== window) document.documentElement.classList.add('embedded');
 
-let allCustomers = [];
-let searchTimer = null;
-let editEmail = null; // email of customer currently being edited
+const TAG_PRESETS = ['Returning','VIP','Comp\'d','Seasonal','Local','Group','First Visit'];
+const TAG_COLORS  = {
+  'VIP':'purple','Returning':'green','Comp\'d':'blue','First Visit':'blue',
+  'Seasonal':'green','Local':'green','Group':'blue',
+};
 
-async function loadCustomers() {
+// Customers load from the server a page at a time; edits save one customer at a time.
+const PAGE_SIZE   = 100;
+let listItems     = [];        // customers currently shown in the list
+let listTotal     = 0;
+let listQuery     = '';
+let custById      = new Map(); // id -> full customer record
+let currentId     = null;      // id of the open customer ('' for an unsaved online customer)
+let currentEmail  = null;      // email of the open customer (history + follow-ups)
+let currentStub   = null;      // online-only customer from the filter, not yet in the directory
+let dirty         = false;
+let fuType        = null;
+let pendingSend   = null;      // {type, payload} waiting for confirm
+let discountCodes = [];
+let searchTimer   = null;
+
+function custName(c) {
+  return [c.first||'', c.last||''].filter(Boolean).join(' ') || c.name || c.email || '—';
+}
+function rowKey(c) {
+  return c.id ? c.id : 'email:' + (c.email || '');
+}
+
+// ─── Load ─────────────────────────────────────────────────────────────────────
+async function loadCustomers(reset = true) {
+  if (reset) { listItems = []; }
   try {
-    const r = await fetch('/api/pos-customers');
+    const params = new URLSearchParams({offset: listItems.length, limit: PAGE_SIZE});
+    if (listQuery) params.set('q', listQuery);
+    const r = await fetch('/api/admin/customers?' + params);
+    if (!r.ok) throw new Error(r.status === 401 ? 'Signed out — please log in again' : 'HTTP ' + r.status);
     const d = await r.json();
-    allCustomers = d.customers || [];
-    updateCount(d.total ?? allCustomers.length);
-    render(allCustomers);
+    (d.customers || []).forEach(c => custById.set(c.id, c));
+    listItems = listItems.concat(d.customers || []);
+    listTotal = d.total || 0;
+    updateCount(listTotal, !!listQuery);
+    renderList(listItems, listItems.length < listTotal);
   } catch(e) {
-    showToast('Failed to load customers', 'err');
+    showToast('Failed to load customers: ' + e.message, 'err');
   }
 }
 
+async function loadDiscountCodes() {
+  try {
+    const r = await fetch('/api/admin/discount-codes');
+    const d = await r.json();
+    discountCodes = d.codes || [];
+    const sel = document.getElementById('fu-discount-code');
+    sel.innerHTML = '<option value="">— select a code —</option>' +
+      discountCodes.map(c => {
+        const amt = c.type === 'percent' ? `${c.amount}% off` : `$${c.amount} off`;
+        const lbl = c.label ? `${c.label} (${c.code})` : `${c.code} — ${amt}`;
+        return `<option value="${esc(c.code)}">${esc(lbl)}</option>`;
+      }).join('');
+  } catch(e) {}
+}
+
+// ─── List rendering ───────────────────────────────────────────────────────────
 function doSearch(q) {
   clearTimeout(searchTimer);
-  searchTimer = setTimeout(async () => {
-    if (!q.trim()) { render(allCustomers); updateCount(allCustomers.length); return; }
-    try {
-      const r = await fetch(`/api/pos-customers?q=${encodeURIComponent(q.trim())}`);
-      const d = await r.json();
-      render(d.customers || []);
-      updateCount(d.total ?? (d.customers||[]).length, true);
-    } catch(e) {}
+  searchTimer = setTimeout(() => {
+    listQuery = q.trim();
+    if (_filterActive) clearFilter(false);
+    loadCustomers(true);
   }, 250);
 }
 
-function updateCount(n, isSearch) {
-  const label = document.getElementById('count-label');
-  if (isSearch) label.textContent = `${n} result${n!==1?'s':''}`;
-  else label.textContent = `${n} customer${n!==1?'s':''}`;
+function renderList(list, hasMore = false) {
+  const el = document.getElementById('customer-list');
+  if (!list.length) { el.innerHTML = '<div style="padding:1.5rem 1rem;font-size:.82rem;color:rgba(255,255,255,.25);text-align:center">No customers found</div>'; return; }
+  const currentKey = currentId || (currentStub ? rowKey(currentStub) : null);
+  el.innerHTML = list.map(c => {
+    const name  = custName(c);
+    const init  = name.charAt(0).toUpperCase();
+    const email = c.email || '';
+    const key   = rowKey(c);
+    const tags  = (c.tags || []).slice(0,3);
+    const hasFu = (c.followups || []).length > 0;
+    const active = key === currentKey;
+    const checked = email && _selectedEmails.has(email);
+    const srcBadges = (c.sources||[]).map(s =>
+      `<span class="ctag${s==='pos'?' blue':''}" style="font-size:.6rem">${esc(s==='pos'?'POS':s)}</span>`).join('');
+    return `<div class="cust-row${active?' active':''}" data-key="${esc(key)}" onclick="openCustomerByKey(${esc(JSON.stringify(key))})">
+      <div class="cb-col" onclick="event.stopPropagation()">
+        <input type="checkbox" data-email="${esc(email)}" ${checked?'checked':''} ${email?'':'disabled title="No email address"'} onchange="toggleSelect(${esc(JSON.stringify(email))},this.checked)" style="accent-color:#F5C518;cursor:pointer;width:14px;height:14px">
+      </div>
+      <div class="cust-avatar">${esc(init)}</div>
+      <div class="cust-info">
+        <div class="cust-name">${esc(name)}</div>
+        <div class="cust-email">${esc(email || c.phone || '')}</div>
+        ${tags.length || srcBadges ? `<div class="cust-tags">${tags.map(t=>`<span class="ctag${TAG_COLORS[t]?' '+TAG_COLORS[t]:''}">${esc(t)}</span>`).join('')}${srcBadges}</div>` : ''}
+      </div>
+      ${hasFu ? '<div class="cust-followup-dot" title="Has follow-up history"></div>' : ''}
+    </div>`;
+  }).join('') + (hasMore
+    ? `<div style="padding:.75rem;text-align:center"><button class="btn btn-ghost btn-sm" onclick="loadCustomers(false)">Load more (${listTotal - list.length} more)</button></div>`
+    : '');
 }
 
-function render(list) {
-  const tbody = document.getElementById('customer-tbody');
-  if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No customers found</td></tr>';
+function updateCount(n, isSearch) {
+  document.getElementById('count-label').textContent = isSearch
+    ? `${n} result${n!==1?'s':''}`
+    : `${n} customer${n!==1?'s':''}`;
+}
+
+// ─── Open customer ─────────────────────────────────────────────────────────────
+async function openCustomerByKey(key) {
+  if (key.startsWith('email:')) {
+    const email = key.slice(6);
+    const stub = _filterResults.find(fr => fr.email === email);
+    if (stub) openStub(stub);
     return;
   }
-  tbody.innerHTML = list.map(c => {
-    const name  = [c.first||'', c.last||''].filter(Boolean).join(' ') || c.name || '—';
-    const email = c.email || '—';
-    const phone = c.phone || '';
-    return `<tr data-email="${esc(c.email||'')}" onclick="openEdit(this.dataset.email)">
-      <td class="name">${esc(name)}</td>
-      <td class="email">${esc(email)}</td>
-      <td class="phone">${esc(phone)}</td>
-      <td class="edit-hint">Edit ›</td>
-    </tr>`;
-  }).join('');
+  let c = custById.get(key);
+  if (!c) {
+    try {
+      const r = await fetch(`/api/admin/customers/${encodeURIComponent(key)}`);
+      if (!r.ok) throw new Error();
+      c = (await r.json()).customer;
+      custById.set(c.id, c);
+    } catch(e) { showToast('Could not load customer', 'err'); return; }
+  }
+  openCustomer(c);
 }
 
-function openEdit(email) {
-  const c = allCustomers.find(x => x.email === email);
-  if (!c) return;
-  editEmail = email;
-  document.getElementById('ef-first').value   = c.first   || '';
-  document.getElementById('ef-last').value    = c.last    || '';
-  document.getElementById('ef-email').value   = c.email   || '';
-  document.getElementById('ef-phone').value   = c.phone   || '';
-  document.getElementById('ef-address').value = c.address || '';
-  document.getElementById('edit-modal').classList.add('open');
-  document.getElementById('ef-first').focus();
+function openStub(fr) {
+  const parts = (fr.name || '').split(' ');
+  openCustomer({id: '', email: fr.email, first: parts[0] || '', last: parts.slice(1).join(' '),
+                tags: [], followups: [], _stub: true, _filter: fr});
 }
 
-function closeModal() {
-  document.getElementById('edit-modal').classList.remove('open');
-  editEmail = null;
+function openCustomer(c) {
+  if (dirty && (currentId !== null) && !confirm('You have unsaved changes. Discard them?')) return;
+  currentId    = c._stub ? '' : c.id;
+  currentStub  = c._stub ? c._filter : null;
+  currentEmail = c.email || '';
+  dirty = false;
+  editTags = [...(c.tags || [])];
+
+  const key = c._stub ? rowKey(c._filter) : c.id;
+  document.querySelectorAll('.cust-row').forEach(el => {
+    el.classList.toggle('active', el.dataset.key === key);
+  });
+
+  document.getElementById('detail-empty').style.display   = 'none';
+  document.getElementById('detail-content').style.display = 'flex';
+  document.getElementById('det-not-saved').style.display  = c._stub ? 'block' : 'none';
+
+  const name = custName(c);
+  document.getElementById('det-avatar').textContent      = name.charAt(0).toUpperCase();
+  document.getElementById('det-name').textContent        = name;
+  document.getElementById('det-email-label').textContent = c.email || '';
+  renderFollowupInfo(c);
+
+  document.getElementById('ef-first').value  = c.first  || '';
+  document.getElementById('ef-last').value   = c.last   || '';
+  document.getElementById('ef-email').value  = c.email  || '';
+  document.getElementById('ef-phone').value  = c.phone  || '';
+  document.getElementById('ef-street').value = c.street || '';
+  document.getElementById('ef-city').value   = c.city   || '';
+  document.getElementById('ef-state').value  = c.state  || '';
+  document.getElementById('ef-zip').value    = c.zip    || '';
+  document.getElementById('ef-notes').value  = c.notes  || '';
+
+  renderTagCloud(editTags);
+
+  // A not-yet-saved online customer can be saved straight away
+  document.getElementById('save-btn').disabled = !c._stub;
+  document.getElementById('save-status').textContent = '';
+
+  resetFollowup();
+  if (c.email) loadHistory(c.email);
+  else {
+    document.getElementById('history-loading').style.display = 'block';
+    document.getElementById('history-loading').textContent = 'No email on file — purchase history is looked up by email.';
+    document.getElementById('history-content').style.display = 'none';
+  }
+}
+
+function renderFollowupInfo(c) {
+  const followups = c.followups || [];
+  if (followups.length) {
+    const last = followups[followups.length - 1];
+    const typeLabel = last.type === 'review' ? 'Review Request' : last.type === 'discount' ? 'Discount Code'
+                    : last.type === 'bulk' ? 'Bulk Email' : 'Custom';
+    document.getElementById('det-followup-info').textContent = `Last contact: ${last.date} — ${typeLabel}`;
+  } else {
+    document.getElementById('det-followup-info').textContent = '';
+  }
+}
+
+// ─── Tags ─────────────────────────────────────────────────────────────────────
+let editTags = [];   // tags of the open customer, saved with Save Changes
+
+function renderTagCloud(tags) {
+  const cloud = document.getElementById('tags-cloud');
+  cloud.innerHTML = tags.length
+    ? tags.map((t,i) => `<span class="tag-chip"><span>${esc(t)}</span><span class="rm" onclick="removeTag(${i})">×</span></span>`).join('')
+    : '<span style="font-size:.78rem;color:rgba(255,255,255,.25)">No tags yet</span>';
+
+  const presets = document.getElementById('tag-presets');
+  const existing = new Set(tags.map(t => t.toLowerCase()));
+  presets.innerHTML = TAG_PRESETS
+    .filter(t => !existing.has(t.toLowerCase()))
+    .map(t => `<button class="tag-preset-btn" onclick="addTag(${esc(JSON.stringify(t))})">${esc(t)}</button>`)
+    .join('');
+}
+
+function addTag(tag) {
+  if (currentId === null || editTags.includes(tag)) return;
+  editTags.push(tag);
+  renderTagCloud(editTags);
+  markDirty();
+}
+
+function removeTag(i) {
+  editTags.splice(i, 1);
+  renderTagCloud(editTags);
+  markDirty();
+}
+
+function addCustomTag() {
+  const input = document.getElementById('tag-custom-input');
+  const val = input.value.trim();
+  if (!val) return;
+  addTag(val);
+  input.value = '';
+}
+
+// ─── Save ─────────────────────────────────────────────────────────────────────
+function markDirty() {
+  dirty = true;
+  document.getElementById('save-btn').disabled = false;
+}
+
+function formFields() {
+  const v = id => document.getElementById(id).value.trim();
+  return {
+    first: v('ef-first'), last: v('ef-last'), email: v('ef-email'), phone: v('ef-phone'),
+    street: v('ef-street'), city: v('ef-city'), state: v('ef-state'), zip: v('ef-zip'),
+    notes: v('ef-notes'), tags: [...editTags],
+  };
 }
 
 async function saveCustomer() {
-  const idx = allCustomers.findIndex(x => x.email === editEmail);
-  if (idx === -1) return;
-  allCustomers[idx] = {
-    ...allCustomers[idx],
-    first:   document.getElementById('ef-first').value.trim(),
-    last:    document.getElementById('ef-last').value.trim(),
-    email:   document.getElementById('ef-email').value.trim(),
-    phone:   document.getElementById('ef-phone').value.trim(),
-    address: document.getElementById('ef-address').value.trim(),
-  };
-  await persist();
-  closeModal();
-  render(allCustomers);
-  updateCount(allCustomers.length);
-}
-
-async function deleteCustomer() {
-  const idx = allCustomers.findIndex(x => x.email === editEmail);
-  if (idx === -1) return;
-  const c = allCustomers[idx];
-  const name = [c.first||'', c.last||''].filter(Boolean).join(' ') || c.email;
-  if (!confirm(`Delete "${name}"? This cannot be undone.`)) return;
-  allCustomers.splice(idx, 1);
-  await persist();
-  closeModal();
-  render(allCustomers);
-  updateCount(allCustomers.length);
-}
-
-async function persist() {
+  if (currentId === null) return;
+  const btn = document.getElementById('save-btn');
+  btn.disabled = true;
+  const isNew = currentId === '';
   try {
-    const r = await fetch('/api/pos-customers', {
-      method: 'POST',
+    const r = await fetch(isNew ? '/api/admin/customers' : `/api/admin/customers/${encodeURIComponent(currentId)}`, {
+      method: isNew ? 'POST' : 'PUT',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(allCustomers),
+      body: JSON.stringify(formFields()),
     });
-    if (!r.ok) throw new Error(await r.text());
-    showToast('Saved');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || (r.status === 401 ? 'Signed out — please log in again' : 'HTTP ' + r.status));
+    const saved = d.customer;
+    custById.set(saved.id, saved);
+    // Replace the row in the list (or the online stub it came from)
+    const idx = listItems.findIndex(x => isNew ? (x.email === currentStub?.email && !x.id) : x.id === saved.id);
+    if (idx !== -1) listItems[idx] = {...listItems[idx], ...saved};
+    currentId = saved.id; currentStub = null; currentEmail = saved.email || '';
+    dirty = false;
+    document.getElementById('det-not-saved').style.display = 'none';
+    document.getElementById('det-name').textContent = custName(saved);
+    document.getElementById('det-avatar').textContent = custName(saved).charAt(0).toUpperCase();
+    document.getElementById('det-email-label').textContent = saved.email || '';
+    renderList(listItems, !_filterActive && listItems.length < listTotal);
+    showToast(isNew ? 'Customer added' : 'Saved');
+    document.getElementById('save-status').textContent = 'Saved';
+    setTimeout(() => { document.getElementById('save-status').textContent = ''; }, 2500);
   } catch(e) {
-    showToast('Save failed: ' + e, 'err');
+    btn.disabled = false;
+    showToast('Save failed: ' + e.message, 'err');
   }
 }
 
-function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// ─── Delete ───────────────────────────────────────────────────────────────────
+function confirmDelete() {
+  if (!currentId) return;
+  const c = custById.get(currentId);
+  document.getElementById('delete-modal-body').textContent = `Delete "${c ? custName(c) : 'this customer'}"? This cannot be undone.`;
+  document.getElementById('delete-modal').classList.add('open');
+}
+
+function closeDeleteModal() {
+  document.getElementById('delete-modal').classList.remove('open');
+}
+
+async function doDelete() {
+  if (!currentId) return;
+  const id = currentId;
+  closeDeleteModal();
+  try {
+    const r = await fetch(`/api/admin/customers/${encodeURIComponent(id)}`, {method: 'DELETE'});
+    if (!r.ok) throw new Error(r.status === 401 ? 'Signed out — please log in again' : 'HTTP ' + r.status);
+  } catch(e) { showToast('Delete failed: ' + e.message, 'err'); return; }
+  custById.delete(id);
+  listItems = listItems.filter(x => x.id !== id);
+  listTotal = Math.max(0, listTotal - 1);
+  currentId = null; currentEmail = null; dirty = false;
+  document.getElementById('detail-empty').style.display   = 'flex';
+  document.getElementById('detail-content').style.display = 'none';
+  renderList(listItems, !_filterActive && listItems.length < listTotal);
+  updateCount(_filterActive ? listItems.length : listTotal, _filterActive || !!listQuery);
+  showToast('Deleted');
+}
+
+// ─── Purchase history ─────────────────────────────────────────────────────────
+async function loadHistory(email) {
+  document.getElementById('history-loading').style.display = 'block';
+  document.getElementById('history-loading').textContent = 'Loading…';
+  document.getElementById('history-content').style.display = 'none';
+
+  try {
+    const r = await fetch(`/api/admin/customer/${encodeURIComponent(email)}/history`);
+    if (!r.ok) throw new Error('Failed');
+    const d = await r.json();
+
+    const stats = d.stats || {};
+    document.getElementById('stats-bar').innerHTML = `
+      <div class="stat-cell"><div class="stat-val">${stats.total_spend != null ? '$'+stats.total_spend.toFixed(2) : '—'}</div><div class="stat-lbl">Total Spent</div></div>
+      <div class="stat-cell"><div class="stat-val">${stats.order_count ?? 0}</div><div class="stat-lbl">Orders</div></div>
+      <div class="stat-cell"><div class="stat-val">${stats.last_purchase || '—'}</div><div class="stat-lbl">Last Purchase</div></div>`;
+
+    const orders   = d.orders    || [];
+    const posOrds  = d.pos_orders || [];
+    const combined = [...orders, ...posOrds].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+    if (!combined.length) {
+      document.getElementById('order-list').innerHTML = '<div style="font-size:.8rem;color:rgba(255,255,255,.25);padding:.4rem 0">No purchase history found</div>';
+    } else {
+      document.getElementById('order-list').innerHTML = combined.map(o => {
+        const items = (o.items || []).filter(Boolean).join(', ') || (o.location || '');
+        const sourceLabel = o.source === 'pos'
+          ? `<span class="order-source pos">POS${o.location ? ' · '+esc(o.location) : ''}</span>`
+          : `<span class="order-source">Online</span>`;
+        let galleryBtn = '';
+        if (o.gallery_url) {
+          if (o.gallery_expired) {
+            galleryBtn = `<span class="order-gallery-btn expired" title="Gallery expired">Expired</span>`;
+          } else {
+            galleryBtn = `<a class="order-gallery-btn" href="${esc(o.gallery_url)}" target="_blank">View Gallery</a>`;
+          }
+        }
+        return `<div class="order-row">
+          <div class="order-date">${esc(o.date||'—')}</div>
+          ${sourceLabel}
+          <div class="order-items" title="${esc(items)}">${esc(items||'—')}</div>
+          <div class="order-total">$${(o.total||0).toFixed(2)}</div>
+          ${galleryBtn}
+        </div>`;
+      }).join('');
+    }
+
+    document.getElementById('history-loading').style.display = 'none';
+    document.getElementById('history-content').style.display = 'block';
+  } catch(e) {
+    document.getElementById('history-loading').textContent = 'Could not load purchase history';
+  }
+}
+
+// ─── Follow-up ────────────────────────────────────────────────────────────────
+function setFuType(type) {
+  fuType = type;
+  document.querySelectorAll('.fu-type-btn').forEach((btn,i) => {
+    const types = ['review','discount','custom'];
+    btn.classList.toggle('active', types[i] === type);
+  });
+  document.querySelectorAll('.fu-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('fu-'+type)?.classList.add('active');
+  document.getElementById('fu-send-confirm').style.display = 'none';
+
+  if (type === 'discount' && discountCodes.length === 0) loadDiscountCodes();
+}
+
+function previewDiscount() {
+  const code = document.getElementById('fu-discount-code').value;
+  const el   = document.getElementById('fu-discount-confirm');
+  if (!code) { el.style.display = 'none'; return; }
+  const obj = discountCodes.find(c => c.code === code);
+  if (!obj) { el.style.display = 'none'; return; }
+  const amt = obj.type === 'percent' ? `${obj.amount}% off` : `$${obj.amount} off`;
+  const exp = obj.expires ? ` — expires ${obj.expires}` : '';
+  el.innerHTML = `Will send code <strong>${esc(code)}</strong> (${esc(amt)}${esc(exp)})`;
+  el.style.display = 'block';
+}
+
+function confirmSend(type) {
+  const toEmail = currentEmail;
+  if (!toEmail) { showToast('This customer has no email address', 'err'); return; }
+
+  let payload = {type};
+  let previewText = '';
+
+  if (type === 'review') {
+    const url = document.getElementById('fu-review-url').value.trim();
+    if (!url) { showToast('Enter a Google Review URL', 'err'); return; }
+    payload.review_url = url;
+    previewText = `Send a <strong>Review Request</strong> to <strong>${esc(toEmail)}</strong>`;
+
+  } else if (type === 'discount') {
+    const code = document.getElementById('fu-discount-code').value;
+    if (!code) { showToast('Select a discount code', 'err'); return; }
+    payload.discount_code = code;
+    previewText = `Send discount code <strong>${esc(code)}</strong> to <strong>${esc(toEmail)}</strong>`;
+
+  } else {
+    const subj = document.getElementById('fu-custom-subject').value.trim();
+    const msg  = document.getElementById('fu-custom-message').value.trim();
+    if (!subj) { showToast('Enter a subject', 'err'); return; }
+    if (!msg)  { showToast('Enter a message', 'err'); return; }
+    payload.subject = subj;
+    payload.message = msg;
+    previewText = `Send custom email "<strong>${esc(subj)}</strong>" to <strong>${esc(toEmail)}</strong>`;
+  }
+
+  pendingSend = {type, payload, toEmail};
+  document.getElementById('fu-send-preview').innerHTML = previewText;
+  document.getElementById('fu-send-confirm').style.display = 'block';
+  document.getElementById('fu-send-status').textContent = '';
+  document.getElementById('fu-send-btn').disabled = false;
+}
+
+function cancelSend() {
+  pendingSend = null;
+  document.getElementById('fu-send-confirm').style.display = 'none';
+}
+
+async function doSend() {
+  if (!pendingSend) return;
+  const btn    = document.getElementById('fu-send-btn');
+  const status = document.getElementById('fu-send-status');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  status.textContent = '';
+
+  try {
+    const r = await fetch(`/api/admin/customer/${encodeURIComponent(pendingSend.toEmail)}/followup`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(pendingSend.payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Send failed');
+
+    // The server recorded the follow-up; reload this customer to show it
+    if (currentId) {
+      try {
+        const cr = await fetch(`/api/admin/customers/${encodeURIComponent(currentId)}`);
+        if (cr.ok) {
+          const fresh = (await cr.json()).customer;
+          custById.set(fresh.id, fresh);
+          const idx = listItems.findIndex(x => x.id === fresh.id);
+          if (idx !== -1) listItems[idx] = {...listItems[idx], followups: fresh.followups};
+          renderFollowupInfo(fresh);
+        }
+      } catch(e) {}
+    }
+
+    showToast('Follow-up sent');
+    cancelSend();
+    resetFollowup();
+    renderList(listItems, !_filterActive && listItems.length < listTotal);
+  } catch(e) {
+    status.textContent = e.message;
+    btn.disabled = false;
+    btn.textContent = 'Send';
+  }
+}
+
+function resetFollowup() {
+  fuType = null;
+  pendingSend = null;
+  document.querySelectorAll('.fu-type-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.fu-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('fu-send-confirm').style.display = 'none';
+  document.getElementById('fu-review-confirm').style.display = 'none';
+  document.getElementById('fu-discount-confirm').style.display = 'none';
+}
+
+// ─── Utilities ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 
 function showToast(msg, type='show') {
   const t = document.getElementById('toast');
   t.textContent = msg;
   t.className = type === 'err' ? 'err show' : 'show';
   clearTimeout(t._tid);
-  t._tid = setTimeout(() => t.className = '', 2800);
+  t._tid = setTimeout(() => t.className = '', 3000);
 }
 
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeDeleteModal();
+    cancelSend();
+  }
+});
 
 loadCustomers();
+
+// ─── Filter ───────────────────────────────────────────────────────────────────
+let _filterOpen    = false;
+let _filterActive  = false;
+let _filterResults = [];  // {email, name, tags, sources, order_count, total_spend}
+
+function toggleFilter(btn) {
+  _filterOpen = !_filterOpen;
+  document.getElementById('filter-body').style.display = _filterOpen ? 'flex' : 'none';
+  document.getElementById('filter-arrow').textContent  = _filterOpen ? '▲' : '▼';
+}
+
+function setDatePreset(preset, btn) {
+  document.querySelectorAll('.fqb').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const fmt = d => d.toISOString().slice(0,10);
+  const fFrom = document.getElementById('flt-from');
+  const fTo   = document.getElementById('flt-to');
+  fTo.value = fmt(today);
+  if (preset === 'today') {
+    fFrom.value = fmt(today);
+  } else if (preset === '7d') {
+    const d = new Date(today); d.setDate(d.getDate()-6);
+    fFrom.value = fmt(d);
+  } else if (preset === '30d') {
+    const d = new Date(today); d.setDate(d.getDate()-29);
+    fFrom.value = fmt(d);
+  } else if (preset === 'season') {
+    // Nov 1 of most recent season (prior year if we're before Nov, current year otherwise)
+    const yr = today.getMonth() >= 10 ? today.getFullYear() : today.getFullYear() - 1;
+    fFrom.value = `${yr}-11-01`;
+  } else {
+    // custom — leave dates as is for manual entry
+    fFrom.value = fFrom.value || '';
+    fTo.value   = fTo.value   || fmt(today);
+  }
+}
+
+async function applyFilter() {
+  const from  = document.getElementById('flt-from').value;
+  const to    = document.getElementById('flt-to').value;
+  const typeMap = {digital:'digital', prints:'prints', frames:'frames', 'in-person':'pos'};
+  const types = Object.keys(typeMap)
+    .filter(t => document.getElementById('ftype-'+typeMap[t])?.checked)
+    .join(',');
+  const loading = document.getElementById('filter-loading');
+  loading.style.display = 'inline';
+  try {
+    const params = new URLSearchParams();
+    if (from)  params.set('date_from', from);
+    if (to)    params.set('date_to',   to);
+    if (types) params.set('types',     types);
+    const res = await fetch('/api/admin/customers/filtered?' + params);
+    const d   = await res.json();
+    _filterResults = d.customers || [];
+    _filterActive  = true;
+    document.getElementById('filter-badge').style.display = 'inline';
+    updateCount(_filterResults.length, true);
+    // Customers already in the directory open normally; online-only ones open as unsaved
+    listItems = _filterResults.map(fr => {
+      const local = fr.id ? (custById.get(fr.id) || {}) : {};
+      const parts = (fr.name || '').split(' ');
+      return {first: parts[0] || '', last: parts.slice(1).join(' '), ...local, ...fr};
+    });
+    renderList(listItems, false);
+    updateBulkBar();
+  } catch(e) {
+    showToast('Filter failed: ' + e.message, 'err');
+  } finally {
+    loading.style.display = 'none';
+  }
+}
+
+function clearFilter(reload = true) {
+  _filterActive  = false;
+  _filterResults = [];
+  document.getElementById('filter-badge').style.display = 'none';
+  document.getElementById('flt-from').value = '';
+  document.getElementById('flt-to').value   = '';
+  document.querySelectorAll('.fqb').forEach(b => b.classList.remove('active'));
+  clearBulkSelect();
+  if (reload) loadCustomers(true);
+}
+
+// ─── Bulk selection ───────────────────────────────────────────────────────────
+const _selectedEmails = new Set();
+
+function toggleSelect(email, checked) {
+  if (checked) _selectedEmails.add(email);
+  else         _selectedEmails.delete(email);
+  updateBulkBar();
+}
+
+function bulkSelectAll(checked) {
+  const checkboxes = document.querySelectorAll('#customer-list input[type=checkbox]');
+  checkboxes.forEach(cb => {
+    cb.checked = checked;
+    const em = cb.dataset.email;
+    if (em && !cb.disabled) { if (checked) _selectedEmails.add(em); else _selectedEmails.delete(em); }
+  });
+  updateBulkBar();
+}
+
+function clearBulkSelect() {
+  _selectedEmails.clear();
+  document.querySelectorAll('#customer-list input[type=checkbox]').forEach(cb => cb.checked = false);
+  const all = document.getElementById('bulk-select-all');
+  if (all) all.checked = false;
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulk-bar');
+  const n   = _selectedEmails.size;
+  bar.classList.toggle('visible', n > 0);
+  document.getElementById('bulk-count').textContent = `${n} selected`;
+  const all = document.getElementById('bulk-select-all');
+  if (all) {
+    const total = document.querySelectorAll('#customer-list input[type=checkbox]:not([disabled])').length;
+    all.checked       = n > 0 && n === total;
+    all.indeterminate = n > 0 && n < total;
+  }
+}
+
+// ─── Bulk send modal ──────────────────────────────────────────────────────────
+let _bulkTemplates = {};
+
+async function openBulkSend() {
+  if (!_selectedEmails.size) return;
+  const modal = document.getElementById('bulk-modal');
+  modal.classList.add('open');
+  document.getElementById('bulk-results').style.display = 'none';
+  document.getElementById('bulk-send-btn').disabled = false;
+  document.getElementById('bulk-send-btn').textContent = 'Send';
+  document.getElementById('bulk-cancel-btn').textContent = 'Cancel';
+  document.getElementById('bulk-summary').textContent = `Ready to send to ${_selectedEmails.size} customer${_selectedEmails.size!==1?'s':''}.`;
+
+  // Load templates
+  if (!Object.keys(_bulkTemplates).length) {
+    const res = await fetch('/api/admin/email-templates');
+    if (res.ok) {
+      const d = await res.json();
+      (d.templates||[]).forEach(t => { _bulkTemplates[t.id] = t; });
+    }
+  }
+  const sel = document.getElementById('bulk-tmpl-select');
+  sel.innerHTML = '<option value="">— Select a template —</option>' +
+    Object.values(_bulkTemplates).map(t =>
+      `<option value="${esc(t.id)}">${esc(t.name)}${t.system?' (System)':''}</option>`
+    ).join('');
+  sel.onchange = onBulkTmplChange;
+  onBulkTmplChange();
+
+  // Load discount codes for the select
+  if (!discountCodes.length) await loadDiscountCodes();
+  const dsel = document.getElementById('bulk-discount-select');
+  dsel.innerHTML = '<option value="">— select a code —</option>' +
+    discountCodes.map(c => {
+      const amt = c.type === 'percent' ? `${c.amount}% off` : `$${c.amount} off`;
+      return `<option value="${esc(c.code)}">${esc(c.code)} — ${amt}</option>`;
+    }).join('');
+}
+
+function onBulkTmplChange() {
+  const tid  = document.getElementById('bulk-tmpl-select').value;
+  const tmpl = _bulkTemplates[tid] || {};
+  const tokens = tmpl.tokens || [];
+  document.getElementById('bulk-extra-review').style.display   = tokens.includes('review_button')  ? 'block' : 'none';
+  document.getElementById('bulk-extra-discount').style.display = tokens.includes('code_box')        ? 'block' : 'none';
+}
+
+function closeBulkModal() {
+  document.getElementById('bulk-modal').classList.remove('open');
+}
+
+async function doBulkSend() {
+  const tid = document.getElementById('bulk-tmpl-select').value;
+  if (!tid) { alert('Please select a template.'); return; }
+  const tmpl  = _bulkTemplates[tid] || {};
+  const tokens = tmpl.tokens || [];
+  const vars = {};
+  if (tokens.includes('review_button')) {
+    const url = document.getElementById('bulk-review-url').value.trim();
+    if (!url) { alert('Review URL is required for this template.'); return; }
+    vars.review_url = url;
+  }
+  if (tokens.includes('code_box')) {
+    const code = document.getElementById('bulk-discount-select').value;
+    if (!code) { alert('Please select a discount code.'); return; }
+    vars.discount_code = code;
+  }
+  const emails = Array.from(_selectedEmails);
+  const sendBtn = document.getElementById('bulk-send-btn');
+  sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+  document.getElementById('bulk-summary').textContent = `Sending to ${emails.length} customer${emails.length!==1?'s':''}…`;
+  try {
+    const res = await fetch('/api/admin/customers/bulk-followup', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({emails, template_id: tid, variables: vars}),
+    });
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error || res.statusText);
+    document.getElementById('bulk-summary').textContent = `Sent ${d.sent} of ${d.total}.`;
+    const resultsEl = document.getElementById('bulk-results');
+    resultsEl.style.display = 'block';
+    resultsEl.innerHTML = (d.results||[]).map(r =>
+      `<div style="color:${r.ok?'#6ee86e':'#f88'};padding:.1rem 0">${r.ok?'OK':'ERR'} — ${esc(r.email)}${r.error?' : '+esc(r.error):''}</div>`
+    ).join('');
+    sendBtn.textContent = 'Done';
+    document.getElementById('bulk-cancel-btn').textContent = 'Close';
+    clearBulkSelect();
+  } catch(e) {
+    document.getElementById('bulk-summary').textContent = 'Error: ' + e.message;
+    sendBtn.disabled = false; sendBtn.textContent = 'Retry';
+  }
+}
 </script>
 </body>
 </html>

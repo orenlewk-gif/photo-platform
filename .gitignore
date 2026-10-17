@@ -17,3 +17,5 @@ model_v3.onnx.data
 model_v3_meta.json
 .venv/
 .pytest_cache/
+static/theme-admin.css
+static/theme-frontend.css
