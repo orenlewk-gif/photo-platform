@@ -2796,6 +2796,7 @@ async def pos_checkout(request: Request):
                 return JSONResponse(status_code=402, content={
                     "error": f"Couldn't confirm the payment with Square: {detail}", "verify_failed": True})
             square_check = {"square_verified": True, "square_paid": detail["paid_cents"] / 100,
+                            "square_tip": detail["tip_cents"] / 100, "square_tax": detail["tax_cents"] / 100,
                             "square_tenders": detail["tender_types"]}
 
         now   = datetime.now(timezone.utc)
@@ -2889,6 +2890,8 @@ async def pos_checkout(request: Request):
             coupon_code=coupon_code,
             coupon_discount=coupon_discount,
             download_url=download_url,
+            square=square_check or None,
+            comp=(square_id == "COMP"),
         )
 
         return result
@@ -2997,7 +3000,10 @@ def _square_verify_payment(transaction_id: str, expected_cents: int, attempts: i
     # Square adds resort tax and the tip on top, so paid must be at least the POS total
     if paid_cents < expected_cents:
         return False, f"Square shows ${paid_cents / 100:.2f} paid, less than the ${expected_cents / 100:.2f} sale"
-    return True, {"paid_cents": paid_cents, "tender_types": [t.get("type") for t in tenders]}
+    return True, {"paid_cents": paid_cents,
+                  "tip_cents": int((order.get("total_tip_money") or {}).get("amount") or 0),
+                  "tax_cents": int((order.get("total_tax_money") or {}).get("amount") or 0),
+                  "tender_types": [t.get("type") for t in tenders]}
 
 
 @app.post("/api/pos/square-prepare")
@@ -4317,8 +4323,14 @@ def _fetch_pos_orders(after: str = None, before: str = None) -> list:
     return sorted(orders, key=lambda o: o.get("created",""), reverse=True)
 
 def _pos_order_row(o: dict) -> dict:
-    total    = float(o.get("total", 0))
+    total    = float(o.get("total", 0))           # POS total — already after any coupon
     discount = float(o.get("coupon_discount", 0))
+    is_comp  = o.get("square_payment_id") == "COMP"
+    tip      = float(o.get("square_tip") or 0)
+    tax      = float(o.get("square_tax") or 0)
+    # What the customer actually paid: Square's verified amount (tax + tip included);
+    # nothing for comps; for older sales without Square data, the POS total.
+    charged  = 0.0 if is_comp else float(o.get("square_paid") or total)
     name     = o.get("name", "")
     parts    = name.split(None, 1) if name else ["", ""]
     return {
@@ -4334,13 +4346,18 @@ def _pos_order_row(o: dict) -> dict:
         "total":       total,
         "discount":    discount,
         "stripe_fee":  0,
-        "net":         round(total - discount, 2),
+        "net":         0.0 if is_comp else round(total, 2),
         "shipping":    0,
         "ship_addr":   "",
         "coupon_code": o.get("coupon_code",""),
         "photo_paths": o.get("photo_paths",""),
         "source":      "pos",
         "photographer": o.get("photographer_name",""),
+        "charged":     round(charged, 2),
+        "tip":         round(tip, 2),
+        "tax":         round(tax, 2),
+        "is_comp":     is_comp,
+        "package_token": o.get("package_token", ""),
     }
 
 
@@ -4457,9 +4474,13 @@ def admin_orders(request: Request, days: int = 30,
         after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         orders = _fetch_wc_orders(after=after)
     rows       = [_order_row(o) for o in orders]
-    total_rev  = sum(r["total"]      for r in rows)
+    # In-person (POS) sales in the same period, listed with online orders, newest first
+    pos_rows   = [_pos_order_row(o) for o in _fetch_pos_orders(after=after[:10], before=before[:10] if custom else None)]
+    rows       = sorted(rows + pos_rows, key=lambda r: r.get("date") or "", reverse=True)
+    total_rev  = sum(r.get("charged", r["total"]) for r in rows)
     total_fees = sum(r["stripe_fee"] for r in rows)
     total_net  = sum(r["net"]        for r in rows)
+    total_tips = sum(r.get("tip", 0) for r in rows)
 
     # Location breakdown
     loc_stats = {}
@@ -4468,7 +4489,7 @@ def admin_orders(request: Request, days: int = 30,
         if loc not in loc_stats:
             loc_stats[loc] = {"count": 0, "revenue": 0.0, "net": 0.0}
         loc_stats[loc]["count"]   += 1
-        loc_stats[loc]["revenue"] += r["total"]
+        loc_stats[loc]["revenue"] += r.get("charged", r["total"])
         loc_stats[loc]["net"]     += r["net"]
     loc_stats = dict(sorted(loc_stats.items(), key=lambda x: x[1]["revenue"], reverse=True))
     now_utc    = datetime.now(timezone.utc)
@@ -4646,7 +4667,11 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
     trs = ""
     for r in rows:
         first_file  = (r['filenames'] or '').split(',')[0].strip() or '—'
-        photographer = _detect_photog(r['filenames'])
+        is_pos      = r.get("source") == "pos"
+        photographer = (r.get("photographer") or _detect_photog(r['filenames'])) if is_pos else _detect_photog(r['filenames'])
+        charged     = r.get("charged", r["total"])
+        tip_str     = f"${r['tip']:.2f}" if r.get("tip") else '—'
+        total_str   = "Comp" if r.get("is_comp") else f"${charged:.2f}"
         detail_data = _json.dumps({
             "name":         f"{r['first']} {r['last']}",
             "email":        r['email'],
@@ -4654,9 +4679,10 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             "photographer": photographer,
             "what":         r['what'],
             "files":        r['filenames'] or '—',
-            "total":        f"${r['total']:.2f}",
+            "total":        total_str,
+            "tip":          tip_str,
             "discount":     f"-${r['discount']:.2f}" if r['discount'] else '—',
-            "fee":          f"${r['stripe_fee']:.2f}",
+            "fee":          "—" if is_pos else f"${r['stripe_fee']:.2f}",
             "net":          f"${r['net']:.2f}",
             "coupon":       r['coupon_code'] or '—',
             "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
@@ -4670,7 +4696,11 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             is_recent = (now_utc - order_dt).days < DOWNLOAD_EXPIRE_DAYS
         except Exception:
             is_recent = False
-        if is_recent:
+        if is_pos:
+            # In-person photo sales have a package download page; other POS sales have no link
+            action_btn = (f'<a href="/package/{r["package_token"]}" target="_blank" class="copy-btn" '
+                          f'onclick="event.stopPropagation()">Open Link</a>') if r.get("package_token") else '—'
+        elif is_recent:
             action_btn = f'<button class="copy-btn" onclick="copyLink({r["order_id"]},event)">Copy Link</button>'
         else:
             action_btn = f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
@@ -4682,9 +4712,10 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
           {td(r['what'])}
           {td(photographer)}
           {td(first_file, 'mono')}
-          {td(f"${r['total']:.2f}")}
+          {td(total_str)}
+          {td(tip_str)}
           {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
-          {td(f"${r['stripe_fee']:.2f}", 'fee')}
+          {td('—' if is_pos else f"${r['stripe_fee']:.2f}", 'fee')}
           {td(f"${r['net']:.2f}", 'net')}
           {td(r['coupon_code'] or '—')}
           {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
@@ -4862,7 +4893,7 @@ function showDetail(encoded) {{
     const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
     const fields = [
       ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
-      ['Total', d.total], ['Discount', d.discount], ['Stripe Fee', d.fee],
+      ['Total', d.total], ['Tip', d.tip], ['Discount', d.discount], ['Stripe Fee', d.fee],
       ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
       ['Billing Address', d.address],
     ];
@@ -4989,6 +5020,7 @@ async function copyLink(orderId, e) {{
     <div class="stat"><div class="label">Revenue</div><div class="val">${total_rev:.2f}</div></div>
     <div class="stat"><div class="label">Stripe Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
+    <div class="stat"><div class="label">Tips</div><div class="val">${total_tips:.2f}</div></div>
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('orders',this)">Orders</button>
@@ -5026,10 +5058,10 @@ async function copyLink(orderId, e) {{
   <table>
     <thead><tr>
       <th>Date</th><th>Name</th><th>Location</th><th>Email</th><th>Ordered</th><th>Photographer</th>
-      <th>Photo Files</th><th>Total</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
+      <th>Photo Files</th><th>Total</th><th>Tip</th><th>Discount</th><th>Stripe Fee</th><th>Net</th>
       <th>Coupon</th><th>Shipping</th><th>Address</th><th>Action</th>
     </tr></thead>
-    <tbody>{trs if trs else '<tr><td colspan="15" class="empty">No completed orders in this period.</td></tr>'}</tbody>
+    <tbody>{trs if trs else '<tr><td colspan="16" class="empty">No completed orders in this period.</td></tr>'}</tbody>
   </table>
   </div>
   </div>
@@ -5142,6 +5174,10 @@ def admin_export(request: Request, days: int = 30,
         after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         orders = _fetch_wc_orders(after=after)
     rows   = [_order_row(o) for o in orders]
+    rows  += [_pos_order_row(o) for o in _fetch_pos_orders(
+        after=(date_from if date_from and date_to else (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")),
+        before=(date_to if date_from and date_to else None))]
+    rows.sort(key=lambda r: r.get("date") or "", reverse=True)
     buf    = io.StringIO()
     writer = csv.writer(buf)
     _exp_photogs    = _load_photographers()
@@ -5158,12 +5194,15 @@ def admin_export(request: Request, days: int = 30,
                 names.append(name); seen.add(name)
         return " & ".join(names) if names else "Oren Lewkowski"
     writer.writerow(["Date","First Name","Last Name","Email","Photographer","What Ordered",
-                     "Photo Files","Location","Photo Date","Total","Discount",
+                     "Photo Files","Location","Photo Date","Total","Tip","Discount",
                      "Stripe Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
     for r in rows:
-        writer.writerow([r["date"], r["first"], r["last"], r["email"], _exp_photog(r["filenames"]), r["what"],
+        is_pos = r.get("source") == "pos"
+        photog = (r.get("photographer") or _exp_photog(r["filenames"])) if is_pos else _exp_photog(r["filenames"])
+        writer.writerow([r["date"], r["first"], r["last"], r["email"], photog, r["what"],
                          r["filenames"], r["location"], r["photo_date"],
-                         f"${r['total']:.2f}",
+                         "Comp" if r.get("is_comp") else f"${r.get('charged', r['total']):.2f}",
+                         f"${r['tip']:.2f}" if r.get("tip") else "",
                          f"-${r['discount']:.2f}" if r["discount"] else "",
                          f"${r['stripe_fee']:.2f}", f"${r['net']:.2f}",
                          r["coupon_code"],
@@ -8614,12 +8653,20 @@ def _send_package_email(to_emails: list, title: str, download_url: str, photo_co
 
 def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
                             items: list, total: float, coupon_code: str,
-                            coupon_discount: float, download_url: str | None):
+                            coupon_discount: float, download_url: str | None,
+                            square: dict | None = None, comp: bool = False):
     if not RESEND_API_KEY or not to_email:
         return
     tmpl = _load_email_templates().get("pos_receipt", _EMAIL_TEMPLATE_DEFAULTS["pos_receipt"])
-    tax = round(total * 0.04, 2)
-    grand_total = round(total + tax, 2)
+    # Square sales: use what Square actually charged (resort tax + tip included)
+    if square:
+        tax         = round(float(square.get("square_tax") or 0), 2)
+        tip         = round(float(square.get("square_tip") or 0), 2)
+        grand_total = round(float(square.get("square_paid") or 0), 2)
+    else:
+        tax = round(total * 0.04, 2)
+        tip = 0.0
+        grand_total = round(total + tax, 2)
     rows = ""
     for item in items:
         label   = item.get("label", "Item")
@@ -8654,12 +8701,20 @@ def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
         f'<table style="width:100%;border-collapse:collapse;margin-bottom:1.25rem">'
         f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Subtotal</td>'
         f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${total:.2f}</td></tr>'
-        f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">4% Resort Tax</td>'
-        f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tax:.2f}</td></tr>'
-        f'<tr style="border-top:2px solid #eee">'
-        f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td>'
-        f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${grand_total:.2f}</td></tr>'
-        f'</table>'
+        + (
+            f'<tr style="border-top:2px solid #eee">'
+            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Complimentary</td>'
+            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">No charge</td></tr>'
+            if comp else
+            f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">4% Resort Tax</td>'
+            f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tax:.2f}</td></tr>'
+            + (f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Tip</td>'
+               f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tip:.2f}</td></tr>' if tip else '')
+            + f'<tr style="border-top:2px solid #eee">'
+            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td>'
+            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${grand_total:.2f}</td></tr>'
+        )
+        + f'</table>'
     )
     dl_btn_html = ""
     if download_url:

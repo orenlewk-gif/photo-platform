@@ -3864,7 +3864,8 @@ function buildSquareUrl(clientId, customerId, total, txId){
     version:      '1.3',
     notes:        buildReceiptNotes().slice(0, 500),
     state:        txId,                                 // returned unchanged — ties the result to this sale
-    options: { supported_tender_types: ['CREDIT_CARD', 'CASH', 'OTHER', 'SQUARE_GIFT_CARD'], auto_return: true },
+    // skip_receipt: customers get the Crystal Images receipt email instead of Square's
+    options: { supported_tender_types: ['CREDIT_CARD', 'CASH', 'OTHER', 'SQUARE_GIFT_CARD'], auto_return: true, skip_receipt: true },
   };
   if(customerId) data.customer_id = customerId;
   return 'square-commerce-v1://payment/create?data=' + encodeURIComponent(JSON.stringify(data));

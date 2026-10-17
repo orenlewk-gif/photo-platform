@@ -215,3 +215,12 @@ def test_comp_sale_needs_no_square_check(client, square, no_pos_orders):
     fake = square(FakeSquare())
     assert _checkout(client, "COMP").status_code == 200
     assert not any("/orders/" in c[1] for c in fake.calls)
+
+
+def test_verified_sale_saves_square_tax_and_tip(client, square, no_pos_orders):
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": {**_paid_order(cents=704), "total_tax_money": {"amount": 4},
+                              "total_tip_money": {"amount": 600}}}
+    assert _checkout(client, "ORDER1").status_code == 200
+    [order] = _orders()
+    assert (order["square_paid"], order["square_tax"], order["square_tip"]) == (7.04, 0.04, 6.0)
