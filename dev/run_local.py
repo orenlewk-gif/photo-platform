@@ -3,7 +3,7 @@ Run the app locally against a fake, in-memory R2 (moto server). Never touches pr
 
     .venv/bin/python dev/run_local.py            # http://127.0.0.1:8777
 
-Seeds a test photographer (PIN 1234), 250 made-up customers and one sample folder
+Seeds a test photographer (PIN 1234), 250 made-up customers and 40 sample photos
 so the public site, POS and studio have something to show. Admin password: "local".
 
 WooCommerce, Resend and Square are replaced by in-memory fakes: frame prices can be
@@ -65,10 +65,18 @@ for i in range(250):
                       "phone": f"406-555-{i:04d}", "street": f"{i} Lone Peak Dr",
                       "city": "Big Sky", "state": "MT", "zip": "59716"})
 put_json("pos_data/customers.json", customers)
-put_json("images.json", [
-    {"path": "images/2026-10-01/mountain-biking/morning/IMG_0001.jpg", "date": "2026-10-01",
-     "location": "Mountain Biking", "last_name": "", "group": "morning"},
-])
+# Sample photos: a real (solid-colour) JPEG original for each, so thumbnails can be made
+from io import BytesIO
+from PIL import Image
+sample_photos = []
+for i in range(40):
+    key = f"images/2026-10-0{1 + i % 3}/mountain-biking/morning/IMG_{i:04d}.jpg"
+    buf = BytesIO()
+    Image.new("RGB", (4000, 3000), (20 + i * 5, 90, 160)).save(buf, "JPEG", quality=85)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
+    sample_photos.append({"path": key, "date": key.split("/")[1], "location": "Mountain Biking",
+                          "last_name": "", "group": "morning"})
+put_json("images.json", sample_photos)
 
 # Optional: DEV_SEED_DIR=/path loads extra files into the fake bucket (key = path
 # relative to the folder), e.g. a copy of real pricing config to reproduce a bug.
