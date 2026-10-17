@@ -4,7 +4,7 @@ import time as _time
 import numpy as np
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import FastAPI, Query, Request, Response
+from fastapi import Body, FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -2861,7 +2861,7 @@ async def api_save_pos_products(request: Request):
     return {"ok": True}
 
 @app.get("/api/pos-recent-sales")
-async def api_pos_recent_sales(request: Request, limit: int = Query(50)):
+def api_pos_recent_sales(request: Request, limit: int = Query(50)):
     if not (_admin_authed(request) or _pos_pin_photographer(request)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     orders = _fetch_pos_orders()
@@ -3062,7 +3062,7 @@ def api_admin_customer_delete(cid: str, request: Request):
     return {"deleted": True}
 
 @app.get("/api/admin/customer/{email}/history")
-async def api_customer_history(email: str, request: Request):
+def api_customer_history(email: str, request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
@@ -3136,14 +3136,9 @@ async def api_customer_history(email: str, request: Request):
     return {"stats": stats, "orders": orders_out, "pos_orders": pos_orders_out}
 
 
-@app.post("/api/admin/customer/{email}/followup")
-async def api_customer_followup(email: str, request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    if not RESEND_API_KEY:
-        return JSONResponse(status_code=503, content={"error": "Email not configured — RESEND_API_KEY is missing"})
-
-    body  = await request.json()
+def _build_followup_email(email: str, body: dict):
+    """Build a follow-up email for one customer.
+    Returns (ftype, subject, html, text), or a JSONResponse describing what's missing."""
     ftype = body.get("type")
     if ftype not in ("review", "discount", "custom"):
         return JSONResponse(status_code=400, content={"error": "type must be review, discount, or custom"})
@@ -3209,6 +3204,32 @@ async def api_customer_followup(email: str, request: Request):
   </div>
 </div></body></html>"""
 
+    return ftype, subject, html, text_inner
+
+
+@app.post("/api/admin/customer/{email}/followup/preview")
+def api_customer_followup_preview(email: str, request: Request, body: dict = Body(...)):
+    """The exact email a follow-up would send — nothing is sent."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    built = _build_followup_email(email, body)
+    if isinstance(built, JSONResponse):
+        return built
+    _, subject, html, _ = built
+    return {"to": email, "subject": subject, "html": html}
+
+
+@app.post("/api/admin/customer/{email}/followup")
+def api_customer_followup(email: str, request: Request, body: dict = Body(...)):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not RESEND_API_KEY:
+        return JSONResponse(status_code=503, content={"error": "Email not configured — RESEND_API_KEY is missing"})
+    built = _build_followup_email(email, body)
+    if isinstance(built, JSONResponse):
+        return built
+    ftype, subject, html, text_inner = built
+
     try:
         r = http_requests.post(
             "https://api.resend.com/emails",
@@ -3237,7 +3258,7 @@ async def api_customer_followup(email: str, request: Request):
 
 
 @app.get("/api/admin/customers/filtered")
-async def api_customers_filtered(request: Request):
+def api_customers_filtered(request: Request):
     """Return customer emails + basic info matching date range and/or product type filters."""
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -3356,14 +3377,13 @@ async def api_customers_filtered(request: Request):
 
 
 @app.post("/api/admin/customers/bulk-followup")
-async def api_bulk_followup(request: Request):
+def api_bulk_followup(request: Request, body: dict = Body(...)):
     """Send a follow-up email to multiple customers using a saved template."""
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     if not RESEND_API_KEY:
         return JSONResponse(status_code=503, content={"error": "RESEND_API_KEY not configured"})
 
-    body        = await request.json()
     emails      = body.get("emails", [])
     template_id = (body.get("template_id") or "").strip()
     extra_vars  = body.get("variables", {})   # e.g. {review_url, discount_code}
@@ -8165,13 +8185,18 @@ _EMAIL_TEMPLATE_DEFAULTS: dict = {
     },
 }
 
+_email_templates_cache: dict = {"data": None}
+
 def _load_email_templates() -> dict:
-    """Load stored templates from R2, merged over defaults."""
-    try:
-        obj  = s3.get_object(Bucket=R2_BUCKET, Key=EMAIL_TEMPLATES_KEY)
-        data = json.loads(obj["Body"].read())
-    except Exception:
-        data = {}
+    """Stored templates merged over defaults. Kept in memory after the first read
+    (this app is the only writer); a fresh copy is returned so callers can edit it."""
+    if _email_templates_cache["data"] is None:
+        try:
+            obj  = s3.get_object(Bucket=R2_BUCKET, Key=EMAIL_TEMPLATES_KEY)
+            _email_templates_cache["data"] = json.loads(obj["Body"].read())
+        except s3.exceptions.NoSuchKey:
+            _email_templates_cache["data"] = {}
+    data = json.loads(json.dumps(_email_templates_cache["data"]))
     merged = {k: dict(v) for k, v in _EMAIL_TEMPLATE_DEFAULTS.items()}
     for tid, tmpl in data.items():
         if tid in merged:
@@ -8183,6 +8208,7 @@ def _load_email_templates() -> dict:
 def _save_email_templates(templates: dict):
     s3.put_object(Bucket=R2_BUCKET, Key=EMAIL_TEMPLATES_KEY,
                   Body=json.dumps(templates, indent=2).encode(), ContentType="application/json")
+    _email_templates_cache["data"] = json.loads(json.dumps(templates))
 
 def _customer_first_name(email: str) -> str:
     data = _customers_cache.get("data") or []
@@ -8190,8 +8216,13 @@ def _customer_first_name(email: str) -> str:
     return (c.get("first") or "").strip() if c else ""
 
 def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
-    """Return (html, text) from a template body with token substitution."""
+    """Return (html, text) from a template body with token substitution.
+    Block tokens in html_blocks (buttons, code boxes) stay as tokens until their own
+    paragraph is rendered; a plain_vars entry with the same name is only the
+    plain-text fallback for the text version of the email."""
     for key, val in plain_vars.items():
+        if key in html_blocks:
+            continue
         body = body.replace(f"{{{{{key}}}}}", str(val) if val is not None else "")
     parts_html, parts_text = [], []
     for para in body.split("\n\n"):
@@ -8252,10 +8283,9 @@ def api_list_email_templates(request: Request):
     return {"templates": list(_load_email_templates().values())}
 
 @app.put("/api/admin/email-templates/{tid}")
-async def api_update_email_template(tid: str, request: Request):
+def api_update_email_template(tid: str, request: Request, body: dict = Body(...)):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body      = await request.json()
     templates = _load_email_templates()
     if tid not in templates:
         return JSONResponse(status_code=404, content={"error": "Template not found"})
@@ -8272,10 +8302,9 @@ async def api_update_email_template(tid: str, request: Request):
     return {"ok": True, "template": templates[tid]}
 
 @app.post("/api/admin/email-templates")
-async def api_create_email_template(request: Request):
+def api_create_email_template(request: Request, body: dict = Body(...)):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body = await request.json()
     name = (body.get("name") or "").strip()
     if not name:
         return JSONResponse(status_code=400, content={"error": "name is required"})
@@ -8292,7 +8321,7 @@ async def api_create_email_template(request: Request):
     return {"ok": True, "template": templates[tid]}
 
 @app.delete("/api/admin/email-templates/{tid}")
-async def api_delete_email_template(tid: str, request: Request):
+def api_delete_email_template(tid: str, request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     templates = _load_email_templates()
