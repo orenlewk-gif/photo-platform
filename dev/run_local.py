@@ -6,8 +6,9 @@ Run the app locally against a fake, in-memory R2 (moto server). Never touches pr
 Seeds a test photographer (PIN 1234), 250 made-up customers and one sample folder
 so the public site, POS and studio have something to show. Admin password: "local".
 
-WooCommerce and Resend are replaced by in-memory fakes: frame prices can be edited,
-follow-up "emails" are printed to the console, and nothing leaves this machine.
+WooCommerce, Resend and Square are replaced by in-memory fakes: frame prices can be
+edited, follow-up "emails" are printed to the console, Square customer lookups are
+answered locally, and nothing leaves this machine.
 """
 import json
 import os
@@ -28,8 +29,11 @@ os.environ.update({
     "WC_CONSUMER_KEY":      "ck_fake_local",
     "WC_CONSUMER_SECRET":   "cs_fake_local",
     "RESEND_API_KEY":       "re_fake_local",
+    "SQUARE_APP_ID":        "sq0idp-FAKE-LOCAL",
+    "SQUARE_ACCESS_TOKEN":  "EAAA_fake_local",
+    "SQUARE_LOCATION_ID":   "LOCAL_LOC",
 })
-for var in ("ANTHROPIC_API_KEY", "SQUARE_ACCESS_TOKEN", "WC_WEBHOOK_SECRET", "POS_PASSCODE"):
+for var in ("ANTHROPIC_API_KEY", "WC_WEBHOOK_SECRET", "POS_PASSCODE"):
     os.environ.pop(var, None)
 assert "crystal-images" not in BUCKET
 
@@ -103,6 +107,8 @@ class _FakeResp:
 class FakeHTTP:
     """Stands in for `requests` inside main.py."""
     def get(self, url, **kw):
+        if "squareup.com" in url and url.endswith("/locations"):
+            return _FakeResp({"locations": [{"id": "LOCAL_LOC", "name": "Local Test Location"}]})
         if url.endswith("/products/1034/variations"):
             return _FakeResp([{"id": vid, "price": p, "regular_price": p, "stock_status": "instock"}
                               for vid, p in FRAME_PRICES.items()])
@@ -116,6 +122,13 @@ class FakeHTTP:
         return _FakeResp({"id": vid})
 
     def post(self, url, json=None, **kw):
+        if "squareup.com" in url:
+            if url.endswith("/customers/search"):
+                print(f"[fake Square] customer search {json['query']['filter']['email_address']['exact']}")
+                return _FakeResp({})
+            if url.endswith("/customers"):
+                print(f"[fake Square] create customer {json.get('email_address')}")
+                return _FakeResp({"customer": {"id": "FAKE_SQ_CUSTOMER"}})
         if "resend.com" in url:
             print(f"[fake email] to={json.get('to')} subject={json.get('subject')!r}")
             return _FakeResp({"id": "fake-email"})
