@@ -85,7 +85,7 @@ def test_bulk_review_send_uses_saved_link(admin_client, sent):
 @pytest.fixture()
 def discount_code():
     S3.put_object(Bucket="test-bucket", Key="meta/discount_codes.json", Body=json.dumps([
-        {"id": "d1", "code": "SAVE20", "type": "percent", "amount": 20, "expires": "2026-12-31", "active": True},
+        {"id": "d1", "code": "SAVE20", "type": "percent", "amount": 20.0, "expires": "2026-12-31", "active": True},
     ]).encode())
 
 

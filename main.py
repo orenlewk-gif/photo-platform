@@ -863,13 +863,25 @@ def _load_data_bg() -> None:
         except (json.JSONDecodeError, ValueError) as e:
             print(f"WARNING: local images.json corrupt ({e}), trying R2...")
     print("images.json not found locally — downloading from R2...")
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
-        loaded = json.loads(obj["Body"].read().decode("utf-8"))
-        data = loaded
-        print(f"Loaded {len(data)} photos from R2.")
-    except Exception as e:
-        print(f"WARNING: could not load images.json ({e}), starting empty")
+    # Keep trying until the index loads. Starting with an empty list after a failed
+    # read would let the first save overwrite the real index in R2. Only a missing
+    # file (a brand-new bucket) means "no photos yet".
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
+            data = json.loads(obj["Body"].read().decode("utf-8"))
+            print(f"Loaded {len(data)} photos from R2.")
+            break
+        except s3.exceptions.NoSuchKey:
+            print("No images.json in R2 yet — starting with an empty photo list.")
+            data = []
+            break
+        except Exception as e:
+            wait = min(30, 2 * attempt)
+            print(f"WARNING: could not load images.json (attempt {attempt}: {e}) — retrying in {wait}s")
+            _time.sleep(wait)
     # Backfill classifier field on records that were classified before tracking was added
     backfilled = 0
     for item in data:
@@ -884,6 +896,36 @@ threading.Thread(target=_load_data_bg, daemon=True).start()
 # Wait up to 8 s so the first request isn't served with empty data,
 # but don't block Railway's health check indefinitely.
 _data_ready.wait(timeout=8)
+
+# Until the photo index has loaded, answer with "starting up" instead of serving
+# empty galleries or letting anything save over the real index. Customer download
+# links, the WooCommerce webhook, static files and the health check still work.
+_STARTUP_ALLOWED = ("/healthz", "/webhook", "/download/", "/package/", "/static/", "/frames/")
+_STARTUP_PAGE = """<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="5">
+<title>Starting up — Crystal Images</title></head>
+<body style="margin:0;background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;display:flex;
+align-items:center;justify-content:center;min-height:100vh;text-align:center;padding:2rem">
+<div><h2 style="color:#F2C94C;margin-bottom:.5rem">Just a moment</h2>
+<p style="color:rgba(255,255,255,.6)">The site is starting up. This page will refresh in a few seconds.</p></div>
+</body></html>"""
+
+@app.middleware("http")
+async def _wait_for_photo_index(request: Request, call_next):
+    if not _data_ready.is_set() and not request.url.path.startswith(_STARTUP_ALLOWED):
+        headers = {"Retry-After": "5"}
+        if request.url.path.startswith("/api/"):
+            return JSONResponse(status_code=503, headers=headers,
+                                content={"error": "Starting up — try again in a few seconds"})
+        return HTMLResponse(_STARTUP_PAGE, status_code=503, headers=headers)
+    return await call_next(request)
+
+@app.get("/healthz")
+def healthz():
+    """Railway health check: healthy only once the photo index has loaded."""
+    if not _data_ready.is_set():
+        return JSONResponse(status_code=503, content={"status": "loading"})
+    return {"status": "ok", "photos": len(data)}
 
 # Pre-load portrait locations from R2 so PORTRAIT_LOCATIONS is current on startup
 try:
@@ -8242,8 +8284,11 @@ def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
 
 def _discount_detail(code_obj: dict) -> str:
     """e.g. '20% off — expires 2026-12-31'."""
-    amt   = code_obj.get("amount", 0)
-    label = f"{amt}% off" if code_obj.get("type", "percent") == "percent" else f"${amt} off"
+    amt = float(code_obj.get("amount", 0) or 0)
+    if code_obj.get("type", "percent") == "percent":
+        label = f"{amt:g}% off"                                    # 20% off, 12.5% off
+    else:
+        label = f"${int(amt)} off" if amt.is_integer() else f"${amt:.2f} off"   # $10 off, $7.50 off
     expires = code_obj.get("expires") or ""
     return label + (f" — expires {expires}" if expires else "")
 

@@ -889,11 +889,15 @@ async function showPreview() {
     if (!r.ok) throw new Error(d.error || 'Could not build preview');
     document.getElementById('fu-send-preview').textContent = d.to;
     document.getElementById('preview-subject').textContent = d.subject;
-    document.getElementById('preview-frame').srcdoc = d.html;
     document.getElementById('fu-send-status').textContent = '';
     const btn = document.getElementById('fu-send-btn');
     btn.disabled = false; btn.textContent = 'Send';
+    // Show the window first, then load the email into it — an iframe filled
+    // while hidden is sometimes left unpainted
+    const frame = document.getElementById('preview-frame');
+    frame.srcdoc = '';
     document.getElementById('preview-modal').classList.add('open');
+    requestAnimationFrame(() => { frame.srcdoc = d.html; });
   } catch(e) {
     pendingSend = null;
     showToast(e.message, 'err');
