@@ -5996,6 +5996,11 @@ def admin_discount_codes_page(request: Request):
 def index():
     return HTMLResponse(open("templates/index.html").read())
 
+@app.head("/", include_in_schema=False)
+def index_head():
+    """Uptime monitors check the site with HEAD requests (headers only, no page)."""
+    return Response(status_code=200, media_type="text/html")
+
 @app.get("/checkout", response_class=HTMLResponse)
 def checkout_page():
     return HTMLResponse(open("templates/checkout.html").read())

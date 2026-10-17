@@ -20,3 +20,8 @@ def test_days_endpoint(client):
 def test_admin_requires_login(client):
     r = client.get("/admin/dashboard", follow_redirects=False)
     assert r.status_code in (302, 307)
+
+
+def test_uptime_monitor_head_request(client):
+    r = client.head("/")
+    assert r.status_code == 200 and r.content == b""
