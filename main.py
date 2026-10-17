@@ -3408,6 +3408,17 @@ def _save_customers(customers: list) -> None:
         )
         _customers_cache["data"] = customers
 
+def _warm_customers():
+    """Load the customer directory in the background at startup, so the first POS
+    customer search after a restart or deploy doesn't wait for the 5-6 MB file."""
+    _data_ready.wait()
+    try:
+        print(f"Loaded {len(_load_customers())} customers.")
+    except Exception as e:
+        print(f"Customer directory not preloaded ({e}); it will load on first search.")
+
+threading.Thread(target=_warm_customers, daemon=True).start()
+
 def _customer_by_email(customers: list, email: str):
     e = (email or "").strip().lower()
     if not e:
