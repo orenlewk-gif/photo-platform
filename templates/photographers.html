@@ -532,8 +532,10 @@ async function loadCommission() {
 
     // Clock records detail
     const clockHtml = data.map(p => {
-      if (!p.clock_records?.length) return '';
-      const rows = p.clock_records.map(r => {
+      // Every photographer gets a section (with + Add Entry), even with no shifts yet
+      const rows = !(p.clock_records || []).length
+        ? `<tr><td colspan="6" style="color:rgba(255,255,255,.35);font-size:.82rem;padding:.6rem .5rem">No shifts in this period</td></tr>`
+        : p.clock_records.map(r => {
         const ci = r.clock_in  ? new Date(r.clock_in).toLocaleString()  : '—';
         const co = r.clock_out ? new Date(r.clock_out).toLocaleString() : 'Active';
         let hrs = '—';
