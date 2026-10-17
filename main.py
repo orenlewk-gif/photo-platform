@@ -3177,23 +3177,16 @@ async def api_customer_followup(email: str, request: Request):
         code_obj = next((c for c in codes if c.get("code", "").upper() == code), None)
         if not code_obj:
             return JSONResponse(status_code=400, content={"error": f"Code '{code}' not found"})
-        amt      = code_obj.get("amount", 0)
-        ctype    = code_obj.get("type", "percent")
-        amt_str  = f"{amt}% off" if ctype == "percent" else f"${amt} off"
-        expires  = code_obj.get("expires") or ""
-        exp_line = f" — expires {expires}" if expires else ""
-        subject  = "A special offer just for you — Crystal Images"
-        html_inner = f"""
-            <p style="margin:0 0 .8rem">{greeting}</p>
-            <p style="margin:0 0 1rem">Thank you for being a Crystal Images customer! Here's a special discount just for you:</p>
-            <div style="background:#f5f5f5;border-radius:8px;padding:1.25rem;text-align:center;margin:0 0 1.25rem">
-              <div style="font-size:.78rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem">Your discount code</div>
-              <div style="font-size:2rem;font-weight:700;letter-spacing:.12em;color:#111">{code}</div>
-              <div style="font-size:.9rem;color:#555;margin-top:.35rem">{amt_str}{exp_line}</div>
-            </div>
-            <p style="margin:0 0 .8rem">Use this code at checkout on your next order.</p>
-            <p style="margin:0">— The Crystal Images Team</p>"""
-        text_inner = f"{greeting}\n\nHere's a special discount just for you:\n\nCode: {code}\n{amt_str}{exp_line}\n\nUse this at checkout on your next order.\n\n— The Crystal Images Team"
+        # Sent from the Discount Code template (Settings > Email Templates)
+        tmpl = _load_email_templates().get("discount_code") or _EMAIL_TEMPLATE_DEFAULTS["discount_code"]
+        detail = _discount_detail(code_obj)
+        plain_vars = {"first_name": first_name or "there", "code": code, "discount_amount": detail,
+                      "code_box": f"Your discount code: {code}" + (f" ({detail})" if detail else "")}
+        subject = tmpl["subject"]
+        for k, v in plain_vars.items():
+            subject = subject.replace(f"{{{{{k}}}}}", v)
+        html_inner, text_inner = _render_email_body(
+            tmpl["body"], plain_vars, {"code_box": _code_box_html(code, detail)})
 
     else:  # custom
         subject = (body.get("subject") or "").strip()
@@ -3390,6 +3383,10 @@ async def api_bulk_followup(request: Request):
             "error": f"Add your Google review link to the '{tmpl.get('name', template_id)}' template in Settings > Email Templates"})
 
     customers = _load_customers()
+    code_obj_bulk = None
+    if extra_vars.get("discount_code"):
+        _code = str(extra_vars["discount_code"]).strip().upper()
+        code_obj_bulk = next((c for c in _load_discount_codes() if c.get("code", "").upper() == _code), None)
 
     results = []
     for email in emails:
@@ -3404,13 +3401,12 @@ async def api_bulk_followup(request: Request):
             html_blocks["review_button"] = _review_button_html(review_url)
             plain_vars["review_button"] = f"Leave us a review: {review_url}"
         if "discount_code" in extra_vars:
-            code = str(extra_vars["discount_code"]).upper()
-            html_blocks["code_box"] = (
-                f'<div style="background:#f5f5f5;border-radius:8px;padding:1.25rem;text-align:center;margin:0 0 1rem">'
-                f'<div style="font-size:.78rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem">Your discount code</div>'
-                f'<div style="font-size:2rem;font-weight:700;letter-spacing:.12em;color:#111">{code}</div>'
-                f'</div>'
-            )
+            code   = str(extra_vars["discount_code"]).upper()
+            detail = _discount_detail(code_obj_bulk) if code_obj_bulk else ""
+            html_blocks["code_box"] = _code_box_html(code, detail)
+            plain_vars.setdefault("code", code)
+            plain_vars.setdefault("discount_amount", detail)
+            plain_vars["code_box"] = f"Your discount code: {code}" + (f" ({detail})" if detail else "")
 
         subject = tmpl["subject"]
         for k, v in plain_vars.items():
@@ -8212,6 +8208,22 @@ def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
         parts_html.append(f'<p style="margin:0 0 .9rem;font-size:.9rem;color:#333;line-height:1.65">{inner}</p>')
         parts_text.append(para)
     return "".join(parts_html), "\n\n".join(parts_text)
+
+def _discount_detail(code_obj: dict) -> str:
+    """e.g. '20% off — expires 2026-12-31'."""
+    amt   = code_obj.get("amount", 0)
+    label = f"{amt}% off" if code_obj.get("type", "percent") == "percent" else f"${amt} off"
+    expires = code_obj.get("expires") or ""
+    return label + (f" — expires {expires}" if expires else "")
+
+def _code_box_html(code: str, detail: str = "") -> str:
+    return (
+        f'<div style="background:#f5f5f5;border-radius:8px;padding:1.25rem;text-align:center;margin:0 0 1rem">'
+        f'<div style="font-size:.78rem;color:#888;text-transform:uppercase;letter-spacing:.5px;margin-bottom:.3rem">Your discount code</div>'
+        f'<div style="font-size:2rem;font-weight:700;letter-spacing:.12em;color:#111">{code}</div>'
+        + (f'<div style="font-size:.9rem;color:#555;margin-top:.35rem">{detail}</div>' if detail else '') +
+        f'</div>'
+    )
 
 def _review_button_html(review_url: str) -> str:
     return (

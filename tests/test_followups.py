@@ -77,3 +77,40 @@ def test_bulk_review_send_uses_saved_link(admin_client, sent):
                           json={"emails": ["ann@example.com"], "template_id": "review_request"})
     assert r.status_code == 200 and r.json()["sent"] == 1
     assert REVIEW_LINK in sent[0]["html"]
+
+
+# ── Discount code emails use the Discount Code template ──────────────────────
+
+@pytest.fixture()
+def discount_code():
+    S3.put_object(Bucket="test-bucket", Key="meta/discount_codes.json", Body=json.dumps([
+        {"id": "d1", "code": "SAVE20", "type": "percent", "amount": 20, "expires": "2026-12-31", "active": True},
+    ]).encode())
+
+
+def test_discount_send_uses_template_wording(admin_client, sent, discount_code):
+    admin_client.put("/api/admin/email-templates/discount_code", json={
+        "subject": "A gift for {{first_name}}",
+        "body": "Hi {{first_name}},\n\nMy own discount wording.\n\n{{code_box}}"})
+    r = admin_client.post("/api/admin/customer/ann@example.com/followup",
+                          json={"type": "discount", "discount_code": "save20"})
+    assert r.status_code == 200
+    email = sent[0]
+    assert email["subject"] == "A gift for Ann"
+    assert "My own discount wording." in email["html"]
+    assert "SAVE20" in email["html"] and "20% off — expires 2026-12-31" in email["html"]
+    assert "SAVE20" in email["text"]
+
+
+def test_discount_send_unknown_code_refused(admin_client, sent, discount_code):
+    r = admin_client.post("/api/admin/customer/ann@example.com/followup",
+                          json={"type": "discount", "discount_code": "NOPE"})
+    assert r.status_code == 400 and sent == []
+
+
+def test_bulk_discount_box_shows_amount(admin_client, sent, discount_code):
+    r = admin_client.post("/api/admin/customers/bulk-followup", json={
+        "emails": ["ann@example.com"], "template_id": "discount_code",
+        "variables": {"discount_code": "SAVE20"}})
+    assert r.status_code == 200 and r.json()["sent"] == 1
+    assert "SAVE20" in sent[0]["html"] and "20% off" in sent[0]["html"]
