@@ -1455,7 +1455,10 @@ def _item_group_from_path(item):
     return ""
 
 @app.get("/api/browse")
-def browse(date: str, location: str, family: str = Query(None), group: str = Query(None)):
+def browse(date: str, location: str, family: str = Query(None), group: str = Query(None),
+           dims: bool = Query(True)):
+    """Photos in a folder. dims=0 skips measuring each photo's width/height — the POS
+    doesn't use them, and measuring uncached photos can take seconds on first open."""
     def group_matches(item):
         if not group:
             return True
@@ -1473,10 +1476,10 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
             and group_matches(item)]
     pool.sort(key=lambda x: natural_sort_key(x["path"]))
     paths = [item["path"] for item in pool]
-    dims  = _dims_for_paths(paths)
+    sizes = _dims_for_paths(paths) if dims else {}
     results = []
     for item in pool:
-        w, h = dims.get(item["path"], (0, 0))
+        w, h = sizes.get(item["path"], (0, 0))
         results.append({
             "path":      item["path"],
             "date":      item["date"],
@@ -1861,6 +1864,11 @@ def _make_thumbs(r2_key: str, variants, original: bytes = None) -> dict:
     if original is None:
         original = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)["Body"].read()
     img = _open_for_thumbnail(BytesIO(original), max(_THUMB_VARIANTS[v][1] for v in variants))
+    # Remember the original's size (as stored, like _fetch_dims) for the gallery layout
+    try:
+        _dim_cache[r2_key] = list(Image.open(BytesIO(original)).size)
+    except Exception:
+        pass
     out = {}
     for v in variants:
         key_fn, _, _, _, cache_control = _THUMB_VARIANTS[v]
@@ -1915,6 +1923,7 @@ def _start_thumb_job(work: list) -> str | None:
             if not ok:
                 job["failed"] += 1
         job["finished"] = True
+        _save_dim_cache_bg()   # sizes recorded while making the thumbnails
         print(f"[thumbs] job {job_id} done: {job['done'] - job['failed']}/{job['total']} ok")
 
     threading.Thread(target=_run, daemon=True).start()
@@ -7159,7 +7168,7 @@ async def admin_recolor_all(request: Request):
     return {"queued": len(to_color), "job_id": job_id}
 
 
-_thumb_backfill = {"job_id": None}
+_pos_thumbs_job = {"job_id": None}
 
 
 def _r2_keys_under(prefix: str) -> set:
@@ -7169,28 +7178,32 @@ def _r2_keys_under(prefix: str) -> set:
     return keys
 
 
-@app.post("/api/admin/thumbs/backfill")
-def admin_thumbs_backfill(request: Request):
-    """Make any missing thumbnails for photos already in the index, newest dates first.
-    Safe to run again: photos that already have all their thumbnails are skipped."""
+@app.post("/api/admin/thumbs/pos")
+def admin_pos_thumbs(request: Request, body: dict = Body(...)):
+    """Make missing POS thumbnails for photos in a date range (e.g. the winter photos),
+    newest dates first. Safe to run again: photos that already have one are skipped."""
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    running = _embed_jobs.get(_thumb_backfill["job_id"] or "")
+    date_from = (body.get("date_from") or "").strip()
+    date_to   = (body.get("date_to") or "").strip()
+    if not date_to:
+        return JSONResponse(status_code=400, content={"error": "Choose the last date to include"})
+    running = _embed_jobs.get(_pos_thumbs_job["job_id"] or "")
     if running and not running.get("finished"):
-        return {"job_id": _thumb_backfill["job_id"], "already_running": True,
-                "total": running["total"], "done": running["done"]}
-    have = {v: _r2_keys_under(fn("images/")) for v, (fn, *_rest) in _THUMB_VARIANTS.items()}
+        return {"job_id": _pos_thumbs_job["job_id"], "already_running": True}
+    have = _r2_keys_under(_nowm_thumb_r2_key("images/"))
+    photos = [it for it in data
+              if not it.get("draft")
+              and (not date_from or (it.get("date") or "") >= date_from)
+              and (it.get("date") or "") <= date_to]
     work = []
-    for item in sorted(data, key=lambda it: it.get("date") or "", reverse=True):
+    for item in sorted(photos, key=lambda it: it.get("date") or "", reverse=True):
         key = to_r2_key(item.get("path") or "")
-        if not key.startswith("images/"):
-            continue
-        missing = [v for v, (fn, *_rest) in _THUMB_VARIANTS.items() if fn(key) not in have[v]]
-        if missing:
-            work.append((key, missing))
+        if key.startswith("images/") and _nowm_thumb_r2_key(key) not in have:
+            work.append((key, ["pos"]))
     job_id = _start_thumb_job(work)
-    _thumb_backfill["job_id"] = job_id
-    return {"job_id": job_id, "queued": len(work), "photos": len(data)}
+    _pos_thumbs_job["job_id"] = job_id
+    return {"job_id": job_id, "queued": len(work), "in_range": len(photos)}
 
 
 @app.get("/api/admin/embed-status")

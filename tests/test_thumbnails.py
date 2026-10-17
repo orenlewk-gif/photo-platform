@@ -108,30 +108,56 @@ def test_uploading_photos_queues_their_thumbnails(admin_client, main_module):
         assert _get("thumbs/nowm/" + tail) and _get("thumbs/v2/" + tail) and _get("admin_thumbs/" + tail)
 
 
-def test_backfill_makes_only_missing_thumbnails_and_is_safe_to_rerun(admin_client, main_module):
+def test_making_thumbnails_records_the_photo_size(main_module):
+    key = "images/2026-10-05/x/D.jpg"
+    _put(key, _jpeg(2000, 1500))
+    main_module._make_thumbs(key, ["pos"])
+    assert main_module._dim_cache[key] == [2000, 1500]
+
+
+def test_pos_photo_list_skips_measuring_sizes(client, main_module, monkeypatch):
     saved = main_module.data
+    calls = []
+    monkeypatch.setattr(main_module, "_dims_for_paths", lambda paths: calls.append(paths) or {})
     try:
-        main_module.data = [
-            {"path": "images/2026-10-05/x/D.jpg", "date": "2026-10-05", "location": "X"},
-            {"path": "images/2026-10-06/x/E.jpg", "date": "2026-10-06", "location": "X"},
-        ]
-        _put("images/2026-10-05/x/D.jpg", _jpeg(2000, 1500))
-        _put("images/2026-10-06/x/E.jpg", _jpeg(2000, 1500))
-        main_module._make_thumbs("images/2026-10-06/x/E.jpg", list(main_module._THUMB_VARIANTS))   # E already done
-        r = admin_client.post("/api/admin/thumbs/backfill").json()
-        assert r["queued"] == 1
-        _wait_job(admin_client, r["job_id"])
-        assert _get("thumbs/nowm/2026-10-05/x/D.jpg")
-        assert admin_client.post("/api/admin/thumbs/backfill").json()["job_id"] is None   # nothing left
+        main_module.data = [{"path": "images/2026-10-08/mountain-biking/IMG_1.jpg", "date": "2026-10-08",
+                             "location": "Mountain Biking", "last_name": "", "group": ""}]
+        r = client.get("/api/browse", params={"date": "2026-10-08", "location": "Mountain Biking", "dims": 0})
+        assert r.status_code == 200 and r.json()["count"] == 1 and calls == []
+        client.get("/api/browse", params={"date": "2026-10-08", "location": "Mountain Biking"})
+        assert len(calls) == 1                                   # the gallery still gets sizes
     finally:
         main_module.data = saved
-
-
-def test_backfill_requires_admin(client):
-    assert client.post("/api/admin/thumbs/backfill").status_code == 401
 
 
 def test_missing_original_counts_as_failed_not_crash(admin_client, main_module):
     job = main_module._start_thumb_job([("images/2026-10-07/x/NOPE.jpg", ["pos"])])
     d = _wait_job(admin_client, job)
     assert d["done"] == 1 and d["failed"] == 1
+
+
+def test_pos_thumbnails_only_for_chosen_dates_and_safe_to_rerun(admin_client, main_module):
+    saved = main_module.data
+    try:
+        main_module.data = [
+            {"path": "images/2026-06-10/ambush-action/W1.jpg", "date": "2026-06-10", "location": "Ambush Action"},
+            {"path": "images/2026-06-12/ambush-action/W2.jpg", "date": "2026-06-12", "location": "Ambush Action"},
+            {"path": "images/2026-08-01/mountain-biking/S1.jpg", "date": "2026-08-01", "location": "Mountain Biking"},
+        ]
+        for it in main_module.data:
+            _put(it["path"], _jpeg(2000, 1500))
+        r = admin_client.post("/api/admin/thumbs/pos", json={"date_to": "2026-06-12"}).json()
+        assert r["in_range"] == 2 and r["queued"] == 2
+        _wait_job(admin_client, r["job_id"])
+        assert _get("thumbs/nowm/2026-06-10/ambush-action/W1.jpg") and _get("thumbs/nowm/2026-06-12/ambush-action/W2.jpg")
+        assert not _get("thumbs/nowm/2026-08-01/mountain-biking/S1.jpg")          # summer photo left alone
+        assert not _get("thumbs/v2/2026-06-10/ambush-action/W1.jpg")               # POS version only
+        again = admin_client.post("/api/admin/thumbs/pos", json={"date_to": "2026-06-12"}).json()
+        assert again["job_id"] is None and again["in_range"] == 2
+    finally:
+        main_module.data = saved
+
+
+def test_pos_thumbnails_requires_admin_and_a_date(client, admin_client):
+    assert client.post("/api/admin/thumbs/pos", json={"date_to": "2026-06-12"}).status_code == 401
+    assert admin_client.post("/api/admin/thumbs/pos", json={}).status_code == 400

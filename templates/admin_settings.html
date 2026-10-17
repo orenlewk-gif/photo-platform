@@ -348,12 +348,17 @@ html.embedded #layout{height:100vh}
       <div id="square-test-result" style="margin-top:.75rem;font-size:.85rem;line-height:1.6"></div>
     </div>
 
-    <!-- THUMBNAILS -->
+    <!-- POS THUMBNAILS -->
     <div class="settings-section" style="margin-top:1.5rem">
-      <div class="section-title">Thumbnails</div>
-      <div class="section-desc">New photos get their thumbnails automatically. This makes any that are missing for photos already on the site (newest first), so the POS and gallery load quickly. It runs in the background at a gentle pace and is safe to run again.</div>
-      <button class="btn-save" onclick="startThumbBackfill()" id="btn-thumbs" style="background:#1a5cc8">Generate missing thumbnails</button>
-      <div id="thumbs-status" style="margin-top:.75rem;font-size:.85rem;color:rgba(255,255,255,.6)"></div>
+      <div class="section-title">POS thumbnails</div>
+      <div class="section-desc">New photos get their thumbnails automatically. This makes POS thumbnails ahead of time for photos already on the site, up to the date you choose, so they load instantly on the iPad. Photos that already have one are skipped.</div>
+      <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:rgba(255,255,255,.6)">Photos dated up to
+          <input type="date" id="pos-thumbs-to" value="2026-06-12" class="field-input" style="width:auto;display:inline-block;margin-left:.4rem">
+        </label>
+        <button class="btn-save" onclick="startPosThumbs()" id="btn-pos-thumbs" style="background:#1a5cc8">Make POS thumbnails</button>
+      </div>
+      <div id="pos-thumbs-status" style="margin-top:.75rem;font-size:.85rem;color:rgba(255,255,255,.6)"></div>
     </div>
 
     </div><!-- /tab-general -->
@@ -1506,26 +1511,29 @@ window.switchTab = function(tab, el) {
 </script>
 <script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 <script>
-// ── Thumbnail backfill ────────────────────────────────────────────────────────
-let _thumbsTimer = null;
-async function startThumbBackfill() {
-  const btn = document.getElementById('btn-thumbs');
-  const out = document.getElementById('thumbs-status');
-  btn.disabled = true; out.style.color = 'rgba(255,255,255,.6)'; out.textContent = 'Checking which thumbnails are missing…';
+// ── POS thumbnails ────────────────────────────────────────────────────────────
+let _posThumbsTimer = null;
+async function startPosThumbs() {
+  const btn = document.getElementById('btn-pos-thumbs');
+  const out = document.getElementById('pos-thumbs-status');
+  const dateTo = document.getElementById('pos-thumbs-to').value;
+  if (!dateTo) { out.style.color = '#f88'; out.textContent = 'Choose the last date to include.'; return; }
+  btn.disabled = true; out.style.color = 'rgba(255,255,255,.6)'; out.textContent = 'Checking which photos need one…';
   try {
-    const r = await fetch('/api/admin/thumbs/backfill', {method: 'POST'});
+    const r = await fetch('/api/admin/thumbs/pos', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                   body: JSON.stringify({date_to: dateTo})});
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-    if (!d.job_id) { out.style.color = '#6c9'; out.textContent = 'All photos already have their thumbnails.'; btn.disabled = false; return; }
-    pollThumbs(d.job_id);
+    if (!d.job_id) { out.style.color = '#6c9'; out.textContent = `All ${d.in_range} photos up to ${dateTo} already have POS thumbnails.`; btn.disabled = false; return; }
+    pollPosThumbs(d.job_id);
   } catch (e) {
     out.style.color = '#f88'; out.textContent = 'Error: ' + e.message; btn.disabled = false;
   }
 }
-function pollThumbs(jobId) {
-  const btn = document.getElementById('btn-thumbs');
-  const out = document.getElementById('thumbs-status');
-  clearTimeout(_thumbsTimer);
+function pollPosThumbs(jobId) {
+  const btn = document.getElementById('btn-pos-thumbs');
+  const out = document.getElementById('pos-thumbs-status');
+  clearTimeout(_posThumbsTimer);
   fetch('/api/admin/embed-status?job_id=' + encodeURIComponent(jobId)).then(r => r.json()).then(d => {
     const pct = d.total ? Math.floor(100 * d.done / d.total) : 100;
     if (d.finished) {
@@ -1533,10 +1541,10 @@ function pollThumbs(jobId) {
       out.textContent = `Done: ${d.done - (d.failed || 0)} of ${d.total} photos` + (d.failed ? ` (${d.failed} couldn't be read — run again later)` : '');
       btn.disabled = false;
     } else {
-      out.textContent = `Making thumbnails… ${d.done} of ${d.total} photos (${pct}%). You can leave this page — it keeps going.`;
-      _thumbsTimer = setTimeout(() => pollThumbs(jobId), 3000);
+      out.textContent = `Making POS thumbnails… ${d.done} of ${d.total} photos (${pct}%). You can leave this page — it keeps going.`;
+      _posThumbsTimer = setTimeout(() => pollPosThumbs(jobId), 3000);
     }
-  }).catch(() => { _thumbsTimer = setTimeout(() => pollThumbs(jobId), 5000); });
+  }).catch(() => { _posThumbsTimer = setTimeout(() => pollPosThumbs(jobId), 5000); });
 }
 
 // ── Square connection test ────────────────────────────────────────────────────

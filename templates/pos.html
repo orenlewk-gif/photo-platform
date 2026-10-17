@@ -2123,7 +2123,7 @@ async function apSelectFamily(idx){
   renderApSelCount();
   try {
     const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.folder || f.name || '' });
-    const res = await fetch(`/api/browse?${params}`);
+    const res = await fetch(`/api/browse?${params}&dims=0`);   // dims=0: no photo sizes needed, so the list comes back immediately
     const data = await res.json();
     S.ap.photos = (data.photos || []);
     renderApPhotos();
@@ -2324,7 +2324,7 @@ async function portraitSelectSession(idx){
   renderPortraitSelCount();
   try {
     const params = new URLSearchParams({ date: s.date || '', location: s.location || '', family: s.last_name || s.name || '' });
-    const res = await fetch(`/api/browse?${params}`);
+    const res = await fetch(`/api/browse?${params}&dims=0`);   // dims=0: no photo sizes needed, so the list comes back immediately
     const data = await res.json();
     S.pr.photos = data.photos || [];
     S.pr.poses = groupPortraitPoses(S.pr.photos);
@@ -2730,7 +2730,7 @@ async function ptSelectFamily(f){
   if(grid) grid.innerHTML = '<div class="ap-loading">Loading photos...</div>';
   try {
     const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.name || '' });
-    const res = await fetch(`/api/browse?${params}`);
+    const res = await fetch(`/api/browse?${params}&dims=0`);   // dims=0: no photo sizes needed, so the list comes back immediately
     const data = await res.json();
     const photos = data.photos || [];
     if(!grid) return;
