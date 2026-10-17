@@ -844,6 +844,17 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
 data: list = []
 _data_ready = threading.Event()
 
+def _drop_legacy_embeddings(items: list) -> int:
+    """Remove the old CLIP 'embedding' vectors (512 numbers per photo, written by the
+    retired indexers). Nothing reads them — search uses the ONNX color labels — and
+    they made up ~90% of images.json. Returns how many records had one."""
+    n = 0
+    for it in items:
+        if "embedding" in it:
+            del it["embedding"]
+            n += 1
+    return n
+
 def _load_data_bg() -> None:
     global data
     if os.path.exists("images.json"):
@@ -882,6 +893,16 @@ def _load_data_bg() -> None:
             wait = min(30, 2 * attempt)
             print(f"WARNING: could not load images.json (attempt {attempt}: {e}) — retrying in {wait}s")
             _time.sleep(wait)
+    # One-time cleanup: drop the unused CLIP vectors and save the slimmer index before
+    # taking requests (handlers are held off until _data_ready, so nothing races this save).
+    dropped = _drop_legacy_embeddings(data)
+    if dropped:
+        try:
+            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
+                          Body=json.dumps(data).encode(), ContentType="application/json")
+            print(f"Removed unused CLIP embeddings from {dropped} photos; saved slimmer images.json.")
+        except Exception as e:
+            print(f"WARNING: could not save slimmer images.json ({e}) — will be saved on the next change.")
     # Backfill classifier field on records that were classified before tracking was added
     backfilled = 0
     for item in data:

@@ -61,3 +61,27 @@ def test_failed_read_retries_instead_of_starting_empty(main_module, monkeypatch)
     finally:
         main_module.data = saved
         main_module._data_ready.set()
+
+
+def test_old_clip_embeddings_removed_and_slim_index_saved(main_module, monkeypatch):
+    import boto3, json
+    s3 = boto3.client("s3", region_name="us-east-1")
+    photos = [
+        {"path": "images/2026-01-01/x/a.jpg", "date": "2026-01-01", "location": "X",
+         "embedding": [0.1] * 512, "jacket_colors": ["red"], "sport": "ski"},
+        {"path": "images/2026-01-01/x/b.jpg", "date": "2026-01-01", "location": "X", "embedding": None},
+        {"path": "images/2026-01-01/x/c.jpg", "date": "2026-01-01", "location": "X"},
+    ]
+    s3.put_object(Bucket="test-bucket", Key="images.json", Body=json.dumps(photos).encode())
+    saved = main_module.data
+    try:
+        main_module._data_ready.clear()
+        main_module._load_data_bg()
+        stored = json.loads(s3.get_object(Bucket="test-bucket", Key="images.json")["Body"].read())
+        for items in (main_module.data, stored):
+            assert len(items) == 3                                   # no photo lost
+            assert all("embedding" not in it for it in items)
+            assert items[0]["jacket_colors"] == ["red"] and items[0]["sport"] == "ski"   # labels kept
+    finally:
+        main_module.data = saved
+        main_module._data_ready.set()
