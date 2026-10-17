@@ -109,3 +109,55 @@ def test_in_person_sales_credit_the_photographer_by_jpeg_code_not_the_seller(adm
     assert "Dana Shooter" in row and "Owner Seller" not in row
     csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Cal" in l)
     assert "Dana Shooter" in csv_line and "Owner Seller" not in csv_line
+
+
+# ── Refunds recorded by hand ─────────────────────────────────────────────────
+
+@pytest.fixture()
+def no_refunds(main_module):
+    S3.delete_object(Bucket="test-bucket", Key="meta/order_refunds.json")
+
+
+def test_refund_endpoints_need_admin_and_a_real_order_key(client, admin_client, no_refunds):
+    assert client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 5}).status_code == 401
+    assert client.delete("/api/admin/orders/refund?key=pos:pos-tip1").status_code == 401
+    assert admin_client.post("/api/admin/orders/refund", json={"key": "../x", "amount": 5}).status_code == 400
+    assert admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 0}).status_code == 400
+    assert admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": "x"}).status_code == 400
+
+
+def test_full_refund_comes_off_revenue_net_and_tips(admin_client, pos_orders, no_refunds):
+    r = admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 31, "full": True,
+                                                            "note": "wrong photos"})
+    assert r.status_code == 200
+    html = admin_client.get("/admin/orders?days=7").text
+    assert ">Refunded<" in html
+    assert '<div class="label">Revenue</div><div class="val">$0.00</div>' in html
+    assert '<div class="label">Tips</div><div class="val">$0.00</div>' in html
+    assert '<div class="label">Refunds</div><div class="val" style="color:#f87171">$31.00</div>' in html
+    csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Ann" in l)
+    assert "$31.00" in csv_line and csv_line.count("$31.00") == 2           # original total + refunded
+
+    assert admin_client.delete("/api/admin/orders/refund?key=pos:pos-tip1").status_code == 200
+    html = admin_client.get("/admin/orders?days=7").text
+    assert '<div class="label">Revenue</div><div class="val">$31.00</div>' in html
+
+
+def test_partial_refund_reduces_the_sale(admin_client, pos_orders, no_refunds):
+    admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 10, "full": False})
+    html = admin_client.get("/admin/orders?days=7").text
+    assert '<div class="label">Revenue</div><div class="val">$21.00</div>' in html
+    assert "(-$10.00 refunded)" in html
+
+
+def test_refunded_sale_earns_no_commission(admin_client, pos_orders, no_refunds):
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json", Body=json.dumps([
+        {"id": "p2", "name": "Dana Shooter", "pin": "2222", "file_prefix": "img"}]).encode())
+    def revenue():
+        rows = admin_client.get(f"/api/photographers/commission?date_from={TODAY}&date_to={TODAY}").json()["commission"]
+        return next(p for p in rows if p["id"] == "p2")["revenue"]
+    assert revenue() == 25.0                                     # IMG_1.jpg sale, $25 before tax
+    admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 10, "full": False})
+    assert revenue() == 15.0
+    admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 31, "full": True})
+    assert revenue() == 0.0

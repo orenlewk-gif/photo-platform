@@ -4606,6 +4606,98 @@ def _fetch_pos_orders(after: str = None, before: str = None) -> list:
                   and (not b or o.get("date","") <= b)]
     return sorted(orders, key=lambda o: o.get("created",""), reverse=True)
 
+# ── Refunds (recorded by hand) ────────────────────────────────────────────────
+# Refunds are done in Square or WooCommerce; the studio records them here so they
+# come off revenue, net and commission. Keyed "pos:<sale id>" or "wc:<order id>".
+ORDER_REFUNDS_KEY = "meta/order_refunds.json"
+_order_refunds_lock = threading.Lock()
+_REFUND_KEY_RE = re.compile(r"^(pos|wc):[A-Za-z0-9_-]{1,64}$")
+
+
+def _load_order_refunds(strict: bool = False) -> dict:
+    """strict: raise on a storage error (before saving), instead of treating it as no refunds."""
+    try:
+        return json.loads(s3.get_object(Bucket=R2_BUCKET, Key=ORDER_REFUNDS_KEY)["Body"].read())
+    except s3.exceptions.NoSuchKey:
+        return {}
+    except Exception as e:
+        if strict:
+            raise
+        print(f"Couldn't read order refunds: {e}")
+        return {}
+
+
+def _save_order_refunds(refunds: dict):
+    s3.put_object(Bucket=R2_BUCKET, Key=ORDER_REFUNDS_KEY,
+                  Body=json.dumps(refunds, indent=1).encode(), ContentType="application/json")
+
+
+def _refund_key(row: dict) -> str:
+    return f"{'pos' if row.get('source') == 'pos' else 'wc'}:{row.get('order_id')}"
+
+
+def _apply_refunds(rows: list, refunds: dict) -> list:
+    """Mark refunded orders and take the refund off what they count for. A full refund
+    counts for nothing; a partial one comes off the amount charged and the net."""
+    for r in rows:
+        r["refund_key"] = _refund_key(r)
+        r["charged_original"] = float(r.get("charged", r["total"]))
+        rf = refunds.get(r["refund_key"])
+        if not rf:
+            r["refunded"] = 0.0
+            continue
+        amount = round(float(rf.get("amount") or 0), 2)
+        r.update(refunded=amount, refund_full=bool(rf.get("full")),
+                 refund_date=(rf.get("date") or "")[:10], refund_note=rf.get("note") or "")
+        if r["refund_full"]:
+            r.update(charged=0.0, net=0.0, tip=0.0)
+        else:
+            r.update(charged=round(max(r["charged_original"] - amount, 0), 2), net=round(r["net"] - amount, 2))
+    return rows
+
+
+def _commission_amount(row: dict, refunds: dict) -> float:
+    """What a sale counts for toward commission: nothing if refunded in full."""
+    amount = float(row.get("total", 0))
+    rf = refunds.get(_refund_key(row))
+    if rf:
+        amount = 0.0 if rf.get("full") else max(amount - float(rf.get("amount") or 0), 0.0)
+    return amount
+
+
+@app.post("/api/admin/orders/refund")
+def admin_record_refund(request: Request, body: dict = Body(...)):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    key = str(body.get("key") or "")
+    if not _REFUND_KEY_RE.match(key):
+        return JSONResponse(status_code=400, content={"error": "Unknown order"})
+    try:
+        amount = round(float(body.get("amount")), 2)
+    except (TypeError, ValueError):
+        amount = 0
+    if amount <= 0:
+        return JSONResponse(status_code=400, content={"error": "Enter the amount refunded"})
+    with _order_refunds_lock:
+        refunds = _load_order_refunds(strict=True)
+        refunds[key] = {"amount": amount, "full": bool(body.get("full")),
+                        "note": str(body.get("note") or "").strip()[:300],
+                        "date": datetime.now(timezone.utc).isoformat()}
+        _save_order_refunds(refunds)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/orders/refund")
+def admin_undo_refund(request: Request, key: str = Query("")):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    with _order_refunds_lock:
+        refunds = _load_order_refunds(strict=True)
+        if refunds.pop(key, None) is not None:
+            _save_order_refunds(refunds)
+    return {"ok": True}
+
+
 def _pos_order_row(o: dict) -> dict:
     total    = float(o.get("total", 0))           # POS total — already after any coupon
     discount = float(o.get("coupon_discount", 0))
@@ -4767,7 +4859,9 @@ def admin_orders(request: Request, days: int = 30,
     pos_rows   = [_pos_order_row(o) for o in _fill_pending_square_fees(
         _fetch_pos_orders(after=after[:10], before=before[:10] if custom else None))]
     rows       = sorted(rows + pos_rows, key=lambda r: r.get("date") or "", reverse=True)
+    _apply_refunds(rows, _load_order_refunds())
     total_rev  = sum(r.get("charged", r["total"]) for r in rows)
+    total_refunds = sum(r.get("refunded", 0) for r in rows)
     total_fees = sum(r["stripe_fee"] for r in rows)
     total_net  = sum(r["net"]        for r in rows)
     total_tips = sum(r.get("tip", 0) for r in rows)
@@ -4962,6 +5056,10 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
         charged     = r.get("charged", r["total"])
         tip_str     = f"${r['tip']:.2f}" if r.get("tip") else '—'
         total_str   = "Comp" if r.get("is_comp") else f"${charged:.2f}"
+        if r.get("refund_full"):
+            total_str = f'<s style="opacity:.5">${r["charged_original"]:.2f}</s> <span style="color:#f87171">Refunded</span>'
+        elif r.get("refunded"):
+            total_str = f'${charged:.2f} <span style="color:#f87171">(-${r["refunded"]:.2f} refunded)</span>'
         if is_pos:
             fee_str = "pending" if r.get("fee_pending") else (f"${r['stripe_fee']:.2f}" if r['stripe_fee'] else '—')
         else:
@@ -4980,6 +5078,13 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             "tip":          tip_str,
             "discount":     f"-${r['discount']:.2f}" if r['discount'] else '—',
             "fee":          fee_str,
+            "refund_key":   r["refund_key"],
+            "refunded":     r.get("refunded", 0),
+            "refund_full":  bool(r.get("refund_full")),
+            "refund_date":  r.get("refund_date", ""),
+            "refund_note":  r.get("refund_note", ""),
+            "charged_num":  round(r["charged_original"], 2),
+            "comp":         bool(r.get("is_comp")),
             "order_no":     ("Square " + order_no) if is_pos and r.get("order_no") else order_no,
             "receipt_url":  r.get("receipt_url") or '',
             "net":          f"${r['net']:.2f}",
@@ -4989,7 +5094,7 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             "photo_paths":  r['photo_paths'] or '',
             "date":         r['date'] or '',
             "last_name":    r['last'] or '',
-        }).replace("'", "&#39;").replace('"', '&quot;')
+        }).replace("&", "&amp;").replace('"', '&quot;').replace("<", "&lt;").replace(">", "&gt;")
         try:
             order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
             is_recent = (now_utc - order_dt).days < DOWNLOAD_EXPIRE_DAYS
@@ -5003,7 +5108,7 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             action_btn = f'<button class="copy-btn" onclick="copyLink({r["order_id"]},event)">Copy Link</button>'
         else:
             action_btn = f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
-        trs += f"""<tr class="order-row" onclick="showDetail('{detail_data}')" style="cursor:pointer">
+        trs += f"""<tr class="order-row" data-detail="{detail_data}" onclick="showDetail(this.dataset.detail)" style="cursor:pointer">
           {td(r['date'])}
           {td(order_cell, 'mono')}
           {td(f"{r['first']} {r['last']}")}
@@ -5099,6 +5204,9 @@ td{{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-a
 .modal-row:last-child{{border-bottom:none}}
 .modal-label{{color:rgba(255,255,255,.4);min-width:110px;flex-shrink:0}}
 .modal-val{{color:#fff;word-break:break-word}}
+.refund-box{{margin-top:1.1rem;padding:.8rem 1rem;border:1px solid rgba(248,113,113,.25);border-radius:8px;
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;font-size:.85rem}}
+.refund-in{{background:#0f1117;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .55rem;font-size:.82rem}}
 .modal-close{{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer}}
 .modal-close:hover{{color:#fff}}
 .photo-grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.5rem;margin-top:1rem}}
@@ -5190,7 +5298,7 @@ html.embedded #layout{{height:100vh}}
 window._INIT_TAB='{tab}';
 function showDetail(encoded) {{
   try {{
-    const d = JSON.parse(encoded.replace(/&quot;/g,'"').replace(/&#39;/g,"'"));
+    const d = JSON.parse(encoded);   // the row's data-detail attribute, already unescaped by the browser
     const fields = [
       ['Order #', d.receipt_url ? `<a href="${{d.receipt_url}}" target="_blank" style="color:inherit">${{d.order_no}}</a>` : d.order_no],
       ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
@@ -5218,11 +5326,48 @@ function showDetail(encoded) {{
       html += `<div style="margin-top:1.2rem;text-align:right"><a href="${{dlUrl}}" class="copy-btn" style="display:inline-block;text-decoration:none;padding:.45rem 1rem;font-size:.82rem">⬇ Download All Folder Photos</a></div>`;
     }}
 
+    html += refundSectionHtml(d);
     document.getElementById('detail-body').innerHTML = html;
     document.getElementById('detail-modal').classList.add('open');
   }} catch(e) {{
     console.error('showDetail error:', e);
   }}
+}}
+function escH(s) {{
+  return String(s).replace(/[&<>"']/g, c => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}})[c]);
+}}
+// Refunds are done in Square or WooCommerce; this records them so they come off
+// revenue, net and photographer commission.
+function refundSectionHtml(d) {{
+  if (!d.refund_key || d.comp) return '';
+  if (d.refunded) {{
+    return `<div class="refund-box"><div><strong style="color:#f87171">${{d.refund_full ? 'Refunded' : 'Partly refunded'}}</strong>
+      $${{Number(d.refunded).toFixed(2)}} on ${{escH(d.refund_date)}}${{d.refund_note ? ' &middot; ' + escH(d.refund_note) : ''}}</div>
+      <button class="copy-btn" onclick="undoRefund('${{d.refund_key}}')">Undo</button></div>`;
+  }}
+  return `<div class="refund-box" style="display:block">
+    <div style="font-size:.8rem;color:rgba(255,255,255,.55)">Refunded this sale in Square or WooCommerce? Record it here so it comes off revenue and commission.</div>
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem">
+      <label style="font-size:.8rem">Amount $ <input id="refund-amt" class="refund-in" type="number" step="0.01" min="0.01" value="${{Number(d.charged_num).toFixed(2)}}" style="width:6rem"></label>
+      <input id="refund-note" class="refund-in" placeholder="Note (optional)" style="flex:1;min-width:8rem">
+      <button class="copy-btn" onclick="saveRefund('${{d.refund_key}}', ${{Number(d.charged_num)}})">Mark as Refunded</button>
+    </div></div>`;
+}}
+async function saveRefund(key, full) {{
+  const amt = parseFloat(document.getElementById('refund-amt').value);
+  if (!(amt > 0)) {{ alert('Enter the amount refunded'); return; }}
+  if (amt > full + 0.005 && !confirm("That is more than this sale's total. Record it anyway?")) return;
+  const note = document.getElementById('refund-note').value.trim();
+  const r = await fetch('/api/admin/orders/refund', {{method: 'POST', headers: {{'Content-Type': 'application/json'}},
+    body: JSON.stringify({{key, amount: amt, full: amt >= full - 0.005, note}})}});
+  if (!r.ok) {{ const e = await r.json().catch(() => ({{}})); alert(e.error || 'Could not save the refund'); return; }}
+  location.reload();
+}}
+async function undoRefund(key) {{
+  if (!confirm('Remove this refund? The sale will count toward revenue and commission again.')) return;
+  const r = await fetch('/api/admin/orders/refund?key=' + encodeURIComponent(key), {{method: 'DELETE'}});
+  if (!r.ok) {{ alert('Could not undo the refund'); return; }}
+  location.reload();
 }}
 function closeDetail(e) {{
   if (e.target === document.getElementById('detail-modal'))
@@ -5322,6 +5467,7 @@ async function copyLink(orderId, e) {{
     <div class="stat"><div class="label">Card Fees</div><div class="val" style="color:#f87171">${total_fees:.2f}</div></div>
     <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">${total_net:.2f}</div></div>
     <div class="stat"><div class="label">Tips</div><div class="val">${total_tips:.2f}</div></div>
+    <div class="stat"><div class="label">Refunds</div><div class="val" style="color:#f87171">${total_refunds:.2f}</div></div>
   </div>
   <div class="tab-bar">
     <button class="tab-btn active" onclick="switchTab('orders',this)">Orders</button>
@@ -5479,6 +5625,7 @@ def admin_export(request: Request, days: int = 30,
         after=(date_from if date_from and date_to else (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")),
         before=(date_to if date_from and date_to else None)))]
     rows.sort(key=lambda r: r.get("date") or "", reverse=True)
+    _apply_refunds(rows, _load_order_refunds())
     buf    = io.StringIO()
     writer = csv.writer(buf)
     _exp_photogs    = _load_photographers()
@@ -5496,7 +5643,7 @@ def admin_export(request: Request, days: int = 30,
         return " & ".join(names) if names else "Oren Lewkowski"
     writer.writerow(["Date","Order #","First Name","Last Name","Email","Photographer","What Ordered",
                      "Photo Files","Location","Photo Date","Total","Tip","Discount",
-                     "Card Fee","Net","Coupon Code","Shipping Cost","Shipping Address"])
+                     "Card Fee","Net","Refunded","Coupon Code","Shipping Cost","Shipping Address"])
     for r in rows:
         photog = _exp_photog(r["filenames"])
         if r.get("source") == "pos":
@@ -5506,10 +5653,11 @@ def admin_export(request: Request, days: int = 30,
             fee_csv, order_csv = f"${r['stripe_fee']:.2f}", r.get("order_no", "")
         writer.writerow([r["date"], order_csv, r["first"], r["last"], r["email"], photog, r["what"],
                          r["filenames"], r["location"], r["photo_date"],
-                         "Comp" if r.get("is_comp") else f"${r.get('charged', r['total']):.2f}",
+                         "Comp" if r.get("is_comp") else f"${r['charged_original']:.2f}",
                          f"${r['tip']:.2f}" if r.get("tip") else "",
                          f"-${r['discount']:.2f}" if r["discount"] else "",
                          fee_csv, f"${r['net']:.2f}",
+                         f"${r['refunded']:.2f}" if r.get("refunded") else "",
                          r["coupon_code"],
                          f"${r['shipping']:.2f}" if r["shipping"] else "",
                          r["ship_addr"]])
@@ -6257,6 +6405,7 @@ def photographer_commission(request: Request,
         if pfx:
             prefix_map[pfx] = p["id"]
     rev_by_pid: dict[str, float] = {p["id"]: 0.0 for p in photographers}
+    refunds = _load_order_refunds()
     try:
         wc_orders = _fetch_wc_orders_all(after=date_from, before=date_to)
         pos_orders = _fetch_pos_orders(after=date_from, before=date_to)
@@ -6268,7 +6417,7 @@ def photographer_commission(request: Request,
                 if len(f) >= 3:
                     pid_match = prefix_map.get(f[:3].lower())
                     if pid_match and pid_match in rev_by_pid:
-                        rev_by_pid[pid_match] += float(row.get("total", 0))
+                        rev_by_pid[pid_match] += _commission_amount(row, refunds)
                         break
         for o in pos_orders:
             row = _pos_order_row(o)
@@ -6278,7 +6427,7 @@ def photographer_commission(request: Request,
                 if len(f) >= 3:
                     pid_match = prefix_map.get(f[:3].lower())
                     if pid_match and pid_match in rev_by_pid:
-                        rev_by_pid[pid_match] += float(row.get("total", 0))
+                        rev_by_pid[pid_match] += _commission_amount(row, refunds)
                         break
     except Exception:
         pass
