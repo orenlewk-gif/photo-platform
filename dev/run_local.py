@@ -3,8 +3,11 @@ Run the app locally against a fake, in-memory R2 (moto server). Never touches pr
 
     .venv/bin/python dev/run_local.py            # http://127.0.0.1:8777
 
-Seeds a test photographer (PIN 1234), a few customers and one sample folder so
-the public site, POS and studio have something to show. Admin password: "local".
+Seeds a test photographer (PIN 1234), 250 made-up customers and one sample folder
+so the public site, POS and studio have something to show. Admin password: "local".
+
+WooCommerce and Resend are replaced by in-memory fakes: frame prices can be edited,
+follow-up "emails" are printed to the console, and nothing leaves this machine.
 """
 import json
 import os
@@ -22,9 +25,11 @@ os.environ.update({
     "R2_BUCKET_NAME":       BUCKET,
     "AWS_DEFAULT_REGION":   "us-east-1",
     "ADMIN_PASSWORD":       "local",
+    "WC_CONSUMER_KEY":      "ck_fake_local",
+    "WC_CONSUMER_SECRET":   "cs_fake_local",
+    "RESEND_API_KEY":       "re_fake_local",
 })
-for var in ("WC_CONSUMER_KEY", "WC_CONSUMER_SECRET", "RESEND_API_KEY", "ANTHROPIC_API_KEY",
-            "SQUARE_ACCESS_TOKEN", "WC_WEBHOOK_SECRET", "POS_PASSCODE"):
+for var in ("ANTHROPIC_API_KEY", "SQUARE_ACCESS_TOKEN", "WC_WEBHOOK_SECRET", "POS_PASSCODE"):
     os.environ.pop(var, None)
 assert "crystal-images" not in BUCKET
 
@@ -44,11 +49,18 @@ def put_json(key, payload):
 
 
 put_json("meta/photographers.json", [{"id": "dev1", "name": "Local Tester", "pin": "1234"}])
-put_json("pos_data/customers.json", [
-    {"first": "Ann",  "last": "Smith",  "email": "ann@example.com",  "phone": "555-0101"},
-    {"first": "Bob",  "last": "Jones",  "email": "bob@example.com",  "phone": "555-0102"},
-    {"first": "Cara", "last": "Smythe", "email": "cara@example.com", "phone": "555-0103"},
-])
+FIRSTS = ["Ann", "Bob", "Cara", "Dan", "Eve", "Finn", "Gus", "Hana", "Ivy", "Jack"]
+LASTS  = ["Smith", "Jones", "Smythe", "Adams", "Park", "Lee", "Moore", "Nolan", "Ortiz", "Price",
+          "Quinn", "Reyes", "Stone", "Tate", "Urban", "Vance", "Wells", "Young", "Zane", "Baker",
+          "Clark", "Diaz", "Evans", "Ford", "Gray"]
+customers = []
+for i in range(250):
+    first, last = FIRSTS[i % len(FIRSTS)], LASTS[(i // len(FIRSTS)) % len(LASTS)]
+    customers.append({"first": first, "last": last,
+                      "email": "" if i % 40 == 7 else f"{first.lower()}.{last.lower()}{i}@example.com",
+                      "phone": f"406-555-{i:04d}", "street": f"{i} Lone Peak Dr",
+                      "city": "Big Sky", "state": "MT", "zip": "59716"})
+put_json("pos_data/customers.json", customers)
 put_json("images.json", [
     {"path": "images/2026-10-01/mountain-biking/morning/IMG_0001.jpg", "date": "2026-10-01",
      "location": "Mountain Biking", "last_name": "", "group": "morning"},
@@ -58,6 +70,54 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO_ROOT)
 sys.path.insert(0, REPO_ROOT)
 
+# ── Fake WooCommerce + Resend: the app's outbound HTTP never leaves this machine ──
+FRAME_PRICES = {1057: "55.00", 1058: "55.00", 1059: "75.00", 1060: "75.00",
+                1061: "95.00", 1062: "95.00", 1063: "150.00", 1064: "150.00"}
+
+
+class _FakeResp:
+    def __init__(self, payload, status=200):
+        self._payload, self.status_code = payload, status
+        self.ok = 200 <= status < 300
+        self.text = json.dumps(payload)
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        pass
+
+
+class FakeHTTP:
+    """Stands in for `requests` inside main.py."""
+    def get(self, url, **kw):
+        if url.endswith("/products/1034/variations"):
+            return _FakeResp([{"id": vid, "price": p, "regular_price": p, "stock_status": "instock"}
+                              for vid, p in FRAME_PRICES.items()])
+        return _FakeResp([])                       # orders, etc.: none locally
+
+    def put(self, url, json=None, **kw):
+        vid = int(url.rstrip("/").split("/")[-1])
+        if vid in FRAME_PRICES and json and "regular_price" in json:
+            FRAME_PRICES[vid] = json["regular_price"]
+            print(f"[fake WooCommerce] variation {vid} price -> {json['regular_price']}")
+        return _FakeResp({"id": vid})
+
+    def post(self, url, json=None, **kw):
+        if "resend.com" in url:
+            print(f"[fake email] to={json.get('to')} subject={json.get('subject')!r}")
+            return _FakeResp({"id": "fake-email"})
+        print(f"[fake HTTP] POST {url} (not sent)")
+        return _FakeResp({})
+
+    def delete(self, url, **kw):
+        return _FakeResp({})
+
+
+import main  # noqa: E402
+
+main.http_requests = FakeHTTP()
+
 import uvicorn  # noqa: E402
 
-uvicorn.run("main:app", host="127.0.0.1", port=int(os.environ.get("PORT", 8777)))
+uvicorn.run(main.app, host="127.0.0.1", port=int(os.environ.get("PORT", 8777)))
