@@ -1373,16 +1373,19 @@ async function renderBigSkyFrames(){
     _framesData.forEach(f=>['landscape','portrait'].forEach(o=>{ if(f[o]) f[o]._orig=String(f[o].price??''); }));
     if(!_framesData.length){ el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">No frames returned from WooCommerce.</p>'; return; }
     el.innerHTML=`<table>
-      <thead><tr><th>Size</th><th>Landscape price</th><th>Portrait price</th><th>Stock</th></tr></thead>
+      <thead><tr><th>Size</th><th>Price</th><th>Stock</th></tr></thead>
       <tbody>
         ${_framesData.map((f,i)=>{
+          // One price per size — saved to both the landscape and portrait frame in WooCommerce
           const lp=f.landscape?.price??'';
           const pp=f.portrait?.price??'';
+          const price=lp!==''?lp:pp;
+          const differ=f.landscape&&f.portrait&&String(lp)!==String(pp);
           const st=f.landscape?.stock_status||f.portrait?.stock_status||'—';
           return `<tr>
             <td>${esc(f.size)}</td>
-            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(lp)}" style="width:80px" oninput="frameInputChanged(${i},'landscape',this.value)"></td>
-            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(pp)}" style="width:80px" oninput="frameInputChanged(${i},'portrait',this.value)"></td>
+            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(price)}" style="width:80px" oninput="frameInputChanged(${i},this.value)">
+              ${differ?`<div style="font-size:11px;color:#f5c430;margin-top:.25rem">Landscape $${esc(lp)} / portrait $${esc(pp)} in WooCommerce — saving sets both</div>`:''}</td>
             <td><span style="color:${st==='instock'?'#34d399':'#f87171'};font-size:12px">${esc(st)}</span></td>
           </tr>`;
         }).join('')}
@@ -1392,8 +1395,10 @@ async function renderBigSkyFrames(){
     if(saveBtn) saveBtn.style.display='inline-flex';
   }catch(e){ el.innerHTML=`<p style="color:rgba(255,255,255,.35);font-size:13px">Could not load frame data: ${esc(e.message||String(e))}</p>`; }
 }
-function frameInputChanged(i, orient, val){
-  if(_framesData[i] && _framesData[i][orient]) _framesData[i][orient].price = val;
+function frameInputChanged(i, val){
+  const f=_framesData[i];
+  if(!f) return;
+  ['landscape','portrait'].forEach(o=>{ if(f[o]) f[o].price = val; });
 }
 async function saveFramePrices(){
   const btn=document.getElementById('frames-save-btn');
@@ -1407,8 +1412,8 @@ async function saveFramePrices(){
       const price=String(v.price??'').trim();
       if(price===v._orig) continue;                      // unchanged — leave WooCommerce alone
       const n=parseFloat(price);
-      if(!price || !isFinite(n) || n<=0){ status.textContent=`${f.size} ${o}: enter a price above $0`; return; }
-      updates.push({variation_id:v.variation_id, price:n.toFixed(2), _ref:v});
+      if(!price || !isFinite(n) || n<=0){ status.textContent=`${f.size}: enter a price above $0`; return; }
+      updates.push({variation_id:v.variation_id, price:n.toFixed(2), _ref:v, _size:f.size});
     }
   }
   if(!updates.length){ status.textContent='No changes to save'; setTimeout(()=>{ status.textContent=''; },2500); return; }
@@ -1421,7 +1426,8 @@ async function saveFramePrices(){
     const okIds=new Set((d.results||[]).filter(x=>x.ok).map(x=>x.variation_id));
     updates.forEach(u=>{ if(okIds.has(u.variation_id)) u._ref._orig=u.price; });
     const failed=updates.length-okIds.size;
-    status.textContent=failed?`${failed} of ${updates.length} update(s) failed — try again`:`Saved ${updates.length} price${updates.length!==1?'s':''}`;
+    const sizes=new Set(updates.map(u=>u._size)).size;
+    status.textContent=failed?`${failed} of ${updates.length} update(s) failed — try again`:`Saved ${sizes} size${sizes!==1?'s':''}`;
     setTimeout(()=>{ status.textContent=''; },4000);
   }catch(e){ status.textContent='Error: '+e.message; }
   btn.disabled=false; btn.textContent='Save Prices';
