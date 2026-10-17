@@ -3995,16 +3995,22 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
 async def api_pos_resend(request: Request):
     body = await request.json()
     pin = body.get("pin", "").strip()
+    if _pin_locked_out(request):
+        return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — wait 10 minutes"})
     if not _auth_photographer(pin):
+        _record_pin_failure(request)
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
     token = body.get("token", "").strip()
-    if not token:
+    if not re.fullmatch(r"[A-Za-z0-9]{16,64}", token):
         return JSONResponse(status_code=400, content={"error": "Missing token"})
-    try:
-        data = s3.get_object(Bucket=R2_BUCKET, Key=f"packages/{token}.json")
-        pkg = json.loads(data["Body"].read())
-    except Exception:
+    pkg = _load_pkg(token)          # packages/{token}/meta.json
+    if not pkg:
         return JSONResponse(status_code=404, content={"error": "Order not found"})
+    try:
+        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
+            return JSONResponse(status_code=410, content={"error": "This download link has expired"})
+    except Exception:
+        pass
     download_url = f"{SITE_URL}/package/{token}"
     title = pkg.get("title", "Your Photos")
     emails = pkg.get("emails", [])

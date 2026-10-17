@@ -422,3 +422,29 @@ def test_card_fee_square_fills_in_later_shows_up_on_the_orders_tab(admin_client,
     assert len(fake.calls) == calls
     csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Ann" in l)
     assert "Square Kd2P" in csv_line and "$0.75" in csv_line
+
+
+# ── Resend download from Recent Sales ────────────────────────────────────────
+
+def test_resend_download_finds_the_package_and_emails_it(client, square, no_pos_orders, no_pending,
+                                                         main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    fake = square(FakeSquareAndResend())
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}
+    token = client.post("/api/pos-checkout", json={**SALE, "pin": PIN, "square_payment_id": "ORDER1"}).json()["token"]
+    fake.emails.clear()
+
+    assert client.post("/api/pos-resend", json={"pin": "0000", "token": token}).status_code == 401
+    r = client.post("/api/pos-resend", json={"pin": PIN, "token": token})
+    assert r.status_code == 200 and r.json()["sent_to"] == ["ann@example.com"]
+    [email] = fake.emails
+    assert f"/package/{token}" in email["html"]
+    assert client.post("/api/pos-resend", json={"pin": PIN, "token": "f" * 32}).status_code == 404
+
+
+def test_resend_refuses_an_expired_link(client, square, main_module):
+    main_module._store_pkg("e" * 32, {"token": "e" * 32, "title": "Old", "emails": ["ann@example.com"],
+                                      "paths": ["images/x.jpg"], "expires": "2026-01-01T00:00:00+00:00"})
+    square(FakeSquare())
+    r = client.post("/api/pos-resend", json={"pin": PIN, "token": "e" * 32})
+    assert r.status_code == 410 and "expired" in r.json()["error"]
