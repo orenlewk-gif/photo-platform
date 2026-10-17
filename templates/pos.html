@@ -1051,7 +1051,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem">Download link:</div>
     <a class="confirm-link" id="confirm-link" href="#" target="_blank"></a>
   </div>
-  <button class="confirm-new-btn" onclick="newSale()">Start New Sale</button>
+  <button class="confirm-new-btn" id="confirm-new-btn" onclick="newSale()">Start New Sale</button>
+  <div class="confirm-sub hidden" id="confirm-elsewhere" style="margin-top:1rem;max-width:26rem;text-align:center">
+    Square opened this page in Safari. You can close this tab and go back to the POS app — it will show the sale as complete.
+  </div>
 </div>
 
 <!-- ─── CUSTOMER INFO MODAL ─── -->
@@ -1321,6 +1324,7 @@ async function submitPin(){
       $('pos-photog-name').textContent = photog.name;
       showScreen('s-main');
       initMainPOS();
+      checkSaleFinishedElsewhere();   // the app may have reloaded while staff were in Square
     } else {
       pinError();
     }
@@ -3902,7 +3906,8 @@ async function launchSquare(){
     if(!go) return;
   }
 
-  const txId = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
+  const txId = crypto.randomUUID ? crypto.randomUUID()
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
   const c = S.customer;
   const addrStr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ');
 
@@ -3929,6 +3934,25 @@ async function launchSquare(){
   };
   try { localStorage.setItem('ci_pos_pending', JSON.stringify(S.pendingOrder)); } catch(e){}
   try { localStorage.setItem('ci_pos_pin', S._savedPin || ''); } catch(e){}
+
+  // Also save the sale on the server. Square comes back by opening Safari, which
+  // can't see this Home Screen app's storage, so the sale must be findable there too.
+  setLoading(true);
+  try {
+    const r = await fetch('/api/pos/square-pending', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', ...posPinHeaders()},
+      body: JSON.stringify({state: txId, sale: buildCheckoutPayload('')}),
+    });
+    if(!r.ok){
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || 'Could not save the sale');
+    }
+  } catch(e){
+    setLoading(false);
+    showToast('Not sent to Square — ' + e.message);
+    return;
+  }
 
   _squareSkipCustomer = false;
   setLoading(false);
@@ -3990,28 +4014,91 @@ function checkSquareReturn(){
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null'); } catch(e){}
 
+  // In Safari (opened by Square) this browser has no saved sale; say where to go next
+  const elsewhere = saved ? '' : '\n\nYou can close this Safari tab and go back to the POS app.';
+
   // Anything other than a clear success for this exact sale is NOT a sale
   if(!result){
-    showToast('Couldn\'t read the result from Square — check the Square app before charging again');
+    alert('Couldn\'t read the result from Square. Check the Square app before charging again.' + elsewhere);
     restoreStateAndShow();
     return true;
   }
   if(result.status !== 'ok'){
     const code = result.error_code || '';
     if(code === 'customer_management_not_supported' || code === 'invalid_customer_id') _squareSkipCustomer = true;
-    showToast(SQUARE_ERRORS[code] || ('Square error: ' + (code || 'unknown') + ' — no payment was taken'));
-    restoreStateAndShow();
-    return true;
-  }
-  if(!saved || (result.state && saved.txId && result.state !== saved.txId)){
-    showToast('This Square payment doesn\'t match the sale on this iPad — check the Square app');
+    alert((SQUARE_ERRORS[code] || ('Square error: ' + (code || 'unknown') + ' — no payment was taken')) + elsewhere);
     restoreStateAndShow();
     return true;
   }
   // transaction_id is absent when Square is in offline mode; fall back to the client id
-  restoreStateAndComplete(result.transaction_id || result.client_transaction_id || ('square-' + saved.txId));
+  const txId = result.transaction_id || result.client_transaction_id || '';
+  if(result.state){
+    finishSquareSale(result.state, txId || ('square-' + result.state));
+    return true;
+  }
+  if(saved){
+    restoreStateAndComplete(txId || ('square-' + saved.txId));
+    return true;
+  }
+  alert('Square didn\'t say which sale this payment was for. Check the Square app.' + elsewhere);
+  restoreStateAndShow();
   return true;
 }
+
+// Finish a Square sale through the server, which kept the sale details before
+// Square opened. Works in the Home Screen app and in Safari alike.
+async function finishSquareSale(state, txId){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null'); } catch(e){}
+  const here = !!(saved && saved.txId === state);     // this browser started the sale
+  if(here) restoreFromSaved(saved);
+  while(true){
+    setLoading(true);
+    let res = null, data = {};
+    try {
+      res  = await fetch('/api/pos/square-complete', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({state, transaction_id: txId}),
+      });
+      data = await res.json();
+    } catch(e){
+      data = {error: 'No connection to the server (' + e.message + ')'};
+    }
+    setLoading(false);
+    if(res && res.ok){
+      if(here){ try { localStorage.removeItem('ci_pos_pending'); } catch(e){} }
+      showConfirmation(data, !here);
+      return;
+    }
+    const msg = data.error || 'Checkout failed';
+    if((data.verify_failed || !res) && confirm(msg + '\n\nCheck with Square again?')) continue;
+    alert('Sale not recorded: ' + msg + '\n\nCheck the Square app.'
+          + (here ? '' : '\n\nYou can close this Safari tab and go back to the POS app.'));
+    restoreStateAndShow();
+    return;
+  }
+}
+
+// The Home Screen app: when staff come back to it after Square finished the sale
+// in Safari, show it as complete instead of leaving the paid cart on screen.
+async function checkSaleFinishedElsewhere(){
+  if($('s-main').classList.contains('hidden')) return;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null'); } catch(e){}
+  if(!saved || !saved.txId || !S._savedPin) return;
+  try {
+    const r = await fetch('/api/pos/square-pending/' + encodeURIComponent(saved.txId), {headers: posPinHeaders()});
+    if(!r.ok) return;
+    const d = await r.json();
+    if(d.status !== 'completed') return;
+    try { localStorage.removeItem('ci_pos_pending'); } catch(e){}
+    restoreFromSaved(saved);
+    showConfirmation(d.result || {});
+  } catch(e){}
+}
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible') checkSaleFinishedElsewhere();
+});
 
 function restoreStateAndShow(){
   try {
@@ -4063,12 +4150,11 @@ async function restoreStateAndComplete(txId){
   }
 }
 
-async function completeCheckout(squareTxId){
-  setLoading(true);
+function buildCheckoutPayload(squareTxId){
   const o = S.pendingOrder || {};
   const c = S.customer;
   const addrStr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ');
-  const payload = {
+  return {
     pin:              S._savedPin || o.pin || '',
     email:            c.email  || o.email  || '',
     name:             `${c.first||''} ${c.last||''}`.trim() || o.name || '',
@@ -4081,6 +4167,11 @@ async function completeCheckout(squareTxId){
     square_payment_id: squareTxId || '',
     customer:         {...(o.customer || {}), ...c},
   };
+}
+
+async function completeCheckout(squareTxId){
+  setLoading(true);
+  const payload = buildCheckoutPayload(squareTxId);
   try {
     const res = await fetch('/api/pos-checkout', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -4101,8 +4192,10 @@ async function completeCheckout(squareTxId){
   }
 }
 
-function showConfirmation(data){
-  $('confirm-email').textContent = S.customer.email || (S.pendingOrder && S.pendingOrder.email) || '';
+function showConfirmation(data, inOtherBrowser){
+  $('confirm-email').textContent = S.customer.email || (S.pendingOrder && S.pendingOrder.email) || data.email || '';
+  $('confirm-new-btn').classList.toggle('hidden', !!inOtherBrowser);
+  $('confirm-elsewhere').classList.toggle('hidden', !inOtherBrowser);
   const box = $('confirm-link-box');
   if(data.download_url){
     $('confirm-link').textContent = data.download_url;

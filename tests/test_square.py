@@ -267,3 +267,99 @@ def test_sale_without_photos_sends_receipt_with_no_download_button(client, squar
     assert _checkout(client, "ORDER1").status_code == 200
     [email] = fake.emails
     assert "/package/" not in email["html"] and "Download Your Photos" not in email["html"]
+
+
+# ── Sales that Square finishes in Safari ─────────────────────────────────────
+STATE = "0f8c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f"
+SALE = {"email": "ann@example.com", "name": "Ann Smith", "total": 25.0, "customer": CUSTOMER,
+        "items": [{"category": "action_photos", "label": "Action Photos", "qty": 1, "price": 25.0,
+                   "subtotal": 25.0, "photo_paths": ["images/2026-06-12/base/IMG_1.jpg"],
+                   "filenames": ["IMG_1.jpg"], "location": "Base", "date": "2026-06-12"}]}
+
+
+@pytest.fixture()
+def no_pending(main_module):
+    s3 = boto3.client("s3", region_name="us-east-1")
+    for o in s3.list_objects_v2(Bucket="test-bucket", Prefix="pos_pending/").get("Contents", []):
+        s3.delete_object(Bucket="test-bucket", Key=o["Key"])
+
+
+def _save_pending(client, state=STATE, sale=SALE, headers=PIN_HDR):
+    return client.post("/api/pos/square-pending", json={"state": state, "sale": sale}, headers=headers)
+
+
+def _complete(client, transaction_id="ORDER1", state=STATE):
+    return client.post("/api/pos/square-complete", json={"state": state, "transaction_id": transaction_id})
+
+
+def test_saving_a_pending_sale_needs_the_pin_and_a_real_reference(client, square, no_pending):
+    square(FakeSquare())
+    assert _save_pending(client, headers={}).status_code == 401
+    assert _save_pending(client, headers={"X-POS-PIN": "0000"}).status_code == 401
+    assert _save_pending(client, state="abc").status_code == 400          # too short to be unguessable
+    assert _save_pending(client, state="../../images.json-xxxxxxxx").status_code == 400
+    assert _save_pending(client, sale={**SALE, "email": ""}).status_code == 400
+
+
+def test_sale_finished_in_safari_is_verified_recorded_and_emailed_once(client, square, no_pos_orders,
+                                                                      no_pending, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    fake = square(FakeSquareAndResend())
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}
+    assert _save_pending(client).status_code == 200
+
+    r = _complete(client)                                    # Safari: no PIN, no saved cart
+    assert r.status_code == 200
+    data = r.json()
+    assert data["email"] == "ann@example.com" and data["download_url"].endswith(data["token"])
+    [order] = _orders()
+    assert order["square_payment_id"] == "ORDER1" and order["square_verified"] is True
+    assert order["photographer_name"] == "Test Photog" and order["total"] == 25.0
+    assert len(fake.emails) == 1
+
+    # The Home Screen app learns the sale is done
+    assert client.get(f"/api/pos/square-pending/{STATE}").status_code == 401
+    status = client.get(f"/api/pos/square-pending/{STATE}", headers=PIN_HDR).json()
+    assert status["status"] == "completed" and status["result"]["order_id"] == data["order_id"]
+
+    # Reloading the Safari page doesn't record or email it again
+    again = _complete(client)
+    assert again.status_code == 200 and again.json()["order_id"] == data["order_id"]
+    assert len(_orders()) == 1 and len(fake.emails) == 1
+
+    # And a completed sale can't be replaced with different details
+    assert _save_pending(client, sale={**SALE, "total": 1.0}).status_code == 409
+
+
+def test_unconfirmed_payment_leaves_the_sale_pending_so_it_can_be_checked_again(client, square,
+                                                                                no_pos_orders, no_pending):
+    fake = square(FakeSquare())
+    fake.orders = {}
+    _save_pending(client)
+    r = _complete(client)
+    assert r.status_code == 402 and r.json()["verify_failed"]
+    assert _orders() == []
+    assert client.get(f"/api/pos/square-pending/{STATE}", headers=PIN_HDR).json()["status"] == "pending"
+
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}         # Square catches up
+    assert _complete(client).status_code == 200 and len(_orders()) == 1
+
+
+def test_underpaid_square_sale_is_refused_against_the_saved_total(client, square, no_pos_orders, no_pending):
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": _paid_order(cents=104)}          # paid $1.04 for a $25 sale
+    _save_pending(client)
+    r = _complete(client)
+    assert r.status_code == 402 and "less than" in r.json()["error"]
+    assert _orders() == []
+
+
+def test_unknown_or_stale_sales_cannot_be_finished(client, square, no_pos_orders, no_pending, main_module):
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}
+    assert _complete(client, state="ffffffff-0000-0000-0000-000000000000").status_code == 404
+    _save_pending(client)
+    old = main_module._load_pos_pending(STATE)
+    main_module._save_pos_pending(STATE, {**old, "created": "2026-01-01T00:00:00+00:00"})
+    assert _complete(client).status_code == 410
+    assert _orders() == []

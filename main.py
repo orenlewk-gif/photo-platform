@@ -2835,160 +2835,255 @@ async def pos_checkout(request: Request):
     """Record a completed in-person (Square) sale and deliver the download link."""
     try:
         body = await request.json()
-
-        pin = body.get("pin", "").strip()
-        photog = _auth_photographer(pin)
-        if not photog:
-            return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
-
-        customer_email  = body.get("email", "").strip()
-        customer_name   = body.get("name", "").strip()
-        customer_phone  = body.get("phone", "").strip()
-        customer_addr   = body.get("address", "").strip()
-
-        # Multi-item cart support
-        items = body.get("items", [])
-
-        # Collect photo_paths from action_photos items; fall back to legacy fields
-        photo_paths, filenames, location, photo_date = [], [], "", ""
-        for item in items:
-            if item.get("category") == "action_photos":
-                photo_paths.extend(item.get("photo_paths", []))
-                filenames.extend(item.get("filenames", []))
-                if not location:
-                    location = item.get("location", "")
-                if not photo_date:
-                    photo_date = item.get("date", "")
-        if not photo_paths:
-            photo_paths  = body.get("photo_paths", [])
-            filenames    = body.get("filenames", [])
-            location     = body.get("location", "")
-            photo_date   = body.get("date", "")
-
-        total           = float(body.get("total", 0))
-        coupon_code     = body.get("coupon_code", "").strip().lower()
-        coupon_discount = float(body.get("coupon_discount", 0))
-        square_id       = body.get("square_payment_id", "")
-        expire_days_req = int(body.get("expire_days", DOWNLOAD_EXPIRE_DAYS))
-
-        if not customer_email:
-            return JSONResponse(status_code=400, content={"error": "Customer email required"})
-
-        # Square sales: confirm with Square that it was really paid before recording
-        # the sale or sending photos. "COMP" is a deliberate free sale by staff.
-        square_check = {}
-        if square_id != "COMP":
-            if any(o.get("square_payment_id") == square_id for o in _fetch_pos_orders()):
-                return JSONResponse(status_code=409, content={
-                    "error": "This Square payment was already used for another sale", "verify_failed": True})
-            ok, detail = _square_verify_payment(square_id, int(round(total * 100)))
-            if not ok:
-                return JSONResponse(status_code=402, content={
-                    "error": f"Couldn't confirm the payment with Square: {detail}", "verify_failed": True})
-            square_check = {"square_verified": True, "square_paid": detail["paid_cents"] / 100,
-                            "square_tip": detail["tip_cents"] / 100, "square_tax": detail["tax_cents"] / 100,
-                            "square_tenders": detail["tender_types"]}
-
-        now   = datetime.now(timezone.utc)
-        token = str(uuid.uuid4()).replace("-", "")
-
-        if photo_paths:
-            expires = (now + timedelta(days=expire_days_req)).isoformat()
-            title   = f"Your Photos — {location or photo_date or now.strftime('%B %d, %Y')}"
-            pkg = {
-                "token":       token,
-                "title":       title,
-                "emails":      [customer_email],
-                "paths":       photo_paths,
-                "created":     now.isoformat(),
-                "expires":     expires,
-                "expire_days": expire_days_req,
-                "source":      "pos",
-            }
-            _store_pkg(token, pkg)
-        else:
-            title = "In-Person Sale"
-
-        order_id = f"pos-{token[:8]}"
-        order_record = {
-            "id":                order_id,
-            "date":              now.strftime("%Y-%m-%d"),
-            "created":           now.isoformat(),
-            "source":            "pos",
-            "photographer_pin":  pin,
-            "photographer_name": photog.get("name", ""),
-            "photographer_id":   photog.get("id", ""),
-            "name":              customer_name,
-            "email":             customer_email,
-            "phone":             customer_phone,
-            "address":           customer_addr,
-            "location":          location,
-            "photo_date":        photo_date,
-            "photo_paths":       "|".join(photo_paths),
-            "filenames":         ", ".join(filenames),
-            "total":             total,
-            "coupon_code":       coupon_code,
-            "coupon_discount":   coupon_discount,
-            "square_payment_id": square_id,
-            "package_token":     token if photo_paths else "",
-            "items":             items,
-            **square_check,
-        }
-        _store_pos_order(order_record)
-
-        # Add the customer to the directory (or refresh their contact info).
-        # A failure here must never block the sale.
-        try:
-            cust_info = body.get("customer") or {}
-            if not cust_info.get("first") and not cust_info.get("last"):
-                name_parts = customer_name.split(None, 1)
-                cust_info = {**cust_info,
-                             "first": name_parts[0] if name_parts else "",
-                             "last":  name_parts[1] if len(name_parts) > 1 else ""}
-            if not cust_info.get("phone"):
-                cust_info = {**cust_info, "phone": customer_phone}
-            _upsert_customer_from_pos({**cust_info, "email": customer_email})
-        except Exception as e:
-            print(f"POS customer upsert failed ({customer_email}): {e}")
-
-        if coupon_code and coupon_discount > 0:
-            _record_coupon_use(coupon_code.upper(), {
-                "date":         now.strftime("%Y-%m-%d"),
-                "order_id":     order_id,
-                "email":        customer_email,
-                "amount_saved": coupon_discount,
-                "order_total":  total,
-                "source":       "pos",
-            })
-
-        result = {"order_id": order_id}
-        download_url = expire_str = None
-        if photo_paths:
-            # The package was saved above, so this link works the moment the email arrives
-            download_url = f"{SITE_URL}/package/{token}"
-            expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
-            result["token"]        = token
-            result["download_url"] = download_url
-
-        # One email per sale: the itemized receipt, which carries the download button
-        _send_pos_receipt_email(
-            to_email=customer_email,
-            customer_name=customer_name,
-            order_id=order_id,
-            items=items,
-            total=total,
-            coupon_code=coupon_code,
-            coupon_discount=coupon_discount,
-            download_url=download_url,
-            expire_str=expire_str,
-            square=square_check or None,
-            comp=(square_id == "COMP"),
-        )
-
-        return result
-
+        return _record_pos_sale(body)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+def _record_pos_sale(body: dict):
+    """Verify (unless COMP), record the sale, add the customer and send the receipt.
+    Returns the result dict, or a JSONResponse for a refused sale. Callers run it
+    without awaiting anything in between, so two completions never interleave."""
+    pin = body.get("pin", "").strip()
+    photog = _auth_photographer(pin)
+    if not photog:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+
+    customer_email  = body.get("email", "").strip()
+    customer_name   = body.get("name", "").strip()
+    customer_phone  = body.get("phone", "").strip()
+    customer_addr   = body.get("address", "").strip()
+
+    # Multi-item cart support
+    items = body.get("items", [])
+
+    # Collect photo_paths from action_photos items; fall back to legacy fields
+    photo_paths, filenames, location, photo_date = [], [], "", ""
+    for item in items:
+        if item.get("category") == "action_photos":
+            photo_paths.extend(item.get("photo_paths", []))
+            filenames.extend(item.get("filenames", []))
+            if not location:
+                location = item.get("location", "")
+            if not photo_date:
+                photo_date = item.get("date", "")
+    if not photo_paths:
+        photo_paths  = body.get("photo_paths", [])
+        filenames    = body.get("filenames", [])
+        location     = body.get("location", "")
+        photo_date   = body.get("date", "")
+
+    total           = float(body.get("total", 0))
+    coupon_code     = body.get("coupon_code", "").strip().lower()
+    coupon_discount = float(body.get("coupon_discount", 0))
+    square_id       = body.get("square_payment_id", "")
+    expire_days_req = int(body.get("expire_days", DOWNLOAD_EXPIRE_DAYS))
+
+    if not customer_email:
+        return JSONResponse(status_code=400, content={"error": "Customer email required"})
+
+    # Square sales: confirm with Square that it was really paid before recording
+    # the sale or sending photos. "COMP" is a deliberate free sale by staff.
+    square_check = {}
+    if square_id != "COMP":
+        if any(o.get("square_payment_id") == square_id for o in _fetch_pos_orders()):
+            return JSONResponse(status_code=409, content={
+                "error": "This Square payment was already used for another sale", "verify_failed": True})
+        ok, detail = _square_verify_payment(square_id, int(round(total * 100)))
+        if not ok:
+            return JSONResponse(status_code=402, content={
+                "error": f"Couldn't confirm the payment with Square: {detail}", "verify_failed": True})
+        square_check = {"square_verified": True, "square_paid": detail["paid_cents"] / 100,
+                        "square_tip": detail["tip_cents"] / 100, "square_tax": detail["tax_cents"] / 100,
+                        "square_tenders": detail["tender_types"]}
+
+    now   = datetime.now(timezone.utc)
+    token = str(uuid.uuid4()).replace("-", "")
+
+    if photo_paths:
+        expires = (now + timedelta(days=expire_days_req)).isoformat()
+        title   = f"Your Photos — {location or photo_date or now.strftime('%B %d, %Y')}"
+        pkg = {
+            "token":       token,
+            "title":       title,
+            "emails":      [customer_email],
+            "paths":       photo_paths,
+            "created":     now.isoformat(),
+            "expires":     expires,
+            "expire_days": expire_days_req,
+            "source":      "pos",
+        }
+        _store_pkg(token, pkg)
+    else:
+        title = "In-Person Sale"
+
+    order_id = f"pos-{token[:8]}"
+    order_record = {
+        "id":                order_id,
+        "date":              now.strftime("%Y-%m-%d"),
+        "created":           now.isoformat(),
+        "source":            "pos",
+        "photographer_pin":  pin,
+        "photographer_name": photog.get("name", ""),
+        "photographer_id":   photog.get("id", ""),
+        "name":              customer_name,
+        "email":             customer_email,
+        "phone":             customer_phone,
+        "address":           customer_addr,
+        "location":          location,
+        "photo_date":        photo_date,
+        "photo_paths":       "|".join(photo_paths),
+        "filenames":         ", ".join(filenames),
+        "total":             total,
+        "coupon_code":       coupon_code,
+        "coupon_discount":   coupon_discount,
+        "square_payment_id": square_id,
+        "package_token":     token if photo_paths else "",
+        "items":             items,
+        **square_check,
+    }
+    _store_pos_order(order_record)
+
+    # Add the customer to the directory (or refresh their contact info).
+    # A failure here must never block the sale.
+    try:
+        cust_info = body.get("customer") or {}
+        if not cust_info.get("first") and not cust_info.get("last"):
+            name_parts = customer_name.split(None, 1)
+            cust_info = {**cust_info,
+                         "first": name_parts[0] if name_parts else "",
+                         "last":  name_parts[1] if len(name_parts) > 1 else ""}
+        if not cust_info.get("phone"):
+            cust_info = {**cust_info, "phone": customer_phone}
+        _upsert_customer_from_pos({**cust_info, "email": customer_email})
+    except Exception as e:
+        print(f"POS customer upsert failed ({customer_email}): {e}")
+
+    if coupon_code and coupon_discount > 0:
+        _record_coupon_use(coupon_code.upper(), {
+            "date":         now.strftime("%Y-%m-%d"),
+            "order_id":     order_id,
+            "email":        customer_email,
+            "amount_saved": coupon_discount,
+            "order_total":  total,
+            "source":       "pos",
+        })
+
+    result = {"order_id": order_id}
+    download_url = expire_str = None
+    if photo_paths:
+        # The package was saved above, so this link works the moment the email arrives
+        download_url = f"{SITE_URL}/package/{token}"
+        expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
+        result["token"]        = token
+        result["download_url"] = download_url
+
+    # One email per sale: the itemized receipt, which carries the download button
+    _send_pos_receipt_email(
+        to_email=customer_email,
+        customer_name=customer_name,
+        order_id=order_id,
+        items=items,
+        total=total,
+        coupon_code=coupon_code,
+        coupon_discount=coupon_discount,
+        download_url=download_url,
+        expire_str=expire_str,
+        square=square_check or None,
+        comp=(square_id == "COMP"),
+    )
+
+    return result
+
+
+# ── Square sales that finish in another browser ──────────────────────────────
+# On the iPad, Square returns to the POS by opening its callback in Safari, even
+# when the POS runs as a Home Screen app, and the two don't share storage. So the
+# sale details are saved here before Square opens, keyed by the random `state`
+# Square hands back, and whichever browser Square returns to finishes the sale.
+POS_PENDING_PREFIX = "pos_pending/"
+POS_PENDING_MAX_AGE = timedelta(hours=48)
+_POS_STATE_RE = re.compile(r"^[A-Za-z0-9-]{16,64}$")
+
+
+def _load_pos_pending(state: str):
+    if not _POS_STATE_RE.match(state or ""):
+        return None
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=f"{POS_PENDING_PREFIX}{state}.json")
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return None
+
+
+def _save_pos_pending(state: str, pending: dict):
+    s3.put_object(Bucket=R2_BUCKET, Key=f"{POS_PENDING_PREFIX}{state}.json",
+                  Body=json.dumps(pending).encode(), ContentType="application/json")
+
+
+@app.post("/api/pos/square-pending")
+async def pos_square_pending(request: Request):
+    """Save a sale just before the POS hands it to Square."""
+    body = await request.json()
+    state = str(body.get("state") or "")
+    sale = body.get("sale") or {}
+    if not _POS_STATE_RE.match(state):
+        return JSONResponse(status_code=400, content={"error": "Invalid sale reference"})
+    photog = _pos_pin_photographer(request)
+    if not photog:
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    if not (sale.get("email") or "").strip():
+        return JSONResponse(status_code=400, content={"error": "Customer email required"})
+    existing = _load_pos_pending(state)
+    if existing and existing.get("status") == "completed":
+        return JSONResponse(status_code=409, content={"error": "This sale was already completed"})
+    sale = {**sale, "pin": request.headers.get("X-POS-PIN", "").strip()}
+    sale.pop("square_payment_id", None)
+    _save_pos_pending(state, {"state": state, "status": "pending", "sale": sale,
+                              "photographer_id": photog.get("id", ""),
+                              "created": datetime.now(timezone.utc).isoformat()})
+    return {"ok": True}
+
+
+@app.post("/api/pos/square-complete")
+async def pos_square_complete(request: Request):
+    """Finish a sale when Square returns. No PIN is needed: the state is a random id
+    only the POS and Square know, and the payment is verified with Square."""
+    body = await request.json()
+    state = str(body.get("state") or "")
+    transaction_id = str(body.get("transaction_id") or "")
+    pending = _load_pos_pending(state)
+    if not pending:
+        return JSONResponse(status_code=404, content={"error": "This sale wasn't found — check the Square app"})
+    if pending.get("status") == "completed":
+        return pending.get("result") or {}
+    try:
+        created = datetime.fromisoformat(pending["created"])
+    except Exception:
+        created = None
+    if not created or datetime.now(timezone.utc) - created > POS_PENDING_MAX_AGE:
+        return JSONResponse(status_code=410, content={"error": "This sale is too old to finish here — record it from the dashboard"})
+    try:
+        result = _record_pos_sale({**pending["sale"], "square_payment_id": transaction_id})
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    if isinstance(result, JSONResponse):
+        return result
+    result = {**result, "email": pending["sale"].get("email", "")}
+    _save_pos_pending(state, {**pending, "status": "completed", "result": result,
+                              "completed": datetime.now(timezone.utc).isoformat()})
+    return result
+
+
+@app.get("/api/pos/square-pending/{state}")
+def pos_square_pending_status(state: str, request: Request):
+    """Lets the Home Screen POS learn that its sale was finished in Safari."""
+    if not _pos_pin_photographer(request):
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    pending = _load_pos_pending(state)
+    if not pending:
+        return JSONResponse(status_code=404, content={"status": "unknown"})
+    return {"status": pending.get("status"), "result": pending.get("result")}
 
 
 # ── SQUARE (Point of Sale handoff) ─────────────────────────────────────────────
