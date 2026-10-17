@@ -1631,7 +1631,7 @@ async function _runCustBarSearch(q){
   if(!drop) return;
   const addBtn = $('cart-customer-add-btn');
   try {
-    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`);
+    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`, {headers: posPinHeaders()});
     const data = await res.json();
     _custBarMatches = data.customers || [];
     if(_custBarMatches.length === 0){
@@ -1892,6 +1892,10 @@ function custSearchType(val){ /* search bar removed from modal */ }
 function custSearchSelect(idx){ /* search bar removed from modal */ }
 
 // ─── Customer directory ───────────────────────────────────────────────────────
+// Customer data and recent sales require the signed-in photographer's PIN.
+function posPinHeaders(){
+  return {'X-POS-PIN': S._savedPin || ''};
+}
 let _custDirPage = 0;
 const CUST_PAGE = 60;
 let _custDirQuery = '';
@@ -1935,14 +1939,17 @@ function custLoadCSV(input){
         zip:    (cols[zi]  || '').trim(),
       });
     }
+    const adminKey = prompt('Importing replaces the entire customer list. Enter the admin password to continue:');
+    if(!adminKey){ input.value = ''; return; }
     showToast('Uploading customers...');
     try {
       const res = await fetch('/api/pos-customers', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        headers: {'Content-Type':'application/json', 'X-Admin-Key': adminKey, ...posPinHeaders()},
         body: JSON.stringify(customers),
       });
       const result = await res.json();
+      if(!res.ok){ showToast(result.error || 'Upload failed'); input.value = ''; return; }
       showToast(`${result.count} customers saved`);
     } catch(err){
       showToast('Upload failed');
@@ -1979,9 +1986,13 @@ async function custDirRender(q){
   if(!el) return;
   el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">Loading...</div>';
   try {
-    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q||'')}`)
+    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q||'')}`, {headers: posPinHeaders()})
     const data = await res.json();
     const list = data.customers || [];
+    if(data.search_required){
+      el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">Type at least 2 letters of a name to search customers.</div>';
+      return;
+    }
     if(!list.length){
       el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">No customers found. Tap Import CSV to load your Square export.</div>';
       return;
@@ -2042,7 +2053,7 @@ async function _custAcFetch(q, first, last){
   const list = $('cust-ac-list');
   if(!list) return;
   try {
-    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`);
+    const res = await fetch(`/api/pos-customers?q=${encodeURIComponent(q)}`, {headers: posPinHeaders()});
     const data = await res.json();
     const matches = (data.customers || []).slice(0, 8);
     if(!matches.length){ list.classList.remove('open'); return; }
@@ -3799,7 +3810,7 @@ async function loadRecentSales(){
   const el = $('recent-sales-list');
   el.innerHTML = '<div class="ap-loading">Loading...</div>';
   try {
-    const res = await fetch('/api/pos-recent-sales?limit=30');
+    const res = await fetch('/api/pos-recent-sales?limit=30', {headers: posPinHeaders()});
     const data = await res.json();
     S.recentSales = data.orders || [];
     renderRecentSales();

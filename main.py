@@ -1046,6 +1046,17 @@ class _RateLimiter:
             dq.append(now)
             return True
 
+    def count(self, key: str) -> int:
+        """Number of calls recorded for key inside the current window (records nothing)."""
+        now = _time.monotonic()
+        with self._lock:
+            dq = self._calls.get(key)
+            if not dq:
+                return 0
+            while dq and dq[0] < now - self.window:
+                dq.popleft()
+            return len(dq)
+
 _search_limiter    = _RateLimiter(max_calls=20, window=60)   # 20 req/min per IP
 _lastname_limiter  = _RateLimiter(max_calls=30, window=60)   # 30 req/min per IP
 
@@ -2828,7 +2839,9 @@ async def api_save_pos_products(request: Request):
     return {"ok": True}
 
 @app.get("/api/pos-recent-sales")
-async def api_pos_recent_sales(limit: int = Query(50)):
+async def api_pos_recent_sales(request: Request, limit: int = Query(50)):
+    if not (_admin_authed(request) or _pos_pin_photographer(request)):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     orders = _fetch_pos_orders()
     return {"orders": orders[:limit]}
 
@@ -2836,8 +2849,15 @@ _customers_cache: dict = {"data": None}
 CUSTOMERS_KEY = "pos_data/customers.json"
 
 @app.get("/api/pos-customers")
-def api_pos_customers(q: str = Query("")):
-    """Search POS customer directory. Returns up to 60 matches."""
+def api_pos_customers(request: Request, q: str = Query("")):
+    """Search POS customer directory. Returns up to 60 matches.
+    Admin (studio) may list everything; the POS needs a PIN and a search term."""
+    is_admin = _admin_authed(request)
+    if not is_admin:
+        if not _pos_pin_photographer(request):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+        if len(q.strip()) < 2:
+            return {"customers": [], "total": 0, "search_required": True}
     if _customers_cache["data"] is None:
         try:
             obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
@@ -2862,6 +2882,8 @@ def api_pos_customers(q: str = Query("")):
 @app.post("/api/pos-customers")
 async def api_pos_customers_update(request: Request):
     """Replace the customer directory from a JSON upload."""
+    if not (_admin_authed(request) or (_pos_pin_photographer(request) and _admin_key_ok(request))):
+        return JSONResponse(status_code=401, content={"error": "Admin password required"})
     body = await request.json()
     customers = body if isinstance(body, list) else body.get("customers", [])
     _customers_cache["data"] = customers
@@ -4878,6 +4900,34 @@ def _auth_photographer(pin: str):
             return p
     return None
 
+# Failed PIN attempts per IP — 10 wrong PINs in 10 minutes locks that IP out
+# of PIN-protected endpoints until the window passes.
+_pin_fail_limiter = _RateLimiter(max_calls=10, window=600)
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+def _pin_locked_out(request: Request) -> bool:
+    return _pin_fail_limiter.count(_client_ip(request)) >= _pin_fail_limiter.max_calls
+
+def _record_pin_failure(request: Request):
+    _pin_fail_limiter.is_allowed(_client_ip(request))
+
+def _pos_pin_photographer(request: Request):
+    """Photographer for the X-POS-PIN header, or None (also None while locked out)."""
+    pin = request.headers.get("X-POS-PIN", "").strip()
+    if not pin or _pin_locked_out(request):
+        return None
+    p = _auth_photographer(pin)
+    if not p:
+        _record_pin_failure(request)
+    return p
+
+def _admin_key_ok(request: Request) -> bool:
+    """X-Admin-Key header matches the admin password (used for POS edits)."""
+    key = request.headers.get("X-Admin-Key", "")
+    return bool(ADMIN_PASSWORD) and bool(key) and hmac.compare_digest(key, ADMIN_PASSWORD)
+
 def _presigned_get(key: str, expires: int = 3600) -> str:
     try:
         return s3.generate_presigned_url(
@@ -4895,9 +4945,12 @@ def _presigned_get(key: str, expires: int = 3600) -> str:
 # ── Photographer auth ──
 @app.post("/api/photographer/auth")
 async def photographer_auth(request: Request):
+    if _pin_locked_out(request):
+        return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — try again in a few minutes"})
     body = await request.json()
     p = _auth_photographer(body.get("pin", ""))
     if not p:
+        _record_pin_failure(request)
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
     records = _load_clock_records()
     active = next((r for r in reversed(records)
@@ -4959,6 +5012,8 @@ def clock_status_ep(pin: str = Query(...)):
 # ── Clock record edit / delete ──
 @app.put("/api/clock/record/{record_id}")
 async def edit_clock_record(record_id: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body = await request.json()
     records = _load_clock_records()
     for r in records:
@@ -4974,7 +5029,9 @@ async def edit_clock_record(record_id: str, request: Request):
     return JSONResponse(status_code=404, content={"error": "Record not found"})
 
 @app.delete("/api/clock/record/{record_id}")
-async def delete_clock_record(record_id: str):
+async def delete_clock_record(record_id: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     records = _load_clock_records()
     new_records = [r for r in records if r["id"] != record_id]
     if len(new_records) == len(records):
@@ -5125,13 +5182,17 @@ async def upload_confirm(request: Request):
 
 # ── Pending (cull feed) ──
 @app.get("/api/pending/dates")
-def pending_dates():
+def pending_dates(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     meta  = _load_pending_meta()
     dates = sorted({m["date"] for m in meta if m.get("status") == "pending"}, reverse=True)
     return {"dates": dates}
 
 @app.get("/api/pending")
-def get_pending(date: str = Query(None), location: str = Query(None)):
+def get_pending(request: Request, date: str = Query(None), location: str = Query(None)):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
     meta  = _load_pending_meta()
@@ -5144,6 +5205,8 @@ def get_pending(date: str = Query(None), location: str = Query(None)):
 
 @app.post("/api/cull/organize")
 async def cull_organize(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body   = await request.json()
     keys   = body.get("keys", [])
     folder = body.get("folder", "").strip()
@@ -5158,6 +5221,8 @@ async def cull_organize(request: Request):
 
 @app.post("/api/cull/rename-folder")
 async def cull_rename_folder(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body       = await request.json()
     old_folder = body.get("old_folder", "").strip()
     new_folder = body.get("new_folder", "").strip()
@@ -5174,6 +5239,8 @@ async def cull_rename_folder(request: Request):
 
 @app.post("/api/cull/reject")
 async def cull_reject(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body = await request.json()
     keys = body.get("keys", [])
     if not keys:
@@ -5213,6 +5280,8 @@ async def cull_reject(request: Request):
 @app.post("/api/cull/golive")
 async def cull_golive(request: Request):
     global data
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body     = await request.json()
     date     = body.get("date", "")
     location = body.get("location", "")
