@@ -2882,6 +2882,102 @@ async def pos_checkout(request: Request):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+# ── SQUARE (Point of Sale handoff) ─────────────────────────────────────────────
+# The iPad POS hands each sale to the Square app (tip + payment happen there) using
+# Square's Point of Sale API. The server supplies the app ID and finds/creates the
+# customer in the seller's Square account so they appear on the Square sale.
+SQUARE_API_BASE = "https://connect.squareup.com/v2"
+
+
+def _square_headers() -> dict:
+    # No Square-Version header: Square then uses the app's version from the Developer Console.
+    return {"Authorization": f"Bearer {SQUARE_ACCESS_TOKEN}", "Content-Type": "application/json"}
+
+
+def _square_customer_id(info: dict) -> str | None:
+    """Square customer id for this POS customer (matched by email), creating one if needed.
+    Returns None if Square isn't configured or anything goes wrong — the sale still proceeds."""
+    email = (info.get("email") or "").strip()
+    if not (SQUARE_ACCESS_TOKEN and email):
+        return None
+    r = http_requests.post(f"{SQUARE_API_BASE}/customers/search", headers=_square_headers(), timeout=6,
+                           json={"query": {"filter": {"email_address": {"exact": email}}}, "limit": 1})
+    if r.ok:
+        found = r.json().get("customers") or []
+        if found:
+            return found[0].get("id")
+    else:
+        print(f"Square customer search failed ({r.status_code}): {r.text[:200]}")
+        return None
+
+    new_customer = {
+        "idempotency_key": str(uuid.uuid4()),
+        "given_name":  (info.get("first") or "").strip(),
+        "family_name": (info.get("last") or "").strip(),
+        "email_address": email,
+    }
+    phone = (info.get("phone") or "").strip()
+    if phone:
+        new_customer["phone_number"] = phone
+    if (info.get("street") or "").strip():
+        new_customer["address"] = {
+            "address_line_1": info.get("street", "").strip(),
+            "locality": (info.get("city") or "").strip(),
+            "administrative_district_level_1": (info.get("state") or "").strip(),
+            "postal_code": (info.get("zip") or "").strip(),
+            "country": "US",
+        }
+    r = http_requests.post(f"{SQUARE_API_BASE}/customers", headers=_square_headers(), timeout=6, json=new_customer)
+    if not r.ok and ("phone_number" in new_customer or "address" in new_customer):
+        # Square is strict about phone/address formats — retry with name + email only
+        print(f"Square customer create failed ({r.status_code}), retrying without phone/address: {r.text[:200]}")
+        new_customer.pop("phone_number", None)
+        new_customer.pop("address", None)
+        new_customer["idempotency_key"] = str(uuid.uuid4())
+        r = http_requests.post(f"{SQUARE_API_BASE}/customers", headers=_square_headers(), timeout=6, json=new_customer)
+    if not r.ok:
+        print(f"Square customer create failed ({r.status_code}): {r.text[:200]}")
+        return None
+    return (r.json().get("customer") or {}).get("id")
+
+
+@app.post("/api/pos/square-prepare")
+def pos_square_prepare(request: Request, body: dict = Body(...)):
+    """Everything the POS needs to open the Square app for a sale: app ID + customer id."""
+    if not _pos_pin_photographer(request):
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    if not SQUARE_APP_ID:
+        return JSONResponse(status_code=503, content={"error": "Square isn't set up (SQUARE_APP_ID is missing)"})
+    customer_id = None
+    try:
+        customer_id = _square_customer_id(body.get("customer") or {})
+    except Exception as e:
+        print(f"Square customer lookup failed: {e}")
+    return {"client_id": SQUARE_APP_ID, "customer_id": customer_id}
+
+
+@app.get("/api/admin/square/test")
+def admin_square_test(request: Request):
+    """Studio check: does the Square access token work? Never returns the token."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    result = {"app_id_set": bool(SQUARE_APP_ID), "token_set": bool(SQUARE_ACCESS_TOKEN),
+              "location_id_set": bool(SQUARE_LOCATION_ID)}
+    if not SQUARE_ACCESS_TOKEN:
+        return {**result, "ok": False, "error": "SQUARE_ACCESS_TOKEN is missing"}
+    try:
+        r = http_requests.get(f"{SQUARE_API_BASE}/locations", headers=_square_headers(), timeout=8)
+    except Exception as e:
+        return {**result, "ok": False, "error": f"Could not reach Square: {e}"}
+    if not r.ok:
+        reason = "token rejected — check it's the Production access token" if r.status_code == 401 else r.text[:200]
+        return {**result, "ok": False, "error": f"Square answered {r.status_code}: {reason}"}
+    locations = r.json().get("locations") or []
+    return {**result, "ok": True,
+            "locations": [l.get("name", "") for l in locations],
+            "location_id_matches": any(l.get("id") == SQUARE_LOCATION_ID for l in locations) if SQUARE_LOCATION_ID else None}
+
+
 # ── POS PRODUCTS (Base Area, Mats custom items) ────────────────────────────────
 POS_PRODUCTS_KEY = "meta/pos_products.json"
 

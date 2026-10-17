@@ -340,6 +340,14 @@ html.embedded #layout{height:100vh}
       <span id="save-status"></span>
     </div>
 
+    <!-- SQUARE -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Square (POS payments)</div>
+      <div class="section-desc">Checks that the Square settings on the server work. Your access token is never shown.</div>
+      <button class="btn-save" onclick="testSquare()" id="btn-square-test" style="background:#1a5cc8">Test Square connection</button>
+      <div id="square-test-result" style="margin-top:.75rem;font-size:.85rem;line-height:1.6"></div>
+    </div>
+
     </div><!-- /tab-general -->
 
     <!-- ── TEXT PRESETS TAB ── -->
@@ -1490,6 +1498,33 @@ window.switchTab = function(tab, el) {
 </script>
 <script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 <script>
+// ── Square connection test ────────────────────────────────────────────────────
+async function testSquare() {
+  const btn = document.getElementById('btn-square-test');
+  const out = document.getElementById('square-test-result');
+  btn.disabled = true; out.style.color = 'rgba(255,255,255,.5)'; out.textContent = 'Checking…';
+  try {
+    const r = await fetch('/api/admin/square/test');
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    const flag = (ok, label) => `<div>${ok ? '✓' : '✗'} ${esc(label)}</div>`;
+    let html = flag(d.app_id_set, 'App ID is set') + flag(d.token_set, 'Access token is set');
+    if (d.ok) {
+      html += flag(true, 'Square accepted the token');
+      html += `<div>Locations: ${esc((d.locations || []).join(', ') || 'none')}</div>`;
+      if (d.location_id_matches === false) html += flag(false, 'SQUARE_LOCATION_ID doesn’t match any of these locations');
+      out.style.color = '#6c9';
+    } else {
+      html += flag(false, d.error || 'Square check failed');
+      out.style.color = '#f88';
+    }
+    out.innerHTML = html;
+  } catch (e) {
+    out.style.color = '#f88'; out.textContent = 'Error: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
 // ── Email Templates ───────────────────────────────────────────────────────────
 let _etTemplates = {};
 let _etCurrent   = null;

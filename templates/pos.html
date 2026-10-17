@@ -3842,14 +3842,6 @@ async function submitResend(){
 }
 
 // ─── Square checkout ─────────────────────────────────────────────────────────
-function buildLineItems(){
-  return S.cart.map(item => ({
-    name: item.label,
-    quantity: String(item.qty || 1),
-    base_price_money: { amount: Math.round(item.price * 100), currency_code: 'USD' }
-  }));
-}
-
 function buildReceiptNotes(){
   let parts = S.cart.map(i => `${i.label}${i.qty > 1 ? ' x'+i.qty : ''}: ${fmt(i.subtotal)}`);
   if(S.coupon) parts.push(`Coupon ${S.coupon.code}: -${fmt(cartDiscount())}`);
@@ -3859,15 +3851,50 @@ function buildReceiptNotes(){
   return parts.join('\n');
 }
 
-function launchSquare(){
+// Square Point of Sale API (iOS web): the sale is handed to the Square app, which takes
+// the tip and payment, then returns to /pos with the result in a `data` parameter.
+const SQUARE_MIN_CHARGE = 1.00;      // Square rejects smaller amounts — use Comp instead
+let _squareSkipCustomer = false;     // set when Square couldn't attach the customer last time
+
+function buildSquareUrl(clientId, customerId, total, txId){
+  const data = {
+    amount_money: { amount: String(Math.round(total * 100)), currency_code: 'USD' }, // pre-tax; Square adds the 4% resort tax
+    callback_url: window.location.origin + '/pos',     // must match the URL registered with Square exactly
+    client_id:    clientId,
+    version:      '1.3',
+    notes:        buildReceiptNotes().slice(0, 500),
+    state:        txId,                                 // returned unchanged — ties the result to this sale
+    options: { supported_tender_types: ['CREDIT_CARD', 'CASH', 'OTHER', 'SQUARE_GIFT_CARD'] },
+  };
+  if(customerId) data.customer_id = customerId;
+  return 'square-commerce-v1://payment/create?data=' + encodeURIComponent(JSON.stringify(data));
+}
+
+async function launchSquare(){
   if(!S.customer.email){ showToast('Add customer info first'); openCustomerModal(); return; }
   if(!S.cart.length){ showToast('Cart is empty'); return; }
 
   const total = cartTotal();
-  const txId = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
-  const callbackUrl = window.location.origin + '/pos?sq=1&txid=' + txId;
+  if(total < SQUARE_MIN_CHARGE){ showToast('Square needs at least $1.00 — use Comp for free items'); return; }
 
-  // Build address string for storage
+  // App ID + this customer's Square customer id (server finds or creates them)
+  setLoading(true);
+  let prep;
+  try {
+    const r = await fetch('/api/pos/square-prepare', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', ...posPinHeaders()},
+      body: JSON.stringify({customer: _squareSkipCustomer ? {} : {...S.customer}}),
+    });
+    prep = await r.json();
+    if(!r.ok) throw new Error(prep.error || 'Could not prepare the Square sale');
+  } catch(e){
+    setLoading(false);
+    showToast(e.message);
+    return;
+  }
+
+  const txId = (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
   const c = S.customer;
   const addrStr = [c.street, c.city, c.state, c.zip].filter(Boolean).join(', ');
 
@@ -3890,22 +3917,14 @@ function launchSquare(){
     coupon_code:     S.coupon ? S.coupon.code : '',
     coupon_discount: cartDiscount(),
     pin:     S._savedPin || '',
+    square_customer: !!prep.customer_id,
   };
   try { localStorage.setItem('ci_pos_pending', JSON.stringify(S.pendingOrder)); } catch(e){}
   try { localStorage.setItem('ci_pos_pin', S._savedPin || ''); } catch(e){}
 
-  const payload = {
-    amount_money:          { amount: Math.round(total * 100), currency_code: 'USD' }, // pre-tax; Square adds 4% resort tax
-    callback_url:          callbackUrl,
-    client_transaction_id: txId,
-    line_items:            buildLineItems(),
-    notes:                 buildReceiptNotes(),
-    options: {
-      supported_tender_types: ['CARD','CASH','OTHER'],
-      skip_receipt_screen:    false,
-    }
-  };
-  window.location.href = `square-commerce-v1://payment/create?data=${btoa(JSON.stringify(payload))}`;
+  _squareSkipCustomer = false;
+  setLoading(false);
+  window.location.href = buildSquareUrl(prep.client_id, prep.customer_id, total, txId);
 }
 
 async function chargeComp(){
@@ -3931,34 +3950,58 @@ async function chargeComp(){
 }
 
 // ─── Square return handling ───────────────────────────────────────────────────
+const SQUARE_ERRORS = {
+  payment_canceled:                  'Payment cancelled',
+  not_logged_in:                     'Sign in to the Square app on this iPad, then try again',
+  no_network_connection:             'No internet connection — Square needs one to take payment',
+  unsupported_api_version:           'Update the Square app, then try again',
+  amount_too_small:                  'Square needs at least $1.00 — use Comp for free items',
+  amount_too_large:                  'That amount is over Square\'s limit',
+  customer_management_not_supported: 'Square couldn\'t attach the customer — tap Charge again to continue without it',
+  invalid_customer_id:               'Square couldn\'t attach the customer — tap Charge again to continue without it',
+  client_not_authorized_for_user:    'This Square account hasn\'t authorized the Crystal Images POS app',
+  user_not_active:                   'This Square account isn\'t active',
+  data_invalid:                      'Square rejected the sale details (data_invalid)',
+};
+
+function readSquareResult(params){
+  // iOS returns a JSON object in the `data` query parameter
+  const raw = params.get('data');
+  if(!raw) return null;
+  try { return JSON.parse(raw); } catch(e){}
+  try { return JSON.parse(decodeURIComponent(raw)); } catch(e){}
+  return null;
+}
+
 function checkSquareReturn(){
   const params = new URLSearchParams(window.location.search);
-  if(!params.has('sq')) return false;
+  if(!params.has('data') && !params.has('sq')) return false;
   window.history.replaceState({}, '', '/pos');
 
-  const rawData = params.get('data');
-  let status = params.get('status') || 'ok';
-  let squareTxId = params.get('txid') || '';
+  const result = readSquareResult(params);
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('ci_pos_pending') || 'null'); } catch(e){}
 
-  if(rawData){
-    try {
-      const r = JSON.parse(atob(rawData));
-      status = r.status || status;
-      squareTxId = r.transaction_id || r.payment_id || squareTxId;
-    } catch(e){}
-  }
-
-  if(status === 'cancel'){
-    showToast('Payment cancelled');
+  // Anything other than a clear success for this exact sale is NOT a sale
+  if(!result){
+    showToast('Couldn\'t read the result from Square — check the Square app before charging again');
     restoreStateAndShow();
     return true;
   }
-  if(status === 'error'){
-    showToast('Payment error — try again');
+  if(result.status !== 'ok'){
+    const code = result.error_code || '';
+    if(code === 'customer_management_not_supported' || code === 'invalid_customer_id') _squareSkipCustomer = true;
+    showToast(SQUARE_ERRORS[code] || ('Square error: ' + (code || 'unknown') + ' — no payment was taken'));
     restoreStateAndShow();
     return true;
   }
-  restoreStateAndComplete(squareTxId);
+  if(!saved || (result.state && saved.txId && result.state !== saved.txId)){
+    showToast('This Square payment doesn\'t match the sale on this iPad — check the Square app');
+    restoreStateAndShow();
+    return true;
+  }
+  // transaction_id is absent when Square is in offline mode; fall back to the client id
+  restoreStateAndComplete(result.transaction_id || result.client_transaction_id || ('square-' + saved.txId));
   return true;
 }
 
