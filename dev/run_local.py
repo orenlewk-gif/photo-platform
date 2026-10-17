@@ -66,6 +66,18 @@ put_json("images.json", [
      "location": "Mountain Biking", "last_name": "", "group": "morning"},
 ])
 
+# Optional: DEV_SEED_DIR=/path loads extra files into the fake bucket (key = path
+# relative to the folder), e.g. a copy of real pricing config to reproduce a bug.
+seed_dir = os.environ.get("DEV_SEED_DIR")
+if seed_dir:
+    for root, _, files in os.walk(seed_dir):
+        for name in files:
+            full = os.path.join(root, name)
+            key = os.path.relpath(full, seed_dir).replace(os.sep, "/")
+            with open(full, "rb") as fh:
+                s3.put_object(Bucket=BUCKET, Key=key, Body=fh.read(), ContentType="application/json")
+            print(f"[seed] {key}")
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO_ROOT)
 sys.path.insert(0, REPO_ROOT)
