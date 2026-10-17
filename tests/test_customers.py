@@ -145,14 +145,23 @@ def test_pos_sale_adds_new_customer_with_full_address(client):
     assert eve.get("id")
 
 
-def test_pos_sale_updates_existing_customer_but_keeps_crm_data(client):
+def test_pos_sale_fills_blanks_on_existing_customer_without_overwriting(client):
     _pos_sale(client, {"first": "Ann", "last": "Smith", "email": "Ann@Example.com", "phone": "406-555-1111",
                        "street": "", "city": "Bozeman", "state": "", "zip": ""})
     stored = [c for c in _r2_customers() if c["email"].lower() == "ann@example.com"]
     assert len(stored) == 1                               # no duplicate created
     ann = stored[0]
-    assert ann["phone"] == "406-555-1111" and ann["city"] == "Bozeman"
+    assert ann["phone"] == "(406) 555-0101"               # existing value kept
+    assert ann["city"] == "Bozeman"                       # blank filled in
     assert ann["notes"] == "Prefers prints" and ann["tags"] == ["VIP"] and ann["followups"]
+
+
+def test_shared_email_does_not_rename_the_existing_customer(client):
+    """A spouse buying under the same email must not overwrite Ann's name."""
+    _pos_sale(client, {"first": "Mark", "last": "Smith", "email": "ann@example.com", "phone": "406-555-2222"})
+    ann = next(c for c in _r2_customers() if c["email"] == "ann@example.com")
+    assert (ann["first"], ann["last"], ann["phone"]) == ("Ann", "Smith", "(406) 555-0101")
+    assert len(_r2_customers()) == 3
 
 
 def test_old_pos_payload_without_customer_object_still_adds_customer(client):

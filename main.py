@@ -2932,8 +2932,10 @@ def _customer_admin_matches(c: dict, q: str) -> bool:
     return len(digits) >= 3 and digits in re.sub(r"\D", "", c.get("phone") or "")
 
 def _upsert_customer_from_pos(info: dict) -> None:
-    """Add a POS customer to the directory, or refresh an existing one's contact info.
-    Matched by email. Never touches CRM notes, tags or follow-up history."""
+    """Add a POS customer to the directory, matched by email.
+    For an existing customer, only blank fields are filled in — nothing already on
+    file is overwritten (two people can share one email address). Changes to existing
+    details are made in the studio CRM. Never touches notes, tags or follow-up history."""
     email = (info.get("email") or "").strip()
     if not email:
         return
@@ -2944,7 +2946,7 @@ def _upsert_customer_from_pos(info: dict) -> None:
         if existing:
             changed = False
             for k, v in fields.items():
-                if v and existing.get(k) != v:
+                if v and not (existing.get(k) or "").strip():
                     existing[k] = v
                     changed = True
             if changed:
