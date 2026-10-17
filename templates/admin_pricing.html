@@ -830,6 +830,8 @@ let itemsBundlesData    = {bundles:[]};
 let _actGroupNames      = [];  // activity group names for bundle dropdowns
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
+// Frame prices come from WooCommerce and don't depend on the rest of the pricing data
+renderBigSkyFrames();
 fetch('/api/admin/activity-groups').then(r=>r.json()).then(d=>{
   _actGroupNames = Object.keys(d.activity_groups || {}).sort();
   _renderBundleGroupSelects();
@@ -855,6 +857,12 @@ Promise.all([
   renderAll();
 }).catch(e=>{ console.error('Load error:',e); showToast('Load error: '+e,'err'); });
 
+// Draw one section; a failure is logged with its name instead of stopping the rest.
+function _safeStep(name, fn){
+  try { fn(); }
+  catch(e){ console.error(`Pricing page: "${name}" failed to draw:`, e); }
+}
+
 function renderAll(){
   // Populate activity group names from activity_categories (category-level names)
   const _fromCats = (pricingData.activity_categories || []).map(cat => cat.name).filter(Boolean);
@@ -863,23 +871,22 @@ function renderAll(){
     _actGroupNames = merged;
   }
 
-  renderZip();
-  renderActEditor('Mountain Biking','act-editor-mountain-biking');
-  renderActEditor('Dirt Days','act-editor-dirt-days');
-  migrateAndRenderWinterAction();
-  renderSummerPortraitEditor();
-  renderPortraitPricing();
-  renderPortraitLocs();
-  renderPrints();
-  renderShipping();
-  renderPosProducts('mats','mats-list');
-  renderPosProducts('satin_black_frames','satin-frames-list');
-  renderBaseAreaTiers();
-  renderPosProducts('base_area','base-area-list');
-  renderPrivateSessions();
-  renderCombos();
-  _renderBundleGroupSelects();
-  renderBigSkyFrames();
+  _safeStep('renderZip', () => renderZip());
+  _safeStep('renderActEditor', () => renderActEditor('Mountain Biking','act-editor-mountain-biking'));
+  _safeStep('renderActEditor', () => renderActEditor('Dirt Days','act-editor-dirt-days'));
+  _safeStep('migrateAndRenderWinterAction', () => migrateAndRenderWinterAction());
+  _safeStep('renderSummerPortraitEditor', () => renderSummerPortraitEditor());
+  _safeStep('renderPortraitPricing', () => renderPortraitPricing());
+  _safeStep('renderPortraitLocs', () => renderPortraitLocs());
+  _safeStep('renderPrints', () => renderPrints());
+  _safeStep('renderShipping', () => renderShipping());
+  _safeStep('renderPosProducts', () => renderPosProducts('mats','mats-list'));
+  _safeStep('renderPosProducts', () => renderPosProducts('satin_black_frames','satin-frames-list'));
+  _safeStep('renderBaseAreaTiers', () => renderBaseAreaTiers());
+  _safeStep('renderPosProducts', () => renderPosProducts('base_area','base-area-list'));
+  _safeStep('renderPrivateSessions', () => renderPrivateSessions());
+  _safeStep('renderCombos', () => renderCombos());
+  _safeStep('_renderBundleGroupSelects', () => _renderBundleGroupSelects());
   // Logo add-on fee
   const logoInput = document.getElementById('logo-fee-input');
   if(logoInput && typeof pricingData.logo_fee === 'number') logoInput.value = pricingData.logo_fee;
@@ -1351,7 +1358,7 @@ function addCombo(){
 function removeCombo(i){ pricingData.combos.splice(i,1); renderCombos(); saveDigital(); }
 
 // ── Big Sky Frames (editable) ──────────────────────────────────────────────────
-let _framesData = [];
+var _framesData = [];  // var: renderBigSkyFrames runs at boot, before this line
 async function renderBigSkyFrames(){
   const el=document.getElementById('frames-display');
   const saveBtn=document.getElementById('frames-save-btn');
