@@ -109,6 +109,14 @@ class FakeHTTP:
     def get(self, url, **kw):
         if "squareup.com" in url and url.endswith("/locations"):
             return _FakeResp({"locations": [{"id": "LOCAL_LOC", "name": "Local Test Location"}]})
+        if "squareup.com" in url and "/orders/" in url:
+            # Fake paid orders: any id starting SQ_TX_OK is a $1.04 cash payment; others don't exist
+            oid = url.rsplit("/", 1)[-1]
+            print(f"[fake Square] order lookup {oid}")
+            if oid.startswith("SQ_TX_OK"):
+                return _FakeResp({"order": {"id": oid, "location_id": "LOCAL_LOC", "state": "COMPLETED",
+                                            "tenders": [{"type": "CASH", "amount_money": {"amount": 104}}]}})
+            return _FakeResp({"errors": [{"code": "NOT_FOUND"}]}, status=404)
         if url.endswith("/products/1034/variations"):
             return _FakeResp([{"id": vid, "price": p, "regular_price": p, "stock_status": "instock"}
                               for vid, p in FRAME_PRICES.items()])
@@ -124,7 +132,10 @@ class FakeHTTP:
     def post(self, url, json=None, **kw):
         if "squareup.com" in url:
             if url.endswith("/customers/search"):
-                print(f"[fake Square] customer search {json['query']['filter']['email_address']['exact']}")
+                email = json['query']['filter']['email_address']['exact']
+                print(f"[fake Square] customer search {email}")
+                if "fail" in email:              # simulate a Square customer problem
+                    return _FakeResp({"errors": [{"code": "INTERNAL_SERVER_ERROR"}]}, status=500)
                 return _FakeResp({})
             if url.endswith("/customers"):
                 print(f"[fake Square] create customer {json.get('email_address')}")
