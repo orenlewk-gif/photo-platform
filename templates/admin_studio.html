@@ -758,7 +758,9 @@ function onUploadCategoryChange() {
 }
 
 // ── Init ──
-(async function() {
+// Runs once the whole script has loaded, so the view table below exists
+// when a URL like /admin/dashboard/customers picks the starting tab.
+document.addEventListener('DOMContentLoaded', async function() {
   document.getElementById('upload-date').value = new Date().toISOString().slice(0,10);
   loadUploadLocations();
   setupDropZone();
@@ -784,7 +786,7 @@ function onUploadCategoryChange() {
   } else {
     showUploadView();
   }
-})();
+});
 
 // ── Zip tiers ──
 async function loadZipTiers() {

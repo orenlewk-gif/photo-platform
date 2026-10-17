@@ -421,6 +421,8 @@ select.fu-input{cursor:pointer}
 <div id="toast"></div>
 
 <script>
+// This page lives inside Dashboard > Customers; opened on its own, go there instead.
+if (window.parent === window) location.replace('/admin/dashboard/customers');
 if (window.parent !== window) document.documentElement.classList.add('embedded');
 
 const TAG_PRESETS = ['Returning','VIP','Comp\'d','Seasonal','Local','Group','First Visit'];
