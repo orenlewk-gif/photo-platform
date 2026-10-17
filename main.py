@@ -2243,9 +2243,16 @@ async def update_frame_prices(request: Request):
     results = []
     for u in updates:
         var_id = u.get("variation_id")
-        price  = str(u.get("price", "0"))
         if not var_id:
             continue
+        try:
+            price_num = float(u.get("price"))
+        except (TypeError, ValueError):
+            price_num = 0.0
+        if price_num <= 0:
+            results.append({"variation_id": var_id, "ok": False, "error": "Price must be above $0"})
+            continue
+        price = f"{price_num:.2f}"
         resp = http_requests.put(
             f"{WC_BASE}/products/{WC_FRAME_PARENT_ID}/variations/{var_id}",
             json={"regular_price": price},

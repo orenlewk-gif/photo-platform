@@ -282,7 +282,8 @@ input[type="text"].full{width:100%}
     <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
     <a href="/admin/orders" class="nav-link">Orders</a>
     <a href="/admin/links" class="nav-link">Links</a>
-    <a href="/admin/settings" class="nav-link">Settings</a>
+    
+      <a href="/admin/settings" class="nav-link">Settings</a>
     <a href="/admin/activities" class="nav-link">Activities</a>
     <div id="sidebar-tree"></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
@@ -439,9 +440,13 @@ input[type="text"].full{width:100%}
     <!-- ── Big Sky Rustic Frames ── -->
     <div id="sec-big-sky-frames" class="section">
       <h1>Big Sky Rustic Frames</h1>
-      <p class="subtitle">Frames synced from WooCommerce. Prices are managed in WC. Frame photos are stored locally in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/</code>.</p>
+      <p class="subtitle">Prices are synced to WooCommerce. Edit below and save to update. Frame photos are stored locally in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/</code>.</p>
       <div class="card">
         <div id="frames-display"></div>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" id="frames-save-btn" onclick="saveFramePrices()" style="display:none">Save Prices</button>
+          <span id="frames-save-status" style="font-size:12px;color:rgba(255,255,255,.4)"></span>
+        </div>
       </div>
     </div>
 
@@ -1345,35 +1350,74 @@ function addCombo(){
 }
 function removeCombo(i){ pricingData.combos.splice(i,1); renderCombos(); saveDigital(); }
 
-// ── Big Sky Frames (display only) ──────────────────────────────────────────────
+// ── Big Sky Frames (editable) ──────────────────────────────────────────────────
+let _framesData = [];
 async function renderBigSkyFrames(){
   const el=document.getElementById('frames-display');
+  const saveBtn=document.getElementById('frames-save-btn');
   if(!el) return;
   el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">Loading frames...</p>';
   try{
     const r=await fetch('/api/frames');
     if(!r.ok) throw new Error('WooCommerce unavailable');
     const d=await r.json();
-    const frames=d.frames||[];
-    if(!frames.length){ el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">No frames returned from WooCommerce.</p>'; return; }
+    _framesData=d.frames||[];
+    // Remember what WooCommerce has, so Save only sends prices that were changed
+    _framesData.forEach(f=>['landscape','portrait'].forEach(o=>{ if(f[o]) f[o]._orig=String(f[o].price??''); }));
+    if(!_framesData.length){ el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">No frames returned from WooCommerce.</p>'; return; }
     el.innerHTML=`<table>
       <thead><tr><th>Size</th><th>Landscape price</th><th>Portrait price</th><th>Stock</th></tr></thead>
       <tbody>
-        ${frames.map(f=>{
-          const lp=f.landscape?.price||'—';
-          const pp=f.portrait?.price||'—';
+        ${_framesData.map((f,i)=>{
+          const lp=f.landscape?.price??'';
+          const pp=f.portrait?.price??'';
           const st=f.landscape?.stock_status||f.portrait?.stock_status||'—';
           return `<tr>
             <td>${esc(f.size)}</td>
-            <td>${lp!=='—'?'$':''} ${esc(lp)}</td>
-            <td>${pp!=='—'?'$':''} ${esc(pp)}</td>
+            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(lp)}" style="width:80px" oninput="frameInputChanged(${i},'landscape',this.value)"></td>
+            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(pp)}" style="width:80px" oninput="frameInputChanged(${i},'portrait',this.value)"></td>
             <td><span style="color:${st==='instock'?'#34d399':'#f87171'};font-size:12px">${esc(st)}</span></td>
           </tr>`;
         }).join('')}
       </tbody>
     </table>
-    <p style="color:rgba(255,255,255,.35);font-size:12px;margin-top:.5rem">To change prices, update WooCommerce directly. To update frame photos, place files in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/frame_{size}_{landscape|portrait}.jpg</code>.</p>`;
+    <p style="color:rgba(255,255,255,.35);font-size:12px;margin-top:.5rem">To update frame photos, place files in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/frame_{size}_{landscape|portrait}.jpg</code>.</p>`;
+    if(saveBtn) saveBtn.style.display='inline-flex';
   }catch(e){ el.innerHTML=`<p style="color:rgba(255,255,255,.35);font-size:13px">Could not load frame data: ${esc(e.message||String(e))}</p>`; }
+}
+function frameInputChanged(i, orient, val){
+  if(_framesData[i] && _framesData[i][orient]) _framesData[i][orient].price = val;
+}
+async function saveFramePrices(){
+  const btn=document.getElementById('frames-save-btn');
+  const status=document.getElementById('frames-save-status');
+  status.textContent='';
+  const updates=[];
+  for(const f of _framesData){
+    for(const o of ['landscape','portrait']){
+      const v=f[o];
+      if(!v?.variation_id) continue;
+      const price=String(v.price??'').trim();
+      if(price===v._orig) continue;                      // unchanged — leave WooCommerce alone
+      const n=parseFloat(price);
+      if(!price || !isFinite(n) || n<=0){ status.textContent=`${f.size} ${o}: enter a price above $0`; return; }
+      updates.push({variation_id:v.variation_id, price:n.toFixed(2), _ref:v});
+    }
+  }
+  if(!updates.length){ status.textContent='No changes to save'; setTimeout(()=>{ status.textContent=''; },2500); return; }
+  btn.disabled=true; btn.textContent='Saving…';
+  try{
+    const r=await fetch('/api/admin/frames/prices',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(updates.map(({variation_id,price})=>({variation_id,price})))});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(d.error || (r.status===401?'Signed out — please log in again':'HTTP '+r.status));
+    const okIds=new Set((d.results||[]).filter(x=>x.ok).map(x=>x.variation_id));
+    updates.forEach(u=>{ if(okIds.has(u.variation_id)) u._ref._orig=u.price; });
+    const failed=updates.length-okIds.size;
+    status.textContent=failed?`${failed} of ${updates.length} update(s) failed — try again`:`Saved ${updates.length} price${updates.length!==1?'s':''}`;
+    setTimeout(()=>{ status.textContent=''; },4000);
+  }catch(e){ status.textContent='Error: '+e.message; }
+  btn.disabled=false; btn.textContent='Save Prices';
 }
 
 // ── Items Bundles ──────────────────────────────────────────────────────────────
