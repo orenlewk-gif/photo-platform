@@ -1810,6 +1810,121 @@ def _nowm_thumb_r2_key(r2_key: str) -> str:
         return "thumbs/nowm/" + r2_key[len("images/"):]
     return "thumbs/nowm/" + r2_key
 
+def _admin_thumb_r2_key(r2_key: str) -> str:
+    """maps images/foo/bar.jpg → admin_thumbs/foo/bar.jpg (studio / package thumbnails)"""
+    if r2_key.startswith("images/"):
+        return "admin_thumbs/" + r2_key[len("images/"):]
+    return "admin_thumbs/" + r2_key
+
+# ── Thumbnails ────────────────────────────────────────────────────────────────
+# Every photo has three small versions, cached in R2 next to the original:
+#   public — 700px, watermarked: customer gallery        (thumbs/v2/)
+#   pos    — 700px, no watermark: iPad POS               (thumbs/nowm/)
+#   admin  — 450px, no watermark: studio, download pages (admin_thumbs/)
+# They're made in the background when photos are uploaded or go live, and on
+# demand (as a fallback) the first time one is requested.
+_THUMB_VARIANTS = {
+    # name:   (cache key,            max px, quality, watermark, Cache-Control)
+    "public": (_thumb_r2_key,        700, 80, True,  "public, max-age=31536000"),
+    "pos":    (_nowm_thumb_r2_key,   700, 80, False, "public, max-age=31536000"),
+    "admin":  (_admin_thumb_r2_key,  450, 72, False, "private, max-age=86400"),
+}
+_thumb_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="thumbs")
+
+
+def _open_for_thumbnail(fp, max_px: int) -> Image.Image:
+    """Open a photo for shrinking. JPEGs are decoded at a reduced scale (draft mode),
+    which is several times faster and uses far less memory than a full decode of a
+    5-7 MB original; the result is then resized down with LANCZOS as before."""
+    img = Image.open(fp)
+    if img.format == "JPEG":
+        # Largest reduction that still leaves both sides >= max_px (e.g. 6000x4000 -> 1500x1000)
+        img.draft("RGB", (max_px, max_px))
+    img = img.convert("RGB")
+    return fix_orientation(img)
+
+
+def _encode_thumb(img: Image.Image, variant: str) -> bytes:
+    _, max_px, quality, watermark, _ = _THUMB_VARIANTS[variant]
+    t = img.copy()
+    t.thumbnail((max_px, max_px), Image.LANCZOS)
+    if watermark:
+        t = apply_watermark(t, "thumb")
+    buf = BytesIO()
+    t.save(buf, format="JPEG", quality=quality, optimize=True)
+    return buf.getvalue()
+
+
+def _make_thumbs(r2_key: str, variants, original: bytes = None) -> dict:
+    """Make the given thumbnail variants from one download of the original and save
+    them to R2. Returns {variant: jpeg bytes}. Saving is best-effort."""
+    if original is None:
+        original = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)["Body"].read()
+    img = _open_for_thumbnail(BytesIO(original), max(_THUMB_VARIANTS[v][1] for v in variants))
+    out = {}
+    for v in variants:
+        key_fn, _, _, _, cache_control = _THUMB_VARIANTS[v]
+        out[v] = _encode_thumb(img, v)
+        try:
+            s3.put_object(Bucket=R2_BUCKET, Key=key_fn(r2_key), Body=out[v],
+                          ContentType="image/jpeg", CacheControl=cache_control)
+        except Exception as e:
+            print(f"[thumbs] save failed {key_fn(r2_key)}: {e}")
+    return out
+
+
+def _cached_thumb(r2_key: str, variant: str) -> bytes | None:
+    try:
+        return s3.get_object(Bucket=R2_BUCKET, Key=_THUMB_VARIANTS[variant][0](r2_key))["Body"].read()
+    except Exception:
+        return None
+
+
+def _thumb_on_demand(r2_key: str, variant: str) -> bytes:
+    """Serve a thumbnail that isn't cached yet: make the requested one now, and the
+    other variants in the background from the same download."""
+    original = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)["Body"].read()
+    data = _make_thumbs(r2_key, [variant], original)[variant]
+    others = [v for v in _THUMB_VARIANTS if v != variant]
+    _thumb_pool.submit(_make_thumbs_quietly, r2_key, others, original)
+    return data
+
+
+def _make_thumbs_quietly(r2_key: str, variants, original: bytes = None) -> bool:
+    try:
+        _make_thumbs(r2_key, variants, original)
+        return True
+    except Exception as e:
+        print(f"[thumbs] failed {r2_key}: {e}")
+        return False
+
+
+def _start_thumb_job(work: list) -> str | None:
+    """Make thumbnails in the background. work = [(r2_key, [variants]), ...].
+    Progress is visible at /api/admin/embed-status?job_id=…"""
+    work = [(k, v) for k, v in work if v]
+    if not work:
+        return None
+    job_id = "thumbs-" + str(uuid.uuid4())[:8]
+    _embed_jobs[job_id] = {"total": len(work), "done": 0, "finished": False, "failed": 0}
+
+    def _run():
+        job = _embed_jobs[job_id]
+        for ok in _thumb_pool.map(lambda kv: _make_thumbs_quietly(kv[0], kv[1]), work):
+            job["done"] += 1
+            if not ok:
+                job["failed"] += 1
+        job["finished"] = True
+        print(f"[thumbs] job {job_id} done: {job['done'] - job['failed']}/{job['total']} ok")
+
+    threading.Thread(target=_run, daemon=True).start()
+    return job_id
+
+
+def _queue_new_photo_thumbs(r2_keys: list) -> str | None:
+    """All thumbnail variants for newly uploaded / published / moved photos."""
+    return _start_thumb_job([(to_r2_key(k), list(_THUMB_VARIANTS)) for k in r2_keys])
+
 @app.get("/api/photo")
 def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False)):
     """
@@ -1832,19 +1947,13 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
         if not key.startswith("images/"):
             return JSONResponse(status_code=400, content={"error": "Invalid path"})
         if os.getenv("R2_ENDPOINT_URL"):
-            # For thumbs: try pre-generated cached version first
+            # Thumbs: cached copy if there is one, otherwise make it now (and the
+            # other variants in the background) from one download of the original
             if size == "thumb":
-                tkey = _nowm_thumb_r2_key(key) if nowm else _thumb_r2_key(key)
-                try:
-                    obj = s3.get_object(Bucket=R2_BUCKET, Key=tkey)
-                    buf = BytesIO(obj["Body"].read())
-                    buf.seek(0)
-                    return SR(buf, media_type="image/jpeg",
-                              headers={"Cache-Control": f"public, max-age={cache_secs}"})
-                except s3.exceptions.NoSuchKey:
-                    pass  # fall through to generate on the fly
-                except Exception:
-                    pass  # fall through to generate on the fly
+                variant = "pos" if nowm else "public"
+                data = _cached_thumb(key, variant) or _thumb_on_demand(key, variant)
+                return SR(BytesIO(data), media_type="image/jpeg",
+                          headers={"Cache-Control": f"public, max-age={cache_secs}"})
 
             obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
             img = Image.open(obj["Body"]).convert("RGB")
@@ -1854,21 +1963,6 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
                 img = apply_watermark(img, size)
             buf = BytesIO()
             img.save(buf, format="JPEG", quality=quality, optimize=True)
-
-            # Cache the newly generated thumb to R2 for next time
-            if size == "thumb":
-                try:
-                    cache_key = _nowm_thumb_r2_key(key) if nowm else _thumb_r2_key(key)
-                    buf.seek(0)
-                    s3.put_object(
-                        Bucket=R2_BUCKET,
-                        Key=cache_key,
-                        Body=buf.read(),
-                        ContentType="image/jpeg",
-                        CacheControl="public, max-age=31536000",
-                    )
-                except Exception:
-                    pass  # non-fatal
 
             buf.seek(0)
             return SR(buf, media_type="image/jpeg",
@@ -2192,28 +2286,15 @@ def admin_get_photo(request: Request, path: str, size: str = Query("thumb")):
     try:
         key = to_r2_key(path)
         if size == "thumb" and os.getenv("R2_ENDPOINT_URL"):
-            cache_key = "admin_thumbs/" + key[len("images/"):] if key.startswith("images/") else "admin_thumbs/" + key
-            try:
-                obj = s3.get_object(Bucket=R2_BUCKET, Key=cache_key)
-                buf = BytesIO(obj["Body"].read())
-                buf.seek(0)
-                return SR(buf, media_type="image/jpeg",
-                          headers={"Cache-Control": "private, max-age=86400"})
-            except Exception:
-                pass
+            data = _cached_thumb(key, "admin") or _thumb_on_demand(key, "admin")
+            return SR(BytesIO(data), media_type="image/jpeg",
+                      headers={"Cache-Control": "private, max-age=86400"})
         obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
         img = Image.open(obj["Body"]).convert("RGB")
         img = fix_orientation(img)
         img.thumbnail((max_px, max_px), Image.LANCZOS)
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=quality, optimize=True)
-        if size == "thumb" and os.getenv("R2_ENDPOINT_URL"):
-            try:
-                buf.seek(0)
-                s3.put_object(Bucket=R2_BUCKET, Key=cache_key, Body=buf.read(),
-                              ContentType="image/jpeg", CacheControl="private, max-age=86400")
-            except Exception:
-                pass
         buf.seek(0)
         return SR(buf, media_type="image/jpeg",
                   headers={"Cache-Control": "private, max-age=86400"})
@@ -5782,7 +5863,8 @@ async def cull_golive(request: Request):
             print(f"Cull go-live classify done: {count}/{len(to_embed)}")
         threading.Thread(target=_embed_bg, daemon=True).start()
 
-    return {"published": len(published)}
+    thumbs_job = _queue_new_photo_thumbs(published)
+    return {"published": len(published), "thumbs_job_id": thumbs_job}
 
 # ── Trash ──
 @app.get("/api/trash")
@@ -6911,7 +6993,10 @@ async def admin_upload_index(request: Request):
                               Body=json.dumps(merged).encode(), ContentType="application/json")
             except Exception:
                 pass
-    return {"indexed": added, "date": date, "location": location, "folder": folder}
+    # Thumbnails for every uploaded photo (drafts too — the studio shows them)
+    thumbs_job = _queue_new_photo_thumbs(keys)
+    return {"indexed": added, "date": date, "location": location, "folder": folder,
+            "thumbs_job_id": thumbs_job}
 
 @app.post("/api/admin/reindex-folder")
 async def admin_reindex_folder(request: Request):
@@ -6931,6 +7016,7 @@ async def admin_reindex_folder(request: Request):
     is_portrait = location.lower() in PORTRAIT_LOCATIONS
     existing = {item["path"] for item in data}
     added = 0
+    added_keys = []
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=R2_BUCKET, Prefix=prefix):
         for obj in page.get("Contents", []):
@@ -6947,6 +7033,7 @@ async def admin_reindex_folder(request: Request):
                     "draft":     True,
                 })
                 existing.add(key)
+                added_keys.append(key)
                 added += 1
     if added:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json",
@@ -6960,7 +7047,8 @@ async def admin_reindex_folder(request: Request):
         ]
         if all_keys:
             _update_folder_poses(date, location, folder, all_keys)
-    return {"indexed": added, "prefix": prefix}
+    thumbs_job = _queue_new_photo_thumbs(added_keys)
+    return {"indexed": added, "prefix": prefix, "thumbs_job_id": thumbs_job}
 
 @app.post("/api/admin/push-live")
 async def admin_push_live(request: Request):
@@ -7071,13 +7159,48 @@ async def admin_recolor_all(request: Request):
     return {"queued": len(to_color), "job_id": job_id}
 
 
+_thumb_backfill = {"job_id": None}
+
+
+def _r2_keys_under(prefix: str) -> set:
+    keys = set()
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=prefix):
+        keys.update(o["Key"] for o in page.get("Contents", []))
+    return keys
+
+
+@app.post("/api/admin/thumbs/backfill")
+def admin_thumbs_backfill(request: Request):
+    """Make any missing thumbnails for photos already in the index, newest dates first.
+    Safe to run again: photos that already have all their thumbnails are skipped."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    running = _embed_jobs.get(_thumb_backfill["job_id"] or "")
+    if running and not running.get("finished"):
+        return {"job_id": _thumb_backfill["job_id"], "already_running": True,
+                "total": running["total"], "done": running["done"]}
+    have = {v: _r2_keys_under(fn("images/")) for v, (fn, *_rest) in _THUMB_VARIANTS.items()}
+    work = []
+    for item in sorted(data, key=lambda it: it.get("date") or "", reverse=True):
+        key = to_r2_key(item.get("path") or "")
+        if not key.startswith("images/"):
+            continue
+        missing = [v for v, (fn, *_rest) in _THUMB_VARIANTS.items() if fn(key) not in have[v]]
+        if missing:
+            work.append((key, missing))
+    job_id = _start_thumb_job(work)
+    _thumb_backfill["job_id"] = job_id
+    return {"job_id": job_id, "queued": len(work), "photos": len(data)}
+
+
 @app.get("/api/admin/embed-status")
 def admin_embed_status(job_id: str = Query(...)):
     """Return progress for a background classification/embed job."""
     job = _embed_jobs.get(job_id)
     if not job:
         return {"done": 0, "total": 0, "finished": True}
-    return {"done": job["done"], "total": job["total"], "finished": job.get("finished", False)}
+    return {"done": job["done"], "total": job["total"], "finished": job.get("finished", False),
+            "failed": job.get("failed", 0)}
 
 
 @app.post("/api/admin/classify-backfill")
@@ -8028,6 +8151,7 @@ async def admin_folder_move(request: Request):
             _save_folder_meta(fm)
     except Exception as e:
         print(f"folder_meta move error: {e}")
+    _queue_new_photo_thumbs(list(path_remap.values()))
     return {"moved": len(path_remap), "new_date": new_date, "new_location": new_location}
 
 @app.post("/api/admin/folder/rename")
@@ -8101,6 +8225,7 @@ async def admin_folder_rename(request: Request):
             _save_folder_meta(fm)
     except Exception as e:
         print(f"folder_meta rename error: {e}")
+    _queue_new_photo_thumbs(list(path_remap.values()))
     return {"renamed": len(path_remap), "new_folder": new_folder}
 
 
@@ -9085,28 +9210,10 @@ def package_thumb(token: str, idx: int):
     if idx < 0 or idx >= len(paths):
         return JSONResponse(status_code=404, content={"error": "Not found"})
     key = to_r2_key(paths[idx])
-    cache_key = ("admin_thumbs/" + key[len("images/"):]) if key.startswith("images/") else ("admin_thumbs/" + key)
     try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=cache_key)
-        buf = BytesIO(obj["Body"].read()); buf.seek(0)
-        return SR(buf, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
-    except Exception:
-        pass
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
-        img = Image.open(obj["Body"]).convert("RGB")
-        img = fix_orientation(img)
-        img.thumbnail((450, 450), Image.LANCZOS)
-        buf = BytesIO()
-        img.save(buf, format="JPEG", quality=72, optimize=True)
-        try:
-            buf.seek(0)
-            s3.put_object(Bucket=R2_BUCKET, Key=cache_key, Body=buf.read(),
-                          ContentType="image/jpeg", CacheControl="public, max-age=86400")
-        except Exception:
-            pass
-        buf.seek(0)
-        return SR(buf, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
+        # Package photos may be uploaded files rather than gallery photos: studio size only
+        data = _cached_thumb(key, "admin") or _make_thumbs(key, ["admin"])["admin"]
+        return SR(BytesIO(data), media_type="image/jpeg", headers={"Cache-Control": "public, max-age=86400"})
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
