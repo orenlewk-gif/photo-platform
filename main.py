@@ -2760,6 +2760,21 @@ async def pos_checkout(request: Request):
         }
         _store_pos_order(order_record)
 
+        # Add the customer to the directory (or refresh their contact info).
+        # A failure here must never block the sale.
+        try:
+            cust_info = body.get("customer") or {}
+            if not cust_info.get("first") and not cust_info.get("last"):
+                name_parts = customer_name.split(None, 1)
+                cust_info = {**cust_info,
+                             "first": name_parts[0] if name_parts else "",
+                             "last":  name_parts[1] if len(name_parts) > 1 else ""}
+            if not cust_info.get("phone"):
+                cust_info = {**cust_info, "phone": customer_phone}
+            _upsert_customer_from_pos({**cust_info, "email": customer_email})
+        except Exception as e:
+            print(f"POS customer upsert failed ({customer_email}): {e}")
+
         if coupon_code and coupon_discount > 0:
             _record_coupon_use(coupon_code.upper(), {
                 "date":         now.strftime("%Y-%m-%d"),
@@ -2845,8 +2860,94 @@ async def api_pos_recent_sales(request: Request, limit: int = Query(50)):
     orders = _fetch_pos_orders()
     return {"orders": orders[:limit]}
 
-_customers_cache: dict = {"data": None}
+# ── Customer directory (pos_data/customers.json) ──────────────────────────────
 CUSTOMERS_KEY = "pos_data/customers.json"
+_customers_cache: dict = {"data": None}
+_customers_lock = threading.RLock()
+_CUSTOMER_CONTACT_FIELDS = ("first", "last", "email", "phone", "street", "city", "state", "zip")
+
+def _new_customer_id() -> str:
+    return uuid.uuid4().hex[:12]
+
+def _load_customers() -> list:
+    """The customer directory, cached in memory.
+    Raises if R2 can't be read — never treats a failed read as an empty directory,
+    so a later save can't wipe it. Records without a permanent id get one, saved once."""
+    with _customers_lock:
+        if _customers_cache["data"] is None:
+            try:
+                obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
+                customers = json.loads(obj["Body"].read())
+            except s3.exceptions.NoSuchKey:
+                customers = []
+            missing_ids = [c for c in customers if not c.get("id")]
+            for c in missing_ids:
+                c["id"] = _new_customer_id()
+            _customers_cache["data"] = customers
+            if missing_ids:
+                _save_customers(customers)
+        return _customers_cache["data"]
+
+def _save_customers(customers: list) -> None:
+    with _customers_lock:
+        s3.put_object(
+            Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
+            Body=json.dumps(customers, ensure_ascii=False).encode(),
+            ContentType="application/json",
+        )
+        _customers_cache["data"] = customers
+
+def _customer_by_email(customers: list, email: str):
+    e = (email or "").strip().lower()
+    if not e:
+        return None
+    return next((c for c in customers if (c.get("email") or "").strip().lower() == e), None)
+
+def _customer_name_matches(c: dict, q: str) -> bool:
+    """POS lookup: first/last name prefix; two words match first+last in either order."""
+    ql = q.lower().strip()
+    parts = ql.split()
+    fn = (c.get("first") or "").lower()
+    ln = (c.get("last") or "").lower()
+    if len(parts) >= 2:
+        return (fn.startswith(parts[0]) and ln.startswith(parts[1])) \
+            or (fn.startswith(parts[1]) and ln.startswith(parts[0]))
+    return fn.startswith(ql) or ln.startswith(ql)
+
+def _customer_admin_matches(c: dict, q: str) -> bool:
+    """Studio search: name prefix, or email / phone containing the text."""
+    if _customer_name_matches(c, q):
+        return True
+    ql = q.lower().strip()
+    if ql in (c.get("email") or "").lower():
+        return True
+    digits = re.sub(r"\D", "", ql)
+    return len(digits) >= 3 and digits in re.sub(r"\D", "", c.get("phone") or "")
+
+def _upsert_customer_from_pos(info: dict) -> None:
+    """Add a POS customer to the directory, or refresh an existing one's contact info.
+    Matched by email. Never touches CRM notes, tags or follow-up history."""
+    email = (info.get("email") or "").strip()
+    if not email:
+        return
+    fields = {k: str(info.get(k) or "").strip() for k in _CUSTOMER_CONTACT_FIELDS if k != "email"}
+    with _customers_lock:
+        customers = _load_customers()
+        existing = _customer_by_email(customers, email)
+        if existing:
+            changed = False
+            for k, v in fields.items():
+                if v and existing.get(k) != v:
+                    existing[k] = v
+                    changed = True
+            if changed:
+                _save_customers(customers)
+        else:
+            customers.append({
+                "id": _new_customer_id(), "email": email, **fields,
+                "source": "pos", "created": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            })
+            _save_customers(customers)
 
 @app.get("/api/pos-customers")
 def api_pos_customers(request: Request, q: str = Query("")):
@@ -2858,41 +2959,98 @@ def api_pos_customers(request: Request, q: str = Query("")):
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
         if len(q.strip()) < 2:
             return {"customers": [], "total": 0, "search_required": True}
-    if _customers_cache["data"] is None:
-        try:
-            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
-            _customers_cache["data"] = json.loads(obj["Body"].read())
-        except Exception:
-            _customers_cache["data"] = []
-    customers = _customers_cache["data"]
+    customers = _load_customers()
     if not q:
         return {"customers": customers[:60], "total": len(customers)}
-    ql = q.lower().strip()
-    parts = ql.split()
-    def matches(c):
-        fn = c.get('first','').lower()
-        ln = c.get('last','').lower()
-        if len(parts) >= 2:
-            return (fn.startswith(parts[0]) and ln.startswith(parts[1])) \
-                or (fn.startswith(parts[1]) and ln.startswith(parts[0]))
-        return fn.startswith(ql) or ln.startswith(ql)
-    results = [c for c in customers if matches(c)]
+    results = [c for c in customers if _customer_name_matches(c, q)]
     return {"customers": results[:60], "total": len(results)}
 
-@app.post("/api/pos-customers")
-async def api_pos_customers_update(request: Request):
-    """Replace the customer directory from a JSON upload."""
-    if not (_admin_authed(request) or (_pos_pin_photographer(request) and _admin_key_ok(request))):
-        return JSONResponse(status_code=401, content={"error": "Admin password required"})
-    body = await request.json()
-    customers = body if isinstance(body, list) else body.get("customers", [])
-    _customers_cache["data"] = customers
-    s3.put_object(
-        Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
-        Body=json.dumps(customers, ensure_ascii=False).encode(),
-        ContentType="application/json",
-    )
-    return {"ok": True, "count": len(customers)}
+# ── Customer directory: studio (admin) editing, one record at a time ──────────
+
+def _clean_customer_fields(body: dict) -> dict:
+    out = {}
+    for k in _CUSTOMER_CONTACT_FIELDS:
+        if k in body:
+            out[k] = str(body.get(k) or "").strip()
+    if "notes" in body:
+        out["notes"] = str(body.get("notes") or "").strip()
+    if "tags" in body:
+        tags = body.get("tags") or []
+        out["tags"] = [str(t).strip() for t in tags if str(t).strip()] if isinstance(tags, list) else []
+    return out
+
+@app.get("/api/admin/customers")
+def api_admin_customers(request: Request, q: str = Query(""),
+                        offset: int = Query(0), limit: int = Query(100)):
+    """Paged, searchable customer list for the studio CRM."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    customers = _load_customers()
+    if q.strip():
+        customers = [c for c in customers if _customer_admin_matches(c, q)]
+    customers = sorted(customers, key=lambda c: ((c.get("last") or "").lower(),
+                                                 (c.get("first") or "").lower()))
+    offset = max(0, offset)
+    limit  = max(1, min(limit, 500))
+    return {"customers": customers[offset:offset + limit], "total": len(customers),
+            "offset": offset, "limit": limit}
+
+@app.get("/api/admin/customers/{cid}")
+def api_admin_customer_get(cid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    c = next((c for c in _load_customers() if c.get("id") == cid), None)
+    if not c:
+        return JSONResponse(status_code=404, content={"error": "Customer not found"})
+    return {"customer": c}
+
+@app.post("/api/admin/customers")
+async def api_admin_customer_create(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    fields = _clean_customer_fields(await request.json())
+    if not (fields.get("first") or fields.get("last") or fields.get("email")):
+        return JSONResponse(status_code=400, content={"error": "Name or email required"})
+    with _customers_lock:
+        customers = _load_customers()
+        dup = _customer_by_email(customers, fields.get("email", ""))
+        if dup:
+            return JSONResponse(status_code=409, content={"error": "A customer with that email already exists",
+                                                          "id": dup.get("id")})
+        c = {"id": _new_customer_id(), **fields, "source": "studio",
+             "created": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
+        customers.append(c)
+        _save_customers(customers)
+    return {"customer": c}
+
+@app.put("/api/admin/customers/{cid}")
+async def api_admin_customer_update(cid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    fields = _clean_customer_fields(await request.json())
+    with _customers_lock:
+        customers = _load_customers()
+        c = next((c for c in customers if c.get("id") == cid), None)
+        if not c:
+            return JSONResponse(status_code=404, content={"error": "Customer not found"})
+        dup = _customer_by_email(customers, fields.get("email", ""))
+        if dup and dup is not c:
+            return JSONResponse(status_code=409, content={"error": "Another customer already has that email"})
+        c.update(fields)
+        _save_customers(customers)
+    return {"customer": c}
+
+@app.delete("/api/admin/customers/{cid}")
+def api_admin_customer_delete(cid: str, request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    with _customers_lock:
+        customers = _load_customers()
+        remaining = [c for c in customers if c.get("id") != cid]
+        if len(remaining) == len(customers):
+            return JSONResponse(status_code=404, content={"error": "Customer not found"})
+        _save_customers(remaining)
+    return {"deleted": True}
 
 @app.get("/api/admin/customer/{email}/history")
 async def api_customer_history(email: str, request: Request):
@@ -2929,7 +3087,7 @@ async def api_customer_history(email: str, request: Request):
         try:
             token, rec, exp = _get_best_token_for_order(str(order_id))
             if token and exp:
-                gallery_url = f"/d/{token}"
+                gallery_url = f"/download/{token}"
                 now = datetime.utcnow()
                 exp_naive = exp.replace(tzinfo=None) if hasattr(exp, "tzinfo") and exp.tzinfo else exp
                 gallery_expired = exp_naive < now
@@ -2982,14 +3140,7 @@ async def api_customer_followup(email: str, request: Request):
         return JSONResponse(status_code=400, content={"error": "type must be review, discount, or custom"})
 
     # Load customer for personalisation
-    if _customers_cache["data"] is None:
-        try:
-            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
-            _customers_cache["data"] = json.loads(obj["Body"].read())
-        except Exception:
-            _customers_cache["data"] = []
-    customers = _customers_cache["data"]
-    customer  = next((c for c in customers if (c.get("email") or "").lower() == email.lower()), None)
+    customer = _customer_by_email(_load_customers(), email)
     first_name = (customer.get("first") or "").strip() if customer else ""
     greeting   = f"Hi {first_name}," if first_name else "Hi,"
 
@@ -3066,19 +3217,16 @@ async def api_customer_followup(email: str, request: Request):
         return JSONResponse(status_code=500, content={"error": str(e)})
 
     # Record the follow-up on the customer record
-    if customer:
-        if "followups" not in customer:
-            customer["followups"] = []
-        customer["followups"].append({
-            "date": datetime.utcnow().strftime("%Y-%m-%d"),
-            "type": ftype,
-            "subject": subject,
-        })
-        s3.put_object(
-            Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
-            Body=json.dumps(customers, ensure_ascii=False).encode(),
-            ContentType="application/json",
-        )
+    with _customers_lock:
+        customers = _load_customers()
+        customer  = _customer_by_email(customers, email)
+        if customer:
+            customer.setdefault("followups", []).append({
+                "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                "type": ftype,
+                "subject": subject,
+            })
+            _save_customers(customers)
 
     return {"ok": True}
 
@@ -3101,13 +3249,7 @@ async def api_customers_filtered(request: Request):
     want_wc      = want_digital or want_prints or want_frames
 
     # Load customer directory for name/tag enrichment
-    if _customers_cache["data"] is None:
-        try:
-            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
-            _customers_cache["data"] = json.loads(obj["Body"].read())
-        except Exception:
-            _customers_cache["data"] = []
-    cust_by_email = {(c.get("email") or "").lower(): c for c in (_customers_cache["data"] or [])}
+    cust_by_email = {(c.get("email") or "").lower(): c for c in _load_customers()}
 
     results: dict = {}  # email -> {email, name, sources: set, order_count, total_spend}
 
@@ -3116,6 +3258,7 @@ async def api_customers_filtered(request: Request):
         if key not in results:
             cust = cust_by_email.get(key, {})
             results[key] = {
+                "id": cust.get("id"),
                 "email": email_raw,
                 "name": name or f"{cust.get('first','')} {cust.get('last','')}".strip() or email_raw,
                 "tags": cust.get("tags", []),
@@ -3195,6 +3338,7 @@ async def api_customers_filtered(request: Request):
     out = []
     for r in results.values():
         out.append({
+            "id":          r["id"],
             "email":       r["email"],
             "name":        r["name"],
             "tags":        r["tags"],
@@ -3229,18 +3373,11 @@ async def api_bulk_followup(request: Request):
         return JSONResponse(status_code=404, content={"error": "Template not found"})
     tmpl = templates[template_id]
 
-    # Ensure customer cache is loaded
-    if _customers_cache["data"] is None:
-        try:
-            obj = s3.get_object(Bucket=R2_BUCKET, Key=CUSTOMERS_KEY)
-            _customers_cache["data"] = json.loads(obj["Body"].read())
-        except Exception:
-            _customers_cache["data"] = []
-    customers = _customers_cache["data"]
+    customers = _load_customers()
 
     results = []
     for email in emails:
-        cust = next((c for c in customers if (c.get("email") or "").lower() == email.lower()), None)
+        cust = _customer_by_email(customers, email)
         first_name = (cust.get("first") or "").strip() if cust else ""
 
         plain_vars = {"first_name": first_name or "there", **{k: str(v) for k, v in extra_vars.items()}}
@@ -3284,28 +3421,26 @@ async def api_bulk_followup(request: Request):
         except Exception as exc:
             err = str(exc)
 
-        results.append({"email": email, "ok": ok, "error": err})
+        results.append({"email": email, "ok": ok, "error": err, "subject": subject})
 
-        # Record follow-up on customer record
-        if ok and cust:
-            if "followups" not in cust:
-                cust["followups"] = []
-            cust["followups"].append({
-                "date": datetime.utcnow().strftime("%Y-%m-%d"),
-                "type": "bulk",
-                "subject": subject,
-            })
-
-    # Persist any follow-up records
+    # Record follow-ups on customer records (one save, after all sends)
     if any(r["ok"] for r in results):
         try:
-            s3.put_object(
-                Bucket=R2_BUCKET, Key=CUSTOMERS_KEY,
-                Body=json.dumps(customers, ensure_ascii=False).encode(),
-                ContentType="application/json",
-            )
+            with _customers_lock:
+                customers = _load_customers()
+                for r in results:
+                    cust = _customer_by_email(customers, r["email"]) if r["ok"] else None
+                    if cust:
+                        cust.setdefault("followups", []).append({
+                            "date": datetime.utcnow().strftime("%Y-%m-%d"),
+                            "type": "bulk",
+                            "subject": r["subject"],
+                        })
+                _save_customers(customers)
         except Exception as e:
             print(f"bulk-followup customer save error: {e}")
+    for r in results:
+        r.pop("subject", None)
 
     sent = sum(1 for r in results if r["ok"])
     return {"ok": True, "sent": sent, "total": len(results), "results": results}
@@ -4922,11 +5057,6 @@ def _pos_pin_photographer(request: Request):
     if not p:
         _record_pin_failure(request)
     return p
-
-def _admin_key_ok(request: Request) -> bool:
-    """X-Admin-Key header matches the admin password (used for POS edits)."""
-    key = request.headers.get("X-Admin-Key", "")
-    return bool(ADMIN_PASSWORD) and bool(key) and hmac.compare_digest(key, ADMIN_PASSWORD)
 
 def _presigned_get(key: str, expires: int = 3600) -> str:
     try:

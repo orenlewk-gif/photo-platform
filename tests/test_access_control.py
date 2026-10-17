@@ -65,24 +65,11 @@ def test_admin_can_browse_whole_directory(admin_client):
     assert r.json()["total"] == 3
 
 
-def test_replace_directory_blocked_without_admin(client):
+def test_replace_whole_directory_endpoint_is_gone(client, admin_client):
+    """Nothing can overwrite all customers in one call any more."""
     new = [{"first": "X", "last": "Y"}]
-    assert client.post("/api/pos-customers", json=new).status_code == 401
-    assert client.post("/api/pos-customers", json=new, headers=PIN_HDR).status_code == 401
-    assert client.post("/api/pos-customers", json=new,
-                       headers={**PIN_HDR, "X-Admin-Key": "wrong"}).status_code == 401
-
-
-def test_pos_can_replace_directory_with_pin_and_admin_password(client, main_module):
-    new = [{"first": "X", "last": "Y"}]
-    r = client.post("/api/pos-customers", json=new,
-                    headers={**PIN_HDR, "X-Admin-Key": "test-admin-password"})
-    assert r.status_code == 200 and r.json()["count"] == 1
-
-
-def test_admin_can_replace_directory(admin_client):
-    r = admin_client.post("/api/pos-customers", json=CUSTOMERS)
-    assert r.status_code == 200 and r.json()["count"] == 3
+    assert client.post("/api/pos-customers", json=new, headers=PIN_HDR).status_code == 405
+    assert admin_client.post("/api/pos-customers", json=new).status_code == 405
 
 
 def test_recent_sales_requires_pin_or_admin(client, admin_client):

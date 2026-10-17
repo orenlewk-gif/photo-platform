@@ -957,9 +957,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="panel-pad">
             <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
               <span>Customers</span>
-              <button onclick="custImportCSV()" style="background:var(--surface2);border:1px solid var(--border);color:var(--accent);border-radius:6px;padding:.25rem .65rem;font-size:.72rem;font-weight:600;cursor:pointer;font-family:var(--font)">Import CSV</button>
             </div>
-            <input type="file" id="cust-csv-input" accept=".csv" style="display:none" onchange="custLoadCSV(this)">
             <input type="text" class="cust-dir-search" placeholder="Search by name or email..." oninput="custDirSearch(this.value)" id="cust-dir-search">
             <div id="cust-dir-list"></div>
           </div>
@@ -1905,75 +1903,6 @@ async function custLoadAll(){
   custDirRender('');
 }
 
-function custImportCSV(){
-  const inp = $('cust-csv-input');
-  if(inp) inp.click();
-}
-
-function custLoadCSV(input){
-  const file = input.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = async function(e){
-    const lines = e.target.result.split(/\r?\n/);
-    if(!lines.length) return;
-    const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g,'').trim());
-    const idxOf = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
-    const fi = idxOf('First Name'), li = idxOf('Last Name'), ei = idxOf('Email Address');
-    const pi = idxOf('Phone Number'), si = idxOf('Street Address 1'), ci = idxOf('City');
-    const sti = idxOf('State'), zi = idxOf('Postal Code');
-    const customers = [];
-    for(let r = 1; r < lines.length; r++){
-      const cols = custParseCSVRow(lines[r]);
-      if(!cols || cols.length < 3) continue;
-      const first = (cols[fi] || '').trim();
-      const last  = (cols[li] || '').trim();
-      if(!first && !last) continue;
-      customers.push({
-        first, last,
-        email:  (cols[ei]  || '').trim(),
-        phone:  (cols[pi]  || '').replace(/^'+/,'').trim(),
-        street: (cols[si]  || '').trim(),
-        city:   (cols[ci]  || '').trim(),
-        state:  (cols[sti] || '').trim(),
-        zip:    (cols[zi]  || '').trim(),
-      });
-    }
-    const adminKey = prompt('Importing replaces the entire customer list. Enter the admin password to continue:');
-    if(!adminKey){ input.value = ''; return; }
-    showToast('Uploading customers...');
-    try {
-      const res = await fetch('/api/pos-customers', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json', 'X-Admin-Key': adminKey, ...posPinHeaders()},
-        body: JSON.stringify(customers),
-      });
-      const result = await res.json();
-      if(!res.ok){ showToast(result.error || 'Upload failed'); input.value = ''; return; }
-      showToast(`${result.count} customers saved`);
-    } catch(err){
-      showToast('Upload failed');
-    }
-    if($('cust-dir-search')) $('cust-dir-search').value = '';
-    custDirRender('');
-    input.value = '';
-  };
-  reader.readAsText(file);
-}
-
-function custParseCSVRow(line){
-  const result = [];
-  let cur = '', inQ = false;
-  for(let i = 0; i < line.length; i++){
-    const c = line[i];
-    if(c === '"'){ inQ = !inQ; continue; }
-    if(c === ',' && !inQ){ result.push(cur); cur = ''; continue; }
-    cur += c;
-  }
-  result.push(cur);
-  return result;
-}
-
 let _custDirTimer = null;
 function custDirSearch(q){
   _custDirQuery = q;
@@ -1994,7 +1923,7 @@ async function custDirRender(q){
       return;
     }
     if(!list.length){
-      el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">No customers found. Tap Import CSV to load your Square export.</div>';
+      el.innerHTML = '<div style="font-size:.82rem;color:var(--muted);padding:.5rem 0">No customers found.</div>';
       return;
     }
     el.innerHTML = list.map((c, i) => {
@@ -3956,6 +3885,7 @@ function launchSquare(){
     email:   c.email,
     phone:   c.phone,
     address: addrStr,
+    customer: {...c},
     total,
     coupon_code:     S.coupon ? S.coupon.code : '',
     coupon_discount: cartDiscount(),
@@ -3990,6 +3920,7 @@ async function chargeComp(){
     email:   c.email,
     phone:   c.phone,
     address: addrStr,
+    customer: {...c},
     total:   cartTotal(),
     coupon_code:     S.coupon ? S.coupon.code : '',
     coupon_discount: cartDiscount(),
@@ -4049,7 +3980,7 @@ function restoreStateAndShow(){
 function restoreFromSaved(saved){
   S.pendingOrder = saved;
   S.cart = saved.items || [];
-  S.customer = {
+  S.customer = saved.customer ? {...saved.customer} : {
     first: (saved.name||'').split(' ')[0] || '',
     last:  (saved.name||'').split(' ').slice(1).join(' ') || '',
     email: saved.email || '',
@@ -4086,6 +4017,7 @@ async function completeCheckout(squareTxId){
     coupon_code:      S.coupon ? S.coupon.code : (o.coupon_code || ''),
     coupon_discount:  cartDiscount() || o.coupon_discount || 0,
     square_payment_id: squareTxId || '',
+    customer:         {...(o.customer || {}), ...c},
   };
   try {
     const res = await fetch('/api/pos-checkout', {
