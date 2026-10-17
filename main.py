@@ -3154,17 +3154,20 @@ async def api_customer_followup(email: str, request: Request):
     greeting   = f"Hi {first_name}," if first_name else "Hi,"
 
     if ftype == "review":
-        review_url = (body.get("review_url") or "").strip()
+        # Sent from the Review Request template (Settings > Email Templates),
+        # using the Google review link saved on that template.
+        tmpl = _load_email_templates().get("review_request") or _EMAIL_TEMPLATE_DEFAULTS["review_request"]
+        review_url = (body.get("review_url") or tmpl.get("review_url") or "").strip()
         if not review_url:
-            return JSONResponse(status_code=400, content={"error": "review_url is required"})
-        subject    = "We'd love your feedback — Crystal Images"
-        html_inner = f"""
-            <p style="margin:0 0 .8rem">{greeting}</p>
-            <p style="margin:0 0 .8rem">Thank you for choosing Crystal Images! We loved capturing your moments.</p>
-            <p style="margin:0 0 1.25rem">If you have a minute, leaving us a quick review would mean the world to us.</p>
-            <p style="margin:0 0 1.25rem"><a href="{review_url}" style="background:#1a73e8;color:#fff;padding:.65rem 1.4rem;border-radius:6px;font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">Leave a Review</a></p>
-            <p style="margin:0">Thank you so much!<br>— The Crystal Images Team</p>"""
-        text_inner = f"{greeting}\n\nThank you for choosing Crystal Images! We loved capturing your moments.\n\nLeave us a review here:\n{review_url}\n\nThank you!\n— The Crystal Images Team"
+            return JSONResponse(status_code=400, content={
+                "error": "Add your Google review link in Settings > Email Templates > Review Request"})
+        plain_vars = {"first_name": first_name or "there", "review_url": review_url,
+                      "review_button": f"Leave us a review: {review_url}"}
+        subject = tmpl["subject"]
+        for k, v in plain_vars.items():
+            subject = subject.replace(f"{{{{{k}}}}}", v)
+        html_inner, text_inner = _render_email_body(
+            tmpl["body"], plain_vars, {"review_button": _review_button_html(review_url)})
 
     elif ftype == "discount":
         code = (body.get("discount_code") or "").strip().upper()
@@ -3381,6 +3384,10 @@ async def api_bulk_followup(request: Request):
     if template_id not in templates:
         return JSONResponse(status_code=404, content={"error": "Template not found"})
     tmpl = templates[template_id]
+    review_url = (extra_vars.get("review_url") or tmpl.get("review_url") or "").strip()
+    if "{{review_button}}" in (tmpl.get("body") or "") and not review_url:
+        return JSONResponse(status_code=400, content={
+            "error": f"Add your Google review link to the '{tmpl.get('name', template_id)}' template in Settings > Email Templates"})
 
     customers = _load_customers()
 
@@ -3393,13 +3400,9 @@ async def api_bulk_followup(request: Request):
 
         # Build html_blocks for known action tokens
         html_blocks: dict = {}
-        if "review_url" in extra_vars:
-            html_blocks["review_button"] = (
-                f'<p style="margin:0 0 1rem"><a href="{extra_vars["review_url"]}" '
-                f'style="background:#1a73e8;color:#fff;padding:.65rem 1.4rem;border-radius:6px;'
-                f'font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">'
-                f'Leave a Review</a></p>'
-            )
+        if review_url:
+            html_blocks["review_button"] = _review_button_html(review_url)
+            plain_vars["review_button"] = f"Leave us a review: {review_url}"
         if "discount_code" in extra_vars:
             code = str(extra_vars["discount_code"]).upper()
             html_blocks["code_box"] = (
@@ -8210,6 +8213,14 @@ def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
         parts_text.append(para)
     return "".join(parts_html), "\n\n".join(parts_text)
 
+def _review_button_html(review_url: str) -> str:
+    return (
+        f'<p style="margin:0 0 1rem"><a href="{review_url}" '
+        f'style="background:#1a73e8;color:#fff;padding:.65rem 1.4rem;border-radius:6px;'
+        f'font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">'
+        f'Leave a Review</a></p>'
+    )
+
 def _wrap_email_html(body_html: str) -> str:
     return (
         '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">'
@@ -8238,6 +8249,11 @@ async def api_update_email_template(tid: str, request: Request):
         return JSONResponse(status_code=404, content={"error": "Template not found"})
     templates[tid]["subject"] = body.get("subject", templates[tid]["subject"])
     templates[tid]["body"]    = body.get("body",    templates[tid]["body"])
+    if "review_url" in body:
+        review_url = (body.get("review_url") or "").strip()
+        if review_url and not review_url.startswith("https://"):
+            return JSONResponse(status_code=400, content={"error": "Review link must start with https://"})
+        templates[tid]["review_url"] = review_url
     if not templates[tid].get("system") and "name" in body:
         templates[tid]["name"] = body["name"]
     _save_email_templates(templates)

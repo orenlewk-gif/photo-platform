@@ -320,8 +320,8 @@ select.fu-input{cursor:pointer}
           <!-- Review -->
           <div class="fu-panel" id="fu-review">
             <div>
-              <div class="fu-label">Google Review URL</div>
-              <input type="url" class="fu-input" id="fu-review-url" placeholder="https://g.page/r/…/review">
+              <div class="fu-label">Google Review Link</div>
+              <div id="fu-review-link-info" style="font-size:.8rem;color:rgba(255,255,255,.55);word-break:break-all">Loading…</div>
             </div>
             <div class="fu-confirm" id="fu-review-confirm"></div>
             <div class="btn-row">
@@ -399,8 +399,8 @@ select.fu-input{cursor:pointer}
       </div>
       <!-- Extra fields shown conditionally by template -->
       <div id="bulk-extra-review" style="display:none">
-        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.33);margin-bottom:.3rem">Review URL</div>
-        <input type="url" id="bulk-review-url" class="fu-input" placeholder="https://g.page/…/review">
+        <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.33);margin-bottom:.3rem">Google Review Link</div>
+        <div id="bulk-review-note" style="font-size:.8rem;color:rgba(255,255,255,.55);word-break:break-all"></div>
       </div>
       <div id="bulk-extra-discount" style="display:none">
         <div style="font-size:.7rem;text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.33);margin-bottom:.3rem">Discount Code</div>
@@ -425,10 +425,9 @@ select.fu-input{cursor:pointer}
 if (window.parent === window) location.replace('/admin/dashboard/customers');
 if (window.parent !== window) document.documentElement.classList.add('embedded');
 
-const TAG_PRESETS = ['Returning','VIP','Comp\'d','Seasonal','Local','Group','First Visit'];
+const TAG_PRESETS = ['Returning','Local','Group','First Visit'];
 const TAG_COLORS  = {
-  'VIP':'purple','Returning':'green','Comp\'d':'blue','First Visit':'blue',
-  'Seasonal':'green','Local':'green','Group':'blue',
+  'Returning':'green','First Visit':'blue','Local':'green','Group':'blue',
 };
 
 // Customers load from the server a page at a time; edits save one customer at a time.
@@ -794,6 +793,30 @@ async function loadHistory(email) {
 }
 
 // ─── Follow-up ────────────────────────────────────────────────────────────────
+// Email templates (for the review link saved on the Review Request template)
+let _templatesLoaded = null;
+async function loadTemplatesOnce() {
+  if (!_templatesLoaded) {
+    _templatesLoaded = fetch('/api/admin/email-templates')
+      .then(r => r.ok ? r.json() : {templates: []})
+      .then(d => { const m = {}; (d.templates || []).forEach(t => { m[t.id] = t; }); return m; })
+      .catch(() => ({}));
+  }
+  return _templatesLoaded;
+}
+function reviewLinkHtml(url, templateName) {
+  return url
+    ? `${esc(url)}<div style="font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.2rem">Change it in Settings → Email Templates → ${esc(templateName)}</div>`
+    : `<span style="color:#f88">No review link set.</span> Add it in Settings → Email Templates → ${esc(templateName)}.`;
+}
+let _reviewUrl = '';
+async function showReviewLink() {
+  _templatesLoaded = null;   // re-check, in case the link was just added in Settings
+  const t = (await loadTemplatesOnce())['review_request'];
+  _reviewUrl = (t && t.review_url) || '';
+  document.getElementById('fu-review-link-info').innerHTML = reviewLinkHtml(_reviewUrl, t ? t.name : 'Review Request');
+}
+
 function setFuType(type) {
   fuType = type;
   document.querySelectorAll('.fu-type-btn').forEach((btn,i) => {
@@ -805,6 +828,7 @@ function setFuType(type) {
   document.getElementById('fu-send-confirm').style.display = 'none';
 
   if (type === 'discount' && discountCodes.length === 0) loadDiscountCodes();
+  if (type === 'review') showReviewLink();
 }
 
 function previewDiscount() {
@@ -827,9 +851,7 @@ function confirmSend(type) {
   let previewText = '';
 
   if (type === 'review') {
-    const url = document.getElementById('fu-review-url').value.trim();
-    if (!url) { showToast('Enter a Google Review URL', 'err'); return; }
-    payload.review_url = url;
+    if (!_reviewUrl) { showToast('Add your Google review link in Settings → Email Templates first', 'err'); return; }
     previewText = `Send a <strong>Review Request</strong> to <strong>${esc(toEmail)}</strong>`;
 
   } else if (type === 'discount') {
@@ -1071,11 +1093,12 @@ async function openBulkSend() {
   document.getElementById('bulk-cancel-btn').textContent = 'Cancel';
   document.getElementById('bulk-summary').textContent = `Ready to send to ${_selectedEmails.size} customer${_selectedEmails.size!==1?'s':''}.`;
 
-  // Load templates
-  if (!Object.keys(_bulkTemplates).length) {
+  // Load templates (fresh each time, so a just-saved review link is used)
+  {
     const res = await fetch('/api/admin/email-templates');
     if (res.ok) {
       const d = await res.json();
+      _bulkTemplates = {};
       (d.templates||[]).forEach(t => { _bulkTemplates[t.id] = t; });
     }
   }
@@ -1101,7 +1124,9 @@ function onBulkTmplChange() {
   const tid  = document.getElementById('bulk-tmpl-select').value;
   const tmpl = _bulkTemplates[tid] || {};
   const tokens = tmpl.tokens || [];
-  document.getElementById('bulk-extra-review').style.display   = tokens.includes('review_button')  ? 'block' : 'none';
+  const hasReview = (tmpl.body || '').includes('{{review_button}}');
+  document.getElementById('bulk-extra-review').style.display   = hasReview ? 'block' : 'none';
+  document.getElementById('bulk-review-note').innerHTML        = hasReview ? reviewLinkHtml(tmpl.review_url || '', tmpl.name || '') : '';
   document.getElementById('bulk-extra-discount').style.display = tokens.includes('code_box')        ? 'block' : 'none';
 }
 
@@ -1115,10 +1140,9 @@ async function doBulkSend() {
   const tmpl  = _bulkTemplates[tid] || {};
   const tokens = tmpl.tokens || [];
   const vars = {};
-  if (tokens.includes('review_button')) {
-    const url = document.getElementById('bulk-review-url').value.trim();
-    if (!url) { alert('Review URL is required for this template.'); return; }
-    vars.review_url = url;
+  if ((tmpl.body || '').includes('{{review_button}}') && !tmpl.review_url) {
+    alert('This template has no Google review link yet. Add it in Settings → Email Templates.');
+    return;
   }
   if (tokens.includes('code_box')) {
     const code = document.getElementById('bulk-discount-select').value;

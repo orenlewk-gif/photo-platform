@@ -455,9 +455,14 @@ html.embedded #layout{height:100vh}
               <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.3rem">Subject Line</label>
               <input id="et-subject" type="text" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.5rem .8rem;color:#fff;font-size:.88rem;font-family:inherit">
             </div>
+            <div id="et-review-field" style="display:none">
+              <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.3rem">Google Review Link</label>
+              <input id="et-review-url" type="url" placeholder="https://g.page/r/…/review" oninput="_etDirty=true" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.5rem .8rem;color:#fff;font-size:.88rem;font-family:inherit">
+              <div style="margin-top:.3rem;font-size:.75rem;color:rgba(255,255,255,.3)">The "Leave a Review" button in this email links here. Used for every review request, from a customer's page or a bulk send.</div>
+            </div>
             <div>
               <label style="font-size:.72rem;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;display:block;margin-bottom:.3rem">Body</label>
-              <textarea id="et-body" rows="14" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.65rem .8rem;color:#fff;font-size:.83rem;font-family:monospace;line-height:1.6;resize:vertical"></textarea>
+              <textarea id="et-body" rows="14" oninput="_etDirty=true;etSyncReviewField()" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:.65rem .8rem;color:#fff;font-size:.83rem;font-family:monospace;line-height:1.6;resize:vertical"></textarea>
             </div>
             <div style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:7px;padding:.9rem 1rem">
               <div style="font-size:.72rem;text-transform:uppercase;letter-spacing:.8px;color:rgba(255,255,255,.35);margin-bottom:.55rem">Available tokens</div>
@@ -1548,6 +1553,8 @@ function etOpen(id) {
   document.getElementById('et-name-display').textContent = t.name;
   document.getElementById('et-subject').value = t.subject || '';
   document.getElementById('et-body').value    = t.body    || '';
+  document.getElementById('et-review-url').value = t.review_url || '';
+  etSyncReviewField();
   document.getElementById('et-status').textContent = '';
   // Name field only for custom templates
   const nameField = document.getElementById('et-name-field');
@@ -1556,7 +1563,8 @@ function etOpen(id) {
   delBtn.style.display    = t.system ? 'none' : 'block';
   if (!t.system) document.getElementById('et-name').value = t.name;
   // Token guide
-  const tokens = t.tokens || [];
+  // Follow-up (non-system) templates can include the review button
+  const tokens = t.system ? (t.tokens || []) : [...new Set([...(t.tokens || []), 'review_button'])];
   const tokEl  = document.getElementById('et-tokens');
   if (tokens.length) {
     tokEl.innerHTML = tokens.map(k =>
@@ -1566,6 +1574,12 @@ function etOpen(id) {
     tokEl.innerHTML = '<span style="color:rgba(255,255,255,.25);font-size:.78rem">No tokens for this template</span>';
   }
   etRenderList();
+}
+
+// The review link field shows for any template whose body has the review button
+function etSyncReviewField() {
+  const hasButton = document.getElementById('et-body').value.includes('{{review_button}}');
+  document.getElementById('et-review-field').style.display = hasButton ? 'block' : 'none';
 }
 
 async function etSave() {
@@ -1578,6 +1592,11 @@ async function etSave() {
   if (!subject) { statusEl.textContent = 'Subject is required.'; statusEl.style.color='#f88'; return; }
   const payload = { subject, body };
   if (!t.system && name) payload.name = name;
+  if (body.includes('{{review_button}}')) {
+    const reviewUrl = document.getElementById('et-review-url').value.trim();
+    if (reviewUrl && !reviewUrl.startsWith('https://')) { statusEl.textContent = 'Review link must start with https://'; statusEl.style.color='#f88'; return; }
+    payload.review_url = reviewUrl;
+  }
   statusEl.textContent = 'Saving…'; statusEl.style.color = 'rgba(255,255,255,.4)';
   const res = await fetch(`/api/admin/email-templates/${encodeURIComponent(_etCurrent)}`, {
     method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload),
