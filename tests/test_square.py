@@ -224,3 +224,46 @@ def test_verified_sale_saves_square_tax_and_tip(client, square, no_pos_orders):
     assert _checkout(client, "ORDER1").status_code == 200
     [order] = _orders()
     assert (order["square_paid"], order["square_tax"], order["square_tip"]) == (7.04, 0.04, 6.0)
+
+
+class FakeSquareAndResend(FakeSquare):
+    """Also accepts Resend emails, so a sale's emails can be counted."""
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.emails = []
+
+    def post(self, url, json=None, headers=None, **kw):
+        if url == "https://api.resend.com/emails":
+            self.emails.append(json)
+            return _Resp(200, {"id": "email1"})
+        return super().post(url, json=json, headers=headers, **kw)
+
+
+def test_photo_sale_sends_one_email_whose_link_works_right_away(client, square, no_pos_orders,
+                                                                main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    fake = square(FakeSquareAndResend())
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}
+    r = client.post("/api/pos-checkout", json={
+        "pin": PIN, "email": "ann@example.com", "name": "Ann Smith", "total": 25.0,
+        "square_payment_id": "ORDER1", "customer": CUSTOMER,
+        "items": [{"category": "action_photos", "label": "Action Photos", "qty": 1, "price": 25.0,
+                   "subtotal": 25.0, "photo_paths": ["images/2026-06-12/base/IMG_1.jpg"],
+                   "filenames": ["IMG_1.jpg"], "location": "Base", "date": "2026-06-12"}]})
+    assert r.status_code == 200
+    token = r.json()["token"]
+
+    [email] = fake.emails                                   # the receipt only, no second email
+    assert email["to"] == ["ann@example.com"] and "Receipt" in email["subject"]
+    assert f"/package/{token}" in email["html"] and "available until" in email["html"]
+    assert client.get(f"/package/{token}").status_code == 200   # usable the moment it's sent
+
+
+def test_sale_without_photos_sends_receipt_with_no_download_button(client, square, no_pos_orders,
+                                                                   main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    fake = square(FakeSquareAndResend())
+    fake.orders = {"ORDER1": _paid_order()}
+    assert _checkout(client, "ORDER1").status_code == 200
+    [email] = fake.emails
+    assert "/package/" not in email["html"] and "Download Your Photos" not in email["html"]

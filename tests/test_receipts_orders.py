@@ -83,3 +83,13 @@ def test_csv_export_includes_in_person_sales_and_tip(admin_client, pos_orders):
     ann = next(l for l in lines if "Ann" in l)
     assert "$31.00,$5.00" in ann
     assert any("Bob" in l and ",Comp," in l for l in lines)
+
+
+def test_download_button_survives_a_template_edit_that_drops_it(main_module, sent, monkeypatch):
+    edited = {"pos_receipt": {**main_module._EMAIL_TEMPLATE_DEFAULTS["pos_receipt"],
+                              "body": "Hi {{first_name}},\n\n{{items_table}}\n\nThanks!"}}
+    monkeypatch.setattr(main_module, "_load_email_templates", lambda: edited)
+    main_module._send_pos_receipt_email("ann@example.com", "Ann", "pos-1", ITEMS, 25.0, "", 0,
+                                        "https://photos.example.com/package/tok1", expire_str="November 16, 2026")
+    html = sent[0]["html"]
+    assert "/package/tok1" in html and "available until November 16, 2026" in html

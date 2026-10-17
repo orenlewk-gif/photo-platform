@@ -2962,15 +2962,15 @@ async def pos_checkout(request: Request):
             })
 
         result = {"order_id": order_id}
-        download_url = None
+        download_url = expire_str = None
         if photo_paths:
+            # The package was saved above, so this link works the moment the email arrives
             download_url = f"{SITE_URL}/package/{token}"
             expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
-            _send_package_email([customer_email], title, download_url, len(photo_paths), expire_str)
             result["token"]        = token
             result["download_url"] = download_url
 
-        # Always send itemized receipt
+        # One email per sale: the itemized receipt, which carries the download button
         _send_pos_receipt_email(
             to_email=customer_email,
             customer_name=customer_name,
@@ -2980,6 +2980,7 @@ async def pos_checkout(request: Request):
             coupon_code=coupon_code,
             coupon_discount=coupon_discount,
             download_url=download_url,
+            expire_str=expire_str,
             square=square_check or None,
             comp=(square_id == "COMP"),
         )
@@ -8792,6 +8793,7 @@ def _send_package_email(to_emails: list, title: str, download_url: str, photo_co
 def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
                             items: list, total: float, coupon_code: str,
                             coupon_discount: float, download_url: str | None,
+                            expire_str: str | None = None,
                             square: dict | None = None, comp: bool = False):
     if not RESEND_API_KEY or not to_email:
         return
@@ -8862,14 +8864,20 @@ def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
             f'style="background:#1a73e8;color:#fff;padding:.55rem 1.25rem;border-radius:6px;'
             f'font-size:.88rem;font-weight:600;text-decoration:none;display:inline-block">'
             f'Download Your Photos</a></p>'
+            + (f'<p style="margin:0 0 1rem;font-size:.8rem;color:#888">Your download link is available until {expire_str}.</p>'
+               if expire_str else '')
         )
+    body_tmpl = tmpl["body"]
+    if dl_btn_html and "{{download_button}}" not in body_tmpl:
+        # The receipt is the only email with the photo link, so never let a template edit drop it
+        body_tmpl += "\n\n{{download_button}}"
     first_name = (customer_name.split()[0] if customer_name else "") or _customer_first_name(to_email) or "there"
     plain_vars = {"first_name": first_name, "order_id": order_id}
     html_blocks = {"items_table": items_table_html, "download_button": dl_btn_html}
     subject = tmpl["subject"]
     for k, v in plain_vars.items():
         subject = subject.replace(f"{{{{{k}}}}}", v)
-    body_html, _ = _render_email_body(tmpl["body"], plain_vars, html_blocks)
+    body_html, _ = _render_email_body(body_tmpl, plain_vars, html_blocks)
     html = _wrap_email_html(body_html)
     try:
         r = http_requests.post(
