@@ -3,9 +3,11 @@ import zipfile
 import time as _time
 import numpy as np
 from collections import deque
+from contextlib import contextmanager
 from html import escape as _html_escape
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import Body, FastAPI, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -2570,7 +2572,15 @@ def validate_coupon(code: str = Query(""), email: str = Query("")):
 async def create_checkout(request: Request):
     try:
         body = await request.json()
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+    # Pricing lookups and the WooCommerce order request are slow; run them off the
+    # main loop so other visitors aren't held up while this checkout is created
+    return await run_in_threadpool(_create_checkout, body)
 
+
+def _create_checkout(body: dict):
+    try:
         digital_albums      = body.get("digital_albums", [])
         portrait_poses      = body.get("portrait_poses", [])    # [{pose_label, color, files, paths, family}]
         portrait_singles    = body.get("portrait_singles", [])  # [{filename, path, family}]
@@ -2836,15 +2846,83 @@ async def pos_checkout(request: Request):
     """Record a completed in-person (Square) sale and deliver the download link."""
     try:
         body = await request.json()
-        return _record_pos_sale(body)
+        return await run_in_threadpool(_record_pos_sale, body)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
+class _KeyedLocks:
+    """One lock per key (a Square payment, a POS sale, an online order), so work on the
+    same thing never overlaps while different ones still run side by side."""
+    def __init__(self):
+        self._locks, self._guard = {}, threading.Lock()
+
+    @contextmanager
+    def hold(self, key: str):
+        with self._guard:
+            entry = self._locks.setdefault(key, [threading.Lock(), 0])
+            entry[1] += 1
+        try:
+            with entry[0]:
+                yield
+        finally:
+            with self._guard:
+                entry[1] -= 1
+                if entry[1] == 0:
+                    self._locks.pop(key, None)
+
+
+_sale_locks = _KeyedLocks()
+
+
+def _square_id_marker(square_id: str) -> str:
+    return f"pos_square_ids/{hashlib.sha256(square_id.encode()).hexdigest()}.json"
+
+
+def _square_id_used(square_id: str) -> bool:
+    """Has this Square payment already been recorded? One lookup instead of reading
+    every sale; falls back to reading them if storage can't answer."""
+    try:
+        s3.head_object(Bucket=R2_BUCKET, Key=_square_id_marker(square_id))
+        return True
+    except Exception as e:
+        code = str(getattr(e, "response", {}).get("Error", {}).get("Code", ""))
+        if code in ("404", "NoSuchKey", "NotFound"):
+            return False
+        return any(o.get("square_payment_id") == square_id for o in _fetch_pos_orders())
+
+
+def _mark_square_id_used(square_id: str, order_id: str):
+    s3.put_object(Bucket=R2_BUCKET, Key=_square_id_marker(square_id),
+                  Body=json.dumps({"square_payment_id": square_id, "order_id": order_id}).encode(),
+                  ContentType="application/json")
+
+
+def _backfill_square_id_markers():
+    """Startup: markers for sales recorded before markers existed (so a payment can't
+    be reused for a second sale). Only writes the ones that are missing."""
+    _data_ready.wait()
+    try:
+        for o in _fetch_pos_orders():
+            sid = o.get("square_payment_id")
+            if sid and sid != "COMP" and not _square_id_used(sid):
+                _mark_square_id_used(sid, o.get("id", ""))
+    except Exception as e:
+        print(f"Square payment markers not backfilled: {e}")
+
+
 def _record_pos_sale(body: dict):
     """Verify (unless COMP), record the sale, add the customer and send the receipt.
-    Returns the result dict, or a JSONResponse for a refused sale. Callers run it
-    without awaiting anything in between, so two completions never interleave."""
+    Returns the result dict, or a JSONResponse for a refused sale. Two completions of
+    the same Square payment never run at once (the second then sees it was used)."""
+    square_id = body.get("square_payment_id", "")
+    if not square_id or square_id == "COMP":
+        return _record_pos_sale_now(body)
+    with _sale_locks.hold("sq:" + square_id):
+        return _record_pos_sale_now(body)
+
+
+def _record_pos_sale_now(body: dict):
     pin = body.get("pin", "").strip()
     photog = _auth_photographer(pin)
     if not photog:
@@ -2887,7 +2965,7 @@ def _record_pos_sale(body: dict):
     # the sale or sending photos. "COMP" is a deliberate free sale by staff.
     square_check = {}
     if square_id != "COMP":
-        if any(o.get("square_payment_id") == square_id for o in _fetch_pos_orders()):
+        if _square_id_used(square_id):
             return JSONResponse(status_code=409, content={
                 "error": "This Square payment was already used for another sale", "verify_failed": True})
         ok, detail = _square_verify_payment(square_id, int(round(total * 100)))
@@ -2949,6 +3027,8 @@ def _record_pos_sale(body: dict):
         **square_check,
     }
     _store_pos_order(order_record)
+    if square_check:
+        _mark_square_id_used(square_id, order_id)
     if square_check and not square_check["square_fee_final"]:
         # Square fills the card fee in shortly after the payment; record it then
         fee_check = threading.Timer(30, _refresh_square_fee, args=(order_record,))
@@ -3033,9 +3113,8 @@ def _save_pos_pending(state: str, pending: dict):
 
 
 @app.post("/api/pos/square-pending")
-async def pos_square_pending(request: Request):
+def pos_square_pending(request: Request, body: dict = Body(...)):
     """Save a sale just before the POS hands it to Square."""
-    body = await request.json()
     state = str(body.get("state") or "")
     sale = body.get("sale") or {}
     if not _POS_STATE_RE.match(state):
@@ -3057,12 +3136,20 @@ async def pos_square_pending(request: Request):
 
 
 @app.post("/api/pos/square-complete")
-async def pos_square_complete(request: Request):
+def pos_square_complete(body: dict = Body(...)):
     """Finish a sale when Square returns. No PIN is needed: the state is a random id
     only the POS and Square know, and the payment is verified with Square."""
-    body = await request.json()
     state = str(body.get("state") or "")
     transaction_id = str(body.get("transaction_id") or "")
+    if not _POS_STATE_RE.match(state):
+        return JSONResponse(status_code=404, content={"error": "This sale wasn't found — check the Square app"})
+    # If Safari and the POS app both finish the same sale, the second waits and
+    # then gets the first one's result instead of recording it again
+    with _sale_locks.hold("state:" + state):
+        return _complete_pending_sale(state, transaction_id)
+
+
+def _complete_pending_sale(state: str, transaction_id: str):
     pending = _load_pos_pending(state)
     if not pending:
         return JSONResponse(status_code=404, content={"error": "This sale wasn't found — check the Square app"})
@@ -3993,10 +4080,9 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
 
 
 @app.post("/api/pos-resend")
-async def api_pos_resend(request: Request):
+def api_pos_resend(request: Request, body: dict = Body(...)):
     """Recent Sales: send the customer their receipt again (the same single email
     they got at checkout, with the download button when photos were bought)."""
-    body = await request.json()
     pin = body.get("pin", "").strip()
     if _pin_locked_out(request):
         return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — wait 10 minutes"})
@@ -4097,11 +4183,34 @@ async def wc_webhook(request: Request):
         order = json.loads(body)
     except Exception:
         return Response(status_code=400)
+    return await run_in_threadpool(_handle_paid_wc_order, order)
 
+
+def _handle_paid_wc_order(order: dict):
+    """A paid online order: create the download link and have WooCommerce email it."""
     # Act on processing (manual/physical orders) or completed (auto-completed digital orders)
     if order.get("status") not in ("processing", "completed"):
         return Response(status_code=200)
+    # WooCommerce calls this when an order is paid and again when it's completed
+    # (often seconds apart). One link and one email per order: the second call waits
+    # for the first, then sees the order already has a valid link.
+    with _sale_locks.hold(f"wc:{order.get('id')}"):
+        if _order_has_valid_link(order.get("id")):
+            return Response(status_code=200)
+        return _deliver_wc_order(order)
 
+
+def _order_has_valid_link(order_id) -> bool:
+    if not order_id:
+        return False
+    try:
+        idx = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=f"downloads/by_order/{order_id}.json")["Body"].read())
+        return bool(idx.get("token")) and datetime.fromisoformat(idx["expires"]) > datetime.now(timezone.utc)
+    except Exception:
+        return False
+
+
+def _deliver_wc_order(order: dict):
     # Pull stored photo paths from order meta
     meta = {m["key"]: m["value"] for m in order.get("meta_data", [])}
     paths_raw = meta.get("_photo_paths", "")
@@ -5775,8 +5884,17 @@ def _save_trash_meta(d):    _r2_json_save("meta/trash_meta.json", d)
 def _load_discount_codes(): return _r2_json_load("meta/discount_codes.json", [])
 def _save_discount_codes(d):_r2_json_save("meta/discount_codes.json", d)
 
+_discount_codes_lock = threading.RLock()
+
+
 def _record_coupon_use(code_upper: str, use: dict):
-    """Thread-unsafe append — fine for low-volume photo platform."""
+    """Count a use of a discount code. Checkouts can now run side by side, so the
+    read-modify-write is done under a lock (a use is never lost to another save)."""
+    with _discount_codes_lock:
+        _record_coupon_use_locked(code_upper, use)
+
+
+def _record_coupon_use_locked(code_upper: str, use: dict):
     codes = _load_discount_codes()
     for c in codes:
         if c.get("code","").upper() == code_upper:
@@ -5790,6 +5908,11 @@ def _record_coupon_use(code_upper: str, use: dict):
 
 def _record_bundle_use(use: dict):
     """Record a bundle deal use — upserts a synthetic BUNDLE_DEAL entry."""
+    with _discount_codes_lock:
+        _record_bundle_use_locked(use)
+
+
+def _record_bundle_use_locked(use: dict):
     codes = _load_discount_codes()
     entry = next((c for c in codes if c.get("code") == "BUNDLE_DEAL"), None)
     if not entry:
@@ -9907,3 +10030,7 @@ def admin_links_page(request: Request):
             .replace("__NEW_TOKEN__", new_token)
             .replace("__NEW_URL__", new_url))
     return HTMLResponse(html)
+
+
+# ── Background startup work that needs every function above to exist ─────────
+threading.Thread(target=_backfill_square_id_markers, daemon=True).start()

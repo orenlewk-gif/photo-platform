@@ -162,6 +162,12 @@ class FakeHTTP:
         if "resend.com" in url:
             print(f"[fake email] to={json.get('to')} subject={json.get('subject')!r}")
             return _FakeResp({"id": "fake-email"})
+        if url.endswith("/wc/v3/orders"):
+            print(f"[fake WooCommerce] create order ({len(json.get('line_items', []))} items)")
+            return _FakeResp({"id": 9001, "order_key": "wc_order_local"}, status=201)
+        if url.endswith("/notes"):
+            print(f"[fake WooCommerce] customer note on {url.split('/orders/')[1].split('/')[0]} (download email)")
+            return _FakeResp({"id": 1}, status=201)
         print(f"[fake HTTP] POST {url} (not sent)")
         return _FakeResp({})
 

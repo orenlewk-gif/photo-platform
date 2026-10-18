@@ -170,8 +170,9 @@ def _orders():
 @pytest.fixture()
 def no_pos_orders(main_module, monkeypatch):
     s3 = boto3.client("s3", region_name="us-east-1")
-    for o in s3.list_objects_v2(Bucket="test-bucket", Prefix="pos_orders/").get("Contents", []):
-        s3.delete_object(Bucket="test-bucket", Key=o["Key"])
+    for prefix in ("pos_orders/", "pos_square_ids/"):
+        for o in s3.list_objects_v2(Bucket="test-bucket", Prefix=prefix).get("Contents", []):
+            s3.delete_object(Bucket="test-bucket", Key=o["Key"])
     monkeypatch.setattr(main_module._time, "sleep", lambda s: None)
 
 
@@ -462,3 +463,104 @@ def test_resend_after_the_link_expired_sends_the_receipt_without_it(client, squa
     assert r.status_code == 200 and "expired" in r.json()["note"]
     [email] = fake.emails
     assert "/package/" not in email["html"] and "No charge" in email["html"]
+
+
+# ── Money paths run off the main loop, and never twice for the same thing ────
+import threading
+
+
+class SlowSquare(FakeSquareAndResend):
+    """Square answers slowly, so two completions of one payment overlap."""
+    def get(self, url, headers=None, **kw):
+        if "/orders/" in url:
+            threading.Event().wait(0.3)     # not time.sleep: no_pos_orders turns that off
+        return super().get(url, headers=headers, **kw)
+
+
+def _in_parallel(*fns):
+    out = [None] * len(fns)
+    threads = [threading.Thread(target=lambda i=i, f=f: out.__setitem__(i, f())) for i, f in enumerate(fns)]
+    [t.start() for t in threads]
+    [t.join(10) for t in threads]
+    return out
+
+
+def test_one_square_payment_completed_twice_at_once_records_one_sale(main_module, square, no_pos_orders,
+                                                                      monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    fake = square(SlowSquare())
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}
+    body = {**SALE, "pin": PIN, "square_payment_id": "ORDER1"}
+    results = _in_parallel(lambda: main_module._record_pos_sale(dict(body)),
+                           lambda: main_module._record_pos_sale(dict(body)))
+    ok = [r for r in results if isinstance(r, dict)]
+    refused = [r for r in results if not isinstance(r, dict)]
+    assert len(ok) == 1 and len(refused) == 1 and refused[0].status_code == 409
+    assert len(_orders()) == 1 and len(fake.emails) == 1
+
+
+def test_safari_and_pos_app_finishing_the_same_sale_at_once_get_the_same_result(client, square, no_pos_orders,
+                                                                                 no_pending, main_module,
+                                                                                 monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    fake = square(SlowSquare())
+    fake.orders = {"ORDER1": _paid_order(cents=2600)}
+    _save_pending(client)
+    a, b = _in_parallel(lambda: _complete(client), lambda: _complete(client))
+    assert a.status_code == b.status_code == 200
+    assert a.json()["order_id"] == b.json()["order_id"]
+    assert len(_orders()) == 1 and len(fake.emails) == 1
+
+
+def test_a_used_payment_is_refused_without_reading_every_sale(client, square, no_pos_orders, main_module,
+                                                               monkeypatch):
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": _paid_order()}
+    assert _checkout(client, "ORDER1").status_code == 200
+    monkeypatch.setattr(main_module, "_fetch_pos_orders", lambda *a, **k: pytest.fail("read every sale"))
+    assert _checkout(client, "ORDER1").status_code == 409
+
+
+def test_slow_checkouts_dont_hold_up_other_visitors(main_module, square, no_pos_orders, monkeypatch):
+    """While one checkout waits on Square, the site still answers everyone else."""
+    from fastapi.testclient import TestClient
+    entered, release = threading.Event(), threading.Event()
+    fake = square(FakeSquare())
+    fake.orders = {"ORDER1": _paid_order()}
+    real_get = fake.get
+
+    def stuck_get(url, headers=None, **kw):
+        if "/orders/" in url:
+            entered.set()
+            release.wait(10)
+        return real_get(url, headers=headers, **kw)
+    monkeypatch.setattr(main_module.http_requests, "get", stuck_get)
+
+    with TestClient(main_module.app) as c:                    # one event loop for every request
+        sale = threading.Thread(target=lambda: c.post("/api/pos-checkout", json={
+            "pin": PIN, "email": "ann@example.com", "name": "Ann", "items": [], "total": 1.0,
+            "square_payment_id": "ORDER1"}))
+        sale.start()
+        assert entered.wait(5)
+        answered = []
+        other = threading.Thread(target=lambda: answered.append(c.get("/healthz").status_code))
+        other.start()
+        other.join(3)
+        answered_while_stuck = list(answered)                 # before the checkout is let go
+        release.set()
+        sale.join(10)
+        other.join(10)
+    assert answered_while_stuck == [200]
+
+
+def test_sales_recorded_before_markers_existed_are_still_protected(client, square, no_pos_orders, main_module):
+    s3 = boto3.client("s3", region_name="us-east-1")
+    old = {"id": "pos-old1", "date": "2026-10-17", "created": "2026-10-17T10:00:00+00:00",
+           "square_payment_id": "OLDORDER", "total": 1.0, "email": "ann@example.com"}
+    s3.put_object(Bucket="test-bucket", Key="pos_orders/2026-10-17_pos-old1.json", Body=json.dumps(old).encode())
+    assert main_module._square_id_used("OLDORDER") is False          # no marker yet
+    main_module._backfill_square_id_markers()
+    assert main_module._square_id_used("OLDORDER") is True
+    fake = square(FakeSquare())
+    fake.orders = {"OLDORDER": {**_paid_order(), "id": "OLDORDER"}}
+    assert _checkout(client, "OLDORDER").status_code == 409
