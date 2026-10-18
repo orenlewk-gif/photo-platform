@@ -109,17 +109,32 @@ def test_clock_in_out_still_work_with_pin(client):
     assert client.post("/api/clock/out", json={"pin": PIN}).status_code == 200
 
 
-# ── Cull ─────────────────────────────────────────────────────────────────────
+# ── Removed pages stay removed; the pages we kept still load ─────────────────
 
-@pytest.mark.parametrize("method,url,body", [
-    ("get",  "/api/pending",            None),
-    ("get",  "/api/pending/dates",      None),
-    ("post", "/api/cull/organize",      {"keys": ["k"], "folder": "f"}),
-    ("post", "/api/cull/rename-folder", {"old_folder": "a", "new_folder": "b"}),
-    ("post", "/api/cull/reject",        {"keys": ["k"]}),
-    ("post", "/api/cull/golive",        {"date": "2026-10-01", "location": "x"}),
+@pytest.mark.parametrize("method,url", [
+    ("get", "/upload"), ("post", "/api/upload/presign"), ("post", "/api/upload/confirm"),
+    ("get", "/admin/cull"), ("get", "/api/pending"), ("get", "/api/pending/dates"),
+    ("post", "/api/cull/organize"), ("post", "/api/cull/rename-folder"),
+    ("post", "/api/cull/reject"), ("post", "/api/cull/golive"),
+    ("get", "/admin/downloads"), ("get", "/api/uploads"), ("get", "/api/uploads/zip-all"),
+    ("delete", "/api/uploads/batch/b1"), ("get", "/admin/timecards"),
+    ("get", "/api/zip-compare"), ("get", "/api/families"), ("post", "/api/admin/recolor-all"),
 ])
-def test_cull_requires_admin(client, admin_client, method, url, body):
-    kwargs = {"json": body} if body is not None else {}
-    assert getattr(client, method)(url, **kwargs).status_code == 401
-    assert getattr(admin_client, method)(url, **kwargs).status_code != 401
+def test_removed_pages_are_gone(admin_client, method, url):
+    assert getattr(admin_client, method)(url).status_code in (404, 405)
+
+
+@pytest.mark.parametrize("url", ["/clockin", "/admin/trash", "/admin/photographers", "/admin/indexing",
+                                 "/admin/dashboard", "/admin/pricing", "/pos"])
+def test_kept_pages_still_load(admin_client, url):
+    assert admin_client.get(url).status_code == 200
+
+
+def test_old_zip_pricing_links_still_lead_to_pricing(admin_client):
+    for url in ("/admin/zip-pricing", "/admin/zip-folders", "/admin/zip-compare", "/admin/zip-preview/2026-06-12/Smith"):
+        r = admin_client.get(url, follow_redirects=False)
+        assert r.status_code in (302, 307) and r.headers["location"] == "/admin/pricing#zip"
+
+
+def test_dashboard_upload_locations_still_served(client):
+    assert client.get("/api/upload/locations").status_code == 200

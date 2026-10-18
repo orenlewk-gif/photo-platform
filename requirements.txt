@@ -2,12 +2,9 @@ fastapi
 uvicorn
 Pillow
 rapidfuzz
-tqdm
 boto3
 requests
 python-dotenv
-watchdog
 python-multipart
-mediapipe
 numpy
 onnxruntime

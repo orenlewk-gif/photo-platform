@@ -636,6 +636,7 @@ function toFullHex(h) {
 function renderTfTags() {
   const list = settings.time_filter_locations || [];
   const el = document.getElementById('tf-tags');
+  if (!el) return;            // the time-filter box was removed from this page
   if (!list.length) {
     el.innerHTML = '<span class="tag-empty">No locations configured</span>';
     return;
@@ -961,56 +962,6 @@ async function pollClassifyStatus(jobId) {
     }
   } catch (e) {
     if (st) st.textContent = 'Status check failed';
-  }
-}
-
-async function runBackfill() {
-  const btn = document.getElementById('btn-backfill');
-  const st  = document.getElementById('backfill-status');
-  if (btn) btn.disabled = true;
-  if (st)  st.textContent = 'Starting…';
-  try {
-    const r = await fetch('/api/admin/reembed-all', { method: 'POST' });
-    const d = await r.json();
-    if (r.ok) {
-      if (d.queued === 0) {
-        if (st) st.textContent = 'All photos already indexed.';
-        if (btn) btn.disabled = false;
-      } else {
-        if (st) st.textContent = `Running in background — ${d.queued} photo${d.queued!==1?'s':''} queued. Job: ${d.job_id}`;
-      }
-    } else {
-      if (st) st.textContent = d.error || 'Failed';
-      if (btn) btn.disabled = false;
-    }
-  } catch (e) {
-    if (st)  st.textContent = 'Request failed';
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function runRecolor() {
-  const btn = document.getElementById('btn-recolor');
-  const st  = document.getElementById('recolor-status');
-  if (btn) btn.disabled = true;
-  if (st)  st.textContent = 'Starting…';
-  try {
-    const r = await fetch('/api/admin/recolor-all', { method: 'POST' });
-    const d = await r.json();
-    if (r.ok) {
-      if (d.queued === 0) {
-        if (st) st.textContent = 'All indexed photos already have color data.';
-        if (btn) btn.disabled = false;
-      } else {
-        if (st) st.textContent = `Running in background — ${d.queued} photo${d.queued!==1?'s':''} queued. Job: ${d.job_id}`;
-      }
-    } else {
-      if (st) st.textContent = d.error || 'Failed';
-      if (btn) btn.disabled = false;
-    }
-  } catch (e) {
-    if (st)  st.textContent = 'Request failed';
-    if (btn) btn.disabled = false;
   }
 }
 

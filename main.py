@@ -200,15 +200,6 @@ def _save_seasons(d):
     _seasons_cache["data"] = d
     import time; _seasons_cache["ts"] = time.monotonic()
 
-def _get_season_for_date(date_str: str) -> dict | None:
-    """Return the season config for a given date string (YYYY-MM-DD), or None."""
-    for season in _load_seasons():
-        start = season.get("start", "")
-        end   = season.get("end", "")
-        if start <= date_str <= end:
-            return season
-    return None
-
 def clean_location(raw):
     cleaned = re.sub(r'^[\d\-_\s]+', '', raw)
     return cleaned.replace('-', ' ').replace('_', ' ').strip().title()
@@ -338,280 +329,19 @@ def apply_watermark(img, size="medium"):
 
     return img_rgba.convert("RGB")
 
-def image_to_base64(img, max_size=1200):
-    img.thumbnail((max_size, max_size), Image.LANCZOS)
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=87)
-    return base64.b64encode(buf.getvalue()).decode()
-
 # ─────────────────────────────────────────
 # LOAD DATA (once on startup)
 # ─────────────────────────────────────────
 
-# ── MediaPipe pose detector (jacket crop) ────────────────────────────────────
-
-_mp_thread_local = threading.local()
-
-def get_pose_detector():
-    """Thread-local MediaPipe Pose instance so parallel workers don't share state."""
-    if not hasattr(_mp_thread_local, 'pose'):
-        import mediapipe as mp
-        _mp_thread_local.pose = mp.solutions.pose.Pose(
-            static_image_mode=True,
-            model_complexity=0,
-            enable_segmentation=False,
-            min_detection_confidence=0.4,
-        )
-    return _mp_thread_local.pose
-
-
-# ── HSV color extraction ──────────────────────────────────────────────────────
-
-# Hue ranges (degrees, 0-360). Pairs that wrap (e.g. red) are split into two.
-COLOR_RANGES: dict[str, list[tuple[float, float]]] = {
-    "red":     [(345, 360), (0, 15)],
-    "orange":  [(15, 45)],
-    "yellow":  [(45, 75)],
-    "green":   [(75, 160)],
-    "teal":    [(150, 200)],
-    "cyan":    [(150, 200)],
-    "aqua":    [(150, 200)],
-    "blue":    [(185, 265)],
-    "purple":  [(255, 295)],
-    "violet":  [(255, 295)],
-    "pink":    [(295, 345)],
-    "magenta": [(280, 345)],
-    "navy":    [(210, 245)],
-    "maroon":  [(345, 360), (0, 10)],
-}
-_COLOR_MIN_SAT = 0.22   # below this saturation = white / grey / black
-_COLOR_MIN_PIX = 12     # need at least this many saturated pixels in crop
-
-
-def extract_dominant_color(img: Image.Image):
-    """Return (dominant_hue_degrees, avg_saturation) from a torso-zone crop,
-    filtering out achromatic pixels (snow, sky, dark gear).
-    Returns (None, None) when no clear dominant color is found."""
-    import colorsys
-    w, h = img.size
-    # Crop: skip top 30% (sky/helmet) and bottom 10% (skis/ground), trim sides
-    crop = img.crop((int(w * 0.15), int(h * 0.30), int(w * 0.85), int(h * 0.90)))
-    crop = crop.convert("RGB").resize((64, 64), Image.LANCZOS)
-    pixels = list(crop.getdata())
-
-    hue_list, sat_list = [], []
-    for r, g, b in pixels:
-        h_f, s_f, v_f = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
-        # Skip: achromatic (snow/grey), very dark, very bright
-        if s_f < _COLOR_MIN_SAT or v_f <= 0.08 or v_f >= 0.97:
-            continue
-        # Skip: bright sky-blue (high value + sky hue = sky not jacket)
-        hue_deg = h_f * 360.0
-        if v_f > 0.80 and 185.0 <= hue_deg <= 230.0:
-            continue
-        hue_list.append(hue_deg)
-        sat_list.append(s_f)
-
-    if len(hue_list) < _COLOR_MIN_PIX:
-        return None, None
-
-    # Bucket hues into 10-degree bins; pick the most-populated bin
-    buckets: dict[int, int] = {}
-    for hue in hue_list:
-        key = int(hue / 10) * 10
-        buckets[key] = buckets.get(key, 0) + 1
-    dominant_bucket = max(buckets, key=buckets.get)
-    dominant_hue = float(dominant_bucket + 5)
-    avg_sat = sum(sat_list) / len(sat_list)
-    return dominant_hue, avg_sat
-
-
-def _hue_in_ranges(hue: float, ranges: list) -> bool:
-    for lo, hi in ranges:
-        if lo <= hi:
-            if lo <= hue <= hi:
-                return True
-        else:
-            if hue >= lo or hue <= hi:
-                return True
-    return False
-
-
-def _detect_color(query: str):
-    """Return hue ranges if any word in the query names a known color, else None."""
-    for word in query.lower().split():
-        if word in COLOR_RANGES:
-            return COLOR_RANGES[word]
-    return None
-
-
-def _resize_for_embed(img: Image.Image, max_side: int = 640) -> Image.Image:
-    w, h = img.size
-    if max(w, h) <= max_side:
-        return img
-    scale = max_side / max(w, h)
-    return img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
-
-
-def _center_crop_for_embed(img: Image.Image, crop_ratio: float = 0.6) -> Image.Image:
-    """Crop to the center 60% of the image before embedding — reduces background noise."""
-    w, h = img.size
-    margin_x = int(w * (1 - crop_ratio) / 2)
-    margin_y = int(h * (1 - crop_ratio) / 2)
-    return img.crop((margin_x, margin_y, w - margin_x, h - margin_y))
-
-
-def crop_to_outfit(pil_image: Image.Image) -> Image.Image:
-    """Crop to jacket/torso zone using MediaPipe shoulder + hip keypoints.
-    Falls back to a fixed centre crop when no person is detected."""
-    import numpy as np
-    pil_image = _resize_for_embed(pil_image)
-    w, h = pil_image.size
-    try:
-        import mediapipe as mp
-        pose   = get_pose_detector()
-        LM     = mp.solutions.pose.PoseLandmark
-        result = pose.process(np.array(pil_image.convert("RGB")))
-
-        if result.pose_landmarks:
-            lm  = result.pose_landmarks.landmark
-            VIS = 0.4  # minimum confidence to trust a landmark
-
-            ls, rs = lm[LM.LEFT_SHOULDER],  lm[LM.RIGHT_SHOULDER]
-            lhip,  rhip  = lm[LM.LEFT_HIP], lm[LM.RIGHT_HIP]
-
-            if ls.visibility > VIS and rs.visibility > VIS:
-                x_left  = min(ls.x, rs.x)
-                x_right = max(ls.x, rs.x)
-                y_top   = min(ls.y, rs.y)
-
-                # Use hip landmarks if visible; otherwise estimate torso height
-                visible_hips = [p for p in (lhip, rhip) if p.visibility > VIS]
-                if visible_hips:
-                    y_bot = max(p.y for p in visible_hips)
-                else:
-                    y_bot = min(y_top + 0.35, 1.0)  # rough torso-length estimate
-
-                torso_h = max(y_bot - y_top, 0.05)
-                pad_x   = (x_right - x_left) * 0.30  # wide enough to include arms
-                pad_y_t = torso_h * 0.15              # a little above shoulders for collar
-                pad_y_b = torso_h * 0.20              # a little below hips for lower jacket
-
-                x1 = max(0, (x_left  - pad_x)   * w)
-                x2 = min(w, (x_right + pad_x)   * w)
-                y1 = max(0, (y_top   - pad_y_t) * h)
-                y2 = min(h, (y_bot   + pad_y_b) * h)
-
-                if (x2 - x1) > 40 and (y2 - y1) > 40:
-                    return pil_image.crop((x1, y1, x2, y2))
-    except Exception as e:
-        print(f"MediaPipe crop failed: {e}")
-
-    # Fallback: fixed crop — full width, top 10% to 75%
-    return pil_image.crop((0, int(h * 0.10), w, int(h * 0.75)))
-
-
-def extract_jacket_color(torso_crop: Image.Image) -> str:
-    """Dominant jacket color from the upper portion of a torso crop."""
-    import numpy as np
-    w, h = torso_crop.size
-    # Centre strip, upper 60% (jacket, not pants)
-    x0, x1 = int(w * 0.12), int(w * 0.88)
-    y1      = int(h * 0.60)
-    region  = torso_crop.crop((x0, 0, x1, y1)).resize((48, 48), Image.LANCZOS)
-    px      = np.array(region.convert("RGB"), dtype=np.float32).reshape(-1, 3)
-
-    r, g, b = px[:, 0] / 255, px[:, 1] / 255, px[:, 2] / 255
-    maxc = np.maximum.reduce([r, g, b])
-    minc = np.minimum.reduce([r, g, b])
-    diff = maxc - minc
-    v    = maxc
-    s    = np.where(maxc > 0, diff / maxc, 0)
-
-    with np.errstate(divide='ignore', invalid='ignore'):
-        rc = np.where(diff > 0, (maxc - r) / diff, 0)
-        gc = np.where(diff > 0, (maxc - g) / diff, 0)
-        bc = np.where(diff > 0, (maxc - b) / diff, 0)
-    hraw = np.where(maxc == r, bc - gc,
-           np.where(maxc == g, 2 + rc - bc, 4 + gc - rc))
-    hue  = ((hraw / 6) % 1.0) * 360
-
-    mask   = (s > 0.22) & (v > 0.15) & (v < 0.97)
-    colored = hue[mask]
-
-    if len(colored) < px.shape[0] * 0.08:
-        mv = float(np.mean(v))
-        if mv < 0.28: return "black"
-        if mv > 0.78: return "white"
-        return "gray"
-
-    hist, _ = np.histogram(colored, bins=24, range=(0, 360))
-    dh      = int(np.argmax(hist)) * 15 + 7
-    if dh < 15 or dh >= 345: return "red"
-    if dh < 40:  return "orange"
-    if dh < 70:  return "yellow"
-    if dh < 155: return "green"
-    if dh < 195: return "teal"
-    if dh < 255: return "blue"
-    if dh < 285: return "purple"
-    if dh < 345: return "pink"
-    return "red"
-
-
+# Background jobs (classification, thumbnails): progress shown in the studio
 _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool}
 
-# ── Haiku Vision Classification ───────────────────────────────────────────────
+# ── Color labels ──────────────────────────────────────────────────────────────
 
 _HAIKU_COLOR_ENUM = [
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
     "white", "black", "gray", "brown", "tan", "teal", "camo", "none", "unclear",
 ]
-
-_HAIKU_TOOL = {
-    "name": "record_colors",
-    "description": "Record jacket and pants colors, and sport (ski or snowboard), for each person visible in this ski or snowboard photo.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "people": {
-                "type": "array",
-                "description": "One entry per distinct person visible in the photo",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "is_main_subject": {
-                            "type": "boolean",
-                            "description": "True for the primary skier/snowboarder this photo is focused on",
-                        },
-                        "equipment_observation": {
-                            "type": "string",
-                            "description": "FILL THIS FIRST. Look at this person's feet and lower body. In one sentence describe exactly what you see: e.g. 'one wide flat board connecting both feet with no gap', or 'two separate narrow planks one under each foot with space between them', or 'poles in both hands and two narrow planks', or 'feet not visible'.",
-                        },
-                        "sport": {
-                            "type": "string",
-                            "enum": ["ski", "snowboard", "unclear"],
-                            "description": "Based ONLY on your equipment_observation: one wide board connecting both feet = 'snowboard'; poles visible OR two separate narrow planks = 'ski'; feet not visible and no other signal = 'unclear'.",
-                        },
-                        "jacket_colors": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "maxItems": 2,
-                            "description": "The dominant color(s) of the SKI JACKET — identified by the SLEEVES and ARMS. Pick ONE color (the most dominant). Pick TWO only if two colors genuinely split the jacket roughly equally (e.g. half red, half blue). Never pick two if one clearly dominates. Use 'camo' if the jacket has a camouflage pattern (mixed green/brown/tan/black irregular patches).",
-                        },
-                        "pants_colors": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": _HAIKU_COLOR_ENUM},
-                            "maxItems": 1,
-                            "description": "The single most dominant color of the SKI PANTS — identified by the THIGHS and KNEES. Pick ONE color only: whichever covers the most fabric area.",
-                        },
-                    },
-                    "required": ["is_main_subject", "equipment_observation", "sport", "jacket_colors", "pants_colors"],
-                },
-            },
-        },
-        "required": ["people"],
-    },
-}
 
 # Color families — similar shades treated as equivalent during filtering
 _COLOR_FAMILY: dict[str, set] = {
@@ -717,91 +447,9 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
     return classify_photo_colors_onnx(img_bytes)
 
 
-def _classify_photo_colors_haiku(img_bytes: bytes) -> dict | None:
-    """Call claude-haiku to get jacket/pants color labels for a ski photo."""
-    if not ANTHROPIC_API_KEY:
-        return None
-    try:
-        pil = Image.open(BytesIO(img_bytes)).convert("RGB")
-        pil.thumbnail((768, 768), Image.LANCZOS)
-        buf = BytesIO()
-        pil.save(buf, format="JPEG", quality=75)
-        b64 = base64.b64encode(buf.getvalue()).decode()
-
-        payload = {
-            "model": "claude-haiku-4-5-20251001",
-            "max_tokens": 512,
-            "tools": [_HAIKU_TOOL],
-            "tool_choice": {"type": "tool", "name": "record_colors"},
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {"type": "base64", "media_type": "image/jpeg", "data": b64},
-                    },
-                    {
-                        "type": "text",
-                        "text": (
-                            "List every skier or snowboarder visible in this photo. "
-                            "For each person, set is_main_subject=true only for the one this photo "
-                            "is clearly focused on (closest to camera, most prominent). "
-                            "Ski/snowboard action photo. For each person: "
-                            "1) equipment_observation: fill this FIRST — look at the lower body and feet. One wide flat board under both feet = describe it. Two separate narrow planks one per foot = describe them. Poles gripped in hands = note that. Feet hidden = say so. Be specific. "
-                            "2) sport: derive from equipment_observation only. One wide board = 'snowboard'. Poles visible OR two separate narrow planks = 'ski'. Do NOT use body orientation to pick sport — a skier may face sideways, a snowboarder may face forward. Equipment only. "
-                            "Note: snowboard boots mount sideways on ONE shared wide board — two boot shapes but one object. Ski = two separate narrow planks each extending past the boot, with a gap between them. "
-                            "2) jacket_colors: look at the sleeves/arms only. Pick ONE dominant color. Pick TWO only if two colors genuinely split the jacket roughly equally — never two if one clearly dominates. "
-                            "3) pants_colors: look at the thighs/knees only. Pick the SINGLE dominant color. "
-                            "Color accuracy rules: label dark charcoal/slate clothing as 'gray' not 'black' or 'green'. Label true black only if the fabric is clearly black. Olive/army/military green = 'green'. Tan/khaki/beige = 'tan'. Do NOT let shadows or snow glare shift your color reading — judge the fabric's actual color. "
-                            "Only label clothing fabric. Ignore snow, sky, trees, goggles, helmets, gloves, and hard equipment. "
-                            "Use 'none' if not visible. Always choose ONE color — the one covering the most fabric area."
-                        ),
-                    },
-                ],
-            }],
-        }
-        headers = {
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        }
-        resp = None
-        for attempt in range(4):
-            resp = http_requests.post(
-                "https://api.anthropic.com/v1/messages",
-                headers=headers,
-                json=payload,
-                timeout=30,
-            )
-            if resp.status_code == 429:
-                wait = 2 ** attempt
-                print(f"Haiku rate limit (attempt {attempt + 1}), retrying in {wait}s")
-                _time.sleep(wait)
-                continue
-            resp.raise_for_status()
-            break
-        if resp is None or resp.status_code == 429:
-            return None
-        for block in resp.json().get("content", []):
-            if block.get("type") == "tool_use" and block.get("name") == "record_colors":
-                people = block.get("input", {}).get("people", [])
-                if not people:
-                    return None
-                main = next((p for p in people if p.get("is_main_subject")), people[0])
-                return {
-                    "sport":         main.get("sport", "unclear"),
-                    "jacket_colors": main.get("jacket_colors", []),
-                    "pants_colors":  main.get("pants_colors", []),
-                }
-        return None
-    except Exception as e:
-        print(f"Haiku classify failed: {e}")
-        return None
-
-
 def embed_items_fast(items: list, job_id: str = None) -> int:
     """
-    Parallel R2 fetch + dominant color extraction + Haiku classification.
+    Parallel R2 fetch + color classification with the ONNX model.
     Returns count processed.
     """
     from concurrent.futures import ThreadPoolExecutor
@@ -810,10 +458,6 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
         try:
             resp      = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
             img_bytes = resp["Body"].read()
-            pil       = Image.open(BytesIO(img_bytes)).convert("RGB")
-            dom_hue, dom_sat = extract_dominant_color(pil)
-            item["dominant_hue"] = dom_hue
-            item["dominant_sat"] = dom_sat
             _is_portrait_loc = item.get("location", "").strip().lower() in {
                 loc.strip().lower() for loc in PORTRAIT_LOCATIONS
             }
@@ -1343,35 +987,6 @@ def get_subfolders(date: str, location: str):
         "items":     items,
         "has_items": len(items) > 0
     }
-
-
-@app.get("/api/families")
-def get_families(date: str, location: str):
-    """Return last-name subfolders for a location, plus preview photos for each."""
-    families = {}
-    for item in data:
-        if item["date"] != date:
-            continue
-        if clean_location(item["location"]) != location:
-            continue
-        ln = item.get("last_name", "").strip()
-        if not ln:
-            continue
-        if ln not in families:
-            families[ln] = []
-        families[ln].append(item["path"])
-
-    def pick_four(photos):
-        n = len(photos)
-        if n <= 4:
-            return photos
-        step = n / 4
-        return [photos[int(i * step)] for i in range(4)]
-
-    result = []
-    for name in sorted(families.keys()):
-        result.append({"name": name, "previews": pick_four(families[name])})
-    return {"families": result, "has_families": len(result) > 0}
 
 
 @app.get("/api/last-name-search")
@@ -4521,20 +4136,6 @@ def _fetch_wc_orders(after: str = None, before: str = None, per_page: int = 100)
     except Exception:
         return []
 
-def _list_tokens():
-    """List all download tokens from R2."""
-    tokens = {}
-    try:
-        paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
-            for obj in page.get("Contents", []):
-                key = obj["Key"]  # downloads/{token}.json
-                token = key.replace("downloads/", "").replace(".json", "")
-                tokens[token] = key
-    except Exception:
-        pass
-    return tokens
-
 def _get_best_token_for_order(order_id):
     """Return (token, rec, expires_dt) for the order's download token.
     Fast path (2 R2 reads): checks the per-order index written by _store_token.
@@ -5851,14 +5452,6 @@ a.back{{color:#F5C518;font-size:.9rem}}</style></head><body>
 # PHOTO MANAGEMENT — HELPERS & DATA
 # ─────────────────────────────────────────
 
-LOCATIONS_LIST = [
-    "Lone Peak Portraits",
-    "Explorer Gondola",
-    "Ramcharger Portraits",
-    "Mountain Biking",
-    "Adventure Zip Line",
-]
-
 def _r2_json_load(key, default=None):
     try:
         obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
@@ -6156,254 +5749,7 @@ def api_upload_locations():
         "categories": categories,
     }
 
-@app.post("/api/upload/presign")
-async def upload_presign(request: Request):
-    body = await request.json()
-    p = _auth_photographer(body.get("pin", ""))
-    if not p:
-        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
-    date     = body.get("date", datetime.now().strftime("%Y-%m-%d"))
-    location = body.get("location", "")
-    files    = body.get("files", [])
-    if not location or not files:
-        return JSONResponse(status_code=400, content={"error": "Missing location or files"})
-
-    loc_slug     = location.lower().replace(" ", "-")
-    pending_meta = _load_pending_meta()
-    existing     = {m["key"] for m in pending_meta}
-    new_meta     = []
-    urls         = []
-
-    is_portrait  = location.strip().lower() in PORTRAIT_LOCATIONS
-    folder       = body.get("folder", "").strip() if is_portrait else ""
-    batch_id     = body.get("batch_id") or str(uuid.uuid4())[:8]
-    batch_total  = len(files)
-
-    for f in files:
-        filename = os.path.basename(f["name"])
-        folder_slug = folder.lower().replace(" ", "-") if folder else "unfiled"
-        key      = f"pending/{date}/{p['id']}/{folder_slug}/{filename}"
-        presigned = s3.generate_presigned_url(
-            "put_object",
-            Params={"Bucket": R2_BUCKET, "Key": key,
-                    "ContentType": f.get("type", "image/jpeg")},
-            ExpiresIn=7200,
-        )
-        urls.append({"key": key, "url": presigned, "filename": filename})
-        if key not in existing:
-            new_meta.append({
-                "key": key, "filename": filename,
-                "date": date, "location": location,
-                "folder": folder,
-                "batch_id": batch_id,
-                "batch_total": batch_total,
-                "photographer_id": p["id"],
-                "photographer_name": p["name"],
-                "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                "status": "presigned",
-            })
-
-    if new_meta:
-        pending_meta.extend(new_meta)
-        _save_pending_meta(pending_meta)
-
-    return {"urls": urls, "batch_id": batch_id, "batch_total": batch_total}
-
-@app.post("/api/upload/confirm")
-async def upload_confirm(request: Request):
-    body = await request.json()
-    key  = body.get("key")
-    if not key:
-        return JSONResponse(status_code=400, content={"error": "Missing key"})
-    meta = _load_pending_meta()
-    for m in meta:
-        if m["key"] == key and m.get("status") == "presigned":
-            m["status"] = "pending"
-            m["uploaded_at"] = datetime.now(timezone.utc).isoformat()
-            break
-    _save_pending_meta(meta)
-    return {"confirmed": key}
-
 # ── Pending (cull feed) ──
-@app.get("/api/pending/dates")
-def pending_dates(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    meta  = _load_pending_meta()
-    dates = sorted({m["date"] for m in meta if m.get("status") == "pending"}, reverse=True)
-    return {"dates": dates}
-
-@app.get("/api/pending")
-def get_pending(request: Request, date: str = Query(None), location: str = Query(None)):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    if not date:
-        date = datetime.now().strftime("%Y-%m-%d")
-    meta  = _load_pending_meta()
-    items = [m for m in meta
-             if m.get("status") == "pending" and m.get("date") == date
-             and (not location or m.get("location","").lower() == location.lower())]
-    for item in items:
-        item["thumb_url"] = _presigned_get(item["key"])
-    return {"items": items, "date": date}
-
-@app.post("/api/cull/organize")
-async def cull_organize(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body   = await request.json()
-    keys   = body.get("keys", [])
-    folder = body.get("folder", "").strip()
-    if not keys:
-        return JSONResponse(status_code=400, content={"error": "Missing keys"})
-    meta = _load_pending_meta()
-    for m in meta:
-        if m["key"] in keys:
-            m["folder"] = folder
-    _save_pending_meta(meta)
-    return {"updated": len(keys)}
-
-@app.post("/api/cull/rename-folder")
-async def cull_rename_folder(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body       = await request.json()
-    old_folder = body.get("old_folder", "").strip()
-    new_folder = body.get("new_folder", "").strip()
-    if not old_folder or not new_folder:
-        return JSONResponse(status_code=400, content={"error": "Missing folder names"})
-    meta = _load_pending_meta()
-    updated = 0
-    for m in meta:
-        if m.get("folder", "") == old_folder:
-            m["folder"] = new_folder
-            updated += 1
-    _save_pending_meta(meta)
-    return {"updated": updated}
-
-@app.post("/api/cull/reject")
-async def cull_reject(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body = await request.json()
-    keys = body.get("keys", [])
-    if not keys:
-        return JSONResponse(status_code=400, content={"error": "No keys"})
-    meta       = _load_pending_meta()
-    trash_meta = _load_trash_meta()
-    now        = datetime.now(timezone.utc)
-    purge_at   = (now + timedelta(days=7)).isoformat()
-    count      = 0
-    for m in meta:
-        if m["key"] not in keys or m.get("status") != "pending":
-            continue
-        uid       = str(uuid.uuid4())[:8]
-        trash_key = f"trash/{uid}_{m['filename']}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
-                           Key=trash_key)
-            s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
-        except Exception as e:
-            print(f"Trash move failed {m['key']}: {e}")
-            continue
-        trash_meta.append({
-            "key": trash_key, "original_key": m["key"],
-            "filename": m["filename"], "date": m["date"],
-            "location": m["location"], "folder": m.get("folder"),
-            "photographer_id": m.get("photographer_id"),
-            "photographer_name": m.get("photographer_name", ""),
-            "trashed_at": now.isoformat(), "purge_at": purge_at,
-        })
-        m["status"] = "trashed"
-        count += 1
-    _save_pending_meta(meta)
-    _save_trash_meta(trash_meta)
-    return {"trashed": count}
-
-@app.post("/api/cull/golive")
-async def cull_golive(request: Request):
-    global data
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body     = await request.json()
-    date     = body.get("date", "")
-    location = body.get("location", "")
-    folder   = (body.get("folder") or "").strip()
-    meta     = _load_pending_meta()
-    to_pub   = [
-        m for m in meta
-        if m.get("status") == "pending"
-        and m.get("date") == date
-        and m.get("location", "").lower() == location.lower()
-        and (m.get("folder") or "").lower() == folder.lower()
-    ]
-    if not to_pub:
-        return JSONResponse(status_code=404, content={"error": "No pending photos found"})
-
-    location    = clean_location(location)
-    loc_slug    = location.lower().replace(" ", "-")
-    folder_slug = folder.lower().replace(" ", "-") if folder else ""
-    is_portrait = location.lower() in PORTRAIT_LOCATIONS
-    existing    = {item["path"] for item in data}
-    published   = []
-    to_embed    = []
-
-    for m in to_pub:
-        if folder_slug:
-            img_key = f"images/{date}/{loc_slug}/{folder_slug}/{m['filename']}"
-        else:
-            img_key = f"images/{date}/{loc_slug}/{m['filename']}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
-                           Key=img_key)
-            s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
-        except Exception as e:
-            print(f"Go Live failed {m['key']}: {e}")
-            continue
-        m["status"] = "live"
-        m["live_key"] = img_key
-        if img_key not in existing:
-            new_item = {
-                "path":            img_key,
-                "date":            date,
-                "location":        location,
-                "last_name":       folder if is_portrait else "",
-                "group":           "" if is_portrait else folder,
-                "photographer_id": m.get("photographer_id"),
-            }
-            data.append(new_item)
-            to_embed.append(new_item)
-            existing.add(img_key)
-        else:
-            # Re-upload of existing path — re-classify
-            for it in data:
-                if it["path"] == img_key:
-                    it["dominant_hue"]  = None
-                    it["dominant_sat"]  = None
-                    it["jacket_colors"] = None
-                    it["pants_colors"]  = None
-                    to_embed.append(it)
-                    break
-        published.append(img_key)
-
-    _save_pending_meta(meta)
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(),
-                  ContentType="application/json")
-
-    if to_embed:
-        def _embed_bg():
-            count = embed_items_fast(to_embed)
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(), ContentType="application/json")
-            print(f"Cull go-live classify done: {count}/{len(to_embed)}")
-        threading.Thread(target=_embed_bg, daemon=True).start()
-
-    thumbs_job = _queue_new_photo_thumbs(published)
-    return {"published": len(published), "thumbs_job_id": thumbs_job}
-
 # ── Trash ──
 @app.get("/api/trash")
 def get_trash_ep(request: Request):
@@ -6828,10 +6174,6 @@ def index_head():
 def checkout_page():
     return HTMLResponse(open("templates/checkout.html").read())
 
-@app.get("/upload", response_class=HTMLResponse)
-def upload_page():
-    return HTMLResponse(open("templates/upload.html").read())
-
 @app.get("/clockin", response_class=HTMLResponse)
 def clockin_page():
     return HTMLResponse(open("templates/clockin.html").read())
@@ -6866,140 +6208,6 @@ def pos_manifest():
     })
 
 # ── Upload downloads ──
-@app.get("/api/uploads")
-def list_uploads(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    meta = _load_pending_meta()
-    batches = {}
-    for m in meta:
-        status = m.get("status")
-        if status not in ("pending", "presigned"):
-            continue
-        bid = m.get("batch_id", f"{m.get('photographer_id')}_{m.get('date')}_{m.get('folder')}")
-        if bid not in batches:
-            batches[bid] = {
-                "batch_id": bid,
-                "photographer_id": m.get("photographer_id", ""),
-                "photographer_name": m.get("photographer_name", "Unknown"),
-                "date": m.get("date", ""),
-                "folder": m.get("folder") or "Unfiled",
-                "received": 0,
-                "expected": m.get("batch_total", 0),
-                "first_seen": m.get("uploaded_at", ""),
-            }
-        if status == "pending":
-            batches[bid]["received"] += 1
-        if not batches[bid]["expected"]:
-            batches[bid]["expected"] = m.get("batch_total", 0)
-        dc = m.get("download_count", 0)
-        if dc > batches[bid].get("download_count", 0):
-            batches[bid]["download_count"] = dc
-    result = sorted(batches.values(), key=lambda x: x["first_seen"])
-    return {"batches": result}
-
-@app.get("/api/uploads/zip-all")
-def download_all_zip(request: Request, batch_id: str = Query(...)):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    meta = _load_pending_meta()
-    items = [m for m in meta
-             if m.get("status") in ("pending", "presigned") and
-             m.get("batch_id", f"{m.get('photographer_id')}_{m.get('date')}_{m.get('folder')}") == batch_id]
-    if not items:
-        return JSONResponse(status_code=404, content={"error": "No files found"})
-
-    photographer_name = items[0].get("photographer_name", "photos").replace(" ", "_")
-    date = items[0].get("date", "")
-    folder_label = items[0].get("folder", "").replace(" ", "_") or "upload"
-
-    # Fetch all photos from R2 in parallel, then build zip in memory
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    def fetch_one(m):
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=m["key"])
-        return (m.get("folder") or "Unfiled", m["filename"], obj["Body"].read())
-
-    file_data = []
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        futures = {ex.submit(fetch_one, m): m for m in items}
-        for f in as_completed(futures):
-            try:
-                file_data.append(f.result())
-            except Exception as e:
-                print(f"zip fetch failed: {e}")
-
-    buf = BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
-        for folder_name, filename, data_bytes in file_data:
-            zf.writestr(f"{folder_name}/{filename}", data_bytes)
-    zip_bytes = buf.getvalue()
-
-    # Increment download count
-    meta = _load_pending_meta()
-    for m in meta:
-        if m.get("batch_id") == batch_id:
-            m["download_count"] = m.get("download_count", 0) + 1
-    _save_pending_meta(meta)
-
-    zip_filename = f"{date}_{photographer_name}_{folder_label}.zip"
-    from fastapi.responses import Response
-    return Response(content=zip_bytes, media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'})
-
-
-@app.delete("/api/uploads/batch/{batch_id}")
-def trash_batch(batch_id: str, request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    meta = _load_pending_meta()
-    items = [m for m in meta if m.get("batch_id") == batch_id
-             and m.get("status") in ("pending", "presigned")]
-    if not items:
-        return JSONResponse(status_code=404, content={"error": "No files found"})
-
-    now = datetime.now(timezone.utc)
-    purge_at = (now + timedelta(days=7)).isoformat()
-    photographer_id = items[0].get("photographer_id", "")
-
-    photographer_name = items[0].get("photographer_name", "")
-    date = items[0].get("date", "")
-    location = items[0].get("location", "")
-
-    from concurrent.futures import ThreadPoolExecutor
-    import threading
-    trash_lock = threading.Lock()
-    trash_meta = _load_trash_meta()
-
-    def move_one(m):
-        uid = str(uuid.uuid4())[:8]
-        trash_key = f"upload_trash/{uid}_{m['filename']}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": m["key"]},
-                           Key=trash_key)
-            s3.delete_object(Bucket=R2_BUCKET, Key=m["key"])
-            entry = {"key": trash_key, "original_key": m["key"],
-                     "filename": m["filename"], "folder": m.get("folder", ""),
-                     "batch_id": batch_id, "photographer_id": photographer_id,
-                     "photographer_name": photographer_name,
-                     "date": date, "location": location,
-                     "trashed_at": now.isoformat(), "purge_at": purge_at}
-            with trash_lock:
-                trash_meta.append(entry)
-        except Exception as e:
-            print(f"Trash move failed {m['key']}: {e}")
-
-    with ThreadPoolExecutor(max_workers=10) as ex:
-        list(ex.map(move_one, items))
-
-    for m in meta:
-        if m.get("batch_id") == batch_id:
-            m["status"] = "downloaded"
-    _save_pending_meta(meta)
-    _save_trash_meta(trash_meta)
-    return {"ok": True}
-
-
 @app.post("/api/trash/restore-batch")
 async def trash_restore_batch(request: Request):
     if not _admin_authed(request):
@@ -7038,18 +6246,6 @@ async def trash_restore_batch(request: Request):
     _save_trash_meta([t for t in trash if t.get("batch_id") != batch_id])
     return {"restored": len(batch)}
 
-@app.get("/admin/downloads", response_class=HTMLResponse)
-def downloads_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/downloads")
-    return HTMLResponse(open("templates/downloads.html").read())
-
-@app.get("/admin/cull", response_class=HTMLResponse)
-def cull_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/cull")
-    return HTMLResponse(open("templates/cull.html").read())
-
 @app.get("/admin/trash", response_class=HTMLResponse)
 def trash_page(request: Request):
     if not _admin_authed(request):
@@ -7061,12 +6257,6 @@ def photographers_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/photographers")
     return HTMLResponse(open("templates/photographers.html").read())
-
-@app.get("/admin/timecards", response_class=HTMLResponse)
-def timecards_page(request: Request):
-    if not _admin_authed(request):
-        return RedirectResponse("/admin?next=/admin/timecards")
-    return HTMLResponse(open("templates/timecards.html").read())
 
 # ── ZIP PRICING TEST PAGES ────────────────────────────────────────────────────
 
@@ -7367,46 +6557,6 @@ async def api_set_folder_item_list(request: Request):
 def zip_compare_page():
     return RedirectResponse("/admin/pricing#zip")
 
-@app.get("/api/zip-compare")
-def api_zip_compare(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    folder_meta = _load_folder_meta()
-    zip_pricing = _load_zip_pricing()
-    tiers_list = zip_pricing.get("tiers", [])
-    folders = {}
-    for item in data:
-        loc = item.get("location", "").strip().lower()
-        if loc not in ZIP_LOCS_SET:
-            continue
-        date = item.get("date", "")
-        location = item.get("location", "").strip()
-        last_name = (item.get("last_name") or item.get("group") or "").strip()
-        if not last_name:
-            continue
-        fk = _folder_key(date, location, last_name)
-        if fk not in folders:
-            group_size = folder_meta.get(fk, {}).get("group_size")
-            tier = next((t for t in tiers_list if str(t.get("people")) == str(group_size)), None) if group_size else None
-            folders[fk] = {
-                "folder_key": fk, "date": date, "location": location,
-                "last_name": last_name, "photo_count": 0,
-                "group_size": group_size, "tier": tier, "preview_paths": [],
-            }
-        folders[fk]["photo_count"] += 1
-        if len(folders[fk]["preview_paths"]) < 4:
-            folders[fk]["preview_paths"].append(item["path"])
-    result = []
-    for f in sorted(folders.values(), key=lambda x: (x["date"], x["last_name"]), reverse=True):
-        previews = []
-        for path in f.pop("preview_paths"):
-            try:
-                previews.append(_presigned_get(to_r2_key(path), expires=3600))
-            except:
-                pass
-        result.append({**f, "previews": previews})
-    return {"folders": result}
-
 @app.get("/api/zip-preview/{date}/{last_name}")
 def api_zip_preview(request: Request, date: str, last_name: str):
     if not _admin_authed(request):
@@ -7646,56 +6796,6 @@ async def admin_push_live(request: Request):
         threading.Thread(target=_embed_bg, daemon=True).start()
 
     return {"pushed": pushed, "job_id": job_id, "classify_total": len(to_embed)}
-
-
-@app.post("/api/admin/recolor-all")
-async def admin_recolor_all(request: Request):
-    """CPU-only backfill: extract dominant color for photos that have an embedding
-    but no dominant_hue yet. Fast — no GPU required."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    to_color = [it for it in data if it.get("embedding") is not None
-                and it.get("dominant_hue") is None and not it.get("draft")]
-    if not to_color:
-        return {"queued": 0, "message": "All indexed photos already have color data"}
-
-    job_id = str(uuid.uuid4())[:8]
-    _embed_jobs[job_id] = {"total": len(to_color), "done": 0, "finished": False}
-
-    def _bg(jid=job_id):
-        from concurrent.futures import ThreadPoolExecutor
-
-        def _fetch_and_color(item):
-            try:
-                resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-                raw  = resp["Body"].read()
-                pil  = Image.open(BytesIO(raw)).convert("RGB")
-                hue, sat = extract_dominant_color(pil)
-                item["dominant_hue"] = hue
-                item["dominant_sat"] = sat
-                return True
-            except Exception as e:
-                print(f"recolor failed {item['path']}: {e}")
-                return False
-
-        done = 0
-        batch_size = 64
-        for i in range(0, len(to_color), batch_size):
-            batch = to_color[i:i + batch_size]
-            with ThreadPoolExecutor(max_workers=16) as ex:
-                results = list(ex.map(_fetch_and_color, batch))
-            done += sum(results)
-            if jid in _embed_jobs:
-                _embed_jobs[jid]["done"] = done
-
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
-        if jid in _embed_jobs:
-            _embed_jobs[jid]["finished"] = True
-        print(f"Recolor done: {done}/{len(to_color)}")
-
-    threading.Thread(target=_bg, daemon=True).start()
-    return {"queued": len(to_color), "job_id": job_id}
 
 
 _pos_thumbs_job = {"job_id": None}
