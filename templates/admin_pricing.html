@@ -1598,13 +1598,33 @@ function pinClear(){ _pinVal=''; _pinSync(); document.getElementById('pin-err').
 function _pinSync(){
   document.querySelectorAll('#pin-dots .pin-dot').forEach((d,i)=>d.classList.toggle('filled',i<_pinVal.length));
 }
+// The owner's PIN (checked by the server) unlocks this page for an hour.
 async function _pinSubmit(){
   try{
-    const r=await fetch('/api/photographer/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:_pinVal})});
+    const r=await fetch('/api/admin/owner-unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:_pinVal})});
     if(r.ok){ document.getElementById('pin-gate').style.display='none'; }
-    else{ document.getElementById('pin-err').textContent='Incorrect PIN'; _pinVal=''; _pinSync(); }
+    else{ const d=await r.json().catch(()=>({})); document.getElementById('pin-err').textContent=d.error||'Incorrect PIN'; _pinVal=''; _pinSync(); }
   }catch(e){ document.getElementById('pin-err').textContent='Error — try again'; _pinVal=''; _pinSync(); }
 }
+function _showPinGate(msg){
+  const g=document.getElementById('pin-gate'); if(!g) return;
+  _pinVal=''; _pinSync();
+  document.getElementById('pin-err').textContent=msg||'';
+  g.style.display='flex'; g.setAttribute('tabindex','-1'); g.focus();
+}
+// Already unlocked in the last hour? Skip the PIN screen.
+fetch('/api/admin/owner-status').then(r=>r.json()).then(d=>{
+  if(d.unlocked) document.getElementById('pin-gate').style.display='none';
+}).catch(()=>{});
+// If the hour runs out while the page is open, the next change asks for the PIN again.
+(function(){
+  const _fetch=window.fetch.bind(window);
+  window.fetch=async function(...args){
+    const r=await _fetch(...args);
+    if(r.status===403){ try{ const d=await r.clone().json(); if(d.pin_required) _showPinGate('Your PIN timed out — enter it, then try again'); }catch(e){} }
+    return r;
+  };
+})();
 document.addEventListener('keydown',function(e){
   if(!document.getElementById('pin-gate')||document.getElementById('pin-gate').style.display==='none') return;
   if(e.key>='0'&&e.key<='9') pinKey(e.key);

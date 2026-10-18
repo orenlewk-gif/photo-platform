@@ -97,11 +97,12 @@ def test_correct_pin_still_logs_in(client):
 
 # ── Timecards ────────────────────────────────────────────────────────────────
 
-def test_timecard_edit_delete_require_admin(client, admin_client):
+def test_timecard_edit_delete_require_admin_and_the_owner_pin(client, admin_client, owner_client):
     assert client.put("/api/clock/record/rec1", json={"location": "x"}).status_code == 401
     assert client.delete("/api/clock/record/rec1").status_code == 401
-    assert admin_client.put("/api/clock/record/rec1", json={"location": "Base"}).status_code == 200
-    assert admin_client.delete("/api/clock/record/rec1").status_code == 200
+    assert admin_client.put("/api/clock/record/rec1", json={"location": "x"}).status_code == 403
+    assert owner_client.put("/api/clock/record/rec1", json={"location": "Base"}).status_code == 200
+    assert owner_client.delete("/api/clock/record/rec1").status_code == 200
 
 
 def test_clock_in_out_still_work_with_pin(client):
@@ -171,3 +172,83 @@ def test_links_page_only_shows_a_real_package_id(admin_client):
     assert "alert(1)" not in page
     page = admin_client.get("/admin/links", params={"new": "a1b2c3d4e5f6a7b8"}).text
     assert "/package/a1b2c3d4e5f6a7b8" in page
+
+
+# ── Owner PIN: only Oren's PIN, checked by the server ────────────────────────
+
+LOCKED = [
+    ("post", "/api/admin/print-pricing", {}),
+    ("post", "/api/admin/portrait-pricing", {}), ("post", "/api/admin/portrait-locations", {"locations": []}),
+    ("post", "/api/admin/private-session-pricing", {}), ("post", "/api/admin/pos-products", {}),
+    ("post", "/api/admin/items-bundles", {}), ("post", "/api/admin/frames/prices", []),
+    ("post", "/api/zip-pricing", {}),
+    ("get", "/api/photographers", None), ("post", "/api/photographers", {"name": "X", "pin": "9999"}),
+    ("put", "/api/photographers/p1", {"name": "X"}), ("delete", "/api/photographers/p1", None),
+    ("get", "/api/photographers/commission", None), ("get", "/api/clock/records", None),
+    ("post", "/api/clock/record", {}), ("put", "/api/clock/record/r1", {}), ("delete", "/api/clock/record/r1", None),
+]
+
+
+@pytest.fixture()
+def owner_on_file(main_module):
+    S3 = __import__("boto3").client("s3", region_name="us-east-1")
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json", Body=__import__("json").dumps([
+        {"id": "p1", "name": "Oren Lewkowski", "pin": "7777"},
+        {"id": "p2", "name": "Dana Shooter", "pin": "2222"}]).encode())
+    main_module._pin_fail_limiter._calls.clear()
+
+
+@pytest.mark.parametrize("method,url,body", LOCKED)
+def test_prices_and_photographers_need_the_owner_pin(admin_client, owner_on_file, method, url, body):
+    kwargs = {"json": body} if body is not None else {}
+    r = getattr(admin_client, method)(url, **kwargs)
+    assert r.status_code == 403 and r.json()["pin_required"] is True
+
+
+def test_only_the_owners_pin_unlocks_and_then_it_works(admin_client, client, owner_on_file):
+    assert client.post("/api/admin/owner-unlock", json={"pin": "7777"}).status_code == 401      # not signed in
+    assert admin_client.post("/api/admin/owner-unlock", json={"pin": "2222"}).status_code == 401  # a photographer's PIN
+    assert admin_client.get("/api/admin/owner-status").json() == {"unlocked": False}
+    r = admin_client.post("/api/admin/owner-unlock", json={"pin": "7777"})
+    assert r.status_code == 200
+    assert admin_client.get("/api/admin/owner-status").json() == {"unlocked": True}
+    assert admin_client.get("/api/photographers").status_code == 200                          # now allowed
+
+
+def test_owner_unlock_runs_out(admin_client, owner_on_file, main_module):
+    import time
+    admin_client.cookies.set(main_module.OWNER_COOKIE, main_module._owner_token(int(time.time()) - 1))
+    assert admin_client.get("/api/photographers").status_code == 403
+
+
+def test_a_made_up_unlock_cookie_does_nothing(admin_client, owner_on_file, main_module):
+    import time
+    admin_client.cookies.set(main_module.OWNER_COOKIE, f"{int(time.time()) + 600}.forged")
+    assert admin_client.get("/api/photographers").status_code == 403
+
+
+def test_wrong_owner_pins_lock_out(admin_client, owner_on_file):
+    for _ in range(10):
+        admin_client.post("/api/admin/owner-unlock", json={"pin": "0000"})
+    assert admin_client.post("/api/admin/owner-unlock", json={"pin": "7777"}).status_code == 429
+
+
+def test_public_price_lists_stay_open(client):
+    for url in ("/api/pricing?location=Winter%20Action", "/api/print-pricing", "/api/pos-products",
+                "/api/portrait-pricing", "/api/private-session-pricing"):
+        assert client.get(url).status_code == 200, url
+
+
+def test_signing_out_also_locks_the_owner_pages(owner_client, main_module):
+    r = owner_client.get("/admin/logout", follow_redirects=False)
+    cleared = [h for h in r.headers.get_list("set-cookie") if h.startswith(main_module.OWNER_COOKIE + "=")]
+    assert cleared and ("Max-Age=0" in cleared[0] or "expires=" in cleared[0].lower())
+
+
+
+def test_activities_page_saves_need_only_the_login(client, admin_client):
+    # The Activities page has no PIN screen (Oren's choice), so its two saves stay login-only
+    assert client.post("/api/admin/pricing", json={}).status_code == 401
+    pricing = admin_client.get("/api/admin/pricing").json()
+    assert admin_client.post("/api/admin/pricing", json=pricing).status_code == 200
+    assert admin_client.post("/api/admin/activity-groups", json={}).status_code == 200

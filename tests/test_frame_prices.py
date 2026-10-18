@@ -25,15 +25,15 @@ def test_requires_admin(client, wc):
     assert wc == []
 
 
-def test_valid_price_sent_to_woocommerce(admin_client, wc):
-    r = admin_client.post("/api/admin/frames/prices", json=[{"variation_id": 1057, "price": "64.5"}])
+def test_valid_price_sent_to_woocommerce(owner_client, wc):
+    r = owner_client.post("/api/admin/frames/prices", json=[{"variation_id": 1057, "price": "64.5"}])
     assert r.json()["results"] == [{"variation_id": 1057, "ok": True}]
     assert wc[0][0].endswith("/products/1034/variations/1057")
     assert wc[0][1] == {"regular_price": "64.50"}
 
 
 @pytest.mark.parametrize("bad", ["", "0", "-5", "abc", None])
-def test_blank_zero_or_invalid_price_refused(admin_client, wc, bad):
-    r = admin_client.post("/api/admin/frames/prices", json=[{"variation_id": 1057, "price": bad}])
+def test_blank_zero_or_invalid_price_refused(owner_client, wc, bad):
+    r = owner_client.post("/api/admin/frames/prices", json=[{"variation_id": 1057, "price": bad}])
     assert r.json()["results"][0]["ok"] is False
     assert wc == []

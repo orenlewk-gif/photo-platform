@@ -1988,6 +1988,9 @@ def api_shop_prices():
 async def update_frame_prices(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     if not WC_KEY or not WC_SECRET:
         return JSONResponse(status_code=503, content={"error": "WooCommerce credentials not configured"})
     body = await request.json()
@@ -3133,6 +3136,9 @@ def api_pos_products():
 async def api_save_pos_products(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     _save_pos_products(body)
     return {"ok": True}
@@ -4212,6 +4218,7 @@ async def admin_login(request: Request):
 def admin_logout():
     resp = RedirectResponse("/admin")
     resp.delete_cookie(ADMIN_COOKIE)
+    resp.delete_cookie(OWNER_COOKIE)     # signing out also locks the PIN-protected pages
     return resp
 
 def _fetch_wc_orders(after: str = None, before: str = None, per_page: int = 100):
@@ -5644,6 +5651,73 @@ def _pin_locked_out(request: Request) -> bool:
 def _record_pin_failure(request: Request):
     _pin_fail_limiter.is_allowed(_client_ip(request))
 
+# ── Owner PIN (the Pricing and Admin pages) ────────────────────────────────────
+# On top of the studio login, what the Pricing and Admin (photographers) pages save,
+# and the photographer list itself, need the owner's own POS PIN (the photographer
+# named OWNER_NAME), checked here on the server. Once entered, that browser stays
+# unlocked for an hour. Digital photo prices and activity groups are also edited on
+# the Activities page, which has no PIN, so those two saves only need the login.
+OWNER_NAME = "Oren Lewkowski"
+OWNER_COOKIE = "ci_owner"
+OWNER_UNLOCK_SECONDS = 3600
+
+
+def _owner_pin():
+    owner = next((p for p in _load_photographers()
+                  if (p.get("name") or "").strip().lower() == OWNER_NAME.lower()), None)
+    return str((owner or {}).get("pin") or "") or None
+
+
+def _owner_token(expires: int) -> str:
+    sig = hmac.new((ADMIN_PASSWORD or "").encode(), f"owner|{expires}".encode(), hashlib.sha256).hexdigest()
+    return f"{expires}.{sig}"
+
+
+def _owner_unlocked(request: Request) -> bool:
+    if not ADMIN_PASSWORD or not _admin_authed(request):
+        return False
+    token = request.cookies.get(OWNER_COOKIE, "")
+    try:
+        expires = int(token.split(".", 1)[0])
+    except ValueError:
+        return False
+    return expires > _time.time() and hmac.compare_digest(token, _owner_token(expires))
+
+
+def _owner_required(request: Request):
+    """None when the owner PIN has been entered (within the hour), else the refusal."""
+    if _owner_unlocked(request):
+        return None
+    return JSONResponse(status_code=403, content={"error": "Enter your PIN to continue", "pin_required": True})
+
+
+@app.get("/api/admin/owner-status")
+def owner_status(request: Request):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"unlocked": _owner_unlocked(request)}
+
+
+@app.post("/api/admin/owner-unlock")
+def owner_unlock(request: Request, body: dict = Body(...)):
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if _pin_locked_out(request):
+        return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — wait 10 minutes"})
+    owner_pin = _owner_pin()
+    if not owner_pin:
+        return JSONResponse(status_code=503, content={
+            "error": f"No photographer named {OWNER_NAME} — add one with your PIN in Photographers first"})
+    if not hmac.compare_digest(str(body.get("pin") or "").strip(), owner_pin):
+        _record_pin_failure(request)
+        return JSONResponse(status_code=401, content={"error": "Incorrect PIN"})
+    expires = int(_time.time()) + OWNER_UNLOCK_SECONDS
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(OWNER_COOKIE, _owner_token(expires), httponly=True, samesite="strict",
+                    max_age=OWNER_UNLOCK_SECONDS)
+    return resp
+
+
 def _pos_pin_photographer(request: Request):
     """Photographer for the X-POS-PIN header, or None (also None while locked out)."""
     pin = request.headers.get("X-POS-PIN", "").strip()
@@ -5740,6 +5814,9 @@ def clock_status_ep(pin: str = Query(...)):
 async def edit_clock_record(record_id: str, request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     records = _load_clock_records()
     for r in records:
@@ -5758,6 +5835,9 @@ async def edit_clock_record(record_id: str, request: Request):
 async def delete_clock_record(record_id: str, request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     records = _load_clock_records()
     new_records = [r for r in records if r["id"] != record_id]
     if len(new_records) == len(records):
@@ -5769,6 +5849,9 @@ async def delete_clock_record(record_id: str, request: Request):
 async def create_clock_record(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     photographer_id = body.get("photographer_id", "")
     photographers = _load_photographers()
@@ -5793,6 +5876,9 @@ async def create_clock_record(request: Request):
 def get_all_clock_records(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     records = _load_clock_records()
     photographers = _load_photographers()
     return {"records": records, "photographers": photographers}
@@ -5937,12 +6023,18 @@ async def trash_autopurge():
 def list_photographers(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     return {"photographers": _load_photographers()}
 
 @app.post("/api/photographers")
 async def add_photographer(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     name = body.get("name", "").strip()
     pin  = body.get("pin", "").strip()
@@ -5965,6 +6057,9 @@ async def add_photographer(request: Request):
 async def update_photographer(pid: str, request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     photographers = _load_photographers()
     for p in photographers:
@@ -5982,6 +6077,9 @@ async def update_photographer(pid: str, request: Request):
 async def delete_photographer(pid: str, request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     photographers = [p for p in _load_photographers() if p["id"] != pid]
     _save_photographers(photographers)
     return {"deleted": True}
@@ -5992,6 +6090,9 @@ def photographer_commission(request: Request,
                              date_to:   str = Query("")):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     if not date_from:
         date_from = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
     if not date_to:
@@ -6574,6 +6675,9 @@ async def viewer_set_group_size(request: Request):
 async def api_save_zip_pricing(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     _save_zip_pricing(body)
     return {"status": "ok"}
@@ -7991,6 +8095,9 @@ def api_print_pricing():
 async def api_save_print_pricing(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     _save_print_pricing(body)
     return {"status": "ok"}
@@ -8049,6 +8156,9 @@ def api_get_portrait_locations(request: Request):
 async def api_save_portrait_locations(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body  = await request.json()
     locs  = [l.lower().strip() for l in body.get("locations", []) if l.strip()]
     _save_portrait_locations(locs)
@@ -8059,6 +8169,9 @@ async def api_save_portrait_locations(request: Request):
 async def api_save_portrait_pricing(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     _save_portrait_pricing(body)
     return {"status": "ok"}
@@ -8221,6 +8334,9 @@ def api_get_private_session_pricing():
 async def api_save_private_session_pricing(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     _save_private_session_pricing(body)
     return {"ok": True}
@@ -8247,6 +8363,9 @@ def api_get_items_bundles():
 async def api_save_items_bundles(request: Request):
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = _owner_required(request)
+    if denied:
+        return denied
     body = await request.json()
     _save_items_bundles(body)
     return {"ok": True}

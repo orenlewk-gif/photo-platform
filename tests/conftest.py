@@ -79,3 +79,14 @@ def admin_client(main_module):
     c = TestClient(main_module.app)
     c.cookies.set(main_module.ADMIN_COOKIE, main_module._make_session_token())
     return c
+
+
+@pytest.fixture()
+def owner_client(main_module):
+    """Signed into the studio AND past the owner PIN (Pricing, Activities, Photographers)."""
+    import time
+    from fastapi.testclient import TestClient
+    c = TestClient(main_module.app)
+    c.cookies.set(main_module.ADMIN_COOKIE, main_module._make_session_token())
+    c.cookies.set(main_module.OWNER_COOKIE, main_module._owner_token(int(time.time()) + 600))
+    return c

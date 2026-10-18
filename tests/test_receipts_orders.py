@@ -150,11 +150,11 @@ def test_partial_refund_reduces_the_sale(admin_client, pos_orders, no_refunds):
     assert "(-$10.00 refunded)" in html
 
 
-def test_refunded_sale_earns_no_commission(admin_client, pos_orders, no_refunds):
+def test_refunded_sale_earns_no_commission(admin_client, owner_client, pos_orders, no_refunds):
     S3.put_object(Bucket="test-bucket", Key="meta/photographers.json", Body=json.dumps([
         {"id": "p2", "name": "Dana Shooter", "pin": "2222", "file_prefix": "img"}]).encode())
     def revenue():
-        rows = admin_client.get(f"/api/photographers/commission?date_from={TODAY}&date_to={TODAY}").json()["commission"]
+        rows = owner_client.get(f"/api/photographers/commission?date_from={TODAY}&date_to={TODAY}").json()["commission"]
         return next(p for p in rows if p["id"] == "p2")["revenue"]
     assert revenue() == 25.0                                     # IMG_1.jpg sale, $25 before tax
     admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 10, "full": False})

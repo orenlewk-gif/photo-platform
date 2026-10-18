@@ -3,7 +3,7 @@ Run the app locally against a fake, in-memory R2 (moto server). Never touches pr
 
     .venv/bin/python dev/run_local.py            # http://127.0.0.1:8777
 
-Seeds a test photographer (PIN 1234), 250 made-up customers, 40 sample summer photos and
+Seeds a test photographer (PIN 1234), the owner (Oren Lewkowski, PIN 4321), 250 made-up customers, 40 sample summer photos and
 20 Winter Action photos (El Dorado Action, 2026-06-07, priced like the live site)
 so the public site, POS and studio have something to show. Admin password: "local".
 
@@ -53,7 +53,9 @@ def put_json(key, payload):
                   ContentType="application/json")
 
 
-put_json("meta/photographers.json", [{"id": "dev1", "name": "Local Tester", "pin": "1234"}])
+put_json("meta/photographers.json", [{"id": "dev1", "name": "Local Tester", "pin": "1234"},
+                                     # the owner: their PIN alone unlocks Pricing / Activities / Photographers
+                                     {"id": "dev0", "name": "Oren Lewkowski", "pin": "4321"}])
 FIRSTS = ["Ann", "Bob", "Cara", "Dan", "Eve", "Finn", "Gus", "Hana", "Ivy", "Jack"]
 LASTS  = ["Smith", "Jones", "Smythe", "Adams", "Park", "Lee", "Moore", "Nolan", "Ortiz", "Price",
           "Quinn", "Reyes", "Stone", "Tate", "Urban", "Vance", "Wells", "Young", "Zane", "Baker",
