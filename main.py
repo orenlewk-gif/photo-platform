@@ -3828,6 +3828,9 @@ def _resend_pos_receipt(order: dict) -> str:
 # ─────────────────────────────────────────
 
 WC_WEBHOOK_SECRET  = os.getenv("WC_WEBHOOK_SECRET", "")
+if not WC_WEBHOOK_SECRET:
+    print("WARNING: WC_WEBHOOK_SECRET is not set — the order webhook will refuse every message, "
+          "so paid online orders won't get their download emails")
 DOWNLOAD_EXPIRE_DAYS = 30
 SITE_URL = "https://photos.bigskyphotos.com"
 
@@ -3857,11 +3860,17 @@ async def wc_webhook(request: Request):
     body = await request.body()
     sig  = request.headers.get("X-WC-Webhook-Signature", "")
 
-    # Verify HMAC-SHA256 signature
+    # Only WooCommerce, which signs each message with the shared secret, may tell us an
+    # order was paid: an unsigned "paid" message would get photos sent for free. Without
+    # the secret nothing can be checked, so refuse (loudly) rather than trust anything.
+    if not WC_WEBHOOK_SECRET:
+        print("ORDER WEBHOOK REFUSED: WC_WEBHOOK_SECRET is not set on the server — "
+              "paid online orders are NOT getting their download emails until it is restored")
+        return Response(status_code=503)
     expected = base64.b64encode(
         hmac.new(WC_WEBHOOK_SECRET.encode(), body, hashlib.sha256).digest()
     ).decode()
-    if WC_WEBHOOK_SECRET and not hmac.compare_digest(expected, sig):
+    if not hmac.compare_digest(expected, sig):
         return Response(status_code=401)
 
     try:
