@@ -1174,7 +1174,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 const PC_UNLOCK_KEY = 'ci_pos_unlocked';
 const PC_UNLOCK_TTL = 90 * 24 * 60 * 60 * 1000; // 90 days
 
-let LOGO_FEE = 2; // loaded from /api/pricing logo_fee
+let LOGO_FEE = 2; // fallback; loadActionPricing() sets it from the Pricing settings
 
 // ─── State ───────────────────────────────────────────────────────────────────
 const S = {
@@ -2198,12 +2198,14 @@ function renderApSelCount(){
   const total = S.ap.photos.length;
   let label = n === 0 ? 'Tap photos to select' : `${n} selected`;
   if(n > 0){
-    const price = Math.min(n * 25, 115);
-    const capped = (n * 25) > 115;
+    const ap = S.actionPricing || {per_photo:25, all_photos:115};
+    const per = ap.per_photo || 25, all = ap.all_photos || 115;
+    const price = Math.min(n * per, all);
+    const capped = (n * per) > all;
     const isAll = n === total && total > 0;
-    if(isAll) label = `${n} selected — $115 (all photos)`;
-    else if(capped) label = `${n} selected — $115 (best value)`;
-    else label = `${n} selected — $${price}`;
+    if(isAll) label = `${n} selected — ${fmt(all)} (all photos)`;
+    else if(capped) label = `${n} selected — ${fmt(all)} (best value)`;
+    else label = `${n} selected — ${fmt(price)}`;
   }
   $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;
@@ -3039,7 +3041,10 @@ async function loadActionPricing(){
   try {
     const res = await fetch('/api/pricing?location=Winter Action');
     const d = await res.json();
-    if(typeof d.logo_fee === 'number') LOGO_FEE = d.logo_fee;
+    try {
+      const sp = await (await fetch('/api/shop-prices')).json();
+      if(typeof sp.logo_fee === 'number') LOGO_FEE = sp.logo_fee;
+    } catch(e){}
     const tiers = d.tiers || [];
     const oneTier = tiers.find(t => t.count === 1 || t.count === '1');
     const allTier = tiers.find(t => t.count === 'all' || t.max);

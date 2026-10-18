@@ -1635,12 +1635,12 @@ function restoreSelectedPhotos() {
 
 async function init() {
   loadCart();
+  loadShopPrices();
   // Pre-load combos so the cart bar shows the correct total even before entering a gallery
   try {
     const pRes = await fetch('/api/pricing?location=');
     const pData = await pRes.json();
     if (pData.combos) { globalCombos = pData.combos; updateCart(); }
-    if (typeof pData.logo_fee === 'number') LOGO_FEE = pData.logo_fee;
   } catch(e) {}
   const params = new URLSearchParams(location.search);
   const date   = params.get('date');
@@ -2304,7 +2304,7 @@ let _portraitPricing = null;
 const _poseExpandedMobile = new Set(); // pose indices expanded on mobile
 
 // ── Logo add-on ─────────────────────────────────────────────────────────────
-let LOGO_FEE = 2; // overwritten from /api/pricing logo_fee on init
+let LOGO_FEE = 2; // fallback; loadShopPrices() sets it from the Pricing settings
 let _qsLogo = false;
 const _digitalLogoPhotos = new Set(); // photo paths that have digital logo enabled ($2 each)
 
@@ -3507,7 +3507,6 @@ function updateCart() {
   ].filter(p => !p.frame || p.frame === 'No Frame');
   const unframedPrints = allUnframedPrints;
   if (unframedPrints.length > 0) {
-    const FREE_SHIP_THRESHOLD = 3;
     const need = FREE_SHIP_THRESHOLD - unframedPrints.length;
     if (need > 0) {
       shippingMsg = `Add <strong>${need} more unframed print${need !== 1 ? 's' : ''}</strong> for <strong>free shipping</strong>`;
@@ -3865,7 +3864,7 @@ function renderCartView() {
   const grandTotal    = subtotal + shipping;
   const unframedAll   = [...Object.values(folderCarts), { printCart }]
     .flatMap(fc => (fc.printCart || [])).filter(p => !p.frame || p.frame === 'No Frame');
-  const freeShip      = shipping === 0 && unframedAll.length >= 3;
+  const freeShip      = shipping === 0 && unframedAll.length >= FREE_SHIP_THRESHOLD;
 
   if (!html) html = '<div class="msg" style="padding:1rem 0">Your cart is empty.</div>';
 
@@ -4138,7 +4137,7 @@ function calcShipping() {
 
   // No frames → unframed prints only; free shipping at 3+
   if (unframed.length) {
-    if (unframed.length >= 3) return 0;
+    if (unframed.length >= FREE_SHIP_THRESHOLD) return 0;
     return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx]));
   }
 
@@ -4217,7 +4216,7 @@ function renderCheckoutLines() {
   }
 
   const unframedCount = allCheckoutPrints.filter(p => !p.frame || p.frame === 'No Frame').length;
-  const freeShipping  = unframedCount >= 3 && !allCheckoutPrints.some(p => p.frame && p.frame !== 'No Frame');
+  const freeShipping  = unframedCount >= FREE_SHIP_THRESHOLD && !allCheckoutPrints.some(p => p.frame && p.frame !== 'No Frame');
   const grandTotal    = Math.max(0, subtotal + shipping - discountAmt);
 
   let totalsHtml = '';
@@ -4892,6 +4891,8 @@ function setBreadcrumb(crumbs, current) {
 }
 
 // ── Print & Frame config ──
+// These are only fallbacks: loadShopPrices() replaces them with the prices from the
+// studio's Pricing settings and WooCommerce (the same ones checkout charges).
 const PRINT_SIZES = [
   { label: '5×7"',   price: 25 },
   { label: '8×10"',  price: 30 },
@@ -4905,6 +4906,33 @@ const FRAME_PRICES = [30, 40, 60, 140];
 // Flat-rate shipping per print size (5x7, 8x10, 10x13, 16x20)
 const PRINT_SHIPPING  = [8, 8, 13, 13];
 const FRAME_SHIPPING  = [15, 15, 25, 50];
+let FREE_SHIP_THRESHOLD = 3;   // unframed prints that ship free
+
+async function loadShopPrices() {
+  try {
+    const d = await (await fetch('/api/shop-prices')).json();
+    (d.print_sizes || []).forEach((s, i) => {
+      if (!PRINT_SIZES[i]) return;
+      PRINT_SIZES[i].price = s.price;
+      PRINT_SHIPPING[i]    = s.ship_print;
+      FRAME_SHIPPING[i]    = s.ship_framed;
+    });
+    // One frame price per size (the studio saves the same price for both orientations)
+    (d.frame_prices || []).forEach((f, i) => {
+      if (i < FRAME_PRICES.length && f.landscape != null) FRAME_PRICES[i] = f.landscape;
+    });
+    if (d.free_ship_threshold) FREE_SHIP_THRESHOLD = d.free_ship_threshold;
+    if (typeof d.logo_fee === 'number') LOGO_FEE = d.logo_fee;
+    // Prints already in the cart pick up the current prices
+    const allPrints = [...printCart, ...Object.values(folderCarts).flatMap(fc => fc.printCart || [])];
+    allPrints.forEach(p => {
+      if (p.frame && p.frame !== 'No Frame') p.framePrice = FRAME_PRICES[p.sizeIdx];
+      if (p._logo) p._logoPrice = LOGO_FEE;
+    });
+    recalcPrintPrices();
+    updateCart();
+  } catch (e) { /* keep the fallbacks */ }
+}
 
 const FRAME_OPTIONS = [
   {
@@ -5097,11 +5125,11 @@ function openQuickShop(i) {
     banner.style.display = '';
     banner.innerHTML = '<strong>50% off prints</strong> with your digital file purchase!';
     const unframed = printCart.filter(p => !p.frame || p.frame === 'No Frame');
-    const need = 3 - unframed.length;
+    const need = FREE_SHIP_THRESHOLD - unframed.length;
     if (need > 0) {
       shipNote.style.display = '';
       shipNote.textContent = `Add ${need} more unframed print${need !== 1 ? 's' : ''} for free shipping`;
-    } else if (unframed.length >= 3) {
+    } else if (unframed.length >= FREE_SHIP_THRESHOLD) {
       shipNote.style.display = '';
       shipNote.textContent = 'Free shipping included on your prints!';
     } else {
@@ -5138,7 +5166,6 @@ function openPrintsModal() {
   if (!photos.length) return;
 
   // Subtitle with free shipping note (unframed prints only)
-  const FREE_SHIP_THRESHOLD = 3;
   const unframedInModal = printCart.filter(p => !p.frame || p.frame === 'No Frame');
   const need = FREE_SHIP_THRESHOLD - unframedInModal.length;
   const subtitleEl = document.getElementById('pu-subtitle');
@@ -5257,7 +5284,6 @@ function addPrintFromModal(photoIdx) {
   const btn2 = document.getElementById(`pu-btn-${photoIdx}`);
   if (btn2) { btn2.textContent = 'Added ✓'; btn2.style.background = '#4ade80'; btn2.style.color = '#0c2336'; }
   // Update shipping note in subtitle
-  const FREE_SHIP_THRESHOLD = 3;
   const unframedCount = printCart.filter(p => !p.frame || p.frame === 'No Frame').length;
   const need = FREE_SHIP_THRESHOLD - unframedCount;
   const subtitleEl = document.getElementById('pu-subtitle');

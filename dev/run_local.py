@@ -3,7 +3,8 @@ Run the app locally against a fake, in-memory R2 (moto server). Never touches pr
 
     .venv/bin/python dev/run_local.py            # http://127.0.0.1:8777
 
-Seeds a test photographer (PIN 1234), 250 made-up customers and 40 sample photos
+Seeds a test photographer (PIN 1234), 250 made-up customers, 40 sample summer photos and
+20 Winter Action photos (El Dorado Action, 2026-06-07, priced like the live site)
 so the public site, POS and studio have something to show. Admin password: "local".
 
 WooCommerce, Resend and Square are replaced by in-memory fakes: frame prices can be
@@ -76,7 +77,23 @@ for i in range(40):
     s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
     sample_photos.append({"path": key, "date": key.split("/")[1], "location": "Mountain Biking",
                           "last_name": "", "group": "morning"})
+# Winter samples, priced like the live site (Winter Action category: $25 each, $115 for all)
+for i in range(20):
+    key = f"images/2026-06-07/el-dorado-action/AMS{6970 + i:05d}.JPG"
+    buf = BytesIO()
+    Image.new("RGB", (4000, 3000), (200, 210 - i * 4, 230)).save(buf, "JPEG", quality=85)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
+    sample_photos.append({"path": key, "date": "2026-06-07", "location": "El Dorado Action",
+                          "last_name": "", "group": ""})
 put_json("images.json", sample_photos)
+_pricing = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pricing.json")))
+_pricing.setdefault("activities", {})["Winter Action"] = {
+    "tiers": [{"label": "1 Photo", "count": 1, "price": 25},
+              {"label": "All Photos", "count": "all", "price": 115, "max": True}],
+    "flags": {"time_search": True, "clip": True}}
+_pricing["activity_categories"] = [{"name": "Winter Action", "acts": ["El Dorado Action"]}]
+_pricing["logo_fee"] = 2
+put_json("meta/pricing.json", _pricing)
 
 # Optional: DEV_SEED_DIR=/path loads extra files into the fake bucket (key = path
 # relative to the folder), e.g. a copy of real pricing config to reproduce a bug.
