@@ -774,83 +774,44 @@ _lastname_limiter  = _RateLimiter(max_calls=30, window=60)   # 30 req/min per IP
 # CHECKOUT PRICING HELPERS
 # ─────────────────────────────────────────
 
-def _price_from_tiers(tiers: list, count: int):
-    """Return the correct price for `count` photos given a tier list, or None if no match."""
-    all_price = None
-    max_specific = 0
-    for tier in tiers:
-        tc = tier.get("count")
-        price = float(tier.get("price", 0))
-        if tc == "all":
-            all_price = price
-        elif isinstance(tc, int) and tc == count:
-            return price
-        elif isinstance(tc, int):
-            max_specific = max(max_specific, tc)
-    if count > max_specific and all_price is not None:
-        return all_price
-    return None
+def _best_tier_price(count: int, tiers: list) -> float:
+    """The price the shop shows for `count` photos (same rule as calcPriceFor in
+    index.html / checkout.html): the cheapest mix of single photos and multi-photo
+    tiers, capped by an "Up to N" (max) tier, or by the All Photos price however
+    many photos are picked."""
+    if not tiers or count <= 0:
+        return 0.0
+    def num(t):                     # "All Photos" covers any number of photos
+        return float("inf") if t.get("count") == "all" else t.get("count")
+    all_tier = next((t for t in tiers if t.get("count") == "all"), None)
+    max_tiers = sorted((t for t in tiers if t.get("max")), key=lambda t: num(t))
+    single = next((t for t in tiers if t.get("count") == 1), None)
+    unit = float(single["price"]) if single else 25.0
+    best = count * unit
+    bundles = sorted((t for t in tiers if not t.get("max") and isinstance(t.get("count"), int)
+                      and not isinstance(t.get("count"), bool) and 1 < t["count"] <= count),
+                     key=lambda t: -t["count"])
+    for t in bundles:
+        best = min(best, (count // t["count"]) * float(t["price"]) + (count % t["count"]) * unit)
+    if max_tiers:
+        cap = next((t for t in max_tiers if count <= num(t)), None)
+        if cap and float(cap["price"]) < best:
+            best = float(cap["price"])
+    elif all_tier and best > float(all_tier["price"]):
+        best = float(all_tier["price"])
+    return round(best, 2)
+
 
 def _server_digital_price(album: dict, order_date: str) -> float:
-    """Authoritative server-side price for a digital album — never trusts client."""
-    location = (album.get("location") or "").strip()
-    family   = (album.get("last_name") or "").strip()
-    count    = int(album.get("count", 0))
-    loc_lower = location.lower()
-
-    if loc_lower in ZIP_LOCS_SET:
-        fm = _load_folder_meta()
-        fk = _folder_key(order_date, location, family)
-        group_size = fm.get(fk, {}).get("group_size")
-        if not group_size:
-            _ZIP_ALIASES = {"Nature Zip": "Nature Zip Line", "Adventure Zip": "Adventure Zip Line"}
-            alt_loc = _ZIP_ALIASES.get(location)
-            if alt_loc:
-                alt_fk = _folder_key(order_date, alt_loc, family)
-                group_size = fm.get(alt_fk, {}).get("group_size")
-        if group_size:
-            zp = _load_zip_pricing()
-            for t in zp.get("tiers", []):
-                if str(t.get("people")) == str(group_size):
-                    zip_tiers = []
-                    if t.get("one_photo"):    zip_tiers.append({"count": 1,     "price": t["one_photo"]})
-                    if t.get("two_photos"):   zip_tiers.append({"count": 2,     "price": t["two_photos"]})
-                    if t.get("three_photos"): zip_tiers.append({"count": 3,     "price": t["three_photos"]})
-                    if t.get("all_photos"):   zip_tiers.append({"count": "all", "price": t["all_photos"]})
-                    p = _price_from_tiers(zip_tiers, count)
-                    if p is not None:
-                        return p
-
-    pricing = _load_pricing()
-
-    date_ov = pricing.get("date_overrides", {}).get(order_date, {})
-    ov_key = next((k for k in date_ov if k.lower() == loc_lower), None)
-    if ov_key:
-        p = _price_from_tiers(date_ov[ov_key].get("tiers", []), count)
-        if p is not None:
-            return p
-
-    activities = pricing.get("activities", {})
-    act_key = next((k for k in activities if k.lower() == loc_lower), None)
-    if act_key:
-        act = activities[act_key]
-        if "per_photo" in act or "all_photos" in act:
-            per   = float(act.get("per_photo", 0))
-            all_p = float(act.get("all_photos", 0))
-            if count == 1 and per:
-                return per
-            return all_p if all_p else per * count
-        p = _price_from_tiers(act.get("tiers", []), count)
-        if p is not None:
-            return p
-
-    default_tiers = pricing.get("default", {}).get("tiers", [
-        {"count": 1,     "price": 25},
-        {"count": 3,     "price": 60},
-        {"count": "all", "price": 90},
-    ])
-    p = _price_from_tiers(default_tiers, count)
-    return p if p is not None else 0.0
+    """Price for a digital album: the tiers the shop shows for that folder, with the
+    shop's best-price rule. Raises ValueError if the folder has no prices set up."""
+    count = int(album.get("count", 0))
+    tiers = _pricing_for((album.get("location") or "").strip() or None,
+                         (album.get("date") or order_date or "").strip() or None,
+                         (album.get("last_name") or "").strip() or None).get("tiers") or []
+    if count > 0 and not tiers:
+        raise ValueError(f"Prices for {album.get('location') or 'these photos'} aren't set up yet")
+    return _best_tier_price(count, tiers)
 
 def _server_print_price(size_idx: int) -> float:
     """Authoritative server-side price for a print by size index."""
@@ -1284,6 +1245,13 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
 
 @app.get("/api/pricing")
 def get_pricing(request: Request, location: str = Query(None), date: str = Query(None), family: str = Query(None)):
+    return _pricing_for(location, date, family)
+
+
+def _pricing_for(location: str = None, date: str = None, family: str = None) -> dict:
+    """The pricing tiers the shop shows for a folder (location, date, family): zip group
+    pricing, date overrides, category pricing, the location's own pricing, then its
+    item list. Checkout prices with the same tiers, so what's shown is what's charged."""
     default = {"tiers": [
         {"label": "1 Photo",    "count": 1,     "price": 25},
         {"label": "3 Photos",   "count": 3,     "price": 60},

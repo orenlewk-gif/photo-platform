@@ -523,10 +523,16 @@ let FRAME_SHIPPING = [15, 15, 25, 50];
 let FREE_SHIP_THRESHOLD = 3;
 
 function calcPriceFor(count, pricing) {
+  // Same rule as the gallery (index.html) and the server (_best_tier_price):
+  // an "All Photos" price caps the total however many photos are picked.
   if (!pricing || !pricing.tiers || count === 0) return 0;
   const tiers      = pricing.tiers;
   const allTier    = tiers.find(t => t.count === 'all');
-  const maxTiers   = tiers.filter(t => t.max).map(t => ({ ...t, count: t.count === 'all' ? 30 : t.count })).sort((a, b) => a.count - b.count);
+  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => {
+    if (a.count === 'all') return 1;
+    if (b.count === 'all') return -1;
+    return a.count - b.count;
+  });
   const singleTier = tiers.find(t => t.count === 1);
   const singleUnit = singleTier ? singleTier.price : 25;
   let best = count * singleUnit;
@@ -538,7 +544,7 @@ function calcPriceFor(count, pricing) {
     if (cost < best) best = cost;
   }
   if (maxTiers.length) {
-    const cap = maxTiers.find(t => count <= t.count);
+    const cap = maxTiers.find(t => t.count === 'all' || count <= t.count);
     if (cap && cap.price < best) best = cap.price;
   } else if (allTier && best > allTier.price) {
     best = allTier.price;
@@ -1146,6 +1152,7 @@ async function placeOrder() {
     digitalAlbums.push({
       last_name: label,
       location:  folder.location || '',
+      date:      folder.date || folder.selectedPhotos?.[0]?.date || '',   // this folder's own date (its prices)
       count:     n,
       price:     price,
       filenames: folder.selectedPhotos.map(p => p.filename),
