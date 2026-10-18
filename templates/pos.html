@@ -2195,17 +2195,12 @@ function apTogglePhoto(idx){
 
 function renderApSelCount(){
   const n = S.ap.selected.size;
-  const total = S.ap.photos.length;
   let label = n === 0 ? 'Tap photos to select' : `${n} selected`;
   if(n > 0){
     const ap = S.actionPricing || {per_photo:25, all_photos:115};
     const per = ap.per_photo || 25, all = ap.all_photos || 115;
-    const price = Math.min(n * per, all);
-    const capped = (n * per) > all;
-    const isAll = n === total && total > 0;
-    if(isAll) label = `${n} selected — ${fmt(all)} (all photos)`;
-    else if(capped) label = `${n} selected — ${fmt(all)} (best value)`;
-    else label = `${n} selected — ${fmt(price)}`;
+    // Staff only: just the count and the price (no sales wording)
+    label = `${n} selected — ${fmt(Math.min(n * per, all))}`;
   }
   $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;

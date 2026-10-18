@@ -3481,7 +3481,10 @@ function updateCart() {
     const limit = getMaxSelectionLimit();
     const max = limit ? Math.min(limit, allPhotos.length) : allPhotos.length;
     const wouldDeselect = selectedPhotos.size >= max;
-    saBtn.hidden = currentFolderEmpty || (!_currentIsPortrait && !wouldDeselect);
+    // Winter Action galleries (searched by time) never offer Select All: customers pick
+    // their photos, up to the All Photos limit. Portrait galleries keep it.
+    const isActionGallery = !!currentPricing?.flags?.time_search;
+    saBtn.hidden = currentFolderEmpty || isActionGallery || (!_currentIsPortrait && !wouldDeselect);
     if (!currentFolderEmpty) {
       saBtn.textContent = wouldDeselect ? 'Deselect All' : 'Select All';
     }
