@@ -161,3 +161,17 @@ def test_refunded_sale_earns_no_commission(admin_client, pos_orders, no_refunds)
     assert revenue() == 15.0
     admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 31, "full": True})
     assert revenue() == 0.0
+
+
+def test_orders_page_escapes_customer_typed_text(admin_client, pos_orders, main_module, monkeypatch):
+    evil = '<img src=x onerror=alert(1)>'
+    monkeypatch.setattr(main_module, "_fetch_wc_orders", lambda *a, **kw: [{
+        "id": 901, "number": "901", "status": "completed", "date_created": TODAY + "T12:00:00",
+        "total": "25.00", "discount_total": "0", "coupon_lines": [{"code": evil}],
+        "billing": {"first_name": evil, "last_name": "O'Brien", "email": "x@example.com",
+                    "address_1": evil, "city": "", "state": "", "postcode": ""},
+        "line_items": [{"name": "Photo", "meta_data": [{"key": "Location", "value": evil}]}],
+        "fee_lines": [], "shipping_lines": [], "meta_data": []}])
+    html = admin_client.get("/admin/orders?days=7").text
+    assert evil not in html                                   # never raw, in cells or the detail data
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html

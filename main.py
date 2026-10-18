@@ -3,6 +3,7 @@ import zipfile
 import time as _time
 import numpy as np
 from collections import deque
+from html import escape as _html_escape
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from fastapi import Body, FastAPI, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -3993,6 +3994,8 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
 
 @app.post("/api/pos-resend")
 async def api_pos_resend(request: Request):
+    """Recent Sales: send the customer their receipt again (the same single email
+    they got at checkout, with the download button when photos were bought)."""
     body = await request.json()
     pin = body.get("pin", "").strip()
     if _pin_locked_out(request):
@@ -4000,29 +4003,53 @@ async def api_pos_resend(request: Request):
     if not _auth_photographer(pin):
         _record_pin_failure(request)
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
-    token = body.get("token", "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9]{16,64}", token):
-        return JSONResponse(status_code=400, content={"error": "Missing token"})
-    pkg = _load_pkg(token)          # packages/{token}/meta.json
-    if not pkg:
+    order = _find_pos_order(str(body.get("order_id") or ""), str(body.get("date") or ""),
+                            str(body.get("token") or ""))
+    if not order:
         return JSONResponse(status_code=404, content={"error": "Order not found"})
-    try:
-        if datetime.now(timezone.utc) > datetime.fromisoformat(pkg["expires"]):
-            return JSONResponse(status_code=410, content={"error": "This download link has expired"})
-    except Exception:
-        pass
-    download_url = f"{SITE_URL}/package/{token}"
-    title = pkg.get("title", "Your Photos")
-    emails = pkg.get("emails", [])
-    n_photos = len(pkg.get("paths", []))
-    expires_iso = pkg.get("expires", "")
-    try:
-        exp_dt = datetime.fromisoformat(expires_iso.replace("Z", "+00:00"))
-        expire_str = exp_dt.strftime("%B %d, %Y")
-    except Exception:
-        expire_str = "30 days"
-    _send_package_email(emails, title, download_url, n_photos, expire_str)
-    return {"ok": True, "sent_to": emails}
+    note = _resend_pos_receipt(order)
+    return {"ok": True, "sent_to": [order.get("email")], "note": note}
+
+
+def _find_pos_order(order_id: str, date: str, token: str = ""):
+    """A recorded POS sale by id + date (one read), or by its download token (older POS pages)."""
+    if re.fullmatch(r"pos-[A-Za-z0-9]{4,32}", order_id) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        try:
+            obj = s3.get_object(Bucket=R2_BUCKET, Key=f"pos_orders/{date}_{order_id}.json")
+            return json.loads(obj["Body"].read())
+        except Exception:
+            return None
+    if re.fullmatch(r"[A-Za-z0-9]{16,64}", token):
+        return next((o for o in _fetch_pos_orders() if o.get("package_token") == token), None)
+    return None
+
+
+def _resend_pos_receipt(order: dict) -> str:
+    """Send a recorded sale's receipt again. Returns a note for staff ('' if nothing to add)."""
+    download_url = expire_str = None
+    note = ""
+    token = order.get("package_token")
+    if token:
+        pkg = _load_pkg(token)
+        try:
+            expires = datetime.fromisoformat(pkg["expires"]) if pkg else None
+        except Exception:
+            expires = None
+        if expires and datetime.now(timezone.utc) <= expires:
+            download_url = f"{SITE_URL}/package/{token}"
+            expire_str = expires.strftime("%B %d, %Y")
+        else:
+            note = "The download link has expired, so the receipt was sent without it"
+    square = None
+    if order.get("square_verified"):
+        square = {k: order.get(k) for k in ("square_paid", "square_tax", "square_tip")}
+    _send_pos_receipt_email(
+        to_email=order.get("email", ""), customer_name=order.get("name", ""), order_id=order.get("id", ""),
+        items=order.get("items") or [], total=float(order.get("total") or 0),
+        coupon_code=order.get("coupon_code", ""), coupon_discount=float(order.get("coupon_discount") or 0),
+        download_url=download_url, expire_str=expire_str, square=square,
+        comp=(order.get("square_payment_id") == "COMP"))
+    return note
 
 
 # ─────────────────────────────────────────
@@ -5055,10 +5082,17 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
 </script>'''
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
     trs = ""
+    E = _html_escape
     for r in rows:
-        first_file  = (r['filenames'] or '').split(',')[0].strip() or '—'
+        # Names, emails, addresses and coupons come from customers (the online checkout
+        # is public), so they're escaped and can't inject anything into this page
+        first_file  = E((r['filenames'] or '').split(',')[0].strip() or '—')
         is_pos      = r.get("source") == "pos"
         photographer = _detect_photog(r['filenames'])   # commission follows the photo's JPEG code, not who sold it
+        e_name, e_email = E(f"{r['first']} {r['last']}"), E(r['email'] or '')
+        e_loc, e_what   = E(r['location'] or '—'), E(r['what'] or '')
+        e_photog, e_files = E(photographer), E(r['filenames'] or '—')
+        e_coupon, e_addr  = E(r['coupon_code'] or '—'), E(r['ship_addr'] or '—')
         charged     = r.get("charged", r["total"])
         tip_str     = f"${r['tip']:.2f}" if r.get("tip") else '—'
         total_str   = "Comp" if r.get("is_comp") else f"${charged:.2f}"
@@ -5070,16 +5104,17 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             fee_str = "pending" if r.get("fee_pending") else (f"${r['stripe_fee']:.2f}" if r['stripe_fee'] else '—')
         else:
             fee_str = f"${r['stripe_fee']:.2f}"
-        order_no    = r.get("order_no") or '—'
-        order_cell  = (f'<a href="{r["receipt_url"]}" target="_blank" onclick="event.stopPropagation()" '
-                       f'style="color:inherit">{order_no}</a>') if r.get("receipt_url") else order_no
+        order_no    = E(str(r.get("order_no") or '—'))
+        receipt_url = E(r.get("receipt_url") or '')
+        order_cell  = (f'<a href="{receipt_url}" target="_blank" onclick="event.stopPropagation()" '
+                       f'style="color:inherit">{order_no}</a>') if receipt_url else order_no
         detail_data = _json.dumps({
-            "name":         f"{r['first']} {r['last']}",
-            "email":        r['email'],
-            "location":     r['location'] or '—',
-            "photographer": photographer,
-            "what":         r['what'],
-            "files":        r['filenames'] or '—',
+            "name":         e_name,
+            "email":        e_email,
+            "location":     e_loc,
+            "photographer": e_photog,
+            "what":         e_what,
+            "files":        e_files,
             "total":        total_str,
             "tip":          tip_str,
             "discount":     f"-${r['discount']:.2f}" if r['discount'] else '—',
@@ -5092,14 +5127,16 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
             "charged_num":  round(r["charged_original"], 2),
             "comp":         bool(r.get("is_comp")),
             "order_no":     ("Square " + order_no) if is_pos and r.get("order_no") else order_no,
-            "receipt_url":  r.get("receipt_url") or '',
+            "receipt_url":  receipt_url,
             "net":          f"${r['net']:.2f}",
-            "coupon":       r['coupon_code'] or '—',
+            "coupon":       e_coupon,
             "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
-            "address":      r['ship_addr'] or '—',
-            "photo_paths":  r['photo_paths'] or '',
+            "address":      e_addr,
+            "photo_paths":  r['photo_paths'] or '',    # raw: only used inside encoded URLs
             "date":         r['date'] or '',
             "last_name":    r['last'] or '',
+            # the order list's own location filter needs the raw value too
+            "location_raw": r['location'] or '',
         }).replace("&", "&amp;").replace('"', '&quot;').replace("<", "&lt;").replace(">", "&gt;")
         try:
             order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
@@ -5115,22 +5152,22 @@ if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-c
         else:
             action_btn = f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
         trs += f"""<tr class="order-row" data-detail="{detail_data}" onclick="showDetail(this.dataset.detail)" style="cursor:pointer">
-          {td(r['date'])}
+          {td(E(r['date'] or ''))}
           {td(order_cell, 'mono')}
-          {td(f"{r['first']} {r['last']}")}
-          {td(r['location'] or '—')}
-          {td(r['email'])}
-          {td(r['what'])}
-          {td(photographer)}
+          {td(e_name)}
+          {td(e_loc)}
+          {td(e_email)}
+          {td(e_what)}
+          {td(e_photog)}
           {td(first_file, 'mono')}
           {td(total_str)}
           {td(tip_str)}
           {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
           {td(fee_str, 'fee')}
           {td(f"${r['net']:.2f}", 'net')}
-          {td(r['coupon_code'] or '—')}
+          {td(e_coupon)}
           {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
-          {td(r['ship_addr'] or '—')}
+          {td(e_addr)}
           {td(action_btn)}
         </tr>"""
 
@@ -5327,8 +5364,8 @@ function showDetail(encoded) {{
     }} else {{
       box.classList.remove('wide'); box.classList.add('narrow');
     }}
-    if (d.date && d.location && d.location !== '—' && d.last_name) {{
-      const dlUrl = `/api/admin/download-folder?date=${{encodeURIComponent(d.date)}}&location=${{encodeURIComponent(d.location)}}&family=${{encodeURIComponent(d.last_name)}}`;
+    if (d.date && d.location_raw && d.last_name) {{
+      const dlUrl = `/api/admin/download-folder?date=${{encodeURIComponent(d.date)}}&location=${{encodeURIComponent(d.location_raw)}}&family=${{encodeURIComponent(d.last_name)}}`;
       html += `<div style="margin-top:1.2rem;text-align:right"><a href="${{dlUrl}}" class="copy-btn" style="display:inline-block;text-decoration:none;padding:.45rem 1rem;font-size:.82rem">⬇ Download All Folder Photos</a></div>`;
     }}
 
@@ -5484,7 +5521,7 @@ async function copyLink(orderId, e) {{
     <div class="loc-bars">
       {"".join(
         f'<div class="loc-bar-row">'
-        f'<span class="loc-bar-label">{loc}</span>'
+        f'<span class="loc-bar-label">{_html_escape(loc)}</span>'
         f'<div class="loc-bar-track"><div class="loc-bar-fill" style="width:{(s["revenue"]/total_rev*100) if total_rev else 0:.1f}%"></div></div>'
         f'<div class="loc-bar-stats">'
         f'<span class="loc-bar-pct">{(s["revenue"]/total_rev*100) if total_rev else 0:.1f}%</span>'

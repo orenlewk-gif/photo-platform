@@ -3763,10 +3763,11 @@ function renderRecentSales(){
           ${o.location ? ' · ' + o.location : ''}
         </div>
         <div class="sale-actions">
-          ${hasDownload
-            ? `<button class="sale-resend-btn" onclick="initResend('${o.package_token}','${escHtml(o.email||'')}')">Resend Download</button>`
-            : `<span class="sale-no-dl">No download (non-photo sale)</span>`
-          }
+          ${o.email
+            ? `<button class="sale-resend-btn" data-order="${escHtml(o.id||'')}" data-date="${escHtml(o.date||'')}"
+                 data-email="${escHtml(o.email)}" onclick="initResend(this.dataset)">Resend Receipt</button>`
+            : ''}
+          ${hasDownload ? '' : `<span class="sale-no-dl">No download (non-photo sale)</span>`}
         </div>
       </div>
     `;
@@ -3775,20 +3776,18 @@ function renderRecentSales(){
 
 // ─── Resend ───────────────────────────────────────────────────────────────────
 let _resendBuf = '';
-let _resendToken = '';
-let _resendEmail = '';
+let _resendSale = null;      // {order, date, email} from the Recent Sales button
 
-function initResend(token, email){
-  _resendToken = token;
-  _resendEmail = email;
+function initResend(sale){
+  _resendSale = {order: sale.order, date: sale.date, email: sale.email};
   _resendBuf = '';
   updateResendDots();
-  $('pin-resend-sub').textContent = `Enter your PIN to resend download to ${email}`;
+  $('pin-resend-sub').textContent = `Enter your PIN to resend the receipt to ${sale.email}`;
   $('pin-resend-overlay').classList.remove('hidden');
 }
 
 function cancelResend(){
-  _resendBuf = ''; _resendToken = ''; _resendEmail = '';
+  _resendBuf = ''; _resendSale = null;
   $('pin-resend-overlay').classList.add('hidden');
 }
 
@@ -3816,13 +3815,13 @@ async function submitResend(){
   try {
     const res = await fetch('/api/pos-resend', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({pin: _resendBuf, token: _resendToken})
+      body: JSON.stringify({pin: _resendBuf, order_id: _resendSale.order, date: _resendSale.date})
     });
     const data = await res.json();
     setLoading(false);
     if(res.ok){
       cancelResend();
-      showToast('Download link resent');
+      showToast(data.note ? 'Receipt resent. ' + data.note : 'Receipt resent');
     } else {
       for(let i=0;i<4;i++){ const el=$('rpd'+i); if(el) el.classList.add('error'); }
       setTimeout(()=>{ _resendBuf=''; updateResendDots(); }, 900);
