@@ -514,55 +514,10 @@
 // ── Cart state ───────────────────────────────────────────────────────────────
 let cartData      = null;
 let appliedCoupon = null;
-let globalCombos     = [];     // combo deals loaded from /api/pricing
-let _lastBundleSavings = 0;    // set in renderSummary, read by placeOrder
-let globalActivityGroups = {};  // {groupName: [location, ...]} for bundle matching
+let _quote        = null;   // the server's prices for this cart: exactly what checkout charges
 
-let PRINT_SHIPPING = [8, 8, 13, 13];
-let FRAME_SHIPPING = [15, 15, 25, 50];
-let FREE_SHIP_THRESHOLD = 3;
-
-function calcPriceFor(count, pricing) {
-  // Same rule as the gallery (index.html) and the server (_best_tier_price):
-  // an "All Photos" price caps the total however many photos are picked.
-  if (!pricing || !pricing.tiers || count === 0) return 0;
-  const tiers      = pricing.tiers;
-  const allTier    = tiers.find(t => t.count === 'all');
-  const maxTiers   = tiers.filter(t => t.max).sort((a, b) => {
-    if (a.count === 'all') return 1;
-    if (b.count === 'all') return -1;
-    return a.count - b.count;
-  });
-  const singleTier = tiers.find(t => t.count === 1);
-  const singleUnit = singleTier ? singleTier.price : 25;
-  let best = count * singleUnit;
-  const bundles = tiers
-    .filter(t => !t.max && typeof t.count === 'number' && t.count > 1 && t.count <= count)
-    .sort((a, b) => b.count - a.count);
-  for (const tier of bundles) {
-    const cost = Math.floor(count / tier.count) * tier.price + (count % tier.count) * singleUnit;
-    if (cost < best) best = cost;
-  }
-  if (maxTiers.length) {
-    const cap = maxTiers.find(t => t.count === 'all' || count <= t.count);
-    if (cap && cap.price < best) best = cap.price;
-  } else if (allTier && best > allTier.price) {
-    best = allTier.price;
-  }
-  return best;
-}
-
-function calcShipping(prints, frames) {
-  const framed   = prints.filter(p => p.frame && p.frame !== 'No Frame');
-  const unframed = prints.filter(p => !p.frame || p.frame === 'No Frame');
-  const frameRates = [
-    ...framed.map(p => FRAME_SHIPPING[p.sizeIdx || 0]),
-    ...frames.flatMap(f => Array(f.quantity || 1).fill(FRAME_SHIPPING[f.sizeIdx || 0])),
-  ].sort((a,b) => b-a);
-  if (frameRates.length) return frameRates[0] + frameRates.slice(1).reduce((s,r) => s + r*0.5, 0);
-  if (unframed.length >= FREE_SHIP_THRESHOLD) return 0;
-  if (unframed.length) return Math.max(...unframed.map(p => PRINT_SHIPPING[p.sizeIdx || 0]));
-  return 0;
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
 
 // ── Load cart from localStorage ──────────────────────────────────────────────
@@ -594,27 +549,6 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('shipping-card').style.display = 'block';
   }
 
-  // Load print shipping rates + combo deals in parallel
-  fetch('/api/print-pricing').then(r=>r.json()).then(pp => {
-    if (pp.sizes?.length) {
-      PRINT_SHIPPING = pp.sizes.map(s => s.ship_print ?? 8);
-      FRAME_SHIPPING = pp.sizes.map(s => s.ship_framed ?? 15);
-    }
-    if (pp.free_ship_threshold) FREE_SHIP_THRESHOLD = pp.free_ship_threshold;
-    renderSummary();
-  }).catch(()=>{});
-  fetch('/api/pricing').then(r => r.json()).then(d => {
-    if (d.combos) globalCombos = d.combos;
-    if (d.activity_groups) globalActivityGroups = d.activity_groups;
-    renderSummary();
-    checkBundleUpsell();
-  }).catch(() => {});
-  if (cartData.portrait_poses?.length || cartData.portrait_singles?.length) {
-    fetch('/api/portrait-pricing').then(r=>r.json()).then(pp => {
-      window._coPortraitPricing = pp; renderSummary();
-    }).catch(() => {});
-  }
-
   // Open summary on desktop
   document.getElementById('summary-inner').classList.add('open');
 
@@ -642,8 +576,10 @@ function getAllDigital() {
 function getAllPrints() {
   const prints = [];
   const fc = cartData.folderCarts || {};
-  Object.values(fc).forEach(f => { if (f.printCart) prints.push(...f.printCart); });
-  if (cartData.printCart) prints.push(...cartData.printCart);
+  Object.values(fc).forEach(f => {
+    if (f.printCart) prints.push(...f.printCart.map(p => ({ ...p, location: p.location || f.location || '' })));
+  });
+  if (cartData.printCart) prints.push(...cartData.printCart.map(p => ({ ...p, location: p.location || cartData.location || '' })));
   // Deduplicate by filename+size
   const seen = new Set();
   return prints.filter(p => {
@@ -689,264 +625,113 @@ async function loadThumbs() {
   }
 }
 
-// ── Shared combo price helper ─────────────────────────────────────────────
-// Returns {folderKey -> adjustedPrice} when a combo deal is active, else {}.
-function _comboGroupFolders(fc, groups) {
-  // For each group name, find folder keys whose location belongs to that group.
-  // globalActivityGroups maps category names to their acts (individual location names).
-  const result = {};
-  for (const g of groups) {
-    const gLocs = new Set((globalActivityGroups[g] || []).map(l => l.toLowerCase()));
-    result[g] = Object.entries(fc)
-      .filter(([, f]) => ((f.selectedPhotos?.length || 0) > 0 || (f.printCart?.length || 0) > 0) && gLocs.has((f.location || '').toLowerCase()))
-      .map(([k]) => k);
-  }
-  return result;
-}
-
-// Returns true if a group corresponds to portrait activities (portraits live in cartData, not folderCarts)
-function _isPortraitGroup(g) {
-  const acts = globalActivityGroups[g] || [];
-  return g.toLowerCase().includes('portrait') || acts.some(a => a.toLowerCase().includes('portrait'));
-}
-
-// Returns true if a group has content — folder entries in folderCarts OR portrait data for portrait groups
-function _groupPresent(g, groupFolders) {
-  if (groupFolders[g]?.length) return true;
-  if (_isPortraitGroup(g)) {
-    return (cartData?.portrait_poses?.length || 0) > 0 || (cartData?.portrait_singles?.length || 0) > 0;
-  }
-  return false;
-}
-
-// Returns the active bundle's pct_off, or 0 if no bundle is fully satisfied
-function calcComboPctOff(fc) {
-  for (const combo of globalCombos) {
-    const groups = combo.activity_groups || [];
-    const pctOff = combo.pct_off;
-    if (!groups.length || pctOff == null) continue;
-    const gf = _comboGroupFolders(fc, groups);
-    if (groups.every(g => _groupPresent(g, gf))) return pctOff;
-  }
-  return 0;
-}
-
-function calcComboAdjPrices(fc) {
-  const comboAdjPrices = {};
-  for (const combo of globalCombos) {
-    const groups = combo.activity_groups || [];
-    const pctOff = combo.pct_off;
-
-    if (groups.length && pctOff != null) {
-      // New format: activity_groups + pct_off
-      const groupFolders = _comboGroupFolders(fc, groups);
-      if (!groups.every(g => _groupPresent(g, groupFolders))) continue;
-      groups.forEach(g => {
-        groupFolders[g].forEach(k => {
-          const n = fc[k].selectedPhotos?.length || 0;
-          const base = calcPriceFor(n, fc[k].pricing);
-          comboAdjPrices[k] = Math.round(base * (1 - pctOff / 100) * 100) / 100;
-        });
-      });
-      break;
-    }
-
-    // Legacy format: locations + flat price
-    const locs = combo.locations || [];
-    const minEach = combo.min_each || 1;
-    if (!locs.length || combo.price == null) continue;
-    const locCounts = {}, comboKeys = [];
-    Object.entries(fc).forEach(([key, folder]) => {
-      const n = folder.selectedPhotos?.length || 0;
-      const loc = folder.location || '';
-      if (n && locs.includes(loc)) { locCounts[loc] = (locCounts[loc] || 0) + n; comboKeys.push(key); }
-    });
-    if (comboKeys.length && locs.every(loc => (locCounts[loc] || 0) >= minEach)) {
-      const share = Math.round((combo.price / comboKeys.length) * 100) / 100;
-      comboKeys.forEach((k, i) => {
-        comboAdjPrices[k] = i === comboKeys.length - 1
-          ? Math.round((combo.price - share * (comboKeys.length - 1)) * 100) / 100 : share;
-      });
-      break;
-    }
-  }
-  return comboAdjPrices;
-}
-
-// ── Render summary ───────────────────────────────────────────────────────────
-function renderSummary() {
-  const fc      = cartData.folderCarts || {};
-  const frames  = cartData.frameCart || [];
-  const prints  = getAllPrints();
-
-  let itemsHtml    = '';
-  let digTotal     = 0;
-  let printTotal   = 0;
-  let frameTotal   = 0;
-  let bundleSavings = 0;
-
-  // ── Portrait pose items ───────────────────────────────────────────────────
-  const posePricing = window._coPortraitPricing || { single_photo: 40, pose_tiers: [65, 57.5, 50] };
-  const poseTiers   = posePricing.pose_tiers || [65, 57.5, 50];
-  const poses       = cartData.portrait_poses   || [];
-  const pSingles    = cartData.portrait_singles || [];
-  const comboPct    = calcComboPctOff(fc);
-  if (poses.length || pSingles.length) {
-    const basePosePrice = poses.length ? poseTiers[Math.min(poses.length - 1, poseTiers.length - 1)] : 0;
-    const baseSingPrice = posePricing.single_photo ?? 40;
-    const posePrice = comboPct ? Math.round(basePosePrice * (1 - comboPct / 100) * 100) / 100 : basePosePrice;
-    const singPrice = comboPct ? Math.round(baseSingPrice * (1 - comboPct / 100) * 100) / 100 : baseSingPrice;
-    bundleSavings += (basePosePrice - posePrice) * poses.length + (baseSingPrice - singPrice) * pSingles.length;
-    poses.forEach(pose => {
-      const n = pose.files?.length || 0;
-      const price = posePrice;
-      digTotal += price;
-      itemsHtml += `<div class="co-item">
-        <div class="co-item-name">Portrait ${pose.pose_label} (${n} photo${n !== 1 ? 's' : ''}) — ${pose.family || ''}
-        </div>
-        <div class="co-item-price">$${price.toFixed(2)}</div>
-      </div>`;
-    });
-    pSingles.forEach(s => {
-      digTotal += singPrice;
-      itemsHtml += `<div class="co-item">
-        <div class="co-item-name">Portrait Single Photo — ${s.family || ''}
-          <div class="co-item-sub">${s.filename || ''}</div>
-        </div>
-        <div class="co-item-price">$${singPrice.toFixed(2)}</div>
-      </div>`;
-    });
-    const allLogoPaths = new Set(cartData.digitalLogoPaths || []);
-    // Build path→filename map for portrait photos
-    const posePathToName = {};
-    poses.forEach(pose => (pose.paths || []).forEach((path, i) => { posePathToName[path] = (pose.files || [])[i] || path.split('/').pop(); }));
-    pSingles.forEach(s => { if (s.path) posePathToName[s.path] = s.path.split('/').pop(); });
-    const pLogoEntries = Object.keys(posePathToName).filter(p => allLogoPaths.has(p));
-    if (pLogoEntries.length > 0) {
-      const pLogoBase = pLogoEntries.length * 2;
-      const pLogoFee = comboPct > 0 ? Math.round(pLogoBase * (1 - comboPct / 100) * 100) / 100 : pLogoBase;
-      bundleSavings += pLogoBase - pLogoFee;
-      digTotal += pLogoFee;
-      itemsHtml += `<div class="co-item">
-        <div class="co-item-name">Digital logo add-on
-          <div class="co-item-sub">${pLogoEntries.map(p => posePathToName[p]).join(', ')}</div>
-        </div>
-        <div class="co-item-price">$${pLogoFee.toFixed(2)}</div>
-      </div>`;
-    }
-  }
-
-  // ── Pre-calculate combo adjusted prices ──────────────────────────────────
-  const comboAdjPrices = calcComboAdjPrices(fc);
-
-  // Digital folders
-  const allLogoPaths = new Set(cartData.digitalLogoPaths || []);
-  const folderPhotoPaths = new Set(Object.values(fc).flatMap(f => (f.selectedPhotos || []).map(p => p.path)));
-  const aLogoCount = [...allLogoPaths].filter(p => folderPhotoPaths.has(p)).length;
-  const aLogoBase = aLogoCount * 2;
-  const aLogoFeeDsc = comboPct > 0 ? Math.round(aLogoBase * (1 - comboPct / 100) * 100) / 100 : aLogoBase;
-  if (aLogoCount > 0) { digTotal += aLogoFeeDsc; bundleSavings += aLogoBase - aLogoFeeDsc; }
-  Object.entries(fc).forEach(([key, folder]) => {
+// ── What's in the cart, for the server to price ───────────────────────────────
+// Only what was picked is sent; every price, discount and bundle is the server's.
+function buildOrderPayload() {
+  const fc         = cartData.folderCarts || {};
+  const allDigital = getAllDigital();
+  const prints     = getAllPrints();
+  const digitalAlbums = [];
+  Object.values(fc).forEach(folder => {
     const n = folder.selectedPhotos?.length || 0;
     if (!n) return;
-    const basePrice = calcPriceFor(n, folder.pricing);
-    const price = comboAdjPrices.hasOwnProperty(key) ? comboAdjPrices[key] : basePrice;
-    if (comboAdjPrices.hasOwnProperty(key)) bundleSavings += basePrice - price;
-    digTotal += price;
-    const label = folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos';
-    itemsHtml += `<div class="co-item">
-      <div class="co-item-name">Digital Photos — ${label}
-        <div class="co-item-sub">${n} photo${n !== 1 ? 's' : ''}</div>
-      </div>
-      <div class="co-item-price">$${price.toFixed(2)}</div>
-    </div>`;
+    digitalAlbums.push({
+      last_name: folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos',
+      location:  folder.location || '',
+      date:      folder.date || folder.selectedPhotos?.[0]?.date || '',   // this folder's own date (its prices)
+      count:     n,
+      filenames: folder.selectedPhotos.map(p => p.filename),
+      paths:     folder.selectedPhotos.map(p => p.path),
+    });
   });
-  if (aLogoCount > 0) {
-    // Build filename list for action logo photos
-    const actionPathToName = {};
-    Object.values(fc).forEach(folder => (folder.selectedPhotos || []).forEach(p => { actionPathToName[p.path] = p.filename || p.path.split('/').pop(); }));
-    const aLogoNames = [...allLogoPaths].filter(p => folderPhotoPaths.has(p)).map(p => actionPathToName[p] || p.split('/').pop());
-    itemsHtml += `<div class="co-item">
-      <div class="co-item-name">Digital logo add-on
-        <div class="co-item-sub">${aLogoNames.join(', ')}</div>
-      </div>
-      <div class="co-item-price">$${aLogoFeeDsc.toFixed(2)}</div>
-    </div>`;
+  return {
+    portrait_poses:     cartData.portrait_poses   || [],
+    portrait_singles:   cartData.portrait_singles || [],
+    digital_albums:     digitalAlbums,
+    digital_filenames:  allDigital.map(p => p.filename),
+    digital_paths:      allDigital.map(p => p.path),
+    digital_logo_paths: cartData.digitalLogoPaths || [],
+    prints: prints.map(p => ({
+      filename:    p.filename,
+      size:        p.size,
+      size_idx:    p.sizeIdx || 0,
+      orientation: p.orientation || 'landscape',
+      frame:       p.frame || '',
+      path:        p.photoPath || p.path || '',
+      location:    p.location || '',
+      logo:        !!p._logo,
+    })),
+    frames: (cartData.frameCart || []).map(f => ({ variation_id: f.variation_id, quantity: f.quantity || 1 })),
+    location:    cartData.location || allDigital[0]?.location || prints[0]?.location || '',
+    date:        cartData.date     || allDigital[0]?.date     || '',
+    last_name:   cartData.family   || allDigital[0]?.last_name || '',
+    coupon_code: appliedCoupon ? appliedCoupon.code : '',
+  };
+}
+
+// ── Render summary (the server's quote) ─────────────────────────────────────
+let _quoteSeq = 0;
+let _upsellShown = false;
+async function renderSummary() {
+  const seq      = ++_quoteSeq;
+  const itemsEl  = document.getElementById('co-items');
+  const totalsEl = document.getElementById('co-totals');
+  if (!_quote) totalsEl.innerHTML = '<div class="co-total-row"><span>Working out your total…</span></div>';
+  let q;
+  try {
+    const resp = await fetch('/api/checkout/quote', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ ...buildOrderPayload(), email: document.getElementById('co-email')?.value.trim() || '' }),
+    });
+    q = await resp.json();
+    if (!resp.ok) throw new Error(q.error || 'Could not work out your total');
+  } catch (e) {
+    if (seq !== _quoteSeq) return;
+    _quote = null;
+    itemsEl.innerHTML  = '';
+    totalsEl.innerHTML = `<div class="co-total-row" style="color:#f87171"><span>${escHtml(e.message)}</span></div>`;
+    document.getElementById('mobile-total').textContent = '—';
+    validateForm();
+    return;
   }
+  if (seq !== _quoteSeq) return;        // a newer quote is on its way
+  _quote = q;
 
-  // Prints
-  prints.forEach(p => {
-    const baseTotal = (p.price || 0) + (p.framePrice || 0);
-    const total = comboPct > 0 ? Math.round(baseTotal * (1 - comboPct / 100) * 100) / 100 : baseTotal;
-    bundleSavings += baseTotal - total;
-    printTotal += total;
-    const frameLabel = p.frame && p.frame !== 'No Frame' ? ` + ${p.frame}` : '';
-    const logoLabel = p._logo ? ' + Logo' : '';
-    itemsHtml += `<div class="co-item">
-      <div class="co-item-name">${p.size} Print${frameLabel}${logoLabel}
-        <div class="co-item-sub">${p.filename}</div>
+  itemsEl.innerHTML = q.rows.map(r => `<div class="co-item">
+      <div class="co-item-name">${escHtml(r.name)}
+        ${r.sub ? `<div class="co-item-sub">${escHtml(r.sub)}</div>` : ''}
       </div>
-      <div class="co-item-price">$${total.toFixed(2)}</div>
-    </div>`;
-  });
-
-  // Frames
-  frames.forEach(f => {
-    const baseTotal = (f.price || 0) * (f.quantity || 1);
-    const total = comboPct > 0 ? Math.round(baseTotal * (1 - comboPct / 100) * 100) / 100 : baseTotal;
-    bundleSavings += baseTotal - total;
-    frameTotal += total;
-    itemsHtml += `<div class="co-item">
-      <div class="co-item-name">${f.size} Frame (${f.orientation}) ×${f.quantity}</div>
-      <div class="co-item-price">$${total.toFixed(2)}</div>
-    </div>`;
-  });
-
-  document.getElementById('co-items').innerHTML = itemsHtml;
-
-  // Totals
-  const subtotal = digTotal + printTotal + frameTotal;
-  const shipping = calcShipping(prints, frames);
-  const unframed = prints.filter(p => !p.frame || p.frame === 'No Frame');
-  const freeShip = unframed.length >= 3 && !prints.some(p => p.frame && p.frame !== 'No Frame');
-
-  const bundleActive = Object.keys(comboAdjPrices).length > 0 || comboPct > 0;
-  if (bundleActive) _lastBundleSavings = Math.round(bundleSavings * 100) / 100;
-  let discountAmt = 0;
-  if (appliedCoupon && !bundleActive) {
-    const at = appliedCoupon.applies_to || 'all';
-    const discountBase = at === 'digital' || at === 'portraits' ? digTotal
-                       : at === 'prints'  ? printTotal
-                       : at === 'frames'  ? frameTotal
-                       : subtotal; // 'all' or free_shipping
-    discountAmt = appliedCoupon.discount_type === 'percent'
-      ? Math.round(discountBase * (appliedCoupon.amount / 100) * 100) / 100
-      : Math.min(appliedCoupon.amount, discountBase);
-    discountAmt = Math.round(discountAmt * 100) / 100;
-  }
-
-  const grandTotal = Math.max(0, subtotal + shipping - discountAmt);
+      <div class="co-item-price">${r.price < r.full ? `<s style="opacity:.45;font-weight:400;margin-right:.35rem">$${r.full.toFixed(2)}</s>` : ''}$${r.price.toFixed(2)}</div>
+    </div>`).join('');
 
   let totalsHtml = '';
-  const showSub = shipping > 0 || freeShip || discountAmt > 0 || bundleActive;
-  if (showSub) {
-    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${subtotal.toFixed(2)}</span></div>`;
+  if (q.shipping > 0 || q.free_shipping || q.coupon || q.bundle) {
+    totalsHtml += `<div class="co-total-row"><span>Subtotal</span><span class="amt">$${q.subtotal.toFixed(2)}</span></div>`;
   }
-  if (shipping > 0) {
-    totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${shipping.toFixed(2)}</span></div>`;
-  } else if (freeShip) {
+  if (q.shipping > 0) {
+    totalsHtml += `<div class="co-total-row"><span>Shipping</span><span class="amt">$${q.shipping.toFixed(2)}</span></div>`;
+  } else if (q.free_shipping) {
     totalsHtml += `<div class="co-total-row free-ship"><span>Shipping</span><span class="amt">Free</span></div>`;
   }
-  if (discountAmt > 0) {
-    totalsHtml += `<div class="co-total-row discount"><span>Coupon (${appliedCoupon.code.toUpperCase()})</span><span class="amt">-$${discountAmt.toFixed(2)}</span></div>`;
+  if (q.coupon && q.coupon.discount > 0) {
+    totalsHtml += `<div class="co-total-row discount"><span>Coupon (${escHtml(q.coupon.code)})</span><span class="amt">-$${q.coupon.discount.toFixed(2)}</span></div>`;
   }
-  totalsHtml += `<div class="co-total-final"><span>Total</span><span class="amt">$${grandTotal.toFixed(2)}</span></div>`;
-  if (bundleActive && bundleSavings > 0) {
-    totalsHtml += `<div class="co-total-row co-total-saved"><span>Total saved</span><span class="amt">$${bundleSavings.toFixed(2)}</span></div>`;
+  totalsHtml += `<div class="co-total-final"><span>Total</span><span class="amt">$${q.total.toFixed(2)}</span></div>`;
+  if (q.bundle) {
+    totalsHtml += `<div class="co-total-row co-total-saved"><span>${escHtml(q.bundle.label)} (${q.bundle.pct}% off) saved</span><span class="amt">$${q.bundle.savings.toFixed(2)}</span></div>`;
   }
+  totalsEl.innerHTML = totalsHtml;
+  document.getElementById('mobile-total').textContent = `$${q.total.toFixed(2)}`;
 
-  document.getElementById('co-totals').innerHTML = totalsHtml;
-  document.getElementById('mobile-total').textContent = `$${grandTotal.toFixed(2)}`;
+  // A code that can't be used (or that a bundle beats) says why
+  const feedback = document.getElementById('co-coupon-feedback');
+  if (appliedCoupon && !q.coupon && q.coupon_note) {
+    feedback.textContent = q.coupon_note;
+    feedback.className   = 'error';
+  }
+  if (!_upsellShown && q.upsell) { _upsellShown = true; checkBundleUpsell(q.upsell); }
+  validateForm();
 }
 
 // ── Coupon ───────────────────────────────────────────────────────────────────
@@ -1026,7 +811,7 @@ function validateForm() {
     shipValid = shipIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
   }
 
-  const valid = emailValid && billValid && shipValid;
+  const valid = emailValid && billValid && shipValid && !!_quote;
   const btn   = document.getElementById('co-submit-btn');
   btn.disabled      = !valid;
 }
@@ -1043,30 +828,16 @@ function toggleMobileSummary() {
 }
 
 // ── Bundle upsell notice ──────────────────────────────────────────────────────
-function checkBundleUpsell() {
+function checkBundleUpsell(upsell) {
   const el = document.getElementById('bundle-upsell');
-  if (!el || !globalCombos.length) return;
-  const fc = cartData?.folderCarts || {};
-  for (const combo of globalCombos) {
-    const groups = combo.activity_groups || [];
-    const pctOff = combo.pct_off;
-    if (!groups.length || pctOff == null) continue;
-    const groupFolders = _comboGroupFolders(fc, groups);
-    const present = groups.filter(g => _groupPresent(g, groupFolders));
-    const missing = groups.filter(g => !_groupPresent(g, groupFolders));
-    if (present.length > 0 && missing.length > 0) {
-      const _displayName = g => g.replace(/^(Winter|Summer|Fall|Spring|Autumn)\s+/i, '');
-      const missingLabel = missing.map(_displayName).join(' or ');
-      const msg = `Did you have any <strong>${missingLabel}</strong> photos taken?<br>
-        Add them to your cart and receive <strong>${pctOff}% off your order!</strong><br>
-        <span style="font-size:.82em;opacity:.65">Cannot be combined with any other discount codes.</span>`;
-      document.getElementById('bundle-upsell-msg').innerHTML = msg;
-      const backLink = document.getElementById('bundle-upsell-back');
-      if (backLink) backLink.href = cartData.returnUrl || '/';
-      el.style.display = 'flex';
-      return;
-    }
-  }
+  if (!el || !upsell || !upsell.missing?.length) return;
+  const msg = `Did you have any <strong>${upsell.missing.map(escHtml).join(' or ')}</strong> photos taken?<br>
+    Add them to your cart and receive <strong>${upsell.pct}% off your order!</strong><br>
+    <span style="font-size:.82em;opacity:.65">If a discount code would take more off an item, you get the bigger discount.</span>`;
+  document.getElementById('bundle-upsell-msg').innerHTML = msg;
+  const backLink = document.getElementById('bundle-upsell-back');
+  if (backLink) backLink.href = cartData.returnUrl || '/';
+  el.style.display = 'flex';
 }
 function dismissBundleUpsell() {
   const el = document.getElementById('bundle-upsell');
@@ -1104,99 +875,7 @@ async function placeOrder() {
     country:    'US',
   };
 
-  // Build payload
-  const fc      = cartData.folderCarts || {};
-  const frames  = cartData.frameCart || [];
-  const prints  = getAllPrints();
-
-  const allDigital = getAllDigital();
-  const comboAdj   = calcComboAdjPrices(fc);
-  let digPrice = 0;
-  Object.entries(fc).forEach(([key, f]) => {
-    const n = f.selectedPhotos?.length || 0;
-    digPrice += comboAdj.hasOwnProperty(key)
-      ? comboAdj[key]
-      : calcPriceFor(n, f.pricing);
-  });
-
-  const loc      = cartData.location || allDigital[0]?.location || prints[0]?.location || '';
-  const date     = cartData.date     || allDigital[0]?.date     || prints[0]?.date     || '';
-  const lastName = cartData.family   || allDigital[0]?.last_name || '';
-
-  // Coupon discount — bundle and coupon are mutually exclusive; bundle takes priority
-  const comboPctOff  = calcComboPctOff(fc);
-  const bundleActive2 = Object.keys(comboAdj).length > 0 || comboPctOff > 0;
-  const printTotal2 = prints.reduce((s,p) => s+(p.price||0), 0);
-  const frameTotal2 = prints.reduce((s,p) => s+(p.framePrice||0), 0) + frames.reduce((s,f) => s+(f.price||0)*(f.quantity||1), 0);
-  const subtotal    = digPrice + printTotal2 + frameTotal2;
-  let discountAmt   = 0;
-  if (appliedCoupon && !bundleActive2) {
-    const at2 = appliedCoupon.applies_to || 'all';
-    const discountBase2 = at2 === 'digital' || at2 === 'portraits' ? digPrice
-                        : at2 === 'prints'  ? printTotal2
-                        : at2 === 'frames'  ? frameTotal2
-                        : subtotal;
-    discountAmt = appliedCoupon.discount_type === 'percent'
-      ? Math.round(discountBase2 * (appliedCoupon.amount / 100) * 100) / 100
-      : Math.min(appliedCoupon.amount, discountBase2);
-    discountAmt = Math.round(discountAmt * 100) / 100;
-  }
-
-  // Build per-album digital data for separate line items
-  const digitalAlbums = [];
-  Object.entries(fc).forEach(([key, folder]) => {
-    const n = folder.selectedPhotos?.length || 0;
-    if (!n) return;
-    const price = calcPriceFor(n, folder.pricing);
-    const label = folder.selectedPhotos?.[0]?.last_name || folder.location || 'Photos';
-    digitalAlbums.push({
-      last_name: label,
-      location:  folder.location || '',
-      date:      folder.date || folder.selectedPhotos?.[0]?.date || '',   // this folder's own date (its prices)
-      count:     n,
-      price:     price,
-      filenames: folder.selectedPhotos.map(p => p.filename),
-      paths:     folder.selectedPhotos.map(p => p.path),
-    });
-  });
-
-  const payload = {
-    portrait_poses:    cartData.portrait_poses   || [],
-    portrait_singles:  cartData.portrait_singles || [],
-    digital_albums:    digitalAlbums,
-    digital_filenames: allDigital.map(p => p.filename),
-    digital_paths:     allDigital.map(p => p.path),
-    prints: prints.map(p => {
-      const disc = comboPctOff > 0 ? 1 - comboPctOff / 100 : 1;
-      return {
-        filename:    p.filename,
-        size:        p.size,
-        size_idx:    p.sizeIdx || 0,
-        orientation: p.orientation || 'landscape',
-        price:       Math.round((p.price || 0) * disc * 100) / 100,
-        frame:       p.frame || '',
-        frame_price: Math.round((p.framePrice || 0) * disc * 100) / 100,
-      };
-    }),
-    frames: frames.map(f => ({
-      variation_id: f.variation_id,
-      size:         f.size,
-      sizeIdx:      f.sizeIdx || 0,
-      orientation:  f.orientation,
-      price:        comboPctOff > 0 ? Math.round((f.price || 0) * (1 - comboPctOff / 100) * 100) / 100 : (f.price || 0),
-      quantity:     f.quantity,
-    })),
-    location:        loc,
-    date:            date,
-    email:           email,
-    last_name:       lastName,
-    billing:         billing,
-    shipping:        shipping,
-    coupon_code:         appliedCoupon && !bundleActive2 ? appliedCoupon.code : '',
-    coupon_discount:     discountAmt,
-    bundle_discount_pct:    comboPctOff || 0,
-    bundle_savings_amount:  comboPctOff > 0 ? _lastBundleSavings : 0,
-  };
+  const payload = { ...buildOrderPayload(), email, billing, shipping };
 
   try {
     const resp = await fetch('/api/checkout', {
@@ -1210,10 +889,10 @@ async function placeOrder() {
       localStorage.removeItem('bsp_cart_v1');
       window.location.href = data.checkout_url;
     } else {
-      throw new Error(data.error || 'Unknown error');
+      throw new Error(resp.status === 400 && data.error ? data.error : '');
     }
   } catch(e) {
-    alert('Checkout failed — please try again.');
+    alert(e.message ? `Checkout couldn't continue: ${e.message}` : 'Checkout failed — please try again.');
     btn.textContent = 'Continue to Payment →';
     btn.disabled    = false;
   }

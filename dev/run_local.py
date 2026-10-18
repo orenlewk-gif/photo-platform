@@ -163,7 +163,13 @@ class FakeHTTP:
             print(f"[fake email] to={json.get('to')} subject={json.get('subject')!r}")
             return _FakeResp({"id": "fake-email"})
         if url.endswith("/wc/v3/orders"):
-            print(f"[fake WooCommerce] create order ({len(json.get('line_items', []))} items)")
+            print("[fake WooCommerce] create order:")
+            for li in json.get("line_items", []):
+                print(f"    {li['name']}  x{li.get('quantity', 1)}  ${li['total']}  {li.get('meta_data') or ''}")
+            for f in json.get("fee_lines", []):
+                print(f"    {f['name']}  ${f['total']}")
+            if json.get("coupon_lines"):
+                print(f"    coupon: {json['coupon_lines']}")
             return _FakeResp({"id": 9001, "order_key": "wc_order_local"}, status=201)
         if url.endswith("/notes"):
             print(f"[fake WooCommerce] customer note on {url.split('/orders/')[1].split('/')[0]} (download email)")

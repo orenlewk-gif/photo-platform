@@ -1938,36 +1938,50 @@ FRAME_VARIATION_MAP = {
 
 @app.get("/api/frames")
 def get_frames():
-    resp = http_requests.get(
-        f"{WC_BASE}/products/{WC_FRAME_PARENT_ID}/variations",
-        params={"per_page": 100},
-        auth=(WC_KEY, WC_SECRET),
-        timeout=15
-    )
-    if resp.status_code != 200:
+    try:
+        variations = _frame_variations()
+    except CheckoutError:
         return JSONResponse(status_code=502, content={"error": "WooCommerce unavailable"})
-
-    # Build lookup by variation ID from WC response
-    wc_by_id = {v["id"]: v for v in resp.json()}
-
-    SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
     frames = []
-    for size_idx, label in enumerate(SIZE_LABELS):
+    for size_idx, label in enumerate(_FRAME_SIZE_LABELS):
         entry = {"size": label, "landscape": None, "portrait": None}
         for orient in ("landscape", "portrait"):
             var_id = FRAME_VARIATION_MAP.get((size_idx, orient))
             if var_id is None:
                 continue
-            wc = wc_by_id.get(var_id, {})
+            v = variations.get(var_id, {})
             entry[orient] = {
                 "variation_id": var_id,
                 "size":         label,
                 "orientation":  orient,
-                "price":        wc.get("price") or wc.get("regular_price", "0"),
-                "stock_status": wc.get("stock_status", "instock"),
+                "price":        f"{v.get('price', 0):g}",
+                "stock_status": v.get("stock_status", "instock"),
             }
         frames.append(entry)
     return {"frames": frames}
+
+
+@app.get("/api/shop-prices")
+def api_shop_prices():
+    """Print, frame, shipping and logo prices for the gallery and checkout pages, from
+    the Pricing settings and WooCommerce, so the pages show what checkout charges."""
+    pp = _load_print_pricing()
+    sizes = pp.get("sizes", list(_DEFAULT_PRINT_SIZES))
+    try:
+        variations = _frame_variations()
+    except CheckoutError:
+        variations = {}
+    def frame(i, orient):
+        v = variations.get(FRAME_VARIATION_MAP.get((i, orient)))
+        return v["price"] if v else None
+    return {
+        "print_sizes": [{"label": s.get("label", ""), "price": float(s.get("price", 0)),
+                         "ship_print": float(s.get("ship_print", 8)), "ship_framed": float(s.get("ship_framed", 15))}
+                        for s in sizes],
+        "free_ship_threshold": int(pp.get("free_ship_threshold", 3)),
+        "frame_prices": [{"landscape": frame(i, "landscape"), "portrait": frame(i, "portrait")} for i in range(len(sizes))],
+        "logo_fee": float(_load_pricing().get("logo_fee", 2) or 0),
+    }
 
 
 @app.post("/api/admin/frames/prices")
@@ -1999,6 +2013,7 @@ async def update_frame_prices(request: Request):
             timeout=15,
         )
         results.append({"variation_id": var_id, "ok": resp.status_code in (200, 201)})
+    _frame_prices_cache["data"] = None     # the shop and checkout see the new prices right away
     return {"results": results}
 
 
@@ -2091,53 +2106,10 @@ def _wc_delete_coupon(wc_id: int):
 @app.get("/api/validate-coupon")
 def validate_coupon(code: str = Query(""), email: str = Query("")):
     """Validate a discount code against our own code store."""
-    code_clean = code.strip().upper()
-    if not code_clean:
-        return JSONResponse(status_code=400, content={"valid": False, "error": "No code provided"})
-
-    codes = _load_discount_codes()
-    c = next((x for x in codes if x.get("code","").upper() == code_clean), None)
+    c, problem = _check_coupon(code, email)
     if not c:
-        return JSONResponse(status_code=404, content={"valid": False, "error": "Invalid coupon code"})
-    if not c.get("active", True):
-        return JSONResponse(status_code=400, content={"valid": False, "error": "This code is no longer active"})
-
-    # Start date check
-    start_date = c.get("start_date")
-    if start_date:
-        try:
-            start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            if not start_dt.tzinfo:
-                start_dt = start_dt.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) < start_dt:
-                return JSONResponse(status_code=400, content={"valid": False, "error": "This code is not yet active"})
-        except Exception:
-            pass
-
-    # Expiry check
-    expires = c.get("expires")
-    if expires:
-        try:
-            exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
-            if not exp_dt.tzinfo:
-                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) > exp_dt:
-                return JSONResponse(status_code=400, content={"valid": False, "error": "This code has expired"})
-        except Exception:
-            pass
-
-    # Usage limit check
-    limit = c.get("usage_limit")
-    if limit and int(c.get("usage_count", 0)) >= int(limit):
-        return JSONResponse(status_code=400, content={"valid": False, "error": "This code has reached its usage limit"})
-
-    # Per-customer limit check
-    per_user = c.get("usage_limit_per_user")
-    if per_user and email:
-        user_uses = sum(1 for u in c.get("uses", []) if u.get("email","").lower() == email.lower())
-        if user_uses >= int(per_user):
-            return JSONResponse(status_code=400, content={"valid": False, "error": "You have already used this code"})
-
+        return JSONResponse(status_code=404 if problem == "Invalid coupon code" else 400,
+                            content={"valid": False, "error": problem})
     return {
         "valid":          True,
         "code":           c["code"].lower(),
@@ -2162,264 +2134,394 @@ async def create_checkout(request: Request):
     return await run_in_threadpool(_create_checkout, body)
 
 
+# ── Online checkout pricing ───────────────────────────────────────────────────
+# One calculation for everything an online order costs. The checkout page shows it
+# (/api/checkout/quote) and /api/checkout charges exactly it, so what customers see
+# is what WooCommerce charges. No price, discount or bundle is taken from the browser.
+
+class CheckoutError(ValueError):
+    """A cart the server can't price: an unknown item, prices not set up, or
+    WooCommerce unavailable. The message is shown to the customer."""
+
+
+_CATEGORIES = ("digital", "prints", "frames")
+_FRAME_SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
+_FRAME_VARIATION_INFO = {vid: key for key, vid in FRAME_VARIATION_MAP.items()}   # vid -> (size_idx, orientation)
+_frame_prices_cache = {"data": None, "ts": 0.0}
+_FRAME_PRICES_TTL = 300   # seconds; saving frame prices in the studio clears it
+
+
+def _frame_variations() -> dict:
+    """{variation_id: {"price": float, "stock_status": str}} for the frame product, from
+    WooCommerce (kept for a few minutes). Raises CheckoutError if WooCommerce can't say."""
+    c = _frame_prices_cache
+    now = _time.time()
+    if c["data"] is not None and now - c["ts"] < _FRAME_PRICES_TTL:
+        return c["data"]
+    try:
+        r = http_requests.get(f"{WC_BASE}/products/{WC_FRAME_PARENT_ID}/variations",
+                              params={"per_page": 100}, auth=(WC_KEY, WC_SECRET), timeout=15)
+    except Exception as e:
+        raise CheckoutError("Couldn't load frame prices — please try again in a moment") from e
+    if r.status_code != 200:
+        raise CheckoutError("Couldn't load frame prices — please try again in a moment")
+    data = {}
+    for v in r.json():
+        try:
+            data[int(v["id"])] = {"price": float(v.get("price") or v.get("regular_price") or 0),
+                                  "stock_status": v.get("stock_status", "instock")}
+        except (KeyError, TypeError, ValueError):
+            continue
+    c.update(data=data, ts=now)
+    return data
+
+
+def _frame_price(variation_id: int) -> float:
+    v = _frame_variations().get(int(variation_id))
+    if not v or v["price"] <= 0:
+        raise CheckoutError("One of the frames in your cart isn't available right now")
+    return v["price"]
+
+
+def _activity_groups(pricing: dict = None) -> dict:
+    """Activity group name -> its activities (location names): the studio's categories,
+    with explicit pricing["activity_groups"] entries winning."""
+    pricing = pricing if pricing is not None else _load_pricing()
+    derived = {cat["name"]: cat.get("acts", []) for cat in pricing.get("activity_categories", []) if cat.get("name")}
+    return {**derived, **pricing.get("activity_groups", {})}
+
+
+def _group_in_cart(name: str, acts: list, locations: set, has_portraits: bool) -> bool:
+    """Same test as the checkout page used: a folder from one of the group's activities
+    is in the cart, or (for a portrait group) portrait photos are."""
+    acts_lower = {a.lower() for a in acts}
+    if acts_lower & locations:
+        return True
+    is_portrait_group = "portrait" in name.lower() or any("portrait" in a for a in acts_lower)
+    return is_portrait_group and has_portraits
+
+
+def _bundle_for_cart(locations: set, has_portraits: bool):
+    """(active bundle or None, upsell or None). A bundle is active when the cart has
+    something from every one of its activity groups; the upsell names what's missing
+    when only some are there."""
+    pricing = _load_pricing()
+    groups = _activity_groups(pricing)
+    upsell = None
+    for combo in pricing.get("combos", []):
+        names, pct = combo.get("activity_groups") or [], combo.get("pct_off")
+        if not names or pct is None:
+            continue
+        present = [n for n in names if _group_in_cart(n, groups.get(n, []), locations, has_portraits)]
+        if len(present) == len(names):
+            return {"label": combo.get("label") or "Bundle deal", "pct": float(pct)}, None
+        if present and upsell is None:
+            short = lambda g: re.sub(r"^(Winter|Summer|Fall|Spring|Autumn)\s+", "", g, flags=re.I)
+            upsell = {"missing": [short(n) for n in names if n not in present], "pct": float(pct)}
+    return None, upsell
+
+
+def _check_coupon(code: str, email: str = ""):
+    """(discount code, None) if `code` can be used now, else (None, reason)."""
+    code_clean = (code or "").strip().upper()
+    if not code_clean:
+        return None, "No code provided"
+    c = next((x for x in _load_discount_codes() if x.get("code", "").upper() == code_clean), None)
+    if not c:
+        return None, "Invalid coupon code"
+    if not c.get("active", True):
+        return None, "This code is no longer active"
+
+    def _when(value):
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    now = datetime.now(timezone.utc)
+    try:
+        if c.get("start_date") and now < _when(c["start_date"]):
+            return None, "This code is not yet active"
+    except Exception:
+        pass
+    try:
+        if c.get("expires") and now > _when(c["expires"]):
+            return None, "This code has expired"
+    except Exception:
+        pass
+    limit = c.get("usage_limit")
+    if limit and int(c.get("usage_count", 0)) >= int(limit):
+        return None, "This code has reached its usage limit"
+    per_user = c.get("usage_limit_per_user")
+    if per_user and email:
+        if sum(1 for u in c.get("uses", []) if u.get("email", "").lower() == email.lower()) >= int(per_user):
+            return None, "You have already used this code"
+    return c, None
+
+
+def _coupon_scope(code_obj: dict) -> set:
+    at = code_obj.get("applies_to", "all")
+    if at in ("digital", "portraits"):
+        return {"digital"}
+    if at in ("prints", "frames"):
+        return {at}
+    return set(_CATEGORIES)
+
+
+def _coupon_item_discount(code_obj: dict, base: float) -> float:
+    """What a code takes off items worth `base` (a free-shipping code takes nothing off items)."""
+    ctype, amount = code_obj.get("type", "percent"), float(code_obj.get("amount", 0) or 0)
+    if ctype == "percent":
+        return round(base * amount / 100, 2)
+    if ctype == "fixed":
+        return round(min(amount, base), 2)
+    return 0.0
+
+
+def _int(value, default: int, lo: int, hi: int, what: str) -> int:
+    try:
+        n = int(value if value is not None else default)
+    except (TypeError, ValueError):
+        raise CheckoutError(f"Something in your cart isn't right ({what})")
+    if not lo <= n <= hi:
+        raise CheckoutError(f"Something in your cart isn't right ({what})")
+    return n
+
+
+def _price_order(body: dict) -> dict:
+    """Price an online cart. Returns the WooCommerce order parts (line_items,
+    fee_lines, coupon_lines, meta) and the summary the checkout page shows."""
+    pricing = _load_pricing()
+    logo_fee = float(pricing.get("logo_fee", 2) or 0)
+    date = (body.get("date") or "").strip()
+    location = body.get("location", "")
+    last_name = (body.get("last_name") or "").strip()
+
+    items, rows = [], []          # items become WooCommerce lines; rows are what the page lists
+
+    def add(cat, full, line, row=None, name=None, sub=""):
+        if row is None:
+            rows.append({"name": name or line["name"], "sub": sub, "full": 0.0, "price": 0.0})
+            row = len(rows) - 1
+        items.append({"cat": cat, "full": round(full, 2), "line": line, "row": row})
+        return row
+
+    # ── Digital albums (priced like the gallery shows them) ──
+    albums = [a for a in (body.get("digital_albums") or []) if int(a.get("count") or 0) > 0]
+    album_paths, locations = [], set()
+    for a in albums:
+        count = _int(a.get("count"), 0, 1, 10000, "photo count")
+        try:
+            price = _server_digital_price(a, date)
+        except ValueError as e:
+            raise CheckoutError(str(e))
+        label = a.get("last_name") or a.get("location") or "Photos"
+        add("digital", price, {"product_id": WC_DIGITAL_PRODUCT_ID, "quantity": count,
+                               "name": f"Digital Photos — {label}",
+                               "meta_data": [{"key": "Photos", "value": f"{count} digital photo{'s' if count != 1 else ''}"}]},
+            sub=f"{count} photo{'s' if count != 1 else ''}")
+        album_paths += [p for p in (a.get("paths") or []) if p]
+        if a.get("location"):
+            locations.add(a["location"].strip().lower())
+
+    # ── Portrait poses and single photos ──
+    poses = body.get("portrait_poses") or []
+    singles = body.get("portrait_singles") or []
+    portrait_paths = []
+    if poses or singles:
+        pp = _load_portrait_pricing()
+        pose_tiers = pp.get("pose_tiers", _DEFAULT_PORTRAIT_PRICING["pose_tiers"])
+        single_price = float(pp.get("single_photo", _DEFAULT_PORTRAIT_PRICING["single_photo"]))
+        pose_price = float(pose_tiers[min(len(poses) - 1, len(pose_tiers) - 1)]) if poses else 0.0
+        for pose in poses:
+            n = len(pose.get("files", []))
+            paths = [p for p in pose.get("paths", []) if p]
+            add("digital", pose_price, {
+                "product_id": WC_DIGITAL_PRODUCT_ID, "quantity": 1,
+                "name": f"Portrait {pose.get('pose_label', 'Pose')} ({n} photo{'s' if n != 1 else ''}) — {pose.get('family', last_name or location)}",
+                "meta_data": [{"key": "Photos", "value": f"{n} digital photo{'s' if n != 1 else ''}"},
+                              {"key": "_photo_paths", "value": "|".join(paths)}]})
+            portrait_paths += paths
+        for single in singles:
+            add("digital", single_price, {
+                "product_id": WC_DIGITAL_PRODUCT_ID, "quantity": 1,
+                "name": f"Portrait Single Photo — {single.get('family', last_name or location)}",
+                "meta_data": [{"key": "Photos", "value": single.get("filename", "Photo")},
+                              {"key": "_photo_paths", "value": single.get("path", "")}]},
+                sub=single.get("filename", ""))
+            if single.get("path"):
+                portrait_paths.append(single["path"])
+
+    bought_digital = set(album_paths) | set(portrait_paths) | {p for p in (body.get("digital_paths") or []) if p}
+
+    # ── Big Sky Resort logo on digital photos (edited by hand, so listed by name) ──
+    logo_paths = [p for p in dict.fromkeys(body.get("digital_logo_paths") or []) if p in bought_digital]
+    if logo_paths and logo_fee > 0:
+        names = [p.rsplit("/", 1)[-1] for p in logo_paths]
+        n = len(logo_paths)
+        add("digital", logo_fee * n, {
+            "product_id": WC_DIGITAL_PRODUCT_ID, "quantity": n,
+            "name": f"Big Sky Resort logo — {n} photo{'s' if n != 1 else ''}",
+            "meta_data": [{"key": "Logo photos", "value": ", ".join(names)},
+                          {"key": "_logo_paths", "value": "|".join(logo_paths)}]},
+            sub=", ".join(names))
+
+    # ── Prints (half price when the same photo is bought digitally) and their frames ──
+    sizes = _load_print_pricing().get("sizes", list(_DEFAULT_PRINT_SIZES))
+    prints = body.get("prints") or []
+    for p in prints:
+        size_idx = _int(p.get("size_idx"), 0, 0, len(sizes) - 1, "print size")
+        size_label = p.get("size") or sizes[size_idx].get("label", "")
+        half = bool(p.get("path")) and p["path"] in bought_digital
+        logo = bool(p.get("logo"))
+        price = float(sizes[size_idx].get("price", 0)) / (2 if half else 1) + (logo_fee if logo else 0)
+        meta = []
+        if half:
+            meta.append({"key": "Price", "value": "50% off (digital photo also purchased)"})
+        if logo:
+            meta.append({"key": "Logo", "value": "Big Sky Resort logo"})
+        frame = p.get("frame") if p.get("frame") not in ("", None, "No Frame") else None
+        row = add("prints", price, {"product_id": WC_PRINT_PRODUCT_ID, "quantity": 1,
+                                    "name": f"{size_label} Print — {p.get('filename', '')}" + (" + Big Sky Resort logo" if logo else ""),
+                                    "meta_data": meta},
+                  name=f"{size_label} Print" + (f" + {frame}" if frame else "") + (" + Logo" if logo else ""),
+                  sub=p.get("filename", ""))
+        if p.get("location"):
+            locations.add(str(p["location"]).strip().lower())
+        if frame:
+            orientation = p.get("orientation") if p.get("orientation") in ("landscape", "portrait") else "landscape"
+            vid = FRAME_VARIATION_MAP.get((size_idx, orientation))
+            if vid is None:
+                raise CheckoutError("One of the frames in your cart isn't available right now")
+            add("frames", _frame_price(vid), {"product_id": WC_FRAME_PARENT_ID, "variation_id": vid,
+                                              "quantity": 1, "name": f"  └ Frame: {frame}"}, row=row)
+
+    # ── Frames on their own ──
+    frame_ship_sizes = []
+    for fr in body.get("frames") or []:
+        vid = _int(fr.get("variation_id"), 0, 1, 10 ** 9, "frame")
+        if vid not in _FRAME_VARIATION_INFO:
+            raise CheckoutError("One of the frames in your cart isn't available right now")
+        qty = _int(fr.get("quantity"), 1, 1, 20, "frame quantity")
+        size_idx, orientation = _FRAME_VARIATION_INFO[vid]
+        label = _FRAME_SIZE_LABELS[size_idx] if size_idx < len(_FRAME_SIZE_LABELS) else ""
+        add("frames", _frame_price(vid) * qty, {"product_id": WC_FRAME_PARENT_ID, "variation_id": vid, "quantity": qty,
+                                                "name": f"Frame — {label} ({orientation.capitalize()})"},
+            name=f"{label} Frame ({orientation}) ×{qty}")
+        frame_ship_sizes += [size_idx] * qty
+
+    # ── Shipping ──
+    print_ship = [s.get("ship_print", 8) for s in sizes]
+    frame_ship = [s.get("ship_framed", 15) for s in sizes]
+    framed = [p for p in prints if p.get("frame") not in ("", None, "No Frame")]
+    unframed = [p for p in prints if p.get("frame") in ("", None, "No Frame")]
+    frame_rates = sorted([frame_ship[int(p.get("size_idx", 0))] for p in framed] +
+                         [frame_ship[i] for i in frame_ship_sizes], reverse=True)
+    free_threshold = _load_print_pricing().get("free_ship_threshold", 3)
+    shipping, free_shipping = 0.0, False
+    if frame_rates:
+        shipping = round(frame_rates[0] + sum(r * 0.5 for r in frame_rates[1:]), 2)
+    elif unframed:
+        if len(unframed) >= free_threshold:
+            free_shipping = True
+        else:
+            shipping = float(max(print_ship[int(p.get("size_idx", 0))] for p in unframed))
+
+    # ── Discounts: a bundle takes its % off every item, except items a code takes more off ──
+    def worth(cats, key="full"):
+        return round(sum(it[key] for it in items if it["cat"] in cats), 2)
+
+    bundle, upsell = _bundle_for_cart(locations, bool(poses or singles))
+    coupon, coupon_note = None, ""
+    code_in = (body.get("coupon_code") or "").strip()
+    if code_in:
+        coupon, coupon_note = _check_coupon(code_in, body.get("email", ""))
+    bundle_cats = set(_CATEGORIES) if bundle else set()
+    if bundle and coupon:
+        scope = _coupon_scope(coupon) & {it["cat"] for it in items}
+        code_off = _coupon_item_discount(coupon, worth(scope))
+        if code_off > 0:
+            if code_off > round(worth(scope) * bundle["pct"] / 100, 2):
+                bundle_cats -= scope            # the code gives these items more
+            else:
+                coupon_note = f"The {bundle['label']} ({bundle['pct']:g}% off) saves you more than this code"
+                coupon = None
+    for it in items:
+        pct = bundle["pct"] if it["cat"] in bundle_cats else 0
+        it["price"] = round(it["full"] * (1 - pct / 100), 2)
+        rows[it["row"]]["full"] = round(rows[it["row"]]["full"] + it["full"], 2)
+        rows[it["row"]]["price"] = round(rows[it["row"]]["price"] + it["price"], 2)
+    bundle_savings = round(worth(_CATEGORIES) - worth(_CATEGORIES, "price"), 2)
+    coupon_off = _coupon_item_discount(coupon, worth(_coupon_scope(coupon), "price")) if coupon else 0.0
+    subtotal = worth(_CATEGORIES, "price")
+
+    # ── WooCommerce order parts ──
+    line_items = [{**it["line"], "subtotal": str(it["price"]), "total": str(it["price"])} for it in items]
+    fee_lines = [{"name": "Shipping", "total": str(shipping)}] if shipping else []
+    filenames = list(body.get("digital_filenames") or []) + [s.get("filename", "") for s in singles]
+    meta = [
+        {"key": "_photo_location", "value": location},
+        {"key": "_photo_date",     "value": date},
+        {"key": "_photo_files",    "value": ", ".join(filenames)},
+        {"key": "_photo_paths",    "value": "|".join(list(body.get("digital_paths") or []) + portrait_paths)},
+    ]
+    if coupon:
+        meta += [{"key": "_coupon_code", "value": code_in.lower()},
+                 {"key": "_coupon_discount", "value": str(coupon_off)}]
+    if bundle_savings > 0:
+        meta += [{"key": "_bundle_discount_pct", "value": str(bundle["pct"])},
+                 {"key": "_bundle_savings", "value": str(bundle_savings)}]
+    return {
+        "line_items": line_items,
+        "fee_lines": fee_lines,
+        "coupon_lines": [{"code": code_in.lower()}] if coupon else [],
+        "meta": meta,
+        "summary": {
+            "rows": rows,
+            "subtotal": subtotal,
+            "shipping": shipping,
+            "free_shipping": free_shipping,
+            "coupon": {"code": code_in.upper(), "discount": coupon_off,
+                       "free_shipping": bool(coupon.get("free_shipping") or coupon.get("type") == "free_shipping")} if coupon else None,
+            "coupon_note": coupon_note or "",
+            "bundle": {"label": bundle["label"], "pct": bundle["pct"], "savings": bundle_savings} if bundle_savings > 0 else None,
+            "upsell": upsell,
+            "total": round(max(0.0, subtotal + shipping - coupon_off), 2),
+        },
+    }
+
+
+@app.post("/api/checkout/quote")
+def checkout_quote(body: dict = Body(...)):
+    """The checkout page's totals: exactly what /api/checkout will charge."""
+    try:
+        return _price_order(body)["summary"]
+    except CheckoutError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
+
 def _create_checkout(body: dict):
     try:
-        digital_albums      = body.get("digital_albums", [])
-        portrait_poses      = body.get("portrait_poses", [])    # [{pose_label, color, files, paths, family}]
-        portrait_singles    = body.get("portrait_singles", [])  # [{filename, path, family}]
-        bundle_discount_pct    = float(body.get("bundle_discount_pct", 0))
-        bundle_savings_amount  = float(body.get("bundle_savings_amount", 0))
-        # Fallback for legacy payloads
-        digital_count = body.get("digital_count", sum(a.get("count", 0) for a in digital_albums))
-        digital_price = body.get("digital_price", sum(a.get("price", 0) for a in digital_albums))
-        filenames     = body.get("digital_filenames", [])
-        prints        = body.get("prints", [])
-        frames        = body.get("frames", [])
-        location      = body.get("location", "")
-        date          = body.get("date", "")
-        last_name        = body.get("last_name", "").strip()
-        coupon_code      = body.get("coupon_code", "").strip()
-        coupon_discount  = float(body.get("coupon_discount", 0))
-        # Bundle and coupon are mutually exclusive — bundle takes priority
-        if bundle_discount_pct > 0:
-            coupon_code     = ""
-            coupon_discount = 0.0
-
-        line_items = []
-        fee_lines  = []
-
-        # ── Pre-calculate combo price adjustments ────────────────────────────
-        # Instead of a negative discount fee line, each combo album gets its
-        # share of the combo price (e.g. $95 / 2 locations = $47.50 each).
-        _combos_cfg = _load_pricing().get("combos", [])
-        _combo_adj = {}  # index in digital_albums -> adjusted price
-        for _combo in _combos_cfg:
-            _clocs    = set(_combo.get("locations", []))
-            _min_each = _combo.get("min_each", 1)
-            _lc       = {}
-            _idxs     = []
-            for _i, _album in enumerate(digital_albums):
-                _loc = _album.get("location", "")
-                if _loc in _clocs:
-                    _lc[_loc] = _lc.get(_loc, 0) + int(_album.get("count", 0))
-                    _idxs.append(_i)
-            if _idxs and all(_lc.get(l, 0) >= _min_each for l in _clocs):
-                _combo_price = float(_combo.get("price", 0))
-                _share       = round(_combo_price / len(_idxs), 2)
-                for _j, _idx in enumerate(_idxs):
-                    # Last album absorbs any rounding remainder
-                    _combo_adj[_idx] = (
-                        round(_combo_price - _share * (len(_idxs) - 1), 2)
-                        if _j == len(_idxs) - 1 else _share
-                    )
-                break  # Only one active combo at a time
-
-        if digital_albums:
-            # One line item per album (adjusted price for combo albums)
-            for _i, album in enumerate(digital_albums):
-                count = int(album.get("count", 0))
-                if count == 0:
-                    continue
-                # Always use server-computed price — never trust client-supplied price
-                server_price = _server_digital_price(album, date)
-                album_price = str(_combo_adj.get(_i, server_price))
-                album_name  = album.get("last_name") or album.get("location") or "Photos"
-                line_items.append({
-                    "product_id": WC_DIGITAL_PRODUCT_ID,
-                    "quantity":   count,
-                    "name":       f"Digital Photos — {album_name}",
-                    "subtotal":   album_price,
-                    "total":      album_price,
-                    "meta_data":  [{"key": "Photos", "value": f"{count} digital photo{'s' if count != 1 else ''}"}],
-                })
-        elif digital_count > 0:
-            # Legacy fallback: single combined line item — recompute price server-side
-            _legacy_album = {"count": digital_count, "location": location, "last_name": last_name}
-            price_str    = str(_server_digital_price(_legacy_album, date))
-            display_name = last_name if last_name else location
-            line_items.append({
-                "product_id": WC_DIGITAL_PRODUCT_ID,
-                "quantity":   digital_count,
-                "name":       f"Digital Photos — {display_name}",
-                "subtotal":   price_str,
-                "total":      price_str,
-                "meta_data":  [{"key": "Photos", "value": f"{digital_count} digital photo{'s' if digital_count != 1 else ''}"}],
-            })
-
-        # ── Portrait pose line items ──────────────────────────────────────────
-        if portrait_poses or portrait_singles:
-            _pp_total = _server_portrait_price(len(portrait_poses), len(portrait_singles))
-            pp_tiers  = _load_portrait_pricing().get("pose_tiers", _DEFAULT_PORTRAIT_PRICING["pose_tiers"])
-            pp_single = float(_load_portrait_pricing().get("single_photo", 40.0))
-            pose_price_each = float(pp_tiers[min(len(portrait_poses) - 1, len(pp_tiers) - 1)]) if portrait_poses else 0.0
-            if bundle_discount_pct > 0:
-                pose_price_each = round(pose_price_each * (1 - bundle_discount_pct / 100), 2)
-                pp_single = round(pp_single * (1 - bundle_discount_pct / 100), 2)
-            for pose in portrait_poses:
-                _family   = pose.get("family", last_name or location)
-                _label    = pose.get("pose_label", "Pose")
-                _n_photos = len(pose.get("files", []))
-                _price_s  = str(round(pose_price_each, 2))
-                _paths_s  = "|".join(pose.get("paths", []))
-                line_items.append({
-                    "product_id": WC_DIGITAL_PRODUCT_ID,
-                    "quantity":   1,
-                    "name":       f"Portrait {_label} ({_n_photos} photo{'s' if _n_photos != 1 else ''}) — {_family}",
-                    "subtotal":   _price_s,
-                    "total":      _price_s,
-                    "meta_data":  [
-                        {"key": "Photos", "value": f"{_n_photos} digital photo{'s' if _n_photos != 1 else ''}"},
-                        {"key": "_photo_paths", "value": _paths_s},
-                    ],
-                })
-            for single in portrait_singles:
-                _family  = single.get("family", last_name or location)
-                _fname   = single.get("filename", "Photo")
-                _price_s = str(round(pp_single, 2))
-                _path    = single.get("path", "")
-                line_items.append({
-                    "product_id": WC_DIGITAL_PRODUCT_ID,
-                    "quantity":   1,
-                    "name":       f"Portrait Single Photo — {_family}",
-                    "subtotal":   _price_s,
-                    "total":      _price_s,
-                    "meta_data":  [
-                        {"key": "Photos", "value": _fname},
-                        {"key": "_photo_paths", "value": _path},
-                    ],
-                })
-            # Collect all portrait paths for delivery
-            all_portrait_paths = (
-                [p for pose in portrait_poses for p in pose.get("paths", [])] +
-                [s.get("path", "") for s in portrait_singles if s.get("path")]
-            )
-            if "_photo_paths" not in [m["key"] for m in (body.get("meta_data") or [])]:
-                body.setdefault("digital_paths", [])
-                body["digital_paths"].extend(all_portrait_paths)
-                filenames.extend([s.get("filename", "") for s in portrait_singles])
-
-        for p in prints:
-            size_idx    = int(p.get("size_idx", 0))
-            print_price = str(_server_print_price(size_idx))
-            line_items.append({
-                "product_id": WC_PRINT_PRODUCT_ID,
-                "quantity":   1,
-                "name":       f"{p['size']} Print — {p['filename']}",
-                "subtotal":   print_price,
-                "total":      print_price,
-                "meta_data":  [],
-            })
-            if p.get("frame") and p["frame"] != "No Frame":
-                orientation = p.get("orientation", "landscape")
-                var_id      = FRAME_VARIATION_MAP.get((size_idx, orientation), 1057)
-                frame_price = str(max(0.01, float(p.get("frame_price", 0))))
-                line_items.append({
-                    "product_id":   WC_FRAME_PARENT_ID,
-                    "variation_id": var_id,
-                    "quantity":     1,
-                    "name":         f"  └ Frame: {p['frame']}",
-                    "subtotal":     frame_price,
-                    "total":        frame_price,
-                })
-
-        for fr in frames:
-            var_id    = int(fr["variation_id"])
-            qty       = int(fr.get("quantity", 1))
-            fr_price  = float(fr["price"]) * qty
-            line_items.append({
-                "product_id":   WC_FRAME_PARENT_ID,
-                "variation_id": var_id,
-                "quantity":     qty,
-                "name":         f"Frame — {fr['size']} ({fr['orientation'].capitalize()})",
-                "subtotal":     str(fr_price),
-                "total":        str(fr_price),
-            })
-
-        # ── Shipping logic (mirrors frontend calcShipping) ───────────────────
-        _pp = _load_print_pricing()
-        _ppsizes = _pp.get("sizes", _DEFAULT_PRINT_SIZES)
-        PRINT_SHIP = [s.get("ship_print", 8)   for s in _ppsizes]
-        FRAME_SHIP = [s.get("ship_framed", 15)  for s in _ppsizes]
-
-        framed   = [p for p in prints if p.get("frame") and p["frame"] != "No Frame"]
-        unframed = [p for p in prints if not p.get("frame") or p["frame"] == "No Frame"]
-
-        # Collect all frame shipping rates: framed prints + standalone frames (expanded by qty)
-        frame_rates = (
-            [FRAME_SHIP[int(p.get("size_idx", 0))] for p in framed] +
-            [FRAME_SHIP[int(fr.get("sizeIdx", 0))]
-             for fr in frames for _ in range(int(fr.get("quantity", 1)))]
-        )
-
-        FREE_SHIP_PRINT_THRESHOLD = _pp.get("free_ship_threshold", 3)
-
-        if frame_rates:
-            frame_rates.sort(reverse=True)
-            total_ship = frame_rates[0] + sum(r * 0.5 for r in frame_rates[1:])
-            fee_lines.append({"name": "Shipping", "total": str(round(total_ship, 2))})
-        elif unframed:
-            # Free shipping when 3+ unframed prints and no framed prints
-            if len(unframed) >= FREE_SHIP_PRINT_THRESHOLD and not frame_rates:
-                pass  # free shipping — no fee added
-            else:
-                max_rate = max(PRINT_SHIP[int(p.get("size_idx", 0))] for p in unframed)
-                fee_lines.append({"name": "Shipping", "total": str(max_rate)})
-
-        # ── Coupon: use native WooCommerce coupon_lines so it shows as a proper
-        # discount in the checkout page and order receipt (not a fee line).
-        wc_coupon_lines = [{"code": coupon_code}] if coupon_code else []
-
-        # (Combo pricing is handled above by adjusting per-album line item prices)
-
-        paths = body.get("digital_paths", [])
-        meta = [
-            {"key": "_photo_location", "value": location},
-            {"key": "_photo_date",     "value": date},
-            {"key": "_photo_files",    "value": ", ".join(filenames)},
-            {"key": "_photo_paths",    "value": "|".join(paths)},
-        ]
-        if coupon_code:
-            meta.append({"key": "_coupon_code",     "value": coupon_code})
-            meta.append({"key": "_coupon_discount", "value": str(coupon_discount)})
-        if bundle_discount_pct > 0:
-            meta.append({"key": "_bundle_discount_pct", "value": str(bundle_discount_pct)})
-            meta.append({"key": "_bundle_savings",      "value": str(bundle_savings_amount)})
-
+        priced = _price_order(body)
+    except CheckoutError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    try:
         customer_email = body.get("email", "")
-        billing_data   = body.get("billing", {})
-        shipping_data  = body.get("shipping", {})
-
-        # Ensure email is always set in billing
-        if billing_data:
-            billing_data["email"] = customer_email
-        else:
-            billing_data = {"email": customer_email}
-
+        billing_data = dict(body.get("billing") or {})
+        billing_data["email"] = customer_email      # always set, so WooCommerce emails the customer
         order_data = {
-            "status":        "pending",
-            "line_items":    line_items,
-            "fee_lines":     fee_lines,
-            "coupon_lines":  wc_coupon_lines,
-            "meta_data":     meta,
-            "billing":       billing_data,
-            "shipping":   shipping_data,
+            "status":       "pending",
+            "line_items":   priced["line_items"],
+            "fee_lines":    priced["fee_lines"],
+            "coupon_lines": priced["coupon_lines"],
+            "meta_data":    priced["meta"],
+            "billing":      billing_data,
+            "shipping":     body.get("shipping", {}),
         }
-        resp = http_requests.post(
-            f"{WC_BASE}/orders",
-            json=order_data,
-            auth=(WC_KEY, WC_SECRET),
-            timeout=15
-        )
-
+        resp = http_requests.post(f"{WC_BASE}/orders", json=order_data, auth=(WC_KEY, WC_SECRET), timeout=15)
         if resp.status_code not in (200, 201):
-            return JSONResponse(status_code=500,
-                                content={"error": f"WooCommerce error: {resp.text}"})
-
+            return JSONResponse(status_code=500, content={"error": f"WooCommerce error: {resp.text}"})
         order = resp.json()
         pay_url = (f"https://bigskyphotos.com/checkout/order-pay/{order['id']}/"
                    f"?pay_for_order=true&key={order['order_key']}")
-        return {"checkout_url": pay_url}
-
+        return {"checkout_url": pay_url, "total": priced["summary"]["total"]}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

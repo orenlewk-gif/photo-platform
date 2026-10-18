@@ -117,7 +117,7 @@ def test_checkout_with_unpriced_photos_is_refused_not_free(client, main_module, 
     woo = _WooOrders()
     monkeypatch.setattr(main_module.http_requests, "post", woo.post)
     r = _checkout(client, [{"location": "Big Sky Sign", "count": 2, "last_name": "Big Sky Sign"}])
-    assert r.status_code == 500 and "aren't set up" in r.json()["error"]
+    assert r.status_code == 400 and "aren't set up" in r.json()["error"]
     assert woo.created == []
 
 
