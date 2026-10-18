@@ -4178,21 +4178,31 @@ button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8p
   </form>
 </div></body></html>"""
 
+def _safe_next(url) -> str:
+    """Where to go after signing in: only a page on this site. A link like
+    /admin?next=https://elsewhere could otherwise send you to another site."""
+    url = str(url or "")
+    if (not url.startswith("/") or url.startswith("//") or url.startswith("/\\")
+            or any(c in url for c in "\r\n\t\\") or len(url) > 500):
+        return "/admin/dashboard"
+    return url
+
+
 @app.get("/admin", response_class=HTMLResponse)
 def admin_get(request: Request):
     if not _admin_authed(request):
-        next_url = request.query_params.get("next", "/admin/dashboard")
-        return HTMLResponse(ADMIN_LOGIN_HTML.format(error="", next=next_url))
+        next_url = _safe_next(request.query_params.get("next"))
+        return HTMLResponse(ADMIN_LOGIN_HTML.format(error="", next=_html_escape(next_url)))
     return RedirectResponse("/admin/dashboard")
 
 @app.post("/admin/login")
 async def admin_login(request: Request):
     form = await request.form()
     pw   = form.get("password", "")
-    next_url = form.get("next", "/admin/dashboard") or "/admin/dashboard"
+    next_url = _safe_next(form.get("next"))
     if not ADMIN_PASSWORD or not hmac.compare_digest(pw, ADMIN_PASSWORD):
         return HTMLResponse(ADMIN_LOGIN_HTML.format(
-            error='<p class="err">Incorrect password.</p>', next=next_url), status_code=401)
+            error='<p class="err">Incorrect password.</p>', next=_html_escape(next_url)), status_code=401)
     token = _make_session_token()
     resp  = RedirectResponse(next_url, status_code=303)
     resp.set_cookie(ADMIN_COOKIE, token, httponly=True, samesite="strict", max_age=86400)
@@ -9204,6 +9214,8 @@ def admin_links_page(request: Request):
     if not _admin_authed(request):
         return RedirectResponse("/admin?next=/admin/links")
     new_token = request.query_params.get("new", "")
+    if not re.fullmatch(r"[A-Za-z0-9]{8,64}", new_token):
+        new_token = ""            # only a real package id is ever written into the page
     new_url   = f"{SITE_URL}/package/{new_token}" if new_token else ""
     html = (open("templates/admin_links.html").read()
             .replace("__NEW_TOKEN__", new_token)

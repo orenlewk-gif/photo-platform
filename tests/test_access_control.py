@@ -138,3 +138,36 @@ def test_old_zip_pricing_links_still_lead_to_pricing(admin_client):
 
 def test_dashboard_upload_locations_still_served(client):
     assert client.get("/api/upload/locations").status_code == 200
+
+
+# ── Login page: no outside text, no sending you to another site ──────────────
+
+@pytest.mark.parametrize("next_url", [
+    "https://evil.example/phish", "//evil.example", "/\\evil.example", "http:/evil.example",
+    "javascript:alert(1)", "/admin\r\nSet-Cookie: x=1", "",
+])
+def test_sign_in_only_returns_to_pages_on_this_site(client, next_url):
+    r = client.post("/admin/login", data={"password": "test-admin-password", "next": next_url},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/dashboard"
+
+
+def test_sign_in_returns_to_the_page_you_were_on(client):
+    r = client.post("/admin/login", data={"password": "test-admin-password", "next": "/admin/orders?days=7"},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/orders?days=7"
+
+
+def test_login_page_never_shows_text_from_the_link(client):
+    evil = '/admin/x"><script>alert(1)</script>'
+    page = client.get("/admin", params={"next": evil}).text
+    assert "<script>alert(1)</script>" not in page and "&lt;script&gt;" in page
+    wrong = client.post("/admin/login", data={"password": "nope", "next": evil}).text
+    assert "<script>alert(1)</script>" not in wrong
+
+
+def test_links_page_only_shows_a_real_package_id(admin_client):
+    page = admin_client.get("/admin/links", params={"new": "x';alert(1);//"}).text
+    assert "alert(1)" not in page
+    page = admin_client.get("/admin/links", params={"new": "a1b2c3d4e5f6a7b8"}).text
+    assert "/package/a1b2c3d4e5f6a7b8" in page
