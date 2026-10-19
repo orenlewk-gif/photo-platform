@@ -615,9 +615,14 @@ def _save_dim_cache_bg() -> None:
     except Exception as e:
         print(f"dim cache save error: {e}")
 
+# Camera files carry ~100 KB of extra information (preview, settings) before the part
+# that says how big the photo is, so read the first 256 KB.
+_DIMS_READ_BYTES   = 262144
+_DIMS_WAIT_SECONDS = 6      # a folder never waits longer; slower ones finish in the background
+
 def _fetch_dims(path: str) -> tuple:
     try:
-        resp     = s3.get_object(Bucket=R2_BUCKET, Key=path, Range="bytes=0-65535")
+        resp     = s3.get_object(Bucket=R2_BUCKET, Key=path, Range=f"bytes=0-{_DIMS_READ_BYTES - 1}")
         img_data = resp["Body"].read()
         img      = Image.open(BytesIO(img_data))
         return img.size  # (w, h)
@@ -629,20 +634,17 @@ def _dims_for_paths(paths: list) -> dict:
     import concurrent.futures as _cf
     uncached = [p for p in paths if p not in _dim_cache]
     if uncached:
-        with ThreadPoolExecutor(max_workers=20) as ex:
-            futures = {ex.submit(_fetch_dims, p): p for p in uncached}
-            done, _ = _cf.wait(futures, timeout=6)
-        new_count = 0
-        for f in done:
-            p = futures[f]
-            try:
-                w, h = f.result()
-                if w and h:
-                    _dim_cache[p] = [w, h]
-                    new_count += 1
-            except Exception:
-                pass
-        if new_count:
+        def _measure(p):
+            w, h = _fetch_dims(p)
+            if w and h:
+                _dim_cache[p] = [w, h]     # remembered even if it finishes after the wait
+                return True
+            return False
+        ex = ThreadPoolExecutor(max_workers=20)
+        futures = [ex.submit(_measure, p) for p in uncached]
+        done, _ = _cf.wait(futures, timeout=_DIMS_WAIT_SECONDS)
+        ex.shutdown(wait=False)            # don't hold the visitor for the stragglers
+        if any(f.result() for f in done if not f.exception()):
             threading.Thread(target=_save_dim_cache_bg, daemon=True).start()
     return {p: tuple(_dim_cache[p]) if p in _dim_cache else (0, 0) for p in paths}
 

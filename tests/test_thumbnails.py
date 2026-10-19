@@ -253,3 +253,36 @@ def test_pos_thumbnails_only_for_chosen_dates_and_safe_to_rerun(admin_client, ma
 def test_pos_thumbnails_requires_admin_and_a_date(client, admin_client):
     assert client.post("/api/admin/thumbs/pos", json={"date_to": "2026-06-12"}).status_code == 401
     assert admin_client.post("/api/admin/thumbs/pos", json={}).status_code == 400
+
+
+def _camera_like_jpeg(w=6000, h=4000) -> bytes:
+    """A JPEG with ~120 KB of extra information before the size, like Oren's camera files."""
+    buf = BytesIO()
+    Image.new("RGB", (w, h), (90, 140, 200)).save(buf, "JPEG", quality=60, icc_profile=bytes(120_000))
+    return buf.getvalue()
+
+
+def test_photo_size_is_measured_and_remembered_for_camera_files(main_module, monkeypatch):
+    key = "images/2026-10-09/ambush-action/CAM1.JPG"
+    _put(key, _camera_like_jpeg())
+    assert main_module._dims_for_paths([key]) == {key: (6000, 4000)}
+    calls = []
+    monkeypatch.setattr(main_module, "_fetch_dims", lambda p: calls.append(p) or (0, 0))
+    assert main_module._dims_for_paths([key]) == {key: (6000, 4000)}
+    assert calls == []                                      # second visit: nothing measured again
+
+
+def test_slow_measuring_never_holds_a_folder_past_the_limit(main_module, monkeypatch):
+    import threading
+    release = threading.Event()
+    monkeypatch.setattr(main_module, "_DIMS_WAIT_SECONDS", 0.3)
+    monkeypatch.setattr(main_module, "_fetch_dims", lambda p: release.wait(5) and (4000, 3000))
+    key = "images/2026-10-09/ambush-action/SLOW.JPG"
+    start = time.time()
+    assert main_module._dims_for_paths([key]) == {key: (0, 0)}
+    assert time.time() - start < 2
+    release.set()                                           # the straggler finishes in the background...
+    end = time.time() + 3
+    while key not in main_module._dim_cache and time.time() < end:
+        time.sleep(0.05)
+    assert main_module._dim_cache[key] == [4000, 3000]      # ...and is remembered for the next visit
