@@ -30,6 +30,7 @@ import requests as http_requests
 from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientation,
                          grid_thumb_r2_key as _grid_thumb_r2_key, nowm_thumb_r2_key as _nowm_thumb_r2_key,
                          thumb_r2_key as _thumb_r2_key)
+from core.classify import MODEL_LABEL, ColorModel
 from core.storage import JsonDoc
 from core.text import (clean_location, folder_key as _folder_key, item_group_from_path as _item_group_from_path,
                        natural_sort_key, pick_four as _pick_four, to_r2_key)
@@ -317,104 +318,17 @@ def _color_family(color: str) -> set:
     return _COLOR_FAMILY.get(color, {color})
 
 
-# ── ONNX Model Inference ──────────────────────────────────────────────────────
-
-_onnx_session = None
-_onnx_meta    = None
-_onnx_lock    = threading.Lock()
-
-_CLIP_MEAN = np.array([0.48145466, 0.4578275,  0.40821073], dtype=np.float32).reshape(3, 1, 1)
-_CLIP_STD  = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32).reshape(3, 1, 1)
+# ── Labeling model ────────────────────────────────────────────────────────────
+_color_model = ColorModel("model_v3.onnx", "model_v3_meta.json")
 
 
-def _load_onnx_model():
-    global _onnx_session, _onnx_meta
-    with _onnx_lock:
-        if _onnx_session is not None:
-            return True
-        onnx_path = "model_v3.onnx"
-        meta_path = "model_v3_meta.json"
-        if not (os.path.exists(onnx_path) and os.path.exists(meta_path)):
-            return False
-        try:
-            import onnxruntime as ort
-            opts = ort.SessionOptions()
-            opts.intra_op_num_threads = 1
-            opts.inter_op_num_threads = 1
-            _onnx_session = ort.InferenceSession(onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
-            with open(meta_path) as f:
-                _onnx_meta = json.load(f)
-            print(f"ONNX model loaded (best_score={_onnx_meta.get('best_score', '?'):.3f})")
-            return True
-        except Exception as e:
-            print(f"ONNX load failed: {e}")
-            return False
-
-
-MODEL_LABEL = "model_v3"     # stamped on each photo the model labels
-
-# Decision rules, tuned 2026-10-18 on 2,000 labeled photos v3 never trained on (6/6 + 6/7):
-# photos needing no fix went from 60.7% to 62.9%, and every folder improved.
-#  - always give the most likely color (when v3 used to say "none" it was almost always a real color)
-#  - add a second jacket color only when it scores at least 0.50 and within 0.15 of the first
-#  - pants get one color
-_SECOND_JACKET_MIN = 0.50
-_SECOND_JACKET_GAP = 0.15
-
-
-def _preprocess_image(img_bytes: bytes) -> np.ndarray:
-    img = Image.open(BytesIO(img_bytes))
-    if img.format in ("JPEG", "MPO"):   # MPO = camera JPEG with a built-in preview
-        # Decode at reduced scale (still >= 900px): about half the time, same answers
-        # (checked on the same 2,000 photos)
-        img.draft("RGB", (900, 900))
-    pil = img.convert("RGB").resize((224, 224), Image.LANCZOS)
-    arr = np.array(pil, dtype=np.float32).transpose(2, 0, 1) / 255.0  # HWC -> CHW
-    arr = (arr - _CLIP_MEAN) / _CLIP_STD
-    return arr[np.newaxis]  # (1, 3, 224, 224)
-
-
-def _sigmoid(x: np.ndarray) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-x))
-
-
-def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
-    if not _load_onnx_model():
-        return None
-    try:
-        inp = _preprocess_image(img_bytes)
-        j_logits, p_logits, s_logits = _onnx_session.run(
-            ["jacket_logits", "pants_logits", "sport_logits"],
-            {"pixel_values": inp},
-        )
-        colors     = _onnx_meta["all_colors"]
-        sports     = _onnx_meta["sports"]
-
-        j_prob = _sigmoid(j_logits[0])
-        p_prob = _sigmoid(p_logits[0])
-
-        j_sorted = np.argsort(j_prob)[::-1]
-        jacket = [colors[j_sorted[0]]]
-        if (len(j_sorted) > 1 and j_prob[j_sorted[1]] >= _SECOND_JACKET_MIN
-                and j_prob[j_sorted[0]] - j_prob[j_sorted[1]] < _SECOND_JACKET_GAP):
-            jacket.append(colors[j_sorted[1]])
-
-        pants = [colors[int(np.argmax(p_prob))]]
-
-        sport_idx = int(np.argmax(s_logits[0]))
-        sport = sports[sport_idx]
-
-        def _remap(colors):
-            return ['blue' if c == 'teal' else c for c in colors]
-        return {"sport": sport, "jacket_colors": _remap(jacket), "pants_colors": _remap(pants)}
-    except Exception as e:
-        print(f"ONNX classify failed: {e}")
-        return None
+def _load_onnx_model() -> bool:
+    return _color_model.load()
 
 
 def classify_photo_colors(img_bytes: bytes) -> dict | None:
     """Label sport, jacket and pants colors with the ONNX model (v3)."""
-    return classify_photo_colors_onnx(img_bytes)
+    return _color_model.classify(img_bytes)
 
 
 def embed_items_fast(items: list, job_id: str = None) -> int:

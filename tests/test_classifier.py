@@ -1,4 +1,4 @@
-"""The color model's decision rules (tuned 2026-10-18), checked with a stand-in for the model."""
+"""The color model's decision rules (tuned 2026-10-18, core/classify.py), checked with a stand-in for the model."""
 import numpy as np
 import pytest
 
@@ -29,9 +29,10 @@ class _FakeModel:
 @pytest.fixture()
 def model(main_module, monkeypatch):
     def use(**kw):
-        monkeypatch.setattr(main_module, "_onnx_session", _FakeModel(**kw))
-        monkeypatch.setattr(main_module, "_onnx_meta", {"all_colors": COLORS, "sports": SPORTS})
-        monkeypatch.setattr(main_module, "_load_onnx_model", lambda: True)
+        model = main_module._color_model
+        monkeypatch.setattr(model, "session", _FakeModel(**kw))
+        monkeypatch.setattr(model, "meta", {"all_colors": COLORS, "sports": SPORTS})
+        monkeypatch.setattr(model, "load", lambda: True)
         from io import BytesIO
         from PIL import Image
         buf = BytesIO(); Image.new("RGB", (1200, 800), (40, 90, 200)).save(buf, "JPEG")
