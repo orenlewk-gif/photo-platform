@@ -479,6 +479,31 @@ def _save_photo_list() -> None:
         s3.put_object(Bucket=R2_BUCKET, Key="images.json", Body=body, ContentType="application/json")
 
 
+_SAVE_SOON_DELAY = 1.0
+_save_soon = {"pending": False}
+_save_soon_lock = threading.Lock()
+
+
+def _save_photo_list_soon() -> None:
+    """Save the photo list shortly, in the background. Quick bursts of edits (label
+    corrections) share one save instead of each writing the whole list."""
+    with _save_soon_lock:
+        if _save_soon["pending"]:
+            return                        # a save is already on its way and will include this edit
+        _save_soon["pending"] = True
+
+    def run():
+        _time.sleep(_SAVE_SOON_DELAY)
+        with _save_soon_lock:
+            _save_soon["pending"] = False # edits from here on schedule the next save
+        try:
+            _save_photo_list()
+        except Exception as e:
+            print(f"[photo list] background save failed: {e}")
+
+    threading.Thread(target=run, daemon=True).start()
+
+
 def _drop_legacy_embeddings(items: list) -> int:
     """Remove the old CLIP 'embedding' vectors (512 numbers per photo, written by the
     retired indexers). Nothing reads them — search uses the ONNX color labels — and
@@ -1715,9 +1740,7 @@ async def admin_set_photo_colors(request: Request):
     if "sport"         in body: item["sport"]          = body["sport"] or None
     if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
     item["manually_corrected"] = True
-    def _flush():
-        _save_photo_list()
-    threading.Thread(target=_flush, daemon=True).start()
+    _save_photo_list_soon()
     return {"ok": True, "path": path}
 
 
@@ -1743,9 +1766,7 @@ async def admin_set_photos_colors_bulk(request: Request):
         item["manually_corrected"] = True
         updated.append(path)
     if updated:
-        def _flush():
-            _save_photo_list()
-        threading.Thread(target=_flush, daemon=True).start()
+        _save_photo_list_soon()
     return {"ok": True, "updated": len(updated)}
 
 

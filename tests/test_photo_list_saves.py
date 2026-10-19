@@ -41,3 +41,22 @@ def test_save_writes_the_current_list_even_after_it_was_replaced(main_module, ph
     main_module.data = [{"path": "images/2026-12-11/y/N.jpg", "date": "2026-12-11", "location": "Y"}]
     main_module._save_photo_list()
     assert [p["path"] for p in _stored(main_module)] == ["images/2026-12-11/y/N.jpg"]
+
+
+def test_a_burst_of_label_corrections_shares_one_save(admin_client, main_module, photos, monkeypatch):
+    import time
+    monkeypatch.setattr(main_module, "_SAVE_SOON_DELAY", 0.2)
+    puts = []
+    real_put = main_module.s3.put_object
+    monkeypatch.setattr(main_module.s3, "put_object",
+                        lambda **kw: (puts.append(kw["Key"]) if kw["Key"] == "images.json" else None) or real_put(**kw))
+    for i, color in enumerate(["red", "blue", "green", "black", "white"] * 2):
+        r = admin_client.post("/api/admin/set-photo-colors", json={"path": photos[i % 3]["path"], "jacket_colors": [color]})
+        assert r.status_code == 200
+    time.sleep(0.6)
+    assert puts.count("images.json") == 1
+    assert _stored(main_module)[0]["jacket_colors"] == ["white"]          # the last correction is in it
+    admin_client.post("/api/admin/set-photo-colors", json={"path": photos[1]["path"], "jacket_colors": ["pink"]})
+    time.sleep(0.6)
+    assert puts.count("images.json") == 2                                 # a later edit gets its own save
+    assert _stored(main_module)[1]["jacket_colors"] == ["pink"]
