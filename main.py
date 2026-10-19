@@ -30,6 +30,8 @@ import requests as http_requests
 from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientation,
                          grid_thumb_r2_key as _grid_thumb_r2_key, nowm_thumb_r2_key as _nowm_thumb_r2_key,
                          thumb_r2_key as _thumb_r2_key)
+from core.checkout import (CATEGORIES, CheckoutError, activity_groups, bundle_for_cart, check_coupon,
+                           coupon_item_discount, coupon_scope, parse_int, shipping_for)
 from core.classify import MODEL_LABEL, ColorModel
 from core.index import SEARCHABLE_GROUP_LOCATIONS, build_folder_index as _build_folder_index
 from core.pricing import ZIP_LOCS_SET, best_tier_price, pricing_for
@@ -1775,12 +1777,18 @@ async def create_checkout(request: Request):
 # (/api/checkout/quote) and /api/checkout charges exactly it, so what customers see
 # is what WooCommerce charges. No price, discount or bundle is taken from the browser.
 
-class CheckoutError(ValueError):
-    """A cart the server can't price: an unknown item, prices not set up, or
-    WooCommerce unavailable. The message is shown to the customer."""
+def _activity_groups(pricing: dict = None) -> dict:
+    return activity_groups(pricing if pricing is not None else _load_pricing())
 
 
-_CATEGORIES = ("digital", "prints", "frames")
+def _bundle_for_cart(locations: set, has_portraits: bool):
+    return bundle_for_cart(_load_pricing(), locations, has_portraits)
+
+
+def _check_coupon(code: str, email: str = ""):
+    return check_coupon(_load_discount_codes(), code, email)
+
+
 _FRAME_SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
 _FRAME_VARIATION_INFO = {vid: key for key, vid in FRAME_VARIATION_MAP.items()}   # vid -> (size_idx, orientation)
 _frame_prices_cache = {"data": None, "ts": 0.0}
@@ -1819,108 +1827,6 @@ def _frame_price(variation_id: int) -> float:
     return v["price"]
 
 
-def _activity_groups(pricing: dict = None) -> dict:
-    """Activity group name -> its activities (location names): the studio's categories,
-    with explicit pricing["activity_groups"] entries winning."""
-    pricing = pricing if pricing is not None else _load_pricing()
-    derived = {cat["name"]: cat.get("acts", []) for cat in pricing.get("activity_categories", []) if cat.get("name")}
-    return {**derived, **pricing.get("activity_groups", {})}
-
-
-def _group_in_cart(name: str, acts: list, locations: set, has_portraits: bool) -> bool:
-    """Same test as the checkout page used: a folder from one of the group's activities
-    is in the cart, or (for a portrait group) portrait photos are."""
-    acts_lower = {a.lower() for a in acts}
-    if acts_lower & locations:
-        return True
-    is_portrait_group = "portrait" in name.lower() or any("portrait" in a for a in acts_lower)
-    return is_portrait_group and has_portraits
-
-
-def _bundle_for_cart(locations: set, has_portraits: bool):
-    """(active bundle or None, upsell or None). A bundle is active when the cart has
-    something from every one of its activity groups; the upsell names what's missing
-    when only some are there."""
-    pricing = _load_pricing()
-    groups = _activity_groups(pricing)
-    upsell = None
-    for combo in pricing.get("combos", []):
-        names, pct = combo.get("activity_groups") or [], combo.get("pct_off")
-        if not names or pct is None:
-            continue
-        present = [n for n in names if _group_in_cart(n, groups.get(n, []), locations, has_portraits)]
-        if len(present) == len(names):
-            return {"label": combo.get("label") or "Bundle deal", "pct": float(pct)}, None
-        if present and upsell is None:
-            short = lambda g: re.sub(r"^(Winter|Summer|Fall|Spring|Autumn)\s+", "", g, flags=re.I)
-            upsell = {"missing": [short(n) for n in names if n not in present], "pct": float(pct)}
-    return None, upsell
-
-
-def _check_coupon(code: str, email: str = ""):
-    """(discount code, None) if `code` can be used now, else (None, reason)."""
-    code_clean = (code or "").strip().upper()
-    if not code_clean:
-        return None, "No code provided"
-    c = next((x for x in _load_discount_codes() if x.get("code", "").upper() == code_clean), None)
-    if not c:
-        return None, "Invalid coupon code"
-    if not c.get("active", True):
-        return None, "This code is no longer active"
-
-    def _when(value):
-        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    now = datetime.now(timezone.utc)
-    try:
-        if c.get("start_date") and now < _when(c["start_date"]):
-            return None, "This code is not yet active"
-    except Exception:
-        pass
-    try:
-        if c.get("expires") and now > _when(c["expires"]):
-            return None, "This code has expired"
-    except Exception:
-        pass
-    limit = c.get("usage_limit")
-    if limit and int(c.get("usage_count", 0)) >= int(limit):
-        return None, "This code has reached its usage limit"
-    per_user = c.get("usage_limit_per_user")
-    if per_user and email:
-        if sum(1 for u in c.get("uses", []) if u.get("email", "").lower() == email.lower()) >= int(per_user):
-            return None, "You have already used this code"
-    return c, None
-
-
-def _coupon_scope(code_obj: dict) -> set:
-    at = code_obj.get("applies_to", "all")
-    if at in ("digital", "portraits"):
-        return {"digital"}
-    if at in ("prints", "frames"):
-        return {at}
-    return set(_CATEGORIES)
-
-
-def _coupon_item_discount(code_obj: dict, base: float) -> float:
-    """What a code takes off items worth `base` (a free-shipping code takes nothing off items)."""
-    ctype, amount = code_obj.get("type", "percent"), float(code_obj.get("amount", 0) or 0)
-    if ctype == "percent":
-        return round(base * amount / 100, 2)
-    if ctype == "fixed":
-        return round(min(amount, base), 2)
-    return 0.0
-
-
-def _int(value, default: int, lo: int, hi: int, what: str) -> int:
-    try:
-        n = int(value if value is not None else default)
-    except (TypeError, ValueError):
-        raise CheckoutError(f"Something in your cart isn't right ({what})")
-    if not lo <= n <= hi:
-        raise CheckoutError(f"Something in your cart isn't right ({what})")
-    return n
-
-
 def _price_order(body: dict) -> dict:
     """Price an online cart. Returns the WooCommerce order parts (line_items,
     fee_lines, coupon_lines, meta) and the summary the checkout page shows."""
@@ -1943,7 +1849,7 @@ def _price_order(body: dict) -> dict:
     albums = [a for a in (body.get("digital_albums") or []) if int(a.get("count") or 0) > 0]
     album_paths, locations = [], set()
     for a in albums:
-        count = _int(a.get("count"), 0, 1, 10000, "photo count")
+        count = parse_int(a.get("count"), 0, 1, 10000, "photo count")
         try:
             price = _server_digital_price(a, date)
         except ValueError as e:
@@ -2003,7 +1909,7 @@ def _price_order(body: dict) -> dict:
     sizes = _load_print_pricing().get("sizes", list(_DEFAULT_PRINT_SIZES))
     prints = body.get("prints") or []
     for p in prints:
-        size_idx = _int(p.get("size_idx"), 0, 0, len(sizes) - 1, "print size")
+        size_idx = parse_int(p.get("size_idx"), 0, 0, len(sizes) - 1, "print size")
         size_label = p.get("size") or sizes[size_idx].get("label", "")
         half = bool(p.get("path")) and p["path"] in bought_digital
         logo = bool(p.get("logo"))
@@ -2032,10 +1938,10 @@ def _price_order(body: dict) -> dict:
     # ── Frames on their own ──
     frame_ship_sizes = []
     for fr in body.get("frames") or []:
-        vid = _int(fr.get("variation_id"), 0, 1, 10 ** 9, "frame")
+        vid = parse_int(fr.get("variation_id"), 0, 1, 10 ** 9, "frame")
         if vid not in _FRAME_VARIATION_INFO:
             raise CheckoutError("One of the frames in your cart isn't available right now")
-        qty = _int(fr.get("quantity"), 1, 1, 20, "frame quantity")
+        qty = parse_int(fr.get("quantity"), 1, 1, 20, "frame quantity")
         size_idx, orientation = _FRAME_VARIATION_INFO[vid]
         label = _FRAME_SIZE_LABELS[size_idx] if size_idx < len(_FRAME_SIZE_LABELS) else ""
         add("frames", _frame_price(vid) * qty, {"product_id": WC_FRAME_PARENT_ID, "variation_id": vid, "quantity": qty,
@@ -2044,21 +1950,8 @@ def _price_order(body: dict) -> dict:
         frame_ship_sizes += [size_idx] * qty
 
     # ── Shipping ──
-    print_ship = [s.get("ship_print", 8) for s in sizes]
-    frame_ship = [s.get("ship_framed", 15) for s in sizes]
-    framed = [p for p in prints if p.get("frame") not in ("", None, "No Frame")]
-    unframed = [p for p in prints if p.get("frame") in ("", None, "No Frame")]
-    frame_rates = sorted([frame_ship[int(p.get("size_idx", 0))] for p in framed] +
-                         [frame_ship[i] for i in frame_ship_sizes], reverse=True)
-    free_threshold = _load_print_pricing().get("free_ship_threshold", 3)
-    shipping, free_shipping = 0.0, False
-    if frame_rates:
-        shipping = round(frame_rates[0] + sum(r * 0.5 for r in frame_rates[1:]), 2)
-    elif unframed:
-        if len(unframed) >= free_threshold:
-            free_shipping = True
-        else:
-            shipping = float(max(print_ship[int(p.get("size_idx", 0))] for p in unframed))
+    shipping, free_shipping = shipping_for(prints, frame_ship_sizes, sizes,
+                                           _load_print_pricing().get("free_ship_threshold", 3))
 
     # ── Discounts: a bundle takes its % off every item, except items a code takes more off ──
     def worth(cats, key="full"):
@@ -2069,10 +1962,10 @@ def _price_order(body: dict) -> dict:
     code_in = (body.get("coupon_code") or "").strip()
     if code_in:
         coupon, coupon_note = _check_coupon(code_in, body.get("email", ""))
-    bundle_cats = set(_CATEGORIES) if bundle else set()
+    bundle_cats = set(CATEGORIES) if bundle else set()
     if bundle and coupon:
-        scope = _coupon_scope(coupon) & {it["cat"] for it in items}
-        code_off = _coupon_item_discount(coupon, worth(scope))
+        scope = coupon_scope(coupon) & {it["cat"] for it in items}
+        code_off = coupon_item_discount(coupon, worth(scope))
         if code_off > 0:
             if code_off > round(worth(scope) * bundle["pct"] / 100, 2):
                 bundle_cats -= scope            # the code gives these items more
@@ -2084,9 +1977,9 @@ def _price_order(body: dict) -> dict:
         it["price"] = round(it["full"] * (1 - pct / 100), 2)
         rows[it["row"]]["full"] = round(rows[it["row"]]["full"] + it["full"], 2)
         rows[it["row"]]["price"] = round(rows[it["row"]]["price"] + it["price"], 2)
-    bundle_savings = round(worth(_CATEGORIES) - worth(_CATEGORIES, "price"), 2)
-    coupon_off = _coupon_item_discount(coupon, worth(_coupon_scope(coupon), "price")) if coupon else 0.0
-    subtotal = worth(_CATEGORIES, "price")
+    bundle_savings = round(worth(CATEGORIES) - worth(CATEGORIES, "price"), 2)
+    coupon_off = coupon_item_discount(coupon, worth(coupon_scope(coupon), "price")) if coupon else 0.0
+    subtotal = worth(CATEGORIES, "price")
 
     # ── WooCommerce order parts ──
     line_items = [{**it["line"], "subtotal": str(it["price"]), "total": str(it["price"])} for it in items]
