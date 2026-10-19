@@ -1,4 +1,5 @@
-"""Thumbnails: made once per photo in all three versions, in the background and on demand."""
+"""Thumbnails: made once per photo in every version, in the background and on demand, and
+served by redirecting to the stored file. No-watermark versions are for signed-in staff only."""
 import json
 import time
 from io import BytesIO
@@ -38,6 +39,22 @@ def _size(jpeg: bytes):
     return Image.open(BytesIO(jpeg)).size
 
 
+def _stored_key(location: str) -> str:
+    """The storage key a thumbnail redirect points at."""
+    return location.split("/test-bucket/", 1)[1].split("?", 1)[0]
+
+
+@pytest.fixture()
+def pos_client(main_module):
+    """A POS that has entered a photographer PIN (which sets the staff-thumbnail cookie)."""
+    from fastapi.testclient import TestClient
+    _put("meta/photographers.json", json.dumps([{"id": "p1", "name": "Test Photog", "pin": "4821"}]).encode())
+    main_module._pin_fail_limiter._calls.clear()
+    c = TestClient(main_module.app)
+    assert c.post("/api/photographer/auth", json={"pin": "4821"}).status_code == 200
+    return c
+
+
 def _wait_job(admin_client, job_id, timeout=20):
     end = time.time() + timeout
     while time.time() < end:
@@ -57,13 +74,18 @@ def _wait_for(key, timeout=10):
     return False
 
 
-def test_one_download_makes_all_three_versions(main_module):
+def test_one_download_makes_every_version(main_module):
     key = "images/2026-10-01/mountain-biking/am/A.jpg"
     _put(key, _jpeg())
     out = main_module._make_thumbs(key, list(main_module._THUMB_VARIANTS))
-    assert _size(out["public"]) == (700, 525) and _size(out["pos"]) == (700, 525)
-    assert _size(out["admin"]) == (450, 338)
-    assert out["public"] != out["pos"]                       # gallery copy is watermarked
+    assert _size(out["grid"]) == (700, 525) and _size(out["pos"]) == (700, 525)
+    assert _size(out["public"]) == (700, 525) and _size(out["admin"]) == (450, 338)
+    assert Image.open(BytesIO(out["grid"])).format == "WEBP"
+    # the gallery copy is watermarked, the POS copy isn't
+    grid, pos = Image.open(BytesIO(out["grid"])).convert("RGB"), Image.open(BytesIO(out["pos"])).convert("RGB")
+    assert grid.getpixel((350, 262)) != pos.getpixel((350, 262))
+    assert _get("thumbs/grid/2026-10-01/mountain-biking/am/A.jpg.webp")
+    assert S3.head_object(Bucket=BUCKET, Key="thumbs/grid/2026-10-01/mountain-biking/am/A.jpg.webp")["ContentType"] == "image/webp"
     assert _get("thumbs/v2/2026-10-01/mountain-biking/am/A.jpg")
     assert _get("thumbs/nowm/2026-10-01/mountain-biking/am/A.jpg")
     assert _get("admin_thumbs/2026-10-01/mountain-biking/am/A.jpg")
@@ -76,22 +98,91 @@ def test_rotated_photo_comes_out_upright(main_module):
     assert _size(out["pos"]) == (525, 700)
 
 
-def test_pos_thumbnail_on_demand_then_cached_and_others_made(client, main_module):
+def test_pos_thumbnail_on_demand_then_from_storage_and_others_made(pos_client, main_module):
     key = "images/2026-10-02/mountain-biking/am/B.jpg"
     _put(key, _jpeg())
-    r = client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1})
-    assert r.status_code == 200 and _size(r.content) == (700, 525)
+    r = pos_client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert r.status_code == 200 and _size(r.content) == (700, 525)       # made now and sent
     assert _get("thumbs/nowm/2026-10-02/mountain-biking/am/B.jpg")
     # the gallery and studio versions follow in the background from the same download
-    assert _wait_for("thumbs/v2/2026-10-02/mountain-biking/am/B.jpg")
+    assert _wait_for("thumbs/grid/2026-10-02/mountain-biking/am/B.jpg.webp")
     assert _wait_for("admin_thumbs/2026-10-02/mountain-biking/am/B.jpg")
+    assert not _get("thumbs/v2/2026-10-02/mountain-biking/am/B.jpg")     # the old JPEG version isn't made any more
+    r = pos_client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert r.status_code == 302 and _stored_key(r.headers["location"]) == "thumbs/nowm/2026-10-02/mountain-biking/am/B.jpg"
 
 
-def test_cached_thumbnail_is_served_without_touching_the_original(client, main_module):
-    key = "images/2026-10-03/mountain-biking/am/C.jpg"
-    _put("thumbs/nowm/2026-10-03/mountain-biking/am/C.jpg", _jpeg(700, 525, (200, 10, 10)))
-    r = client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1})   # no original uploaded at all
-    assert r.status_code == 200 and _size(r.content) == (700, 525)
+def test_stored_thumbnail_is_a_redirect_without_touching_the_original(client, main_module):
+    key = "images/2026-10-03/mountain-biking/am/C.jpg"                   # no original uploaded at all
+    _put("thumbs/grid/2026-10-03/mountain-biking/am/C.jpg.webp", b"webp")
+    r = client.get("/api/photo", params={"path": key, "size": "thumb"}, follow_redirects=False)
+    assert r.status_code == 302
+    assert _stored_key(r.headers["location"]) == "thumbs/grid/2026-10-03/mountain-biking/am/C.jpg.webp"
+    assert "X-Amz-Signature" in r.headers["location"]                    # a signed, expiring link
+    assert "max-age=86400" in r.headers["cache-control"]
+    # the same link is handed out again, so browsers reuse their saved copy
+    again = client.get("/api/photo", params={"path": key, "size": "thumb"}, follow_redirects=False)
+    assert again.headers["location"] == r.headers["location"]
+
+
+def test_older_photo_keeps_its_jpeg_gallery_thumbnail(client, main_module):
+    key = "images/2026-10-03/mountain-biking/am/OLD.jpg"
+    _put("thumbs/v2/2026-10-03/mountain-biking/am/OLD.jpg", _jpeg(700, 525))
+    r = client.get("/api/photo", params={"path": key, "size": "thumb"}, follow_redirects=False)
+    assert r.status_code == 302 and _stored_key(r.headers["location"]) == "thumbs/v2/2026-10-03/mountain-biking/am/OLD.jpg"
+    assert not _get("thumbs/grid/2026-10-03/mountain-biking/am/OLD.jpg.webp")   # nothing new made
+
+
+def test_gallery_thumbnail_made_on_demand_is_webp(client, main_module):
+    key = "images/2026-10-03/mountain-biking/am/NEW.jpg"
+    _put(key, _jpeg())
+    r = client.get("/api/photo", params={"path": key, "size": "thumb"}, follow_redirects=False)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/webp" and _size(r.content) == (700, 525)
+    assert _get("thumbs/grid/2026-10-03/mountain-biking/am/NEW.jpg.webp")
+
+
+def test_no_watermark_thumbnail_needs_a_signed_in_pos_or_studio(client, admin_client, main_module):
+    key = "images/2026-10-03/mountain-biking/am/NW.jpg"
+    _put("thumbs/nowm/2026-10-03/mountain-biking/am/NW.jpg", _jpeg(700, 525))
+    _put("thumbs/grid/2026-10-03/mountain-biking/am/NW.jpg.webp", b"webp")
+    r = client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert _stored_key(r.headers["location"]) == "thumbs/grid/2026-10-03/mountain-biking/am/NW.jpg.webp"   # watermarked
+    client.cookies.set(main_module.POS_COOKIE, "9999999999.forged")
+    r = client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert _stored_key(r.headers["location"]) == "thumbs/grid/2026-10-03/mountain-biking/am/NW.jpg.webp"
+    r = admin_client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert _stored_key(r.headers["location"]) == "thumbs/nowm/2026-10-03/mountain-biking/am/NW.jpg"
+
+
+def test_pos_pin_sets_the_staff_thumbnail_cookie(pos_client, main_module):
+    key = "images/2026-10-03/mountain-biking/am/NW2.jpg"
+    _put("thumbs/nowm/2026-10-03/mountain-biking/am/NW2.jpg", _jpeg(700, 525))
+    r = pos_client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert _stored_key(r.headers["location"]) == "thumbs/nowm/2026-10-03/mountain-biking/am/NW2.jpg"
+
+
+def test_expired_pos_cookie_gets_watermarked_thumbnails(client, main_module):
+    import time as _t
+    key = "images/2026-10-03/mountain-biking/am/NW3.jpg"
+    _put("thumbs/nowm/2026-10-03/mountain-biking/am/NW3.jpg", _jpeg(700, 525))
+    _put("thumbs/grid/2026-10-03/mountain-biking/am/NW3.jpg.webp", b"webp")
+    client.cookies.set(main_module.POS_COOKIE, main_module._pos_token(int(_t.time()) - 5))
+    r = client.get("/api/photo", params={"path": key, "size": "thumb", "nowm": 1}, follow_redirects=False)
+    assert _stored_key(r.headers["location"]).startswith("thumbs/grid/")
+
+
+@pytest.mark.parametrize("size", ["medium", "full"])
+def test_large_photo_without_watermark_needs_staff(client, admin_client, main_module, monkeypatch, size):
+    key = f"images/2026-10-03/mountain-biking/am/BIG-{size}.jpg"
+    _put(key, _jpeg(3000, 2000))
+    marked = []
+    real = main_module.apply_watermark
+    monkeypatch.setattr(main_module, "apply_watermark", lambda img, s="medium": marked.append(s) or real(img, s))
+    assert client.get("/api/photo", params={"path": key, "size": size, "nowm": 1}).status_code == 200
+    assert marked == [size]                                  # a visitor asking for no watermark still gets one
+    marked.clear()
+    assert admin_client.get("/api/photo", params={"path": key, "size": size, "nowm": 1}).status_code == 200
+    assert marked == []
 
 
 def test_uploading_photos_queues_their_thumbnails(admin_client, main_module):
@@ -105,7 +196,8 @@ def test_uploading_photos_queues_their_thumbnails(admin_client, main_module):
     assert d["done"] == 3 and d["failed"] == 0
     for k in keys:
         tail = k[len("images/"):]
-        assert _get("thumbs/nowm/" + tail) and _get("thumbs/v2/" + tail) and _get("admin_thumbs/" + tail)
+        assert _get("thumbs/nowm/" + tail) and _get("thumbs/grid/" + tail + ".webp") and _get("admin_thumbs/" + tail)
+        assert not _get("thumbs/v2/" + tail)
 
 
 def test_making_thumbnails_records_the_photo_size(main_module):
@@ -151,7 +243,7 @@ def test_pos_thumbnails_only_for_chosen_dates_and_safe_to_rerun(admin_client, ma
         _wait_job(admin_client, r["job_id"])
         assert _get("thumbs/nowm/2026-06-10/ambush-action/W1.jpg") and _get("thumbs/nowm/2026-06-12/ambush-action/W2.jpg")
         assert not _get("thumbs/nowm/2026-08-01/mountain-biking/S1.jpg")          # summer photo left alone
-        assert not _get("thumbs/v2/2026-06-10/ambush-action/W1.jpg")               # POS version only
+        assert not _get("thumbs/grid/2026-06-10/ambush-action/W1.jpg.webp")        # POS version only
         again = admin_client.post("/api/admin/thumbs/pos", json={"date_to": "2026-06-12"}).json()
         assert again["job_id"] is None and again["in_range"] == 2
     finally:

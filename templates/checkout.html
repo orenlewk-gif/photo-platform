@@ -606,11 +606,7 @@ async function loadThumbs() {
     const img = document.createElement('img');
     img.className = 'co-thumb';
     img.alt = '';
-    try {
-      const resp = await fetch(`/api/photo?path=${encodeURIComponent(p.path)}&size=thumb`);
-      const blob = await resp.blob();
-      img.src = URL.createObjectURL(blob);
-    } catch(e) { img.src = ''; }
+    img.src = `/api/photo?path=${encodeURIComponent(p.path)}&size=thumb`;
     const wm = document.createElement('div');
     wm.className = 'watermark';
     wrap.appendChild(img);

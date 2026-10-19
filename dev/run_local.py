@@ -38,8 +38,23 @@ for var in ("ANTHROPIC_API_KEY", "WC_WEBHOOK_SECRET", "POS_PASSCODE"):
     os.environ.pop(var, None)
 assert "crystal-images" not in BUCKET
 
-server = ThreadedMotoServer(ip_address="127.0.0.1", port=MOTO_PORT, verbose=False)
-server.start()
+if os.environ.get("DEV_MOTO_PROCESS"):
+    # The fake bucket in its own process, like real storage (used by the busy-day simulation,
+    # so serving files from storage doesn't compete with the app for this process's CPU)
+    import atexit, socket, subprocess, time
+    _moto = subprocess.Popen([os.path.join(os.path.dirname(sys.executable), "moto_server"),
+                              "-H", "127.0.0.1", "-p", str(MOTO_PORT)],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    atexit.register(_moto.terminate)
+    for _ in range(100):
+        try:
+            socket.create_connection(("127.0.0.1", MOTO_PORT), timeout=0.2).close()
+            break
+        except OSError:
+            time.sleep(0.1)
+else:
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=MOTO_PORT, verbose=False)
+    server.start()
 
 import boto3  # noqa: E402
 
@@ -79,12 +94,21 @@ for i in range(40):
     s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
     sample_photos.append({"path": key, "date": key.split("/")[1], "location": "Mountain Biking",
                           "last_name": "", "group": "morning"})
-# Winter samples, priced like the live site (Winter Action category: $25 each, $115 for all)
+# Winter samples, priced like the live site (Winter Action category: $25 each, $115 for all).
+# DEV_SAMPLE_PHOTOS_DIR=/folder/of/jpgs uses the first 20 real photos there (only read) instead
+# of solid colours, so thumbnails look and weigh like the real thing.
+_real = sorted(f for f in os.listdir(os.environ["DEV_SAMPLE_PHOTOS_DIR"])
+               if f.lower().endswith((".jpg", ".jpeg")))[:20] if os.environ.get("DEV_SAMPLE_PHOTOS_DIR") else []
 for i in range(20):
     key = f"images/2026-06-07/el-dorado-action/AMS{6970 + i:05d}.JPG"
-    buf = BytesIO()
-    Image.new("RGB", (4000, 3000), (200, 210 - i * 4, 230)).save(buf, "JPEG", quality=85)
-    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
+    if i < len(_real):
+        with open(os.path.join(os.environ["DEV_SAMPLE_PHOTOS_DIR"], _real[i]), "rb") as fh:
+            body = fh.read()
+    else:
+        buf = BytesIO()
+        Image.new("RGB", (4000, 3000), (200, 210 - i * 4, 230)).save(buf, "JPEG", quality=85)
+        body = buf.getvalue()
+    s3.put_object(Bucket=BUCKET, Key=key, Body=body, ContentType="image/jpeg")
     sample_photos.append({"path": key, "date": "2026-06-07", "location": "El Dorado Action",
                           "last_name": "", "group": ""})
 put_json("images.json", sample_photos)

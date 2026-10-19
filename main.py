@@ -2,7 +2,7 @@ import threading
 import zipfile
 import time as _time
 import numpy as np
-from collections import deque
+from collections import OrderedDict, deque
 from contextlib import contextmanager
 from html import escape as _html_escape
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1393,6 +1393,12 @@ def _nowm_thumb_r2_key(r2_key: str) -> str:
         return "thumbs/nowm/" + r2_key[len("images/"):]
     return "thumbs/nowm/" + r2_key
 
+def _grid_thumb_r2_key(r2_key: str) -> str:
+    """maps images/foo/bar.jpg → thumbs/grid/foo/bar.jpg.webp (gallery thumbnails, WebP)"""
+    if r2_key.startswith("images/"):
+        return "thumbs/grid/" + r2_key[len("images/"):] + ".webp"
+    return "thumbs/grid/" + r2_key + ".webp"
+
 def _admin_thumb_r2_key(r2_key: str) -> str:
     """maps images/foo/bar.jpg → admin_thumbs/foo/bar.jpg (studio / package thumbnails)"""
     if r2_key.startswith("images/"):
@@ -1400,18 +1406,23 @@ def _admin_thumb_r2_key(r2_key: str) -> str:
     return "admin_thumbs/" + r2_key
 
 # ── Thumbnails ────────────────────────────────────────────────────────────────
-# Every photo has three small versions, cached in R2 next to the original:
-#   public — 700px, watermarked: customer gallery        (thumbs/v2/)
+# Every photo has small versions, cached in R2 next to the original:
+#   grid   — 700px WebP, watermarked: customer gallery    (thumbs/grid/)
 #   pos    — 700px, no watermark: iPad POS               (thumbs/nowm/)
 #   admin  — 450px, no watermark: studio, download pages (admin_thumbs/)
+#   public — 700px JPEG, watermarked: the gallery version before WebP (thumbs/v2/).
+#            No longer made; photos that already have one keep using it.
 # They're made in the background when photos are uploaded or go live, and on
 # demand (as a fallback) the first time one is requested.
 _THUMB_VARIANTS = {
-    # name:   (cache key,            max px, quality, watermark, Cache-Control)
-    "public": (_thumb_r2_key,        700, 80, True,  "public, max-age=31536000"),
-    "pos":    (_nowm_thumb_r2_key,   700, 80, False, "public, max-age=31536000"),
-    "admin":  (_admin_thumb_r2_key,  450, 72, False, "private, max-age=86400"),
+    # name:   (cache key,            max px, quality, watermark, Cache-Control,              format)
+    "grid":   (_grid_thumb_r2_key,   700, 80, True,  "public, max-age=31536000", "WEBP"),
+    "pos":    (_nowm_thumb_r2_key,   700, 80, False, "public, max-age=31536000", "JPEG"),
+    "admin":  (_admin_thumb_r2_key,  450, 72, False, "private, max-age=86400",   "JPEG"),
+    "public": (_thumb_r2_key,        700, 80, True,  "public, max-age=31536000", "JPEG"),
 }
+_NEW_PHOTO_VARIANTS = ["grid", "pos", "admin"]
+_THUMB_MEDIA_TYPES = {"WEBP": "image/webp", "JPEG": "image/jpeg"}
 _thumb_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="thumbs")
 
 
@@ -1428,13 +1439,16 @@ def _open_for_thumbnail(fp, max_px: int) -> Image.Image:
 
 
 def _encode_thumb(img: Image.Image, variant: str) -> bytes:
-    _, max_px, quality, watermark, _ = _THUMB_VARIANTS[variant]
+    _, max_px, quality, watermark, _, fmt = _THUMB_VARIANTS[variant]
     t = img.copy()
     t.thumbnail((max_px, max_px), Image.LANCZOS)
     if watermark:
         t = apply_watermark(t, "thumb")
     buf = BytesIO()
-    t.save(buf, format="JPEG", quality=quality, optimize=True)
+    if fmt == "WEBP":
+        t.save(buf, format="WEBP", quality=quality, method=6)
+    else:
+        t.save(buf, format="JPEG", quality=quality, optimize=True)
     return buf.getvalue()
 
 
@@ -1451,11 +1465,11 @@ def _make_thumbs(r2_key: str, variants, original: bytes = None) -> dict:
         pass
     out = {}
     for v in variants:
-        key_fn, _, _, _, cache_control = _THUMB_VARIANTS[v]
+        key_fn, _, _, _, cache_control, fmt = _THUMB_VARIANTS[v]
         out[v] = _encode_thumb(img, v)
         try:
             s3.put_object(Bucket=R2_BUCKET, Key=key_fn(r2_key), Body=out[v],
-                          ContentType="image/jpeg", CacheControl=cache_control)
+                          ContentType=_THUMB_MEDIA_TYPES[fmt], CacheControl=cache_control)
         except Exception as e:
             print(f"[thumbs] save failed {key_fn(r2_key)}: {e}")
     return out
@@ -1473,9 +1487,82 @@ def _thumb_on_demand(r2_key: str, variant: str) -> bytes:
     other variants in the background from the same download."""
     original = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)["Body"].read()
     data = _make_thumbs(r2_key, [variant], original)[variant]
-    others = [v for v in _THUMB_VARIANTS if v != variant]
+    others = [v for v in _NEW_PHOTO_VARIANTS if v != variant]
     _thumb_pool.submit(_make_thumbs_quietly, r2_key, others, original)
     return data
+
+
+# Thumbnails are served straight from storage: the site answers with a redirect to a
+# signed, expiring link for that one stored file, so the image never passes through this
+# server. Each thumbnail keeps the same link for a day (browsers cache by link), and
+# every link stays valid for three days, so a page or redirect a browser saved is still good.
+_THUMB_LINK_REUSE_SECONDS = 86400
+_THUMB_LINK_VALID_SECONDS = 3 * 86400
+_THUMB_LINKS_MAX = 50000            # most recently used links remembered (~30 MB)
+_thumb_links: "OrderedDict[str, tuple]" = OrderedDict()   # storage key -> (link, reuse until)
+_thumb_links_lock = threading.Lock()
+
+
+def _stored_thumb_link(r2_key: str, variant: str) -> str | None:
+    """Signed link to the stored thumbnail, or None if it hasn't been made yet."""
+    tkey = _THUMB_VARIANTS[variant][0](r2_key)
+    now = _time.time()
+    with _thumb_links_lock:
+        hit = _thumb_links.get(tkey)
+        if hit and hit[1] > now:
+            _thumb_links.move_to_end(tkey)
+            return hit[0]
+    try:
+        s3.head_object(Bucket=R2_BUCKET, Key=tkey)
+    except Exception:
+        return None
+    link = _presigned_get(tkey, _THUMB_LINK_VALID_SECONDS)
+    if not link:
+        return None
+    with _thumb_links_lock:
+        _thumb_links[tkey] = (link, now + _THUMB_LINK_REUSE_SECONDS)
+        _thumb_links.move_to_end(tkey)
+        while len(_thumb_links) > _THUMB_LINKS_MAX:
+            _thumb_links.popitem(last=False)
+    return link
+
+
+def _forget_thumb_links(r2_key: str) -> None:
+    """Drop remembered links for a photo whose thumbnails were removed."""
+    with _thumb_links_lock:
+        for key_fn, *_ in _THUMB_VARIANTS.values():
+            _thumb_links.pop(key_fn(r2_key), None)
+
+
+def _thumb_redirect(link: str) -> RedirectResponse:
+    # Safe to cache for a day: a link is handed out for at most a day and valid for three
+    return RedirectResponse(link, status_code=302, headers={"Cache-Control": "private, max-age=86400"})
+
+
+# No-watermark photos are for staff: a signed-in POS (cookie set when the PIN is entered)
+# or the studio. Anyone else asking for nowm=1 gets the watermarked photo.
+POS_COOKIE = "ci_pos"
+POS_COOKIE_SECONDS = 30 * 86400
+
+
+def _pos_token(expires: int) -> str:
+    sig = hmac.new((ADMIN_PASSWORD or "").encode(), f"pos|{expires}".encode(), hashlib.sha256).hexdigest()
+    return f"{expires}.{sig}"
+
+
+def _pos_signed_in(request: Request) -> bool:
+    token = request.cookies.get(POS_COOKIE, "")
+    if not ADMIN_PASSWORD or not token:
+        return False
+    try:
+        expires = int(token.split(".", 1)[0])
+    except ValueError:
+        return False
+    return expires > _time.time() and hmac.compare_digest(token, _pos_token(expires))
+
+
+def _nowm_allowed(request: Request) -> bool:
+    return _pos_signed_in(request) or _admin_authed(request)
 
 
 def _make_thumbs_quietly(r2_key: str, variants, original: bytes = None) -> bool:
@@ -1512,15 +1599,15 @@ def _start_thumb_job(work: list) -> str | None:
 
 def _queue_new_photo_thumbs(r2_keys: list) -> str | None:
     """All thumbnail variants for newly uploaded / published / moved photos."""
-    return _start_thumb_job([(to_r2_key(k), list(_THUMB_VARIANTS)) for k in r2_keys])
+    return _start_thumb_job([(to_r2_key(k), list(_NEW_PHOTO_VARIANTS)) for k in r2_keys])
 
 @app.get("/api/photo")
-def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False)):
+def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bool = Query(False)):
     """
-    size=thumb  → 700px  q80  (gallery thumbnails — served from pre-generated R2 thumb when available)
+    size=thumb  → 700px  (gallery thumbnails — a redirect to the stored thumbnail when there is one)
     size=medium → 1800px q90  (lightbox)
     size=full   → 2400px q92  (download-quality)
-    nowm=1      → skip watermark (used by POS for photographer-facing thumbnails)
+    nowm=1      → skip watermark (POS / studio only; others get the watermarked photo)
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
@@ -1530,6 +1617,8 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
     }
     max_px, quality = SIZE_MAP.get(size, SIZE_MAP["medium"])
     cache_secs = 86400 if size == "thumb" else 3600
+    if nowm and not _nowm_allowed(request):
+        nowm = False
 
     try:
         key = to_r2_key(path)
@@ -1539,10 +1628,16 @@ def get_photo(path: str, size: str = Query("medium"), nowm: bool = Query(False))
             # Thumbs: cached copy if there is one, otherwise make it now (and the
             # other variants in the background) from one download of the original
             if size == "thumb":
-                variant = "pos" if nowm else "public"
-                data = _cached_thumb(key, variant) or _thumb_on_demand(key, variant)
-                return SR(BytesIO(data), media_type="image/jpeg",
-                          headers={"Cache-Control": f"public, max-age={cache_secs}"})
+                if nowm:
+                    variant, link = "pos", _stored_thumb_link(key, "pos")
+                else:
+                    # Photos from before the WebP version keep their JPEG; new ones have WebP
+                    variant, link = "grid", _stored_thumb_link(key, "grid") or _stored_thumb_link(key, "public")
+                if link:
+                    return _thumb_redirect(link)
+                data = _thumb_on_demand(key, variant)
+                return SR(BytesIO(data), media_type=_THUMB_MEDIA_TYPES[_THUMB_VARIANTS[variant][5]],
+                          headers={"Cache-Control": f"{'private' if nowm else 'public'}, max-age={cache_secs}"})
 
             obj = s3.get_object(Bucket=R2_BUCKET, Key=key)
             img = Image.open(obj["Body"]).convert("RGB")
@@ -6014,8 +6109,12 @@ def photographer_auth(request: Request, body: dict = Body(...)):
     records = _load_clock_records()
     active = next((r for r in reversed(records)
                    if r["photographer_id"] == p["id"] and not r.get("clock_out")), None)
-    return {"photographer": {k: v for k, v in p.items() if k != "pin"},
-            "clocked_in": active is not None, "active_record": active}
+    resp = JSONResponse({"photographer": {k: v for k, v in p.items() if k != "pin"},
+                         "clocked_in": active is not None, "active_record": active})
+    # Lets this device load staff (no-watermark) thumbnails; renewed each time a PIN is entered
+    expires = int(_time.time()) + POS_COOKIE_SECONDS
+    resp.set_cookie(POS_COOKIE, _pos_token(expires), httponly=True, samesite="lax", max_age=POS_COOKIE_SECONDS)
+    return resp
 
 # ── Clock in / out ──
 # Clock-ins run side by side (off the main loop), so the timecard file is updated
@@ -8139,10 +8238,12 @@ async def admin_photo_trash(request: Request):
         except Exception as e:
             print(f"Photo trash failed {key}: {e}")
             continue
-        try:
-            s3.delete_object(Bucket=R2_BUCKET, Key=_thumb_r2_key(key))
-        except Exception:
-            pass
+        for key_fn in (_thumb_r2_key, _grid_thumb_r2_key):
+            try:
+                s3.delete_object(Bucket=R2_BUCKET, Key=key_fn(key))
+            except Exception:
+                pass
+        _forget_thumb_links(key)
         trash_meta.append({
             "key":          trash_key,
             "original_key": key,
