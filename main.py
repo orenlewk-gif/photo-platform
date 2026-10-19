@@ -388,8 +388,24 @@ def _load_onnx_model():
             return False
 
 
+MODEL_LABEL = "model_v3"     # stamped on each photo the model labels
+
+# Decision rules, tuned 2026-10-18 on 2,000 labeled photos v3 never trained on (6/6 + 6/7):
+# photos needing no fix went from 60.7% to 62.9%, and every folder improved.
+#  - always give the most likely color (when v3 used to say "none" it was almost always a real color)
+#  - add a second jacket color only when it scores at least 0.50 and within 0.15 of the first
+#  - pants get one color
+_SECOND_JACKET_MIN = 0.50
+_SECOND_JACKET_GAP = 0.15
+
+
 def _preprocess_image(img_bytes: bytes) -> np.ndarray:
-    pil = Image.open(BytesIO(img_bytes)).convert("RGB").resize((224, 224), Image.LANCZOS)
+    img = Image.open(BytesIO(img_bytes))
+    if img.format in ("JPEG", "MPO"):   # MPO = camera JPEG with a built-in preview
+        # Decode at reduced scale (still >= 900px): about half the time, same answers
+        # (checked on the same 2,000 photos)
+        img.draft("RGB", (900, 900))
+    pil = img.convert("RGB").resize((224, 224), Image.LANCZOS)
     arr = np.array(pil, dtype=np.float32).transpose(2, 0, 1) / 255.0  # HWC -> CHW
     arr = (arr - _CLIP_MEAN) / _CLIP_STD
     return arr[np.newaxis]  # (1, 3, 224, 224)
@@ -410,20 +426,17 @@ def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
         )
         colors     = _onnx_meta["all_colors"]
         sports     = _onnx_meta["sports"]
-        threshold  = 0.45  # slightly below 0.5 to improve recall on rare colors
 
         j_prob = _sigmoid(j_logits[0])
         p_prob = _sigmoid(p_logits[0])
 
-        # Pick top-1 jacket color; add second only if ≥0.45 and close to top
         j_sorted = np.argsort(j_prob)[::-1]
-        jacket = [colors[j_sorted[0]]] if j_prob[j_sorted[0]] >= threshold else ["none"]
-        if (len(j_sorted) > 1 and j_prob[j_sorted[1]] >= threshold
-                and j_prob[j_sorted[0]] - j_prob[j_sorted[1]] < 0.25):
+        jacket = [colors[j_sorted[0]]]
+        if (len(j_sorted) > 1 and j_prob[j_sorted[1]] >= _SECOND_JACKET_MIN
+                and j_prob[j_sorted[0]] - j_prob[j_sorted[1]] < _SECOND_JACKET_GAP):
             jacket.append(colors[j_sorted[1]])
 
-        p_sorted = np.argsort(p_prob)[::-1]
-        pants = [colors[p_sorted[0]]] if p_prob[p_sorted[0]] >= threshold else ["none"]
+        pants = [colors[int(np.argmax(p_prob))]]
 
         sport_idx = int(np.argmax(s_logits[0]))
         sport = sports[sport_idx]
@@ -437,7 +450,7 @@ def classify_photo_colors_onnx(img_bytes: bytes) -> dict | None:
 
 
 def classify_photo_colors(img_bytes: bytes) -> dict | None:
-    """Classify ski photo using ONNX model v2."""
+    """Label sport, jacket and pants colors with the ONNX model (v3)."""
     return classify_photo_colors_onnx(img_bytes)
 
 
@@ -461,8 +474,8 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["classifier"] = "model_v2"
-                    print(f"model_v2: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+                    item["classifier"] = MODEL_LABEL
+                    print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
             print(f"Process failed {item['path']}: {e}")
@@ -1433,7 +1446,7 @@ def _open_for_thumbnail(fp, max_px: int) -> Image.Image:
     which is several times faster and uses far less memory than a full decode of a
     5-7 MB original; the result is then resized down with LANCZOS as before."""
     img = Image.open(fp)
-    if img.format == "JPEG":
+    if img.format in ("JPEG", "MPO"):   # MPO = camera JPEG with a built-in preview
         # Largest reduction that still leaves both sides >= max_px (e.g. 6000x4000 -> 1500x1000)
         img.draft("RGB", (max_px, max_px))
     img = img.convert("RGB")
@@ -1765,6 +1778,7 @@ async def admin_reclassify_photos(request: Request):
                     it["sport"]         = colors.get("sport", "unclear")
                     it["jacket_colors"] = colors.get("jacket_colors", [])
                     it["pants_colors"]  = colors.get("pants_colors", [])
+                    it["classifier"]    = MODEL_LABEL
                     print(f"Re-classify: {it['path'].split('/')[-1]} → sport={it['sport']} jacket={it['jacket_colors']} pants={it['pants_colors']}")
                 done += 1
                 if jid in _embed_jobs:
@@ -7455,6 +7469,7 @@ async def admin_classify_backfill(request: Request):
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
+                    item["classifier"]    = MODEL_LABEL
                 return True
             except Exception as e:
                 print(f"classify-backfill failed {item['path']}: {e}")
@@ -7523,6 +7538,7 @@ async def admin_classify_folder(request: Request):
                     item["sport"]         = colors.get("sport", "unclear")
                     item["jacket_colors"] = colors.get("jacket_colors", [])
                     item["pants_colors"]  = colors.get("pants_colors", [])
+                    item["classifier"]    = MODEL_LABEL
                 return True
             except Exception as e:
                 print(f"classify-folder failed {item['path']}: {e}")

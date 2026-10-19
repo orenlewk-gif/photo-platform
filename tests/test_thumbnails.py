@@ -286,3 +286,13 @@ def test_slow_measuring_never_holds_a_folder_past_the_limit(main_module, monkeyp
     while key not in main_module._dim_cache and time.time() < end:
         time.sleep(0.05)
     assert main_module._dim_cache[key] == [4000, 3000]      # ...and is remembered for the next visit
+
+
+def test_camera_mpo_files_get_the_fast_decode(main_module):
+    """Camera JPEGs come as 'MPO' (a JPEG with a built-in preview); they must get the reduced-scale decode too."""
+    buf = BytesIO()
+    Image.new("RGB", (4000, 3000), (90, 140, 200)).save(buf, "MPO", save_all=True,
+                                                        append_images=[Image.new("RGB", (640, 480))])
+    assert Image.open(BytesIO(buf.getvalue())).format == "MPO"
+    img = main_module._open_for_thumbnail(BytesIO(buf.getvalue()), 700)
+    assert img.size == (1000, 750)                               # decoded at 1/4 scale, not full size
