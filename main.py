@@ -460,6 +460,24 @@ def embed_items_fast(items: list, job_id: str = None) -> int:
 
 data: list = []
 _data_ready = threading.Event()
+_photo_list_save_lock = threading.Lock()
+
+
+def _save_photo_list() -> None:
+    """Save the photo list (images.json) to storage. Saves take turns, and each writes the
+    list as it is when its turn comes, so a slow save that started before a delete or move
+    can never land after it and bring old photos back."""
+    with _photo_list_save_lock:
+        for attempt in range(3):
+            try:
+                body = json.dumps(list(data)).encode()
+                break
+            except RuntimeError:          # a photo record changed while it was being written out
+                if attempt == 2:
+                    raise
+                _time.sleep(0.05)
+        s3.put_object(Bucket=R2_BUCKET, Key="images.json", Body=body, ContentType="application/json")
+
 
 def _drop_legacy_embeddings(items: list) -> int:
     """Remove the old CLIP 'embedding' vectors (512 numbers per photo, written by the
@@ -501,8 +519,7 @@ def _load_data_bg() -> None:
     dropped = _drop_legacy_embeddings(data)
     if dropped:
         try:
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(), ContentType="application/json")
+            _save_photo_list()
             print(f"Removed unused CLIP embeddings from {dropped} photos; saved slimmer images.json.")
         except Exception as e:
             print(f"WARNING: could not save slimmer images.json ({e}) — will be saved on the next change.")
@@ -642,8 +659,7 @@ for _item in data:
 if _nz_fixed:
     print(f"Migrated {_nz_fixed} Nature Zip Line entries (group→last_name). Saving to R2…")
     try:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
         print("Migration saved to R2.")
     except Exception as _e:
         print(f"WARNING: could not save migration to R2: {_e}")
@@ -1674,8 +1690,7 @@ async def admin_reclassify_photos(request: Request):
                     _embed_jobs[jid]["done"] = done
             except Exception as e:
                 print(f"reclassify failed {it['path']}: {e}")
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
 
@@ -1701,8 +1716,7 @@ async def admin_set_photo_colors(request: Request):
     if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
     item["manually_corrected"] = True
     def _flush():
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     threading.Thread(target=_flush, daemon=True).start()
     return {"ok": True, "path": path}
 
@@ -1730,8 +1744,7 @@ async def admin_set_photos_colors_bulk(request: Request):
         updated.append(path)
     if updated:
         def _flush():
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(), ContentType="application/json")
+            _save_photo_list()
         threading.Thread(target=_flush, daemon=True).start()
     return {"ok": True, "updated": len(updated)}
 
@@ -6222,8 +6235,7 @@ async def trash_restore(request: Request):
         entry = item.get("image_entry")
         if entry and entry["path"] not in {d["path"] for d in data}:
             data.append(entry)
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(), ContentType="application/json")
+            _save_photo_list()
     else:
         pending = _load_pending_meta()
         for m in pending:
@@ -7073,8 +7085,7 @@ async def admin_upload_index(request: Request):
             data.append(entry)
             existing.add(key)
             added += 1
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_photo_list()
     if is_portrait and folder and keys:
         if poses is not None:
             _write_folder_poses_from_ui(date, location, folder, poses)
@@ -7137,8 +7148,7 @@ async def admin_reindex_folder(request: Request):
                 added_keys.append(key)
                 added += 1
     if added:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     if is_portrait and folder:
         all_keys = [
             obj["Key"]
@@ -7191,8 +7201,7 @@ async def admin_push_live(request: Request):
             pushed += 1
 
     if pushed:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
 
     job_id = None
     if to_embed:
@@ -7200,8 +7209,7 @@ async def admin_push_live(request: Request):
         _embed_jobs[job_id] = {"total": len(to_embed), "done": 0, "finished": False}
         def _embed_bg(jid=job_id):
             count = embed_items_fast(to_embed, job_id=jid)
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(), ContentType="application/json")
+            _save_photo_list()
             if jid in _embed_jobs:
                 _embed_jobs[jid]["finished"] = True
             print(f"Push-live classify done: {count}/{len(to_embed)}")
@@ -7319,8 +7327,7 @@ async def admin_classify_backfill(request: Request):
             if jid in _embed_jobs:
                 _embed_jobs[jid]["done"] = done
             # Save progress every batch so partial results survive a restart
-            s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                          Body=json.dumps(data).encode(), ContentType="application/json")
+            _save_photo_list()
 
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
@@ -7386,8 +7393,7 @@ async def admin_classify_folder(request: Request):
             done += sum(results)
             if jid in _embed_jobs:
                 _embed_jobs[jid]["done"] = done
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
         print(f"Classify folder done: {done}/{len(to_classify)}")
@@ -7414,8 +7420,7 @@ async def admin_discard_draft(request: Request):
     )]
     removed = before - len(data)
     if removed:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     return {"removed": removed}
 
 
@@ -7495,8 +7500,7 @@ async def admin_delete_folder(request: Request):
     # Remove from index immediately so the response is instant
     count = len(to_trash)
     data = [item for item in data if not _matches(item)]
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_photo_list()
     try:
         fm = _load_folder_meta()
         fk = _folder_key(date, location, folder)
@@ -7539,8 +7543,7 @@ async def admin_delete_location(request: Request):
 
     count = len(to_trash)
     data = [item for item in data if not _matches(item)]
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_photo_list()
     try:
         fm = _load_folder_meta()
         keys_to_del = [k for k in fm if k.startswith(f"{date}|{location}|") or k == f"{date}|{location}|"]
@@ -7576,8 +7579,7 @@ async def admin_delete_date(request: Request):
 
     count = len(to_trash)
     data = [item for item in data if item.get("date", "") != date]
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(), ContentType="application/json")
+    _save_photo_list()
     try:
         fm = _load_folder_meta()
         keys_to_del = [k for k in fm if k.startswith(f"{date}|")]
@@ -7751,9 +7753,7 @@ async def rename_activity(request: Request):
         deduped.append(item)
     data = deduped
 
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(),
-                  ContentType="application/json")
+    _save_photo_list()
 
     # Rename / merge the pricing config key and update category acts list
     pricing = _load_pricing()
@@ -7821,9 +7821,7 @@ async def normalize_locations(request: Request):
 
     removed = len(data) - len(deduped)
     data = deduped
-    s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                  Body=json.dumps(data).encode(),
-                  ContentType="application/json")
+    _save_photo_list()
 
     return {"normalized": True, "total": len(data), "duplicates_removed": removed}
 
@@ -8111,8 +8109,7 @@ async def admin_photo_trash(request: Request):
         trashed += 1
     data = [item for item in data if item["path"] not in paths_set]
     if trashed:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     _save_trash_meta(trash_meta)
     return {"trashed": trashed}
 
@@ -8134,8 +8131,7 @@ async def admin_pull_draft(request: Request):
             item["draft"] = True
             pulled += 1
     if pulled:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     return {"pulled": pulled}
 
 @app.post("/api/admin/folder/move")
@@ -8201,8 +8197,7 @@ async def admin_folder_move(request: Request):
                 item["group"]     = item.get("group") or folder
                 item["last_name"] = ""
     if path_remap:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     try:
         fm     = _load_folder_meta()
         old_fk = _folder_key(date, location, folder)
@@ -8275,8 +8270,7 @@ async def admin_folder_rename(request: Request):
             else:
                 item["group"] = new_folder
     if path_remap:
-        s3.put_object(Bucket=R2_BUCKET, Key="images.json",
-                      Body=json.dumps(data).encode(), ContentType="application/json")
+        _save_photo_list()
     try:
         fm     = _load_folder_meta()
         old_fk = _folder_key(date, location, folder)
