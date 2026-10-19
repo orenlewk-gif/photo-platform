@@ -27,6 +27,11 @@ from PIL import Image, ImageOps
 from functools import lru_cache
 import boto3
 import requests as http_requests
+from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientation,
+                         grid_thumb_r2_key as _grid_thumb_r2_key, nowm_thumb_r2_key as _nowm_thumb_r2_key,
+                         thumb_r2_key as _thumb_r2_key)
+from core.text import (clean_location, folder_key as _folder_key, item_group_from_path as _item_group_from_path,
+                       natural_sort_key, pick_four as _pick_four, to_r2_key)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -193,17 +198,6 @@ def _save_seasons(d):
                   Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
     _seasons_cache["data"] = d
     import time; _seasons_cache["ts"] = time.monotonic()
-
-def clean_location(raw):
-    cleaned = re.sub(r'^[\d\-_\s]+', '', raw)
-    return cleaned.replace('-', ' ').replace('_', ' ').strip().title()
-
-def fix_orientation(img):
-    try:
-        img = ImageOps.exif_transpose(img)
-    except Exception:
-        pass
-    return img
 
 WATERMARK_OPACITY = 0.50
 _watermark_cache  = None
@@ -833,14 +827,6 @@ def _photo_list_saved(params=None, **_):
 s3.meta.events.register("before-parameter-build.s3.PutObject", _photo_list_saved)
 
 
-def _pick_four(photos):
-    n = len(photos)
-    if n <= 4:
-        return photos
-    step = n / 4
-    return [photos[int(i * step)] for i in range(4)]
-
-
 def _build_folder_index(items: list) -> dict:
     by_date, folders, date_locs = {}, {}, {}
     name_keys, name_previews = [], {}
@@ -1027,21 +1013,6 @@ def last_name_search(request: Request, q: str = Query("")):
         r["previews"] = previews.get(k, [])
     return {"results": results}
 
-
-def natural_sort_key(path):
-    name = os.path.basename(path).lower()
-    return [int(t) if t.isdigit() else t for t in re.split(r'(\d+)', name)]
-
-def _item_group_from_path(item):
-    """Fallback: parse the sub-folder (group) from the path when the group field is empty."""
-    parts = item.get("path", "").replace("\\", "/").split("/")
-    try:
-        img_idx = next(i for i, p in enumerate(parts) if p == "images")
-        if len(parts) > img_idx + 4:
-            return parts[img_idx + 3]
-    except StopIteration:
-        pass
-    return ""
 
 @app.get("/api/browse")
 def browse(date: str, location: str, family: str = Query(None), group: str = Query(None),
@@ -1368,35 +1339,6 @@ def _pricing_for(location: str = None, date: str = None, family: str = None) -> 
         return {"tiers": [], "combos": combos, "activity_groups": _activity_groups}
     return {"tiers": [], "combos": combos, "activity_groups": _activity_groups}
 
-
-def to_r2_key(path: str) -> str:
-    # Convert absolute local path to R2 key (relative, starting from 'images/')
-    idx = path.find("images/")
-    return path[idx:] if idx >= 0 else path
-
-def _thumb_r2_key(r2_key: str) -> str:
-    """maps images/foo/bar.jpg → thumbs/v2/foo/bar.jpg"""
-    if r2_key.startswith("images/"):
-        return "thumbs/v2/" + r2_key[len("images/"):]
-    return "thumbs/v2/" + r2_key
-
-def _nowm_thumb_r2_key(r2_key: str) -> str:
-    """maps images/foo/bar.jpg → thumbs/nowm/foo/bar.jpg (no-watermark POS thumbnails)"""
-    if r2_key.startswith("images/"):
-        return "thumbs/nowm/" + r2_key[len("images/"):]
-    return "thumbs/nowm/" + r2_key
-
-def _grid_thumb_r2_key(r2_key: str) -> str:
-    """maps images/foo/bar.jpg → thumbs/grid/foo/bar.jpg.webp (gallery thumbnails, WebP)"""
-    if r2_key.startswith("images/"):
-        return "thumbs/grid/" + r2_key[len("images/"):] + ".webp"
-    return "thumbs/grid/" + r2_key + ".webp"
-
-def _admin_thumb_r2_key(r2_key: str) -> str:
-    """maps images/foo/bar.jpg → admin_thumbs/foo/bar.jpg (studio / package thumbnails)"""
-    if r2_key.startswith("images/"):
-        return "admin_thumbs/" + r2_key[len("images/"):]
-    return "admin_thumbs/" + r2_key
 
 # ── Thumbnails ────────────────────────────────────────────────────────────────
 # Every photo has small versions, cached in R2 next to the original:
@@ -6897,9 +6839,6 @@ def _write_folder_poses_from_ui(date: str, location: str, folder: str, poses: li
     fm[fk]["poses"] = formatted
     fm[fk].setdefault("poses_live", True)
     _save_folder_meta(fm)
-
-def _folder_key(date, location, last_name):
-    return f"{date}|{location}|{last_name}"
 
 # ── Text Presets ──
 TEXT_PRESETS_KEY = "meta/text_presets.json"
