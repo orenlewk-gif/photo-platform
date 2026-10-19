@@ -20,7 +20,6 @@ os.environ.update({
     "R2_BUCKET_NAME":        TEST_BUCKET,
     "AWS_DEFAULT_REGION":    "us-east-1",
     "ADMIN_PASSWORD":        "test-admin-password",
-    "RELOAD_TOKEN":          "test-reload-token",
 })
 for _var in ("WC_CONSUMER_KEY", "WC_CONSUMER_SECRET", "RESEND_API_KEY", "ANTHROPIC_API_KEY",
              "SQUARE_ACCESS_TOKEN", "WC_WEBHOOK_SECRET", "POS_PASSCODE"):

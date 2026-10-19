@@ -6,7 +6,7 @@ from collections import OrderedDict, deque
 from contextlib import contextmanager
 from html import escape as _html_escape
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import Body, FastAPI, Query, Request, Response
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -511,23 +511,9 @@ def _drop_legacy_embeddings(items: list) -> int:
 
 def _load_data_bg() -> None:
     global data
-    if os.path.exists("images.json"):
-        try:
-            with open("images.json", "r") as f:
-                loaded = json.load(f)
-            data = loaded
-            print(f"Loaded {len(data)} photos from local file.")
-            backfilled = sum(1 for it in data if it.get("jacket_colors") is not None and "classifier" not in it)
-            for it in data:
-                if it.get("jacket_colors") is not None and "classifier" not in it:
-                    it["classifier"] = "haiku"
-            if backfilled:
-                print(f"Backfilled classifier='haiku' on {backfilled} existing records.")
-            _data_ready.set()
-            return
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"WARNING: local images.json corrupt ({e}), trying R2...")
-    print("images.json not found locally — downloading from R2...")
+    # Always from storage: a stray local images.json (e.g. an old copy in the folder) used
+    # to be loaded instead, and the next save would have written it over the real index.
+    print("Loading images.json from R2...")
     # Keep trying until the index loads. Starting with an empty list after a failed
     # read would let the first save overwrite the real index in R2. Only a missing
     # file (a brand-new bucket) means "no photos yet".
@@ -1736,11 +1722,11 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
 
 @app.post("/api/admin/reclassify-photos")
 async def admin_reclassify_photos(request: Request):
-    """Clear and re-run Haiku classification on a specific list of photo paths."""
+    """Clear and re-run the labeling model on a specific list of photo paths."""
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    if not ANTHROPIC_API_KEY:
-        return JSONResponse(status_code=400, content={"error": "ANTHROPIC_API_KEY not configured"})
+    if not _load_onnx_model():
+        return JSONResponse(status_code=503, content={"error": "The labeling model isn't available"})
     body  = await request.json()
     paths = body.get("paths", [])
     if not paths:
@@ -1997,21 +1983,6 @@ def admin_get_photo(request: Request, path: str, size: str = Query("thumb")):
 # ─────────────────────────────────────────
 # WOOCOMMERCE CHECKOUT
 # ─────────────────────────────────────────
-
-RELOAD_TOKEN = os.getenv("RELOAD_TOKEN", "")
-
-@app.post("/api/reload")
-def reload_index(token: str = Query("")):
-    global data
-    if not RELOAD_TOKEN or token != RELOAD_TOKEN:
-        return Response(status_code=401)
-    try:
-        obj  = s3.get_object(Bucket=R2_BUCKET, Key="images.json")
-        data = json.loads(obj["Body"].read().decode("utf-8"))
-        return {"status": "ok", "count": len(data)}
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
 
 WC_BASE                  = "https://bigskyphotos.com/wp-json/wc/v3"
 WC_KEY                   = os.getenv("WC_CONSUMER_KEY", "")
@@ -6386,17 +6357,6 @@ async def trash_empty(request: Request):
     return {"emptied": count}
 
 
-@app.post("/api/trash/autopurge")
-async def trash_autopurge():
-    trash  = _load_trash_meta()
-    now    = datetime.now(timezone.utc)
-    keep   = [t for t in trash if datetime.fromisoformat(t["purge_at"]) > now]
-    purge  = [t for t in trash if datetime.fromisoformat(t["purge_at"]) <= now]
-    if purge:
-        _save_trash_meta(keep)
-        _batch_delete_keys([t["key"] for t in purge])
-    return {"purged": len(purge)}
-
 # ── Photographer management (admin) ──
 @app.get("/api/photographers")
 def list_photographers(request: Request):
@@ -7409,8 +7369,10 @@ def admin_pos_thumbs(request: Request, body: dict = Body(...)):
 
 
 @app.get("/api/admin/embed-status")
-def admin_embed_status(job_id: str = Query(...)):
-    """Return progress for a background classification/embed job."""
+def admin_embed_status(request: Request, job_id: str = Query(...)):
+    """Return progress for a background labeling / thumbnail job (studio only)."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     job = _embed_jobs.get(job_id)
     if not job:
         return {"done": 0, "total": 0, "finished": True}
@@ -7420,14 +7382,14 @@ def admin_embed_status(job_id: str = Query(...)):
 
 @app.post("/api/admin/classify-backfill")
 async def admin_classify_backfill(request: Request):
-    """Haiku classification backfill: label jacket/pants/helmet colors for photos
-    that have an embedding but no jacket_colors label yet.
+    """Labeling backfill: label sport and jacket/pants colors (labeling model) for photos
+    that have no jacket_colors label yet.
     Optionally filter by location (e.g. 'Whitefish Mountain') to process only
     specific resort folders instead of the entire library."""
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    if not ANTHROPIC_API_KEY:
-        return JSONResponse(status_code=400, content={"error": "ANTHROPIC_API_KEY not configured"})
+    if not _load_onnx_model():
+        return JSONResponse(status_code=503, content={"error": "The labeling model isn't available"})
     body             = await request.json()
     location_filter  = (body.get("location") or "").strip().lower()
     batch_limit      = int(body.get("limit") or 0)  # 0 = no limit
@@ -7468,7 +7430,7 @@ async def admin_classify_backfill(request: Request):
                 return False
 
         done = 0
-        batch_size = 16  # keep Haiku API concurrency reasonable
+        batch_size = 16
         for i in range(0, len(to_classify), batch_size):
             batch = to_classify[i:i + batch_size]
             with ThreadPoolExecutor(max_workers=8) as ex:
@@ -7490,12 +7452,12 @@ async def admin_classify_backfill(request: Request):
 
 @app.post("/api/admin/classify-folder")
 async def admin_classify_folder(request: Request):
-    """Haiku classification for a specific folder (date + location + folder name).
+    """Run the labeling model on a specific folder (date + location + folder name).
     Processes only photos in that folder that don't yet have color labels."""
     if not _admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    if not ANTHROPIC_API_KEY:
-        return JSONResponse(status_code=400, content={"error": "ANTHROPIC_API_KEY not configured"})
+    if not _load_onnx_model():
+        return JSONResponse(status_code=503, content={"error": "The labeling model isn't available"})
     body     = await request.json()
     date     = (body.get("date") or "").strip()
     location = (body.get("location") or "").strip().lower()

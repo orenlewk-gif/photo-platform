@@ -372,3 +372,34 @@ def test_the_app_never_changes_the_buckets_browser_rules(main_module):
     # Set in the Cloudflare dashboard; the app's key can't change them, and mustn't try
     src = open("main.py").read()
     assert "put_bucket_cors" not in src
+
+
+# ── Small leftovers (2026-10-18) ─────────────────────────────────────────────
+
+def test_text_presets_refuse_cleanly_instead_of_crashing(client, admin_client):
+    assert client.get("/api/admin/text-presets").status_code == 403           # was a 500 crash
+    assert admin_client.post("/api/admin/text-preset", json={"name": ""}).status_code == 400
+
+
+def test_job_progress_is_studio_only(client, admin_client):
+    assert client.get("/api/admin/embed-status?job_id=x").status_code == 401
+    assert admin_client.get("/api/admin/embed-status?job_id=x").status_code == 200
+
+
+@pytest.mark.parametrize("url", ["/api/trash/autopurge", "/api/reload?token=anything"])
+def test_retired_endpoints_are_gone(client, url):
+    assert client.post(url).status_code in (404, 405)
+
+
+@pytest.mark.parametrize("url,body", [
+    ("/api/admin/classify-folder", {"date": "2026-01-01", "location": "Nowhere"}),
+    ("/api/admin/classify-backfill", {}),
+    ("/api/admin/reclassify-photos", {"paths": ["images/none.jpg"]}),
+])
+def test_labeling_buttons_need_the_model_not_an_anthropic_key(admin_client, main_module, monkeypatch, url, body):
+    monkeypatch.setattr(main_module, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(main_module, "_load_onnx_model", lambda: False)
+    r = admin_client.post(url, json=body)
+    assert r.status_code == 503 and "labeling model" in r.json()["error"]
+    monkeypatch.setattr(main_module, "_load_onnx_model", lambda: True)
+    assert admin_client.post(url, json=body).status_code != 503              # runs without any Anthropic key
