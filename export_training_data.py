@@ -33,6 +33,11 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 
+# Exam day: these photos are kept OUT of training so every model version is graded on the
+# same never-seen photos (dev/model_eval/exam_photos.json). The whole day is skipped, not just
+# the exam photos, because burst sequences would otherwise leak near-copies into training.
+EXAM_DAYS = {"2026-06-07"}
+
 OUT_DIR    = Path("training_data")
 LABELS_CSV = OUT_DIR / "labels.csv"
 OUT_DIR.mkdir(exist_ok=True)
@@ -45,6 +50,8 @@ def load_images_json():
 
 
 def is_exportable(item):
+    if item.get("date") in EXAM_DAYS:
+        return False
     if item.get("jacket_colors") is None:
         return False
     if item.get("jacket_colors") == []:
@@ -59,6 +66,7 @@ def main():
     data = load_images_json()
     exportable = [it for it in data if is_exportable(it)]
     print(f"Total photos: {len(data)} | Exportable: {len(exportable)}")
+    print(f"Skipped exam day(s) {sorted(EXAM_DAYS)}: {sum(1 for it in data if it.get('date') in EXAM_DAYS)} photos")
 
     rows = []
     for item in exportable:
