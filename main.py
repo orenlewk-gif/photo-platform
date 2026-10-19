@@ -31,6 +31,8 @@ from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientat
                          grid_thumb_r2_key as _grid_thumb_r2_key, nowm_thumb_r2_key as _nowm_thumb_r2_key,
                          thumb_r2_key as _thumb_r2_key)
 from core.classify import MODEL_LABEL, ColorModel
+from core.index import SEARCHABLE_GROUP_LOCATIONS, build_folder_index as _build_folder_index
+from core.search import COLOR_ENUM, filter_by_labels, match_last_name
 from core.storage import JsonDoc
 from core.text import (clean_location, folder_key as _folder_key, item_group_from_path as _item_group_from_path,
                        natural_sort_key, pick_four as _pick_four, to_r2_key)
@@ -110,7 +112,6 @@ _PORTRAIT_LOCATIONS_BASE = {"lone peak portraits", "explorer gondola", "ramcharg
 PORTRAIT_LOCATIONS = set(_PORTRAIT_LOCATIONS_BASE)  # live copy, refreshed from R2
 
 # Locations whose group/sub-folder names are searchable
-SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
 
 PORTRAIT_LOCATIONS_KEY = "meta/portrait_locations.json"
 _portrait_locs_cache: dict = {"data": None, "ts": 0.0}
@@ -296,26 +297,6 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 
 # ── Color labels ──────────────────────────────────────────────────────────────
 
-_HAIKU_COLOR_ENUM = [
-    "red", "orange", "yellow", "green", "blue", "purple", "pink",
-    "white", "black", "gray", "brown", "tan", "teal", "camo", "none", "unclear",
-]
-
-# Color families — similar shades treated as equivalent during filtering
-_COLOR_FAMILY: dict[str, set] = {
-    "blue":   {"blue", "navy"},         # navy kept for existing labeled photos
-    "tan":    {"tan"},
-    "red":    {"red", "maroon"},
-    "maroon": {"maroon", "red"},
-    "green":  {"green"},
-    "teal":   {"teal"},
-    "gray":   {"gray"},
-    "purple": {"purple", "violet"},
-    "violet": {"violet", "purple"},
-}
-
-def _color_family(color: str) -> set:
-    return _COLOR_FAMILY.get(color, {color})
 
 
 # ── Labeling model ────────────────────────────────────────────────────────────
@@ -753,69 +734,6 @@ def _photo_list_saved(params=None, **_):
 s3.meta.events.register("before-parameter-build.s3.PutObject", _photo_list_saved)
 
 
-def _build_folder_index(items: list) -> dict:
-    by_date, folders, date_locs = {}, {}, {}
-    name_keys, name_previews = [], {}
-    for item in items:
-        loc = clean_location(item["location"])
-        path = item.get("path", "")
-        # Name lookups (like last_name_search, drafts included)
-        ln = item.get("last_name", "").strip()
-        if ln:
-            key = ("ln", ln.lower(), item["date"], loc)
-            if key not in name_previews:
-                name_previews[key] = []
-                name_keys.append((key, {"last_name": ln, "date": item["date"], "location": loc, "type": "family"}))
-            if path and len(name_previews[key]) < 4:
-                name_previews[key].append(path)
-        if loc.lower() in SEARCHABLE_GROUP_LOCATIONS:
-            g = item.get("group", "").strip()
-            if g:
-                key = ("grp", g.lower(), item["date"], loc)
-                if key not in name_previews:
-                    name_previews[key] = []
-                    name_keys.append((key, {"group": g, "date": item["date"], "location": loc, "type": "group"}))
-                if path and len(name_previews[key]) < 4:
-                    name_previews[key].append(path)
-        if item.get("draft"):
-            continue
-        by_date.setdefault(item["date"], []).append(item)
-        folders.setdefault((item["date"], loc), []).append(item)
-        if item.get("date", "").strip() and loc:
-            date_locs.setdefault(item.get("date", "").strip(), set()).add(loc)
-
-    # /api/days
-    days = []
-    for date in sorted(by_date, reverse=True):
-        locs, galleries, loc_previews = set(), set(), {}
-        for item in by_date[date]:
-            loc = clean_location(item["location"])
-            locs.add(loc)
-            galleries.add((loc, item.get("last_name", "")))
-            loc_previews.setdefault(loc, []).append(item["path"])
-        # One photo per folder first, then fill remaining slots round-robin
-        loc_lists = list(loc_previews.values())
-        previews, i = [], 0
-        while len(previews) < 4:
-            added = False
-            for lst in loc_lists:
-                if i < len(lst):
-                    previews.append(lst[i])
-                    added = True
-                    if len(previews) == 4:
-                        break
-            if not added:
-                break
-            i += 1
-        days.append({"date": date, "previews": previews,
-                     "folder_count": len(locs), "gallery_count": len(galleries)})
-
-    pos_dates = [{"date": d, "locations": sorted(date_locs[d])}
-                 for d in sorted(date_locs, reverse=True)[:90]]
-    return {"by_date": by_date, "folders": folders, "days": {"days": days},
-            "pos_dates": {"dates": pos_dates}, "name_keys": name_keys, "name_previews": name_previews}
-
-
 def _folder_index() -> dict:
     """The current folder index, rebuilt if the photo list changed."""
     now = _time.monotonic()
@@ -1055,59 +973,13 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
     if not last_name and not has_labels:
         return JSONResponse(status_code=400, content={"error": "Provide last_name or color filter"})
 
-    # Build time lookup if a range was supplied
-    time_map = None
-    if time_from is not None and time_to is not None and date and location:
-        cache_key = (date, location.strip().lower())
-        cached = _folder_times_cache.get(cache_key)
-        if cached:
-            time_map = cached
-
-    ln_filter = last_name.strip().lower() if last_name else ""
-
+    # (time_from / time_to are applied in the browser from /api/folder-times)
     if has_labels:
-        # Color chip only — scan folder, filter strictly by Haiku labels
-        results = []
         pool = _folder_photos(date, location) if date and location else data
-        for item in pool:
-            if item.get("draft"):
-                continue
-            if date and item["date"] != date:
-                continue
-            if location and clean_location(item["location"]) != location:
-                continue
-            if group and item.get("group", "").strip().lower() != group.lower():
-                continue
-            item_jc = item.get("jacket_colors") or []
-            if jacket_colors_filter and not all(
-                any(c in _color_family(jf) for c in item_jc) for jf in jacket_colors_filter
-            ):
-                continue
-            if pants_color and not any(c in _color_family(pants_color) for c in (item.get("pants_colors") or [])):
-                continue
-            if sport and item.get("sport") != sport:
-                continue
-            if ski_instructor and not item.get("ski_instructor"):
-                continue
-            results.append((0.0, item))
-        results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
-
+        results = [(0.0, item) for item in filter_by_labels(pool, date, location, group, jacket_colors_filter,
+                                                            pants_color, sport, ski_instructor)]
     else:
-        # Last name only — scan data, sort by filename
-        results = []
-        for item in data:
-            if date and item["date"] != date:
-                continue
-            if location and clean_location(item["location"]) != location:
-                continue
-            if group and item.get("group", "").strip().lower() != group.lower():
-                continue
-            item_ln = item.get("last_name", "").strip().lower()
-            if not item_ln or fuzz.partial_ratio(ln_filter, item_ln) < 80:
-                continue
-            boost = (fuzz.partial_ratio(ln_filter, item_ln) / 100) * 0.15
-            results.append((boost, item))
-        results.sort(key=lambda x: natural_sort_key(x[1]["path"]))
+        results = match_last_name(data, last_name, date, location, group)
 
     paths  = [item["path"] for _, item in results]
     dims   = _dims_for_paths(paths)
@@ -1689,7 +1561,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             continue
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
-        _valid = set(_HAIKU_COLOR_ENUM) - {"none", "unclear"}
+        _valid = set(COLOR_ENUM) - {"none", "unclear"}
         jcs = [c for c in (item.get("jacket_colors") or []) if c in _valid]
         pcs = [c for c in (item.get("pants_colors")  or []) if c in _valid]
         for c in jcs: jacket.add(c)
