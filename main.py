@@ -104,12 +104,18 @@ def _save_pricing(d):
     _pricing_cache["data"] = d
     import time; _pricing_cache["ts"] = time.monotonic()
 
-# Allow browser direct PUT uploads from any origin
+# Which websites' pages may talk to the photo bucket directly from the browser: the
+# studio uploads photos straight to it, and download pages fetch photos for "Save to
+# Photos". Only this site's own addresses (not any website). Comma-separated override:
+# STORAGE_ALLOWED_ORIGINS (the local test copy adds its own address).
+STORAGE_ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
+    "STORAGE_ALLOWED_ORIGINS",
+    "https://photos.bigskyphotos.com,https://photo-platform-production.up.railway.app").split(",") if o.strip()]
 try:
     s3.put_bucket_cors(
         Bucket=R2_BUCKET,
         CORSConfiguration={"CORSRules": [{
-            "AllowedOrigins": ["*"],
+            "AllowedOrigins": STORAGE_ALLOWED_ORIGINS,
             "AllowedMethods": ["GET", "PUT", "HEAD"],
             "AllowedHeaders": ["*"],
             "MaxAgeSeconds": 3600,

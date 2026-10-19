@@ -366,3 +366,12 @@ def test_if_the_code_email_fails_you_are_told(client, mail, main_module, monkeyp
     monkeypatch.setattr(main_module, "RESEND_API_KEY", "")
     r = _sign_in(client)
     assert r.status_code == 503 and "Couldn't email the sign-in code" in r.text
+
+
+def test_photo_storage_only_accepts_this_sites_pages(main_module):
+    import boto3
+    rules = boto3.client("s3", region_name="us-east-1").get_bucket_cors(Bucket="test-bucket")["CORSRules"]
+    origins = {o for r in rules for o in r["AllowedOrigins"]}
+    assert origins == {"https://photos.bigskyphotos.com", "https://photo-platform-production.up.railway.app"}
+    assert "*" not in origins
+    assert {"GET", "PUT"} <= {m for r in rules for m in r["AllowedMethods"]}     # Save to Photos + studio uploads
