@@ -28,11 +28,13 @@ def settings(main_module):
                 _put(key, payload); keys.append(key)
         main_module._pricing_cache["data"] = None
         main_module._folder_meta_cache["data"] = None
+        main_module._items_bundles_doc.cache["data"] = None
     yield use
     for key in keys:
         S3.delete_object(Bucket=B, Key=key)
     main_module._pricing_cache["data"] = None
     main_module._folder_meta_cache["data"] = None
+    main_module._items_bundles_doc.cache["data"] = None
 
 
 def P(main_module, *args):

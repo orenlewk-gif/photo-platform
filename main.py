@@ -8301,7 +8301,7 @@ _DEFAULT_PRINT_SIZES = [
     {"label": '16×20"',"price": 90, "ship_print": 13, "ship_framed": 50, "size_idx": 3},
 ]
 
-_print_pricing_doc = JsonDoc(s3, R2_BUCKET, PRINT_PRICING_KEY,
+_print_pricing_doc = JsonDoc(s3, R2_BUCKET, PRINT_PRICING_KEY, ttl=30,   # read on every gallery/checkout load
                              default=lambda: {"sizes": list(_DEFAULT_PRINT_SIZES), "free_ship_threshold": 3})
 
 def _load_print_pricing():  return _print_pricing_doc.load()
@@ -8544,7 +8544,8 @@ async def api_save_private_session_pricing(request: Request):
 # ── ITEMS BUNDLES ─────────────────────────────────────────────────────────────
 ITEMS_BUNDLES_KEY = "meta/items_bundles.json"
 
-_items_bundles_doc = JsonDoc(s3, R2_BUCKET, ITEMS_BUNDLES_KEY, indent=2, default=lambda: {"bundles": []})
+_items_bundles_doc = JsonDoc(s3, R2_BUCKET, ITEMS_BUNDLES_KEY, ttl=30, indent=2,   # read on every checkout quote
+                             default=lambda: {"bundles": []})
 
 def _load_items_bundles():  return _items_bundles_doc.load()
 def _save_items_bundles(d): _items_bundles_doc.save(d)
