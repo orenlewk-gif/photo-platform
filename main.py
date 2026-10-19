@@ -6004,10 +6004,9 @@ def _presigned_get(key: str, expires: int = 3600) -> str:
 
 # ── Photographer auth ──
 @app.post("/api/photographer/auth")
-async def photographer_auth(request: Request):
+def photographer_auth(request: Request, body: dict = Body(...)):
     if _pin_locked_out(request):
         return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — try again in a few minutes"})
-    body = await request.json()
     p = _auth_photographer(body.get("pin", ""))
     if not p:
         _record_pin_failure(request)
@@ -6019,12 +6018,21 @@ async def photographer_auth(request: Request):
             "clocked_in": active is not None, "active_record": active}
 
 # ── Clock in / out ──
+# Clock-ins run side by side (off the main loop), so the timecard file is updated
+# under a lock: two photographers clocking in at once can't overwrite each other.
+_clock_lock = threading.Lock()
+
+
 @app.post("/api/clock/in")
-async def clock_in(request: Request):
-    body = await request.json()
+def clock_in(body: dict = Body(...)):
     p = _auth_photographer(body.get("pin", ""))
     if not p:
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    with _clock_lock:
+        return _clock_in(p, body)
+
+
+def _clock_in(p: dict, body: dict):
     records = _load_clock_records()
     if any(r["photographer_id"] == p["id"] and not r.get("clock_out") for r in records):
         return JSONResponse(status_code=400, content={"error": "Already clocked in"})
@@ -6042,11 +6050,15 @@ async def clock_in(request: Request):
     return {"record": rec}
 
 @app.post("/api/clock/out")
-async def clock_out(request: Request):
-    body = await request.json()
+def clock_out(body: dict = Body(...)):
     p = _auth_photographer(body.get("pin", ""))
     if not p:
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    with _clock_lock:
+        return _clock_out(p)
+
+
+def _clock_out(p: dict):
     records = _load_clock_records()
     for r in reversed(records):
         if r["photographer_id"] == p["id"] and not r.get("clock_out"):

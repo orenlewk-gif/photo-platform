@@ -106,7 +106,11 @@ if seed_dir:
             full = os.path.join(root, name)
             key = os.path.relpath(full, seed_dir).replace(os.sep, "/")
             with open(full, "rb") as fh:
-                s3.put_object(Bucket=BUCKET, Key=key, Body=fh.read(), ContentType="application/json")
+                body = fh.read()
+            if key == "images.json":
+                # Keep the sample photos (they have real originals for thumbnails) alongside the seeded list
+                body = json.dumps(json.loads(body) + sample_photos).encode()
+            s3.put_object(Bucket=BUCKET, Key=key, Body=body, ContentType="application/json")
             print(f"[seed] {key}")
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -201,6 +205,14 @@ class FakeHTTP:
 
 
 import main  # noqa: E402
+
+# Optional: DEV_STORAGE_LATENCY_MS=60 adds that delay to every storage call the app makes,
+# roughly like the round trip from Railway to R2 (the fake bucket is otherwise instant).
+_latency = float(os.environ.get("DEV_STORAGE_LATENCY_MS", "0") or 0) / 1000
+if _latency:
+    import time as _t
+    main.s3.meta.events.register("before-send.s3", lambda **kw: _t.sleep(_latency))
+    print(f"[dev] storage calls delayed by {_latency * 1000:.0f} ms")
 
 main.http_requests = FakeHTTP()
 

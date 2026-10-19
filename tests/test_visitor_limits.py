@@ -55,3 +55,24 @@ def test_wrong_pins_lock_out_only_that_visitor(client, main_module):
     assert client.post("/api/photographer/auth", json={"pin": "4821"}, headers=guesser).status_code == 429
     ipad = {"X-Forwarded-For": "198.51.100.7"}
     assert client.post("/api/photographer/auth", json={"pin": "4821"}, headers=ipad).status_code == 200
+
+
+def test_two_photographers_clocking_in_at_once_are_both_recorded(client, main_module, monkeypatch):
+    import boto3, json, threading
+    s3 = boto3.client("s3", region_name="us-east-1")
+    s3.put_object(Bucket="test-bucket", Key="meta/photographers.json", Body=json.dumps([
+        {"id": "a", "name": "Ann", "pin": "1111"}, {"id": "b", "name": "Bo", "pin": "2222"}]).encode())
+    main_module._save_clock_records([])
+    real_save = main_module._save_clock_records
+
+    def slow_save(records):                       # slow storage: both would read before either saves
+        threading.Event().wait(0.3)
+        real_save(records)
+    monkeypatch.setattr(main_module, "_save_clock_records", slow_save)
+    out = []
+    ts = [threading.Thread(target=lambda pin=pin: out.append(client.post("/api/clock/in", json={"pin": pin}).status_code))
+          for pin in ("1111", "2222")]
+    [t.start() for t in ts]
+    [t.join(10) for t in ts]
+    assert out == [200, 200]
+    assert {r["photographer_id"] for r in main_module._load_clock_records()} == {"a", "b"}
