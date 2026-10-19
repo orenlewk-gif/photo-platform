@@ -331,42 +331,44 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
     return _color_model.classify(img_bytes)
 
 
-def embed_items_fast(items: list, job_id: str = None) -> int:
-    """
-    Parallel R2 fetch + color classification with the ONNX model.
-    Returns count processed.
-    """
-    from concurrent.futures import ThreadPoolExecutor
-
-    def process_one(item):
+def _label_photos(items: list, job_id: str = None, needs=None, save_every: int = 0) -> int:
+    """Run the labeling model over photos, 8 at a time: download each original, label it,
+    stamp the model version. `needs(item)` False skips a photo without downloading it.
+    Progress shows in _embed_jobs[job_id]; save_every=N saves the photo list every N photos
+    so a long job keeps its progress through a restart. Returns how many were handled."""
+    def one(item):
+        if needs and not needs(item):
+            return True
         try:
-            resp      = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-            img_bytes = resp["Body"].read()
-            _is_portrait_loc = item.get("location", "").strip().lower() in {
-                loc.strip().lower() for loc in PORTRAIT_LOCATIONS
-            }
-            if item.get("jacket_colors") is None and not _is_portrait_loc:
-                colors = classify_photo_colors(img_bytes)
-                if colors:
-                    item["sport"]         = colors.get("sport", "unclear")
-                    item["jacket_colors"] = colors.get("jacket_colors", [])
-                    item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["classifier"] = MODEL_LABEL
-                    print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+            raw = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])["Body"].read()
+            colors = classify_photo_colors(raw)
+            if colors:
+                item["sport"]         = colors.get("sport", "unclear")
+                item["jacket_colors"] = colors.get("jacket_colors", [])
+                item["pants_colors"]  = colors.get("pants_colors", [])
+                item["classifier"]    = MODEL_LABEL
+                print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
             return True
         except Exception as e:
-            print(f"Process failed {item['path']}: {e}")
+            print(f"Labeling failed {item['path']}: {e}")
             return False
 
-    count = 0
+    done = 0
     with ThreadPoolExecutor(max_workers=8) as ex:
-        futures = {ex.submit(process_one, item): item for item in items}
-        for fut in futures:
-            if fut.result():
-                count += 1
-                if job_id and job_id in _embed_jobs:
-                    _embed_jobs[job_id]["done"] = count
+        for i, ok in enumerate(ex.map(one, items), 1):
+            done += ok
+            if job_id and job_id in _embed_jobs:
+                _embed_jobs[job_id]["done"] = done
+            if save_every and i % save_every == 0:
+                _save_photo_list()
+    return done
 
+
+def embed_items_fast(items: list, job_id: str = None) -> int:
+    """Label newly published photos (portraits and already-labeled photos are skipped)."""
+    portrait_locs = {loc.strip().lower() for loc in PORTRAIT_LOCATIONS}
+    count = _label_photos(items, job_id, needs=lambda it: it.get("jacket_colors") is None
+                          and it.get("location", "").strip().lower() not in portrait_locs)
     if job_id and job_id in _embed_jobs:
         _embed_jobs[job_id]["finished"] = True
     return count
@@ -1612,23 +1614,7 @@ async def admin_reclassify_photos(request: Request):
     _embed_jobs[job_id] = {"total": len(targets), "done": 0, "finished": False}
 
     def _bg(jid=job_id):
-        done = 0
-        for it in targets:
-            try:
-                resp = s3.get_object(Bucket=R2_BUCKET, Key=it["path"])
-                raw  = resp["Body"].read()
-                colors = classify_photo_colors(raw)
-                if colors:
-                    it["sport"]         = colors.get("sport", "unclear")
-                    it["jacket_colors"] = colors.get("jacket_colors", [])
-                    it["pants_colors"]  = colors.get("pants_colors", [])
-                    it["classifier"]    = MODEL_LABEL
-                    print(f"Re-classify: {it['path'].split('/')[-1]} → sport={it['sport']} jacket={it['jacket_colors']} pants={it['pants_colors']}")
-                done += 1
-                if jid in _embed_jobs:
-                    _embed_jobs[jid]["done"] = done
-            except Exception as e:
-                print(f"reclassify failed {it['path']}: {e}")
+        _label_photos(targets, jid)
         _save_photo_list()
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
@@ -7235,35 +7221,9 @@ async def admin_classify_backfill(request: Request):
     _embed_jobs[job_id] = {"total": len(to_classify), "done": 0, "finished": False}
 
     def _bg(jid=job_id):
-        from concurrent.futures import ThreadPoolExecutor
-
-        def _fetch_and_classify(item):
-            try:
-                resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-                raw  = resp["Body"].read()
-                colors = classify_photo_colors(raw)
-                if colors:
-                    item["sport"]         = colors.get("sport", "unclear")
-                    item["jacket_colors"] = colors.get("jacket_colors", [])
-                    item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["classifier"]    = MODEL_LABEL
-                return True
-            except Exception as e:
-                print(f"classify-backfill failed {item['path']}: {e}")
-                return False
-
-        done = 0
-        batch_size = 16
-        for i in range(0, len(to_classify), batch_size):
-            batch = to_classify[i:i + batch_size]
-            with ThreadPoolExecutor(max_workers=8) as ex:
-                results = list(ex.map(_fetch_and_classify, batch))
-            done += sum(results)
-            if jid in _embed_jobs:
-                _embed_jobs[jid]["done"] = done
-            # Save progress every batch so partial results survive a restart
-            _save_photo_list()
-
+        # Saves every 16 photos so partial results survive a restart
+        done = _label_photos(to_classify, jid, save_every=16)
+        _save_photo_list()
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
         print(f"Classify backfill done: {done}/{len(to_classify)}")
@@ -7303,31 +7263,7 @@ async def admin_classify_folder(request: Request):
     _embed_jobs[job_id] = {"total": len(to_classify), "done": 0, "finished": False}
 
     def _bg(jid=job_id):
-        from concurrent.futures import ThreadPoolExecutor
-
-        def _fetch_and_classify(item):
-            try:
-                resp = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])
-                raw  = resp["Body"].read()
-                colors = classify_photo_colors(raw)
-                if colors:
-                    item["sport"]         = colors.get("sport", "unclear")
-                    item["jacket_colors"] = colors.get("jacket_colors", [])
-                    item["pants_colors"]  = colors.get("pants_colors", [])
-                    item["classifier"]    = MODEL_LABEL
-                return True
-            except Exception as e:
-                print(f"classify-folder failed {item['path']}: {e}")
-                return False
-
-        done = 0
-        for i in range(0, len(to_classify), 16):
-            batch = to_classify[i:i + 16]
-            with ThreadPoolExecutor(max_workers=8) as ex:
-                results = list(ex.map(_fetch_and_classify, batch))
-            done += sum(results)
-            if jid in _embed_jobs:
-                _embed_jobs[jid]["done"] = done
+        done = _label_photos(to_classify, jid)
         _save_photo_list()
         if jid in _embed_jobs:
             _embed_jobs[jid]["finished"] = True
