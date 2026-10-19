@@ -30,6 +30,7 @@ import requests as http_requests
 from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientation,
                          grid_thumb_r2_key as _grid_thumb_r2_key, nowm_thumb_r2_key as _nowm_thumb_r2_key,
                          thumb_r2_key as _thumb_r2_key)
+from core.storage import JsonDoc
 from core.text import (clean_location, folder_key as _folder_key, item_group_from_path as _item_group_from_path,
                        natural_sort_key, pick_four as _pick_four, to_r2_key)
 from dotenv import load_dotenv
@@ -84,30 +85,14 @@ def _ensure_model_files():
 _ensure_model_files()
 
 # ── Activity Pricing (R2) ─────────────────────────────────────────────────────
-_pricing_cache: dict = {"data": None, "ts": 0.0}
 _PRICING_TTL = 30  # seconds
+_pricing_doc = JsonDoc(s3, R2_BUCKET, PRICING_KEY, ttl=_PRICING_TTL, indent=2,
+                       default=lambda: {"default": {"tiers": []}, "activities": {}, "combos": []},
+                       valid=lambda d: isinstance(d, dict))
+_pricing_cache = _pricing_doc.cache
 
-def _load_pricing():
-    import time
-    now = time.monotonic()
-    if _pricing_cache["data"] is not None and now - _pricing_cache["ts"] < _PRICING_TTL:
-        return _pricing_cache["data"]
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRICING_KEY)
-        d = json.loads(obj["Body"].read())
-        if not isinstance(d, dict):
-            raise ValueError("pricing.json is not a dict")
-    except Exception:
-        d = {"default": {"tiers": []}, "activities": {}, "combos": []}
-    _pricing_cache["data"] = d
-    _pricing_cache["ts"] = now
-    return d
-
-def _save_pricing(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=PRICING_KEY,
-                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
-    _pricing_cache["data"] = d
-    import time; _pricing_cache["ts"] = time.monotonic()
+def _load_pricing():  return _pricing_doc.load()
+def _save_pricing(d): _pricing_doc.save(d)
 
 # Which websites may use the photo bucket from a browser (the studio's direct uploads,
 # "Save to Photos" on download pages) is set in the Cloudflare dashboard (R2 >
@@ -176,28 +161,12 @@ def read_xmp_color_label(jpeg_bytes: bytes) -> str:
 
 # ── Seasons ────────────────────────────────────────────────────────────────────
 SEASONS_KEY = "meta/seasons.json"
-_seasons_cache: dict = {"data": None, "ts": 0.0}
 _SEASONS_TTL = 60
+_seasons_doc = JsonDoc(s3, R2_BUCKET, SEASONS_KEY, ttl=_SEASONS_TTL, indent=2, default=list)
+_seasons_cache = _seasons_doc.cache
 
-def _load_seasons():
-    import time
-    now = time.monotonic()
-    if _seasons_cache["data"] is not None and now - _seasons_cache["ts"] < _SEASONS_TTL:
-        return _seasons_cache["data"]
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=SEASONS_KEY)
-        d = json.loads(obj["Body"].read())
-    except Exception:
-        d = []
-    _seasons_cache["data"] = d
-    _seasons_cache["ts"] = now
-    return d
-
-def _save_seasons(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=SEASONS_KEY,
-                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
-    _seasons_cache["data"] = d
-    import time; _seasons_cache["ts"] = time.monotonic()
+def _load_seasons():  return _seasons_doc.load()
+def _save_seasons(d): _seasons_doc.save(d)
 
 WATERMARK_OPACITY = 0.50
 _watermark_cache  = None
@@ -6735,39 +6704,17 @@ ZIP_LOCS_SET    = {"adventure zip", "adventure zip line", "adventure zipline", "
 ZIP_PRICING_KEY = "meta/zip_pricing.json"
 FOLDER_META_KEY = "meta/folder_meta.json"
 
-def _load_zip_pricing():
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=ZIP_PRICING_KEY)
-        return json.loads(obj["Body"].read())
-    except:
-        return {"tiers": []}
+_zip_pricing_doc = JsonDoc(s3, R2_BUCKET, ZIP_PRICING_KEY, default=lambda: {"tiers": []})
 
-def _save_zip_pricing(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=ZIP_PRICING_KEY,
-                  Body=json.dumps(d).encode(), ContentType="application/json")
+def _load_zip_pricing():  return _zip_pricing_doc.load()
+def _save_zip_pricing(d): _zip_pricing_doc.save(d)
 
-_folder_meta_cache: dict = {"data": None, "ts": 0.0}
 _FOLDER_META_TTL = 10  # seconds
+_folder_meta_doc = JsonDoc(s3, R2_BUCKET, FOLDER_META_KEY, ttl=_FOLDER_META_TTL, default=dict)
+_folder_meta_cache = _folder_meta_doc.cache
 
-def _load_folder_meta():
-    import time
-    now = time.monotonic()
-    if _folder_meta_cache["data"] is not None and now - _folder_meta_cache["ts"] < _FOLDER_META_TTL:
-        return _folder_meta_cache["data"]
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=FOLDER_META_KEY)
-        d = json.loads(obj["Body"].read())
-    except:
-        d = {}
-    _folder_meta_cache["data"] = d
-    _folder_meta_cache["ts"] = now
-    return d
-
-def _save_folder_meta(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=FOLDER_META_KEY,
-                  Body=json.dumps(d).encode(), ContentType="application/json")
-    _folder_meta_cache["data"] = d
-    import time; _folder_meta_cache["ts"] = time.monotonic()
+def _load_folder_meta():  return _folder_meta_doc.load()
+def _save_folder_meta(d): _folder_meta_doc.save(d)
 
 def _update_folder_poses(date: str, location: str, folder: str, r2_keys: list[str]):
     """Read XMP color labels from uploaded R2 images and store pose groupings in folder_meta."""
@@ -6843,16 +6790,10 @@ def _write_folder_poses_from_ui(date: str, location: str, folder: str, poses: li
 # ── Text Presets ──
 TEXT_PRESETS_KEY = "meta/text_presets.json"
 
-def _load_text_presets():
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=TEXT_PRESETS_KEY)
-        return json.loads(obj["Body"].read())
-    except:
-        return []
+_text_presets_doc = JsonDoc(s3, R2_BUCKET, TEXT_PRESETS_KEY, default=list)
 
-def _save_text_presets(presets):
-    s3.put_object(Bucket=R2_BUCKET, Key=TEXT_PRESETS_KEY,
-                  Body=json.dumps(presets).encode(), ContentType="application/json")
+def _load_text_presets():        return _text_presets_doc.load()
+def _save_text_presets(presets): _text_presets_doc.save(presets)
 
 @app.get("/api/admin/text-presets")
 async def get_text_presets(request: Request):
@@ -8360,16 +8301,11 @@ _DEFAULT_PRINT_SIZES = [
     {"label": '16×20"',"price": 90, "ship_print": 13, "ship_framed": 50, "size_idx": 3},
 ]
 
-def _load_print_pricing():
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRINT_PRICING_KEY)
-        return json.loads(obj["Body"].read())
-    except Exception:
-        return {"sizes": list(_DEFAULT_PRINT_SIZES), "free_ship_threshold": 3}
+_print_pricing_doc = JsonDoc(s3, R2_BUCKET, PRINT_PRICING_KEY,
+                             default=lambda: {"sizes": list(_DEFAULT_PRINT_SIZES), "free_ship_threshold": 3})
 
-def _save_print_pricing(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=PRINT_PRICING_KEY,
-                  Body=json.dumps(d).encode(), ContentType="application/json")
+def _load_print_pricing():  return _print_pricing_doc.load()
+def _save_print_pricing(d): _print_pricing_doc.save(d)
 
 @app.get("/api/print-pricing")
 def api_print_pricing():
@@ -8393,28 +8329,13 @@ _DEFAULT_PORTRAIT_PRICING = {
     "pose_tiers": [65.0, 57.5, 50.0],
 }
 
-_portrait_pricing_cache: dict = {"data": None, "ts": 0.0}
 _PORTRAIT_PRICING_TTL = 30
+_portrait_pricing_doc = JsonDoc(s3, R2_BUCKET, PORTRAIT_PRICING_KEY, ttl=_PORTRAIT_PRICING_TTL, indent=2,
+                                default=lambda: dict(_DEFAULT_PORTRAIT_PRICING))
+_portrait_pricing_cache = _portrait_pricing_doc.cache
 
-def _load_portrait_pricing():
-    import time
-    now = time.monotonic()
-    if _portrait_pricing_cache["data"] is not None and now - _portrait_pricing_cache["ts"] < _PORTRAIT_PRICING_TTL:
-        return _portrait_pricing_cache["data"]
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=PORTRAIT_PRICING_KEY)
-        d = json.loads(obj["Body"].read())
-    except Exception:
-        d = dict(_DEFAULT_PORTRAIT_PRICING)
-    _portrait_pricing_cache["data"] = d
-    _portrait_pricing_cache["ts"] = now
-    return d
-
-def _save_portrait_pricing(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=PORTRAIT_PRICING_KEY,
-                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
-    _portrait_pricing_cache["data"] = d
-    import time; _portrait_pricing_cache["ts"] = time.monotonic()
+def _load_portrait_pricing():  return _portrait_pricing_doc.load()
+def _save_portrait_pricing(d): _portrait_pricing_doc.save(d)
 
 def _server_portrait_price(full_poses: int, single_photos: int) -> float:
     pp = _load_portrait_pricing()
@@ -8599,16 +8520,11 @@ _PRIVATE_SESSION_DEFAULT = [
     {"label": "Proposal",                  "type": "private_fixed",  "basePrice": 550},
 ]
 
-def _load_private_session_pricing():
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=PRIVATE_SESSION_PRICING_KEY)
-        return json.loads(obj["Body"].read())
-    except Exception:
-        return {"sessions": list(_PRIVATE_SESSION_DEFAULT)}
+_private_session_doc = JsonDoc(s3, R2_BUCKET, PRIVATE_SESSION_PRICING_KEY, indent=2,
+                               default=lambda: {"sessions": list(_PRIVATE_SESSION_DEFAULT)})
 
-def _save_private_session_pricing(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=PRIVATE_SESSION_PRICING_KEY,
-                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+def _load_private_session_pricing():  return _private_session_doc.load()
+def _save_private_session_pricing(d): _private_session_doc.save(d)
 
 @app.get("/api/private-session-pricing")
 def api_get_private_session_pricing():
@@ -8628,16 +8544,10 @@ async def api_save_private_session_pricing(request: Request):
 # ── ITEMS BUNDLES ─────────────────────────────────────────────────────────────
 ITEMS_BUNDLES_KEY = "meta/items_bundles.json"
 
-def _load_items_bundles():
-    try:
-        obj = s3.get_object(Bucket=R2_BUCKET, Key=ITEMS_BUNDLES_KEY)
-        return json.loads(obj["Body"].read())
-    except Exception:
-        return {"bundles": []}
+_items_bundles_doc = JsonDoc(s3, R2_BUCKET, ITEMS_BUNDLES_KEY, indent=2, default=lambda: {"bundles": []})
 
-def _save_items_bundles(d):
-    s3.put_object(Bucket=R2_BUCKET, Key=ITEMS_BUNDLES_KEY,
-                  Body=json.dumps(d, indent=2).encode(), ContentType="application/json")
+def _load_items_bundles():  return _items_bundles_doc.load()
+def _save_items_bundles(d): _items_bundles_doc.save(d)
 
 @app.get("/api/items-bundles")
 def api_get_items_bundles():
