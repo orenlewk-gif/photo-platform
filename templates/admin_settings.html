@@ -340,6 +340,14 @@ html.embedded #layout{height:100vh}
       <span id="save-status"></span>
     </div>
 
+    <!-- SECURITY -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Security — signed-in devices</div>
+      <div class="section-desc">Devices approved to sign in to the studio. A new device needs the password plus a code emailed to <span id="sec-email"></span>; approved devices only need the password for 90 days. Use "Sign out all devices" if a computer is lost or replaced — every device (this one too) will need a code again.</div>
+      <div id="sec-devices" style="font-size:.85rem;line-height:1.7;margin-bottom:.9rem">Loading…</div>
+      <button class="btn-save" onclick="signOutEverywhere()" style="background:#b91c1c">Sign out all devices</button>
+    </div>
+
     <!-- SQUARE -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Square (POS payments)</div>
@@ -1499,6 +1507,28 @@ function pollPosThumbs(jobId) {
 }
 
 // ── Square connection test ────────────────────────────────────────────────────
+// ── Security: approved devices ──
+function _secEsc(t){ return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function _secDate(iso){ try { return new Date(iso).toLocaleString([], {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'}); } catch(e) { return iso; } }
+async function loadDevices() {
+  const el = document.getElementById('sec-devices');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/devices')).json();
+    document.getElementById('sec-email').textContent = d.email || '';
+    const rows = (d.devices || []).map(v => `<div>${_secEsc(v.describe || 'Device')}${v.this_device ? ' <strong style="color:#4ade80">(this device)</strong>' : ''}
+      <span style="color:rgba(255,255,255,.45)"> · last signed in ${_secDate(v.last_signin)} · ${_secEsc(v.ip)}</span></div>`).join('');
+    el.innerHTML = (rows || '<div style="color:rgba(255,255,255,.45)">No approved devices yet.</div>')
+      + (d.codes_on ? '' : '<div style="color:#f59e0b;margin-top:.4rem">Sign-in codes are turned OFF on the server (ADMIN_LOGIN_CODES=off).</div>');
+  } catch (e) { el.textContent = 'Could not load devices'; }
+}
+async function signOutEverywhere() {
+  if (!confirm('Sign out every device, including this one? Each will need the password and an emailed code to sign in again.')) return;
+  const r = await fetch('/api/admin/sign-out-everywhere', {method: 'POST'});
+  if (r.ok) { (window.top || window).location.href = '/admin'; } else { alert('Could not sign out all devices'); }
+}
+loadDevices();
+
 async function testSquare() {
   const btn = document.getElementById('btn-square-test');
   const out = document.getElementById('square-test-result');

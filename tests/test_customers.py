@@ -56,7 +56,7 @@ def test_failed_r2_read_is_an_error_not_an_empty_directory(main_module, monkeypa
         raise RuntimeError("R2 timeout")
     monkeypatch.setattr(main_module.s3, "get_object", broken)
     c = TestClient(main_module.app, raise_server_exceptions=False)
-    c.cookies.set(main_module.ADMIN_COOKIE, main_module._make_session_token())
+    c.cookies.set(main_module.ADMIN_COOKIE, main_module._create_admin_session())
     assert c.post("/api/admin/customers", json={"first": "New"}).status_code == 500
     monkeypatch.undo()
     assert len(_r2_customers()) == 3          # nothing was overwritten

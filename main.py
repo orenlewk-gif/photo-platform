@@ -15,6 +15,7 @@ import json
 import re
 import hmac
 import hashlib
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from rapidfuzz import fuzz
@@ -4147,18 +4148,8 @@ def download_file(token: str, idx: int):
 
 ADMIN_PASSWORD  = os.getenv("ADMIN_PASSWORD", "")
 ADMIN_COOKIE    = "ci_admin_session"
-ADMIN_SECRET    = os.getenv("ADMIN_PASSWORD", "fallback-secret")  # signs cookie
 STRIPE_RATE     = 0.029
 STRIPE_FIXED    = 0.30
-
-def _make_session_token():
-    raw = f"{ADMIN_SECRET}:admin-session"
-    return hmac.new(ADMIN_SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
-
-def _admin_authed(request: Request) -> bool:
-    token = request.cookies.get(ADMIN_COOKIE, "")
-    expected = _make_session_token()
-    return hmac.compare_digest(token, expected)
 
 ADMIN_LOGIN_HTML = """<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>Admin Login</title>
@@ -4184,6 +4175,180 @@ button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8p
   </form>
 </div></body></html>"""
 
+# ── Studio sign-in ────────────────────────────────────────────────────────────
+# Each sign-in is its own session (90 days), kept in R2 so it can be ended: signing
+# out ends this device's session; "sign out all devices" ends every session and
+# forgets every approved device. A device is approved the first time it signs in
+# with the password plus a 6-digit code emailed to the owner; approved devices then
+# only need the password (for 90 days). Stored values are hashes, never the tokens.
+ADMIN_AUTH_KEY        = "meta/admin_auth.json"
+ADMIN_DEVICE_COOKIE   = "ci_admin_device"
+ADMIN_SESSION_DAYS    = 90
+ADMIN_DEVICE_DAYS     = 90
+OWNER_EMAIL           = os.getenv("OWNER_EMAIL", "orenlewk@gmail.com")
+# Safety valve: set ADMIN_LOGIN_CODES=off on Railway to sign in without a code
+# (e.g. if email is down). Approved devices never need a code anyway.
+ADMIN_LOGIN_CODES_ON  = os.getenv("ADMIN_LOGIN_CODES", "on").strip().lower() != "off"
+LOGIN_CODE_MINUTES    = 10
+LOGIN_CODE_TRIES      = 5
+_admin_auth_lock      = threading.Lock()
+_admin_auth_cache     = {"data": None}
+_login_challenges: dict = {}      # challenge id -> pending code (lives in memory, 10 minutes)
+_admin_pw_fail_limiter = _RateLimiter(max_calls=10, window=600)
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _load_admin_auth() -> dict:
+    with _admin_auth_lock:
+        if _admin_auth_cache["data"] is None:
+            try:
+                d = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=ADMIN_AUTH_KEY)["Body"].read())
+            except s3.exceptions.NoSuchKey:
+                d = {}
+            d.setdefault("sessions", {})
+            d.setdefault("devices", {})
+            _admin_auth_cache["data"] = d
+        return _admin_auth_cache["data"]
+
+
+def _save_admin_auth(d: dict):
+    """Drop anything expired, then save (caller holds _admin_auth_lock)."""
+    now = _now_iso()
+    d["sessions"] = {k: v for k, v in d["sessions"].items() if v.get("expires", "") > now}
+    d["devices"] = {k: v for k, v in d["devices"].items() if v.get("expires", "") > now}
+    s3.put_object(Bucket=R2_BUCKET, Key=ADMIN_AUTH_KEY, Body=json.dumps(d, indent=1).encode(),
+                  ContentType="application/json")
+    _admin_auth_cache["data"] = d
+
+
+def _request_info(request: Request) -> dict:
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+          or (request.client.host if request.client else ""))
+    return {"device": _describe_device(request.headers.get("user-agent", "")), "ip": ip}
+
+
+def _describe_device(ua: str) -> str:
+    """'Mac · Chrome' from a browser's user-agent string (shown in emails and the device list)."""
+    ua = ua or ""
+    system = ("iPhone" if "iPhone" in ua else "iPad" if "iPad" in ua else "Android" if "Android" in ua
+              else "Mac" if "Macintosh" in ua else "Windows" if "Windows" in ua else "Linux" if "Linux" in ua
+              else "Unknown device")
+    browser = ("Edge" if "Edg/" in ua else "Chrome" if ("Chrome/" in ua or "CriOS" in ua) else
+               "Firefox" if ("Firefox/" in ua or "FxiOS" in ua) else "Safari" if "Safari/" in ua else "browser")
+    return f"{system} · {browser}"
+
+
+def _device_approved(request: Request) -> str | None:
+    """This device's id hash if it was approved with an emailed code (and not forgotten)."""
+    token = request.cookies.get(ADMIN_DEVICE_COOKIE, "")
+    if not token:
+        return None
+    h = _token_hash(token)
+    dev = _load_admin_auth()["devices"].get(h)
+    return h if dev and dev.get("expires", "") > _now_iso() else None
+
+
+def _create_admin_session(device_hash: str = "", info: dict = None) -> str:
+    """A new studio session (90 days). Returns the token for the session cookie."""
+    token = secrets.token_urlsafe(32)
+    info = info or {}
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["sessions"][_token_hash(token)] = {
+            "device": device_hash, "created": _now_iso(),
+            "expires": (datetime.now(timezone.utc) + timedelta(days=ADMIN_SESSION_DAYS)).isoformat(),
+            "describe": info.get("device", ""), "ip": info.get("ip", "")}
+        if device_hash and device_hash in d["devices"]:
+            d["devices"][device_hash]["last_signin"] = _now_iso()
+        _save_admin_auth(d)
+    return token
+
+
+def _admin_authed(request: Request) -> bool:
+    token = request.cookies.get(ADMIN_COOKIE, "")
+    if not token:
+        return False
+    s = _load_admin_auth()["sessions"].get(_token_hash(token))
+    return bool(s) and s.get("expires", "") > _now_iso()
+
+
+def _signed_in_response(next_url: str, device_token: str = None, device_hash: str = "", info: dict = None):
+    resp = RedirectResponse(next_url, status_code=303)
+    resp.set_cookie(ADMIN_COOKIE, _create_admin_session(device_hash, info), httponly=True, samesite="strict",
+                    max_age=ADMIN_SESSION_DAYS * 86400)
+    if device_token:
+        resp.set_cookie(ADMIN_DEVICE_COOKIE, device_token, httponly=True, samesite="strict",
+                        max_age=ADMIN_DEVICE_DAYS * 86400)
+    return resp
+
+
+def _send_login_code_email(code: str, info: dict) -> bool:
+    if not RESEND_API_KEY:
+        print(f"[sign-in code] {code} (RESEND_API_KEY not set, so it wasn't emailed)")
+        return False
+    try:
+        from zoneinfo import ZoneInfo
+        when = datetime.now(ZoneInfo("America/Denver")).strftime("%b %d, %Y at %I:%M %p").replace(" 0", " ")
+    except Exception:
+        when = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
+    body_html = (
+        f'<p>Someone entered your studio password on a <strong>new device</strong>:</p>'
+        f'<p style="margin:0 0 1rem;color:#555">{_html_escape(info.get("device", ""))} &middot; '
+        f'internet address {_html_escape(info.get("ip", ""))} &middot; {when} (Mountain)</p>'
+        f'<p>Your sign-in code:</p>'
+        f'<p style="font-size:2rem;font-weight:700;letter-spacing:.3rem;margin:.5rem 0 1rem">{code}</p>'
+        f'<p style="color:#555">It works for {LOGIN_CODE_MINUTES} minutes. After that, this device stays approved for '
+        f'{ADMIN_DEVICE_DAYS} days.</p>'
+        f'<p style="color:#b91c1c"><strong>If this wasn\'t you,</strong> don\'t share the code, and change the studio '
+        f'password (ADMIN_PASSWORD on Railway).</p>')
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [OWNER_EMAIL],
+                                     "subject": f"Studio sign-in code: {code}",
+                                     "html": _wrap_email_html(body_html),
+                                     "text": f"Studio sign-in code: {code} (new device: {info.get('device', '')}, "
+                                             f"{info.get('ip', '')}, {when}). If this wasn't you, change the studio password."},
+                               timeout=10)
+        if not r.ok:
+            print(f"Sign-in code email failed: {r.text}")
+        return r.ok
+    except Exception as e:
+        print(f"Sign-in code email failed: {e}")
+        return False
+
+
+def _masked_email(e: str) -> str:
+    name, _, domain = e.partition("@")
+    return (name[:2] + "•" * max(1, len(name) - 2) + "@" + domain) if domain else e
+
+
+ADMIN_CODE_HTML = ADMIN_LOGIN_HTML.replace("input[type=password]", "input.code").replace(
+    """  <form method="post" action="/admin/login">
+    <input type="hidden" name="next" value="{next}" />
+    <input type="password" name="password" placeholder="Password" autofocus />
+    <button type="submit">Sign In</button>
+    {error}
+  </form>""",
+    """  <p style="color:rgba(255,255,255,.7);font-size:.9rem;text-align:center;margin:-.5rem 0 1.2rem;line-height:1.5">
+    New device: we emailed a 6-digit code to {email}</p>
+  <form method="post" action="/admin/verify">
+    <input type="hidden" name="challenge" value="{challenge}" />
+    <input class="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+           placeholder="6-digit code" autofocus style="text-align:center;letter-spacing:.4rem;font-size:1.3rem" />
+    <button type="submit">Verify</button>
+    {error}
+  </form>
+  <p style="text-align:center;margin-top:1rem"><a href="/admin" style="color:rgba(255,255,255,.45);font-size:.8rem">Start over</a></p>""")
+
+
 def _safe_next(url) -> str:
     """Where to go after signing in: only a page on this site. A link like
     /admin?next=https://elsewhere could otherwise send you to another site."""
@@ -4206,18 +4371,74 @@ async def admin_login(request: Request):
     form = await request.form()
     pw   = form.get("password", "")
     next_url = _safe_next(form.get("next"))
+    def again(msg, status=401):
+        return HTMLResponse(ADMIN_LOGIN_HTML.format(error=f'<p class="err">{msg}</p>',
+                                                    next=_html_escape(next_url)), status_code=status)
+    if _admin_pw_fail_limiter.count(_client_ip(request)) >= _admin_pw_fail_limiter.max_calls:
+        return again("Too many wrong passwords — wait 10 minutes.", 429)
     if not ADMIN_PASSWORD or not hmac.compare_digest(pw, ADMIN_PASSWORD):
+        _admin_pw_fail_limiter.is_allowed(_client_ip(request))
+        return again("Incorrect password.")
+    info = _request_info(request)
+    device_hash = _device_approved(request)
+    if device_hash or not ADMIN_LOGIN_CODES_ON:
+        return _signed_in_response(next_url, device_hash=device_hash or "", info=info)
+    # A new device: email a code before signing in
+    challenge = secrets.token_urlsafe(16)
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    now = _time.time()
+    for k in [k for k, v in _login_challenges.items() if v["expires"] < now]:
+        _login_challenges.pop(k, None)
+    _login_challenges[challenge] = {"code": _token_hash(code), "expires": now + LOGIN_CODE_MINUTES * 60,
+                                    "tries": 0, "next": next_url, "info": info}
+    if not _send_login_code_email(code, info):
+        _login_challenges.pop(challenge, None)
+        return again("Couldn't email the sign-in code — try again in a minute.", 503)
+    return HTMLResponse(ADMIN_CODE_HTML.format(email=_html_escape(_masked_email(OWNER_EMAIL)),
+                                               challenge=challenge, error=""))
+
+
+@app.post("/admin/verify")
+async def admin_verify(request: Request):
+    form = await request.form()
+    challenge = str(form.get("challenge") or "")
+    code = str(form.get("code") or "").strip()
+    pending = _login_challenges.get(challenge)
+    if not pending or pending["expires"] < _time.time():
+        _login_challenges.pop(challenge, None)
         return HTMLResponse(ADMIN_LOGIN_HTML.format(
-            error='<p class="err">Incorrect password.</p>', next=_html_escape(next_url)), status_code=401)
-    token = _make_session_token()
-    resp  = RedirectResponse(next_url, status_code=303)
-    resp.set_cookie(ADMIN_COOKIE, token, httponly=True, samesite="strict", max_age=86400)
-    return resp
+            error='<p class="err">That code has expired — sign in again.</p>', next="/admin/dashboard"), status_code=401)
+    pending["tries"] += 1
+    if not hmac.compare_digest(_token_hash(code), pending["code"]):
+        if pending["tries"] >= LOGIN_CODE_TRIES:
+            _login_challenges.pop(challenge, None)
+            return HTMLResponse(ADMIN_LOGIN_HTML.format(
+                error='<p class="err">Too many wrong codes — sign in again.</p>', next="/admin/dashboard"), status_code=401)
+        return HTMLResponse(ADMIN_CODE_HTML.format(email=_html_escape(_masked_email(OWNER_EMAIL)),
+                                                   challenge=challenge, error='<p class="err">Incorrect code.</p>'),
+                            status_code=401)
+    _login_challenges.pop(challenge, None)
+    # Approve this device for 90 days, then sign in
+    device_token = secrets.token_urlsafe(32)
+    device_hash = _token_hash(device_token)
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["devices"][device_hash] = {
+            "approved": _now_iso(), "describe": pending["info"].get("device", ""), "ip": pending["info"].get("ip", ""),
+            "expires": (datetime.now(timezone.utc) + timedelta(days=ADMIN_DEVICE_DAYS)).isoformat()}
+        _save_admin_auth(d)
+    return _signed_in_response(pending["next"], device_token, device_hash, pending["info"])
 
 @app.get("/admin/logout")
-def admin_logout():
+def admin_logout(request: Request):
+    token = request.cookies.get(ADMIN_COOKIE, "")
+    if token:
+        d = _load_admin_auth()
+        with _admin_auth_lock:
+            if d["sessions"].pop(_token_hash(token), None) is not None:
+                _save_admin_auth(d)
     resp = RedirectResponse("/admin")
-    resp.delete_cookie(ADMIN_COOKIE)
+    resp.delete_cookie(ADMIN_COOKIE)        # this device stays approved: next time, just the password
     resp.delete_cookie(OWNER_COOKIE)     # signing out also locks the PIN-protected pages
     return resp
 
@@ -5689,6 +5910,35 @@ def _owner_required(request: Request):
     if _owner_unlocked(request):
         return None
     return JSONResponse(status_code=403, content={"error": "Enter your PIN to continue", "pin_required": True})
+
+
+@app.get("/api/admin/devices")
+def admin_devices(request: Request):
+    """Approved devices, for Settings > Security."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    mine = _device_approved(request)
+    devices = [{"describe": v.get("describe", ""), "approved": v.get("approved", ""),
+                "last_signin": v.get("last_signin", v.get("approved", "")), "ip": v.get("ip", ""),
+                "this_device": k == mine}
+               for k, v in _load_admin_auth()["devices"].items() if v.get("expires", "") > _now_iso()]
+    return {"devices": sorted(devices, key=lambda x: x["last_signin"], reverse=True),
+            "codes_on": ADMIN_LOGIN_CODES_ON, "email": _masked_email(OWNER_EMAIL)}
+
+
+@app.post("/api/admin/sign-out-everywhere")
+def admin_sign_out_everywhere(request: Request):
+    """End every studio session and forget every approved device (each needs a code again)."""
+    if not _admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["sessions"], d["devices"] = {}, {}
+        _save_admin_auth(d)
+    resp = JSONResponse({"ok": True})
+    for c in (ADMIN_COOKIE, ADMIN_DEVICE_COOKIE, OWNER_COOKIE):
+        resp.delete_cookie(c)
+    return resp
 
 
 @app.get("/api/admin/owner-status")

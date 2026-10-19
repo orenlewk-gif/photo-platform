@@ -77,7 +77,7 @@ def client(main_module):
 def admin_client(main_module):
     from fastapi.testclient import TestClient
     c = TestClient(main_module.app)
-    c.cookies.set(main_module.ADMIN_COOKIE, main_module._make_session_token())
+    c.cookies.set(main_module.ADMIN_COOKIE, main_module._create_admin_session())
     return c
 
 
@@ -87,6 +87,6 @@ def owner_client(main_module):
     import time
     from fastapi.testclient import TestClient
     c = TestClient(main_module.app)
-    c.cookies.set(main_module.ADMIN_COOKIE, main_module._make_session_token())
+    c.cookies.set(main_module.ADMIN_COOKIE, main_module._create_admin_session())
     c.cookies.set(main_module.OWNER_COOKIE, main_module._owner_token(int(time.time()) + 600))
     return c

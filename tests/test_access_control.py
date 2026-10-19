@@ -143,17 +143,24 @@ def test_dashboard_upload_locations_still_served(client):
 
 # ── Login page: no outside text, no sending you to another site ──────────────
 
+@pytest.fixture()
+def no_codes(main_module, monkeypatch):
+    """Sign-in without the emailed code (as from an approved device)."""
+    monkeypatch.setattr(main_module, "ADMIN_LOGIN_CODES_ON", False)
+    main_module._admin_pw_fail_limiter._calls.clear()
+
+
 @pytest.mark.parametrize("next_url", [
     "https://evil.example/phish", "//evil.example", "/\\evil.example", "http:/evil.example",
     "javascript:alert(1)", "/admin\r\nSet-Cookie: x=1", "",
 ])
-def test_sign_in_only_returns_to_pages_on_this_site(client, next_url):
+def test_sign_in_only_returns_to_pages_on_this_site(client, no_codes, next_url):
     r = client.post("/admin/login", data={"password": "test-admin-password", "next": next_url},
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/admin/dashboard"
 
 
-def test_sign_in_returns_to_the_page_you_were_on(client):
+def test_sign_in_returns_to_the_page_you_were_on(client, no_codes):
     r = client.post("/admin/login", data={"password": "test-admin-password", "next": "/admin/orders?days=7"},
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/admin/orders?days=7"
@@ -252,3 +259,110 @@ def test_activities_page_saves_need_only_the_login(client, admin_client):
     pricing = admin_client.get("/api/admin/pricing").json()
     assert admin_client.post("/api/admin/pricing", json=pricing).status_code == 200
     assert admin_client.post("/api/admin/activity-groups", json={}).status_code == 200
+
+
+
+# ── Studio sign-in: sessions per device, emailed code on new devices ─────────
+
+class _Mail:
+    def __init__(self):
+        self.sent = []
+
+    def post(self, url, json=None, **kw):
+        assert url == "https://api.resend.com/emails", url
+        self.sent.append(json)
+
+        class R:
+            ok, status_code, text = True, 200, "{}"
+        return R()
+
+
+@pytest.fixture()
+def mail(main_module, monkeypatch):
+    m = _Mail()
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(main_module.http_requests, "post", m.post)
+    monkeypatch.setattr(main_module, "ADMIN_LOGIN_CODES_ON", True)
+    main_module._admin_pw_fail_limiter._calls.clear()
+    main_module._login_challenges.clear()
+    return m
+
+
+def _code_from(mail):
+    import re
+    return re.search(r"code: (\d{6})", mail.sent[-1]["subject"]).group(1)
+
+
+def _challenge(page):
+    import re
+    return re.search(r'name="challenge" value="([^"]+)"', page).group(1)
+
+
+def _sign_in(client, next_url="/admin/orders"):
+    return client.post("/admin/login", data={"password": "test-admin-password", "next": next_url},
+                       follow_redirects=False)
+
+
+def test_new_device_needs_the_emailed_code_then_only_the_password(client, mail, main_module):
+    r = _sign_in(client)
+    assert r.status_code == 200 and "emailed a 6-digit code" in r.text
+    assert mail.sent[-1]["to"] == ["orenlewk@gmail.com"] and "new device" in mail.sent[-1]["html"]
+    assert client.get("/api/admin/devices").status_code == 401            # not signed in yet
+
+    r = client.post("/admin/verify", data={"challenge": _challenge(r.text), "code": _code_from(mail)},
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/admin/orders"
+    devices = client.get("/api/admin/devices").json()["devices"]
+    assert len(devices) == 1 and devices[0]["this_device"]
+
+    client.get("/admin/logout")
+    assert client.get("/api/admin/devices").status_code == 401            # signed out
+    n = len(mail.sent)
+    r = _sign_in(client)                                                   # same device: just the password
+    assert r.status_code == 303 and len(mail.sent) == n
+
+
+def test_wrong_codes_and_expired_codes(client, mail):
+    page = _sign_in(client).text
+    ch = _challenge(page)
+    for _ in range(4):
+        r = client.post("/admin/verify", data={"challenge": ch, "code": "000000"})
+        assert r.status_code == 401 and "Incorrect code" in r.text
+    r = client.post("/admin/verify", data={"challenge": ch, "code": "000000"})
+    assert "Too many wrong codes" in r.text
+    r = client.post("/admin/verify", data={"challenge": ch, "code": _code_from(mail)})
+    assert "expired" in r.text                                             # that code is gone
+
+
+def test_sign_out_everywhere_ends_every_session_and_forgets_devices(client, mail, main_module):
+    from fastapi.testclient import TestClient
+    page = _sign_in(client).text
+    client.post("/admin/verify", data={"challenge": _challenge(page), "code": _code_from(mail)})
+    other = TestClient(main_module.app)
+    other.cookies.set(main_module.ADMIN_COOKIE, main_module._create_admin_session())
+    assert other.get("/api/admin/devices").status_code == 200
+
+    assert client.post("/api/admin/sign-out-everywhere").status_code == 200
+    assert other.get("/api/admin/devices").status_code == 401              # the other device is out too
+    r = _sign_in(client)
+    assert "emailed a 6-digit code" in r.text                              # and needs a code again
+
+
+def test_too_many_wrong_passwords_lock_out(client, mail):
+    for _ in range(10):
+        client.post("/admin/login", data={"password": "wrong"})
+    r = client.post("/admin/login", data={"password": "test-admin-password"})
+    assert r.status_code == 429
+
+
+def test_the_old_fixed_cookie_no_longer_signs_in(client, main_module):
+    import hashlib, hmac
+    old = hmac.new(b"test-admin-password", b"test-admin-password:admin-session", hashlib.sha256).hexdigest()
+    client.cookies.set(main_module.ADMIN_COOKIE, old)
+    assert client.get("/api/admin/devices").status_code == 401
+
+
+def test_if_the_code_email_fails_you_are_told(client, mail, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "")
+    r = _sign_in(client)
+    assert r.status_code == 503 and "Couldn't email the sign-in code" in r.text
