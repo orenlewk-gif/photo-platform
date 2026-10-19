@@ -109,9 +109,6 @@ if seed_dir:
                 s3.put_object(Bucket=BUCKET, Key=key, Body=fh.read(), ContentType="application/json")
             print(f"[seed] {key}")
 
-# The local studio (this address) uploads to the fake bucket from the browser
-os.environ.setdefault("STORAGE_ALLOWED_ORIGINS", "http://127.0.0.1:8777,http://localhost:8777")
-
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO_ROOT)
 sys.path.insert(0, REPO_ROOT)

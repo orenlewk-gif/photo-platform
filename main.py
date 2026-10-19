@@ -104,25 +104,11 @@ def _save_pricing(d):
     _pricing_cache["data"] = d
     import time; _pricing_cache["ts"] = time.monotonic()
 
-# Which websites' pages may talk to the photo bucket directly from the browser: the
-# studio uploads photos straight to it, and download pages fetch photos for "Save to
-# Photos". Only this site's own addresses (not any website). Comma-separated override:
-# STORAGE_ALLOWED_ORIGINS (the local test copy adds its own address).
-STORAGE_ALLOWED_ORIGINS = [o.strip() for o in os.getenv(
-    "STORAGE_ALLOWED_ORIGINS",
-    "https://photos.bigskyphotos.com,https://photo-platform-production.up.railway.app").split(",") if o.strip()]
-try:
-    s3.put_bucket_cors(
-        Bucket=R2_BUCKET,
-        CORSConfiguration={"CORSRules": [{
-            "AllowedOrigins": STORAGE_ALLOWED_ORIGINS,
-            "AllowedMethods": ["GET", "PUT", "HEAD"],
-            "AllowedHeaders": ["*"],
-            "MaxAgeSeconds": 3600,
-        }]}
-    )
-except Exception as _cors_err:
-    print(f"R2 CORS setup warning: {_cors_err}")
+# Which websites may use the photo bucket from a browser (the studio's direct uploads,
+# "Save to Photos" on download pages) is set in the Cloudflare dashboard (R2 >
+# crystal-images > Settings > CORS policy): only https://photos.bigskyphotos.com, for
+# GET / PUT / HEAD. The app's storage key deliberately can't change bucket settings,
+# so the app doesn't try (it used to attempt "any website" on every start and fail).
 
 # ─────────────────────────────────────────
 # HELPERS
