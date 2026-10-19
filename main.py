@@ -829,33 +829,75 @@ def _server_print_price(size_idx: int) -> float:
         return float(sizes[size_idx].get("price", 0))
     return 0.0
 
-# ─────────────────────────────────────────
-# API ROUTES
-# ─────────────────────────────────────────
+# ── Folder index ─────────────────────────────────────────────────────────────
+# The day list, location lists, folders and name lookups used to scan every photo on
+# every request. They're now built once from the photo list and rebuilt only when it
+# changes: whenever images.json is saved (every lasting change saves it), when the list
+# is replaced, and at least every few minutes as a safety net. Folder lists hold the
+# same photo records, so label edits show up immediately.
+_INDEX_MAX_AGE = 300
+_index_lock = threading.Lock()
+_index_state = {"version": 0, "built": None}   # built: (version, id(data), built_at, index)
 
-@app.get("/api/days")
-def get_days():
-    days = {}
-    for item in data:
+
+def _photo_list_saved(params=None, **_):
+    if params and params.get("Key") == "images.json":
+        _index_state["version"] += 1
+
+s3.meta.events.register("before-parameter-build.s3.PutObject", _photo_list_saved)
+
+
+def _pick_four(photos):
+    n = len(photos)
+    if n <= 4:
+        return photos
+    step = n / 4
+    return [photos[int(i * step)] for i in range(4)]
+
+
+def _build_folder_index(items: list) -> dict:
+    by_date, folders, date_locs = {}, {}, {}
+    name_keys, name_previews = [], {}
+    for item in items:
+        loc = clean_location(item["location"])
+        path = item.get("path", "")
+        # Name lookups (like last_name_search, drafts included)
+        ln = item.get("last_name", "").strip()
+        if ln:
+            key = ("ln", ln.lower(), item["date"], loc)
+            if key not in name_previews:
+                name_previews[key] = []
+                name_keys.append((key, {"last_name": ln, "date": item["date"], "location": loc, "type": "family"}))
+            if path and len(name_previews[key]) < 4:
+                name_previews[key].append(path)
+        if loc.lower() in SEARCHABLE_GROUP_LOCATIONS:
+            g = item.get("group", "").strip()
+            if g:
+                key = ("grp", g.lower(), item["date"], loc)
+                if key not in name_previews:
+                    name_previews[key] = []
+                    name_keys.append((key, {"group": g, "date": item["date"], "location": loc, "type": "group"}))
+                if path and len(name_previews[key]) < 4:
+                    name_previews[key].append(path)
         if item.get("draft"):
             continue
-        d = item["date"]
-        if d not in days:
-            days[d] = {"locations": set(), "galleries": set(), "loc_previews": {}}
-        loc = clean_location(item["location"])
-        days[d]["locations"].add(loc)
-        days[d]["galleries"].add((loc, item.get("last_name", "")))
-        if loc not in days[d]["loc_previews"]:
-            days[d]["loc_previews"][loc] = []
-        days[d]["loc_previews"][loc].append(item["path"])
+        by_date.setdefault(item["date"], []).append(item)
+        folders.setdefault((item["date"], loc), []).append(item)
+        if item.get("date", "").strip() and loc:
+            date_locs.setdefault(item.get("date", "").strip(), set()).add(loc)
 
-    result = []
-    for date in sorted(days.keys(), reverse=True):
-        d = days[date]
+    # /api/days
+    days = []
+    for date in sorted(by_date, reverse=True):
+        locs, galleries, loc_previews = set(), set(), {}
+        for item in by_date[date]:
+            loc = clean_location(item["location"])
+            locs.add(loc)
+            galleries.add((loc, item.get("last_name", "")))
+            loc_previews.setdefault(loc, []).append(item["path"])
         # One photo per folder first, then fill remaining slots round-robin
-        loc_lists = list(d["loc_previews"].values())
-        previews = []
-        i = 0
+        loc_lists = list(loc_previews.values())
+        previews, i = [], 0
         while len(previews) < 4:
             added = False
             for lst in loc_lists:
@@ -867,13 +909,44 @@ def get_days():
             if not added:
                 break
             i += 1
-        result.append({
-            "date":          date,
-            "previews":      previews,
-            "folder_count":  len(d["locations"]),
-            "gallery_count": len(d["galleries"])
-        })
-    return {"days": result}
+        days.append({"date": date, "previews": previews,
+                     "folder_count": len(locs), "gallery_count": len(galleries)})
+
+    pos_dates = [{"date": d, "locations": sorted(date_locs[d])}
+                 for d in sorted(date_locs, reverse=True)[:90]]
+    return {"by_date": by_date, "folders": folders, "days": {"days": days},
+            "pos_dates": {"dates": pos_dates}, "name_keys": name_keys, "name_previews": name_previews}
+
+
+def _folder_index() -> dict:
+    """The current folder index, rebuilt if the photo list changed."""
+    now = _time.monotonic()
+    built = _index_state["built"]
+    if built and built[0] == _index_state["version"] and built[1] == id(data) and now - built[2] < _INDEX_MAX_AGE:
+        return built[3]
+    with _index_lock:
+        built = _index_state["built"]
+        version = _index_state["version"]
+        if built and built[0] == version and built[1] == id(data) and now - built[2] < _INDEX_MAX_AGE:
+            return built[3]
+        items = data
+        index = _build_folder_index(items)
+        _index_state["built"] = (version, id(items), _time.monotonic(), index)
+        return index
+
+
+def _folder_photos(date: str, location: str) -> list:
+    """Live (non-draft) photos in a folder, in photo-list order. location = cleaned name."""
+    return _folder_index()["folders"].get((date, location), [])
+
+
+# ─────────────────────────────────────────
+# API ROUTES
+# ─────────────────────────────────────────
+
+@app.get("/api/days")
+def get_days():
+    return _folder_index()["days"]
 
 
 @app.get("/api/dates")
@@ -885,7 +958,7 @@ def get_dates():
 @app.get("/api/locations")
 def get_locations(date: str = Query(None)):
     if date:
-        items = [item for item in data if item["date"] == date and not item.get("draft")]
+        items = _folder_index()["by_date"].get(date, [])
     else:
         items = [item for item in data if not item.get("draft")]
     loc_map = {}
@@ -897,18 +970,11 @@ def get_locations(date: str = Query(None)):
             all_previews[display] = []
         all_previews[display].append(item["path"])
 
-    def pick_four(photos):
-        n = len(photos)
-        if n <= 4:
-            return photos
-        step = n / 4
-        return [photos[int(i * step)] for i in range(4)]
-
     locations = []
     for display in sorted(loc_map.keys()):
         locations.append({
             "name":     display,
-            "previews": pick_four(all_previews[display])
+            "previews": _pick_four(all_previews[display])
         })
     return {"locations": locations}
 
@@ -916,22 +982,9 @@ def get_locations(date: str = Query(None)):
 @app.get("/api/subfolders")
 def get_subfolders(date: str, location: str):
     """Return sub-folders for a location — last names for portrait locations, groups for activities."""
-    def pick_four(photos):
-        n = len(photos)
-        if n <= 4:
-            return photos
-        step = n / 4
-        return [photos[int(i * step)] for i in range(4)]
-
     is_portrait = _is_portrait_location(location)
     subfolders = {}
-    for item in data:
-        if item.get("draft"):
-            continue
-        if item["date"] != date:
-            continue
-        if clean_location(item["location"]) != location:
-            continue
+    for item in _folder_photos(date, location):
         key = (item.get("last_name", "") or item.get("group", "") if is_portrait else item.get("group", "")).strip()
         # Fallback: if group/last_name field is missing, parse the sub-folder from the path
         if not key:
@@ -949,7 +1002,7 @@ def get_subfolders(date: str, location: str):
         subfolders[key].append(item["path"])
 
     items = [
-        {"name": name, "previews": pick_four(subfolders[name])}
+        {"name": name, "previews": _pick_four(subfolders[name])}
         for name in sorted(subfolders.keys())
     ]
     return {
@@ -969,51 +1022,13 @@ def last_name_search(request: Request, q: str = Query("")):
     if len(q_lower) < 2:
         return {"results": []}
 
-    seen = set()
-    previews: dict = {}  # key -> list of up to 4 paths
+    index = _folder_index()
+    previews = index["name_previews"]   # key -> up to 4 paths
     results = []
-    for item in data:
-        loc = clean_location(item["location"])
-        path = item.get("path", "")
-
-        # Last-name search (portrait locations)
-        ln = item.get("last_name", "").strip()
-        if ln:
-            ln_lower = ln.lower()
-            if ln_lower.startswith(q_lower):
-                key = ("ln", ln_lower, item["date"], loc)
-                if key not in seen:
-                    seen.add(key)
-                    previews[key] = []
-                    results.append({
-                        "last_name": ln,
-                        "date":      item["date"],
-                        "location":  loc,
-                        "type":      "family",
-                        "_key":      key,
-                    })
-                if path and len(previews[key]) < 4:
-                    previews[key].append(path)
-
-        # Group/trail search (Mountain Biking only)
-        if loc.lower() in SEARCHABLE_GROUP_LOCATIONS:
-            g = item.get("group", "").strip()
-            if g:
-                g_lower = g.lower()
-                if g_lower.startswith(q_lower) or fuzz.partial_ratio(q_lower, g_lower) >= 75:
-                    key = ("grp", g_lower, item["date"], loc)
-                    if key not in seen:
-                        seen.add(key)
-                        previews[key] = []
-                        results.append({
-                            "group":    g,
-                            "date":     item["date"],
-                            "location": loc,
-                            "type":     "group",
-                            "_key":     key,
-                        })
-                    if path and len(previews[key]) < 4:
-                        previews[key].append(path)
+    for key, entry in index["name_keys"]:
+        kind, name_lower = key[0], key[1]
+        if name_lower.startswith(q_lower) or (kind == "grp" and fuzz.partial_ratio(q_lower, name_lower) >= 75):
+            results.append({**entry, "_key": key})
 
     def sort_key(x):
         name = x.get("last_name") or x.get("group", "")
@@ -1055,11 +1070,8 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
             g = _item_group_from_path(item)
         return g.lower() == group.lower()
 
-    pool = [item for item in data
-            if not item.get("draft")
-            and item["date"] == date
-            and clean_location(item["location"]) == location
-            and (not family or item.get("last_name","").strip().lower() == family.lower()
+    pool = [item for item in _folder_photos(date, location)
+            if (not family or item.get("last_name","").strip().lower() == family.lower()
                  or (family and not item.get("last_name","").strip() and item.get("group","").strip().lower() == family.lower()))
             and group_matches(item)]
     pool.sort(key=lambda x: natural_sort_key(x["path"]))
@@ -1097,22 +1109,7 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
 @app.get("/api/pos-dates")
 def pos_dates():
     """POS: return unique (date, location) pairs for the date/location dropdowns."""
-    from collections import defaultdict
-    date_locs: dict = defaultdict(set)
-    for item in data:
-        if item.get("draft"):
-            continue
-        d = item.get("date", "").strip()
-        loc = clean_location(item.get("location", ""))
-        if d and loc:
-            date_locs[d].add(loc)
-    sorted_dates = sorted(date_locs.keys(), reverse=True)[:90]
-    return {
-        "dates": [
-            {"date": d, "locations": sorted(date_locs[d])}
-            for d in sorted_dates
-        ]
-    }
+    return _folder_index()["pos_dates"]
 
 
 @app.get("/api/pos-families")
@@ -1121,13 +1118,7 @@ def pos_families(date: str = Query(""), location: str = Query("")):
     from collections import defaultdict
     families: dict = {}
     previews: dict = defaultdict(list)
-    for item in data:
-        if item.get("draft"):
-            continue
-        if item.get("date", "") != date:
-            continue
-        if clean_location(item.get("location", "")) != location:
-            continue
+    for item in _folder_photos(date, location):
         ln = item.get("last_name", "").strip()
         grp = item.get("group", "").strip()
         name = ln or grp
@@ -1194,7 +1185,8 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
     if has_labels:
         # Color chip only — scan folder, filter strictly by Haiku labels
         results = []
-        for item in data:
+        pool = _folder_photos(date, location) if date and location else data
+        for item in pool:
             if item.get("draft"):
                 continue
             if date and item["date"] != date:
