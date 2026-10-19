@@ -15,6 +15,7 @@ import json
 import re
 import hmac
 import hashlib
+import ipaddress
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -954,7 +955,7 @@ def get_subfolders(date: str, location: str):
 @app.get("/api/last-name-search")
 def last_name_search(request: Request, q: str = Query("")):
     """Autocomplete: return unique (last_name, date, location) combos matching q."""
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request)
     if not _lastname_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests"})
     q_lower = q.strip().lower()
@@ -1155,7 +1156,7 @@ def search(
     sport:        str       = Query(None),
     ski_instructor: bool      = Query(None),
 ):
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request)
     if not _search_limiter.is_allowed(ip):
         return JSONResponse(status_code=429, content={"error": "Too many requests — please wait a moment"})
     try:
@@ -4229,9 +4230,7 @@ def _save_admin_auth(d: dict):
 
 
 def _request_info(request: Request) -> dict:
-    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-          or (request.client.host if request.client else ""))
-    return {"device": _describe_device(request.headers.get("user-agent", "")), "ip": ip}
+    return {"device": _describe_device(request.headers.get("user-agent", "")), "ip": _client_ip(request)}
 
 
 def _describe_device(ua: str) -> str:
@@ -5863,7 +5862,26 @@ def _auth_photographer(pin: str):
 # of PIN-protected endpoints until the window passes.
 _pin_fail_limiter = _RateLimiter(max_calls=10, window=600)
 
+_PROXY_NETS = [ipaddress.ip_network(n) for n in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "127.0.0.0/8",
+    "169.254.0.0/16", "::1/128", "fc00::/7", "fe80::/10")]
+
+
 def _client_ip(request: Request) -> str:
+    """The visitor's real address, for per-visitor limits and lockouts.
+
+    Behind Railway, request.client is one of Railway's internal proxy addresses
+    (100.64.x.x), each shared by many visitors, so limits keyed on it were shared.
+    Railway passes the visitor's address in X-Forwarded-For; each proxy adds the
+    address it saw to the END, so the right-most public address is the one Railway
+    saw. A visitor can put fake entries at the start, but can't change that one."""
+    for part in reversed(request.headers.get("x-forwarded-for", "").split(",")):
+        try:
+            addr = ipaddress.ip_address(part.strip())
+        except ValueError:
+            continue
+        if not any(addr in net for net in _PROXY_NETS):
+            return str(addr)
     return request.client.host if request.client else "unknown"
 
 def _pin_locked_out(request: Request) -> bool:
