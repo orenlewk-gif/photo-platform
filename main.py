@@ -1745,37 +1745,6 @@ def _wc_delete_coupon(wc_id: int):
         pass
 
 
-@app.get("/api/validate-coupon")
-def validate_coupon(code: str = Query(""), email: str = Query("")):
-    """Validate a discount code against our own code store."""
-    c, problem = _check_coupon(code, email)
-    if not c:
-        return JSONResponse(status_code=404 if problem == "Invalid coupon code" else 400,
-                            content={"valid": False, "error": problem})
-    return {
-        "valid":          True,
-        "code":           c["code"].lower(),
-        "discount_type":  c.get("type", "percent"),
-        "amount":         float(c.get("amount", 0)),
-        "description":    c.get("description", ""),
-        "free_shipping":  c.get("free_shipping", False),
-        "min_order":      float(c.get("min_order", 0)),
-        "min_qty":        int(c.get("min_qty", 0)),
-        "applies_to":     c.get("applies_to", "all"),
-    }
-
-
-@app.post("/api/checkout")
-async def create_checkout(request: Request):
-    try:
-        body = await request.json()
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-    # Pricing lookups and the WooCommerce order request are slow; run them off the
-    # main loop so other visitors aren't held up while this checkout is created
-    return await run_in_threadpool(_create_checkout, body)
-
-
 # ── Online checkout pricing ───────────────────────────────────────────────────
 # One calculation for everything an online order costs. The checkout page shows it
 # (/api/checkout/quote) and /api/checkout charges exactly it, so what customers see
@@ -2055,15 +2024,6 @@ def _price_order(body: dict) -> dict:
             "total": round(max(0.0, subtotal + shipping - coupon_off), 2),
         },
     }
-
-
-@app.post("/api/checkout/quote")
-def checkout_quote(body: dict = Body(...)):
-    """The checkout page's totals: exactly what /api/checkout will charge."""
-    try:
-        return _price_order(body)["summary"]
-    except CheckoutError as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
 
 
 def _create_checkout(body: dict):
@@ -3427,31 +3387,6 @@ def _load_token(token: str):
     except Exception:
         return None
 
-@app.post("/webhook")
-async def wc_webhook(request: Request):
-    body = await request.body()
-    sig  = request.headers.get("X-WC-Webhook-Signature", "")
-
-    # Only WooCommerce, which signs each message with the shared secret, may tell us an
-    # order was paid: an unsigned "paid" message would get photos sent for free. Without
-    # the secret nothing can be checked, so refuse (loudly) rather than trust anything.
-    if not WC_WEBHOOK_SECRET:
-        print("ORDER WEBHOOK REFUSED: WC_WEBHOOK_SECRET is not set on the server — "
-              "paid online orders are NOT getting their download emails until it is restored")
-        return Response(status_code=503)
-    expected = base64.b64encode(
-        hmac.new(WC_WEBHOOK_SECRET.encode(), body, hashlib.sha256).digest()
-    ).decode()
-    if not hmac.compare_digest(expected, sig):
-        return Response(status_code=401)
-
-    try:
-        order = json.loads(body)
-    except Exception:
-        return Response(status_code=400)
-    return await run_in_threadpool(_handle_paid_wc_order, order)
-
-
 def _handle_paid_wc_order(order: dict):
     """A paid online order: create the download link and have WooCommerce email it."""
     # Act on processing (manual/physical orders) or completed (auto-completed digital orders)
@@ -3928,82 +3863,6 @@ def admin_get(request: Request):
         next_url = _safe_next(request.query_params.get("next"))
         return HTMLResponse(ADMIN_LOGIN_HTML.format(error="", next=_html_escape(next_url)))
     return RedirectResponse("/admin/dashboard")
-
-@app.post("/admin/login")
-async def admin_login(request: Request):
-    form = await request.form()
-    pw   = form.get("password", "")
-    next_url = _safe_next(form.get("next"))
-    def again(msg, status=401):
-        return HTMLResponse(ADMIN_LOGIN_HTML.format(error=f'<p class="err">{msg}</p>',
-                                                    next=_html_escape(next_url)), status_code=status)
-    if _admin_pw_fail_limiter.count(_client_ip(request)) >= _admin_pw_fail_limiter.max_calls:
-        return again("Too many wrong passwords — wait 10 minutes.", 429)
-    if not ADMIN_PASSWORD or not hmac.compare_digest(pw, ADMIN_PASSWORD):
-        _admin_pw_fail_limiter.is_allowed(_client_ip(request))
-        return again("Incorrect password.")
-    info = _request_info(request)
-    device_hash = _device_approved(request)
-    if device_hash or not ADMIN_LOGIN_CODES_ON:
-        return _signed_in_response(next_url, device_hash=device_hash or "", info=info)
-    # A new device: email a code before signing in
-    challenge = secrets.token_urlsafe(16)
-    code = f"{secrets.randbelow(10 ** 6):06d}"
-    now = _time.time()
-    for k in [k for k, v in _login_challenges.items() if v["expires"] < now]:
-        _login_challenges.pop(k, None)
-    _login_challenges[challenge] = {"code": _token_hash(code), "expires": now + LOGIN_CODE_MINUTES * 60,
-                                    "tries": 0, "next": next_url, "info": info}
-    if not _send_login_code_email(code, info):
-        _login_challenges.pop(challenge, None)
-        return again("Couldn't email the sign-in code — try again in a minute.", 503)
-    return HTMLResponse(ADMIN_CODE_HTML.format(email=_html_escape(_masked_email(OWNER_EMAIL)),
-                                               challenge=challenge, error=""))
-
-
-@app.post("/admin/verify")
-async def admin_verify(request: Request):
-    form = await request.form()
-    challenge = str(form.get("challenge") or "")
-    code = str(form.get("code") or "").strip()
-    pending = _login_challenges.get(challenge)
-    if not pending or pending["expires"] < _time.time():
-        _login_challenges.pop(challenge, None)
-        return HTMLResponse(ADMIN_LOGIN_HTML.format(
-            error='<p class="err">That code has expired — sign in again.</p>', next="/admin/dashboard"), status_code=401)
-    pending["tries"] += 1
-    if not hmac.compare_digest(_token_hash(code), pending["code"]):
-        if pending["tries"] >= LOGIN_CODE_TRIES:
-            _login_challenges.pop(challenge, None)
-            return HTMLResponse(ADMIN_LOGIN_HTML.format(
-                error='<p class="err">Too many wrong codes — sign in again.</p>', next="/admin/dashboard"), status_code=401)
-        return HTMLResponse(ADMIN_CODE_HTML.format(email=_html_escape(_masked_email(OWNER_EMAIL)),
-                                                   challenge=challenge, error='<p class="err">Incorrect code.</p>'),
-                            status_code=401)
-    _login_challenges.pop(challenge, None)
-    # Approve this device for 90 days, then sign in
-    device_token = secrets.token_urlsafe(32)
-    device_hash = _token_hash(device_token)
-    d = _load_admin_auth()
-    with _admin_auth_lock:
-        d["devices"][device_hash] = {
-            "approved": _now_iso(), "describe": pending["info"].get("device", ""), "ip": pending["info"].get("ip", ""),
-            "expires": (datetime.now(timezone.utc) + timedelta(days=ADMIN_DEVICE_DAYS)).isoformat()}
-        _save_admin_auth(d)
-    return _signed_in_response(pending["next"], device_token, device_hash, pending["info"])
-
-@app.get("/admin/logout")
-def admin_logout(request: Request):
-    token = request.cookies.get(ADMIN_COOKIE, "")
-    if token:
-        d = _load_admin_auth()
-        with _admin_auth_lock:
-            if d["sessions"].pop(_token_hash(token), None) is not None:
-                _save_admin_auth(d)
-    resp = RedirectResponse("/admin")
-    resp.delete_cookie(ADMIN_COOKIE)        # this device stays approved: next time, just the password
-    resp.delete_cookie(OWNER_COOKIE)     # signing out also locks the PIN-protected pages
-    return resp
 
 def _fetch_wc_orders(after: str = None, before: str = None, per_page: int = 100):
     params = {"status": "completed", "per_page": per_page, "orderby": "date", "order": "desc"}
@@ -4528,35 +4387,6 @@ def _owner_required(request: Request):
     return JSONResponse(status_code=403, content={"error": "Enter your PIN to continue", "pin_required": True})
 
 
-@app.get("/api/admin/devices")
-def admin_devices(request: Request):
-    """Approved devices, for Settings > Security."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    mine = _device_approved(request)
-    devices = [{"describe": v.get("describe", ""), "approved": v.get("approved", ""),
-                "last_signin": v.get("last_signin", v.get("approved", "")), "ip": v.get("ip", ""),
-                "this_device": k == mine}
-               for k, v in _load_admin_auth()["devices"].items() if v.get("expires", "") > _now_iso()]
-    return {"devices": sorted(devices, key=lambda x: x["last_signin"], reverse=True),
-            "codes_on": ADMIN_LOGIN_CODES_ON, "email": _masked_email(OWNER_EMAIL)}
-
-
-@app.post("/api/admin/sign-out-everywhere")
-def admin_sign_out_everywhere(request: Request):
-    """End every studio session and forget every approved device (each needs a code again)."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    d = _load_admin_auth()
-    with _admin_auth_lock:
-        d["sessions"], d["devices"] = {}, {}
-        _save_admin_auth(d)
-    resp = JSONResponse({"ok": True})
-    for c in (ADMIN_COOKIE, ADMIN_DEVICE_COOKIE, OWNER_COOKIE):
-        resp.delete_cookie(c)
-    return resp
-
-
 @app.get("/api/admin/owner-status")
 def owner_status(request: Request):
     if not _admin_authed(request):
@@ -5032,184 +4862,6 @@ def photographer_commission(request: Request,
 # DISCOUNT CODE ADMIN API
 # ─────────────────────────────────────────
 
-@app.get("/api/admin/discount-codes")
-def api_list_discount_codes(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    codes = _load_discount_codes()
-    # Return codes without the full uses history (use /api/admin/discount-codes/{id} for that)
-    summary = []
-    for c in codes:
-        s = {k: v for k, v in c.items() if k != "uses"}
-        s["recent_uses"] = c.get("uses", [])[-5:]
-        summary.append(s)
-    return {"codes": summary}
-
-@app.post("/api/admin/discount-codes")
-async def api_create_discount_code(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body = await request.json()
-
-    auto = body.get("auto_generate", False)
-    prefix = body.get("prefix", "").strip().upper()
-    if auto:
-        code = _generate_code(prefix=prefix)
-    else:
-        code = body.get("code", "").strip().upper()
-
-    if not code:
-        return JSONResponse(status_code=400, content={"error": "Code is required"})
-
-    codes = _load_discount_codes()
-    if any(c.get("code","").upper() == code for c in codes):
-        return JSONResponse(status_code=400, content={"error": f"Code '{code}' already exists"})
-
-    ctype = body.get("type", "percent")
-    if ctype not in ("percent", "fixed", "free_shipping"):
-        return JSONResponse(status_code=400, content={"error": "type must be percent, fixed, or free_shipping"})
-
-    new_code = {
-        "id":                    str(uuid.uuid4())[:8],
-        "code":                  code,
-        "created":               datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "description":           body.get("description", "").strip(),
-        "source":                body.get("source", "promo"),  # promo | receipt | review | referral
-        "type":                  ctype,
-        "amount":                float(body.get("amount", 0)),
-        "free_shipping":         bool(body.get("free_shipping", False)),
-        "applies_to":            body.get("applies_to", "all"),  # all | digital | prints | portraits | frames
-        "min_order":             float(body.get("min_order", 0)),
-        "min_qty":               int(body.get("min_qty", 0)),
-        "usage_limit":           body.get("usage_limit") or None,
-        "usage_limit_per_user":  body.get("usage_limit_per_user") or None,
-        "expires":               body.get("expires") or None,
-        "start_date":            body.get("start_date") or None,
-        "active":                True,
-        "usage_count":           0,
-        "total_saved":           0.0,
-        "uses":                  [],
-    }
-
-    # Sync to WooCommerce so native coupon_lines work in checkout
-    wc_result = _wc_sync_coupon(new_code)
-    if "wc_id" in wc_result:
-        new_code["wc_id"] = wc_result["wc_id"]
-    else:
-        new_code["wc_sync_error"] = wc_result.get("error", "")
-
-    codes.append(new_code)
-    _save_discount_codes(codes)
-    return {"code": {k: v for k, v in new_code.items() if k != "uses"}}
-
-@app.get("/api/admin/discount-codes/{cid}")
-def api_get_discount_code(cid: str, request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    codes = _load_discount_codes()
-    c = next((x for x in codes if x.get("id") == cid), None)
-    if not c:
-        return JSONResponse(status_code=404, content={"error": "Not found"})
-    return {"code": c}
-
-@app.put("/api/admin/discount-codes/{cid}")
-async def api_update_discount_code(cid: str, request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body = await request.json()
-    codes = _load_discount_codes()
-    WC_SYNC_FIELDS = {"description","source","type","amount","free_shipping",
-                      "applies_to","min_order","min_qty","usage_limit",
-                      "usage_limit_per_user","expires","start_date","active"}
-    for c in codes:
-        if c.get("id") == cid:
-            changed_wc = any(f in body for f in WC_SYNC_FIELDS)
-            for field in WC_SYNC_FIELDS:
-                if field in body:
-                    c[field] = body[field]
-            if changed_wc:
-                wc_result = _wc_sync_coupon(c)
-                if "wc_id" in wc_result:
-                    c["wc_id"] = wc_result["wc_id"]
-                    c.pop("wc_sync_error", None)
-                else:
-                    c["wc_sync_error"] = wc_result.get("error", "")
-            _save_discount_codes(codes)
-            return {"code": {k: v for k, v in c.items() if k != "uses"}}
-    return JSONResponse(status_code=404, content={"error": "Not found"})
-
-@app.delete("/api/admin/discount-codes/{cid}")
-async def api_delete_discount_code(cid: str, request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    all_codes = _load_discount_codes()
-    to_delete = next((c for c in all_codes if c.get("id") == cid), None)
-    if to_delete and to_delete.get("wc_id"):
-        _wc_delete_coupon(to_delete["wc_id"])
-    codes = [c for c in all_codes if c.get("id") != cid]
-    _save_discount_codes(codes)
-    return {"deleted": True}
-
-@app.post("/api/admin/discount-codes/{cid}/wc-sync")
-async def api_wc_sync_code(cid: str, request: Request):
-    """Manually push a code to WooCommerce (or re-sync if it previously failed)."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    codes = _load_discount_codes()
-    c = next((x for x in codes if x.get("id") == cid), None)
-    if not c:
-        return JSONResponse(status_code=404, content={"error": "Not found"})
-    result = _wc_sync_coupon(c)
-    if "wc_id" in result:
-        c["wc_id"] = result["wc_id"]
-        c.pop("wc_sync_error", None)
-        _save_discount_codes(codes)
-        return {"wc_id": result["wc_id"]}
-    c["wc_sync_error"] = result.get("error", "")
-    _save_discount_codes(codes)
-    return JSONResponse(status_code=502, content={"error": result.get("error", "WC sync failed")})
-
-
-@app.post("/api/admin/discount-codes/{cid}/generate")
-async def api_generate_child_code(cid: str, request: Request):
-    """Generate a new unique one-off code using an existing code as a template."""
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body = await request.json()
-    codes = _load_discount_codes()
-    template = next((c for c in codes if c.get("id") == cid), None)
-    if not template:
-        return JSONResponse(status_code=404, content={"error": "Template code not found"})
-
-    prefix = body.get("prefix", template.get("code", "")).rstrip("-") + "-"
-    new_code_str = _generate_code(prefix=prefix, length=6)
-    while any(c.get("code","").upper() == new_code_str for c in codes):
-        new_code_str = _generate_code(prefix=prefix, length=6)
-
-    new_code = {k: v for k, v in template.items() if k not in ("id","code","usage_count","total_saved","uses")}
-    new_code.update({
-        "id":            str(uuid.uuid4())[:8],
-        "code":          new_code_str,
-        "created":       datetime.now(timezone.utc).strftime("%Y-%m-%d"),
-        "template_id":   cid,
-        "usage_count":   0,
-        "total_saved":   0.0,
-        "uses":          [],
-        "expires":       body.get("expires") or template.get("expires"),
-        "usage_limit":   body.get("usage_limit") or template.get("usage_limit"),
-        "description":   body.get("description") or template.get("description",""),
-    })
-    wc_result = _wc_sync_coupon(new_code)
-    if "wc_id" in wc_result:
-        new_code["wc_id"] = wc_result["wc_id"]
-    else:
-        new_code["wc_sync_error"] = wc_result.get("error", "")
-
-    codes.append(new_code)
-    _save_discount_codes(codes)
-    return {"code": {k: v for k, v in new_code.items() if k != "uses"}}
-
-
 @app.get("/admin/discount-codes", response_class=HTMLResponse)
 def admin_discount_codes_page(request: Request):
     if not _admin_authed(request):
@@ -5229,10 +4881,6 @@ def index():
 def index_head():
     """Uptime monitors check the site with HEAD requests (headers only, no page)."""
     return Response(status_code=200, media_type="text/html")
-
-@app.get("/checkout", response_class=HTMLResponse)
-def checkout_page():
-    return HTMLResponse(open("templates/checkout.html").read())
 
 @app.get("/clockin", response_class=HTMLResponse)
 def clockin_page():
@@ -7277,64 +6925,6 @@ def _wrap_email_html(body_html: str) -> str:
         '</div></div></body></html>'
     )
 
-@app.get("/api/admin/email-templates")
-def api_list_email_templates(request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    return {"templates": list(_load_email_templates().values())}
-
-@app.put("/api/admin/email-templates/{tid}")
-def api_update_email_template(tid: str, request: Request, body: dict = Body(...)):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    templates = _load_email_templates()
-    if tid not in templates:
-        return JSONResponse(status_code=404, content={"error": "Template not found"})
-    templates[tid]["subject"] = body.get("subject", templates[tid]["subject"])
-    templates[tid]["body"]    = body.get("body",    templates[tid]["body"])
-    if "review_url" in body:
-        review_url = (body.get("review_url") or "").strip()
-        if review_url and not review_url.startswith("https://"):
-            return JSONResponse(status_code=400, content={"error": "Review link must start with https://"})
-        templates[tid]["review_url"] = review_url
-    if not templates[tid].get("system") and "name" in body:
-        templates[tid]["name"] = body["name"]
-    _save_email_templates(templates)
-    return {"ok": True, "template": templates[tid]}
-
-@app.post("/api/admin/email-templates")
-def api_create_email_template(request: Request, body: dict = Body(...)):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    name = (body.get("name") or "").strip()
-    if not name:
-        return JSONResponse(status_code=400, content={"error": "name is required"})
-    import uuid as _uuid
-    tid = "custom_" + _uuid.uuid4().hex[:8]
-    templates = _load_email_templates()
-    templates[tid] = {
-        "id": tid, "name": name, "system": False,
-        "subject": body.get("subject", ""),
-        "body":    body.get("body",    ""),
-        "tokens":  ["first_name"],
-    }
-    _save_email_templates(templates)
-    return {"ok": True, "template": templates[tid]}
-
-@app.delete("/api/admin/email-templates/{tid}")
-def api_delete_email_template(tid: str, request: Request):
-    if not _admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    templates = _load_email_templates()
-    if tid not in templates:
-        return JSONResponse(status_code=404, content={"error": "Not found"})
-    if templates[tid].get("system"):
-        return JSONResponse(status_code=400, content={"error": "Cannot delete system templates"})
-    del templates[tid]
-    _save_email_templates(templates)
-    return {"ok": True}
-
-
 def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str):
     if not RESEND_API_KEY:
         print("RESEND_API_KEY not set — skipping email")
@@ -8093,3 +7683,15 @@ threading.Thread(target=_backfill_square_id_markers, daemon=True).start()
 
 from routes import orders as _routes_orders  # noqa: E402
 app.include_router(_routes_orders.router)
+
+from routes import auth as _routes_auth  # noqa: E402
+app.include_router(_routes_auth.router)
+
+from routes import checkout as _routes_checkout  # noqa: E402
+app.include_router(_routes_checkout.router)
+
+from routes import email as _routes_email  # noqa: E402
+app.include_router(_routes_email.router)
+
+from routes import discounts as _routes_discounts  # noqa: E402
+app.include_router(_routes_discounts.router)

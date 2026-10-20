@@ -68,12 +68,19 @@ def main():
                     if isinstance(t, ast.Name):
                         local.add(t.id)
         globals_decl = {g for n in ast.walk(fn) if isinstance(n, ast.Global) for g in n.names}
-        if globals_decl:
-            sys.exit(f"{name} assigns globals {globals_decl}; move it by hand")
+        if globals_decl - REASSIGNED:
+            sys.exit(f"{name} assigns globals {globals_decl - REASSIGNED}; move it by hand")
+        if any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n is not fn and
+               any(isinstance(g, ast.Global) for g in ast.walk(n)) for n in ast.walk(fn)):
+            sys.exit(f"{name} has an inner function with 'global'; move it by hand")
+        local -= globals_decl            # `global data` + `data = ...` means main.data
         # Names main.py defines are read as main.<name> when the route runs (so later
         # reassignments and test stand-ins are seen); replaced at their exact positions.
         edits = []
         for n in ast.walk(fn):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store) and n.id in globals_decl:
+                edits.append((n.lineno, n.col_offset, n.end_col_offset, "main." + n.id))
+                continue
             if not (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)) or n.id in local:
                 continue
             if n.id == "app" or n.id in dir(builtins) and n.id not in defined:
@@ -89,6 +96,7 @@ def main():
             i = ln - 1 - start
             flines[i] = flines[i][:c0] + rep + flines[i][c1:]
         text = "".join(flines)
+        text = re.sub(r"^[ \t]+global [\w, ]+\n", "", text, flags=re.M)   # now main.<name>
         text = re.sub(r"^@app\.", "@router.", text, flags=re.M)
         chunks.append(text)
 
