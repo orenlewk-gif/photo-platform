@@ -318,7 +318,11 @@
       .co-row { flex-direction: column; gap: 0; }
       .co-field[style*="flex:0 0"] { flex: 1 !important; max-width: 100% !important; }
     }
-  </style>
+  
+/* Photos can't be saved from the page: no long-press menu (iPhone/iPad "Save to Photos" / "Copy"),
+   no dragging an image out, no selecting it. Purchased photos are delivered on the download pages. */
+img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -webkit-user-select:none; }
+</style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
 </head>
 <body>
@@ -931,6 +935,15 @@ async function placeOrder() {
     if (b.phone) { const a = document.getElementById('sf-phone'); a.textContent = b.phone; a.href = 'tel:' + b.phone.replace(/[^\d+]/g, ''); }
     if (b.email) { const a = document.getElementById('sf-email'); a.textContent = b.email; a.href = 'mailto:' + b.email; }
   }).catch(() => {});
+})();
+</script>
+
+<script>
+// No "Save image" menu (right-click, or long-press on Android) and no dragging photos out of the page
+(function () {
+  const isPhoto = el => el && (el.tagName === 'IMG' || (el.closest && el.closest('.thumb-card, #lb-photo, .qs-photo, .cartview-thumb, .co-thumb-wrap, .collage-inner')));
+  document.addEventListener('contextmenu', e => { if (isPhoto(e.target)) e.preventDefault(); }, true);
+  document.addEventListener('dragstart', e => { if (isPhoto(e.target)) e.preventDefault(); }, true);
 })();
 </script>
 </body>

@@ -961,6 +961,10 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .cal-day.cal-has-photos{color:#fff;background:rgba(242,201,76,.15);cursor:pointer;font-weight:600;border:1px solid rgba(242,201,76,.3)}
 .cal-day.cal-has-photos:hover{background:#F2C94C;color:#0d1f2d}
 .cal-day.cal-today{outline:1px solid rgba(255,255,255,.25)}
+
+/* Photos can't be saved from the page: no long-press menu (iPhone/iPad "Save to Photos" / "Copy"),
+   no dragging an image out, no selecting it. Purchased photos are delivered on the download pages. */
+img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -webkit-user-select:none; }
 </style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
 </head>
@@ -5621,6 +5625,15 @@ document.addEventListener('click', e => {
     if (b.phone) { const a = document.getElementById('sf-phone'); a.textContent = b.phone; a.href = 'tel:' + b.phone.replace(/[^\d+]/g, ''); }
     if (b.email) { const a = document.getElementById('sf-email'); a.textContent = b.email; a.href = 'mailto:' + b.email; }
   }).catch(() => {});
+})();
+</script>
+
+<script>
+// No "Save image" menu (right-click, or long-press on Android) and no dragging photos out of the page
+(function () {
+  const isPhoto = el => el && (el.tagName === 'IMG' || (el.closest && el.closest('.thumb-card, #lb-photo, .qs-photo, .cartview-thumb, .co-thumb-wrap, .collage-inner')));
+  document.addEventListener('contextmenu', e => { if (isPhoto(e.target)) e.preventDefault(); }, true);
+  document.addEventListener('dragstart', e => { if (isPhoto(e.target)) e.preventDefault(); }, true);
 })();
 </script>
 </body>
