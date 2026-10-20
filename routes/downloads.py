@@ -327,7 +327,7 @@ def package_page(token: str):
     title_esc = pkg["title"].replace("<", "&lt;").replace(">", "&gt;")
 
     photo_items = "\n".join(
-        f'<div class="pi"><img src="/package/{token}/thumb/{i}" alt=""><a href="/package/{token}/file/{i}" download class="dib">⬇ Download</a></div>'
+        f'<div class="pi"><img src="/package/{token}/thumb/{i}" alt="Photo {i + 1} of {len(paths)}"><a href="/package/{token}/file/{i}" download class="dib" aria-label="Download photo {i + 1}">⬇ Download</a></div>'
         for i, _ in enumerate(paths)
     )
 
