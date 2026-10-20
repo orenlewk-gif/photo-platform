@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Checkout — Crystal Images</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="/static/fonts/fonts.css" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -357,7 +357,7 @@
 
     <!-- Billing -->
     <div class="co-card">
-      <div class="co-card-title">Billing Address</div>
+      <div class="co-card-title" id="bill-title">Your Details</div>
       <div class="co-row">
         <div class="co-field">
           <label class="co-label" for="bill-first">First Name *</label>
@@ -370,6 +370,9 @@
           <div class="co-error" id="err-bill-last">Required</div>
         </div>
       </div>
+      <!-- Street address: only asked for when prints or frames ship (digital-only orders don't need it;
+           the card form on the payment page asks for a ZIP code itself when the card needs one) -->
+      <div id="bill-address-fields" style="display:none">
       <div class="co-field">
         <label class="co-label" for="bill-address">Street Address *</label>
         <input type="text" id="bill-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
@@ -412,6 +415,7 @@
           <input type="text" id="bill-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="validateForm()" />
           <div class="co-error" id="err-bill-zip">Required</div>
         </div>
+      </div>
       </div>
     </div>
 
@@ -552,6 +556,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const frames    = cartData.frameCart || [];
   if (allPrints.length > 0 || frames.length > 0) {
     document.getElementById('shipping-card').style.display = 'block';
+    document.getElementById('bill-address-fields').style.display = 'block';
+    document.getElementById('bill-title').textContent = 'Billing Address';
   }
 
   // Open summary on desktop
@@ -800,11 +806,11 @@ function validateForm() {
   const email      = document.getElementById('co-email')?.value.trim() || '';
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const billIds = ['bill-first','bill-last','bill-address','bill-city','bill-state','bill-zip'];
-  const billValid = billIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
-
   const shipCard = document.getElementById('shipping-card');
   const needsShip = shipCard && shipCard.style.display !== 'none';
+  const billIds = needsShip ? ['bill-first','bill-last','bill-address','bill-city','bill-state','bill-zip']
+                            : ['bill-first','bill-last'];       // digital-only: name and email are enough
+  const billValid = billIds.every(id => (document.getElementById(id)?.value.trim() || '') !== '');
   const shipSame  = document.getElementById('ship-same')?.checked ?? true;
   let shipValid   = true;
   if (needsShip && !shipSame) {
@@ -860,7 +866,7 @@ async function placeOrder() {
     city:       document.getElementById('bill-city').value.trim(),
     state:      document.getElementById('bill-state').value.trim(),
     postcode:   document.getElementById('bill-zip').value.trim(),
-    country:    'US',
+    country:    document.getElementById('bill-address')?.value.trim() ? 'US' : '',
     email:      email,
   };
 

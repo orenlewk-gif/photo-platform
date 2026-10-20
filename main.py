@@ -3141,7 +3141,7 @@ _SETTINGS_DEFAULTS: dict = {
     "time_filter_locations": [],
     "site":     {"name": "Crystal Images", "tagline": "", "logo_url": ""},
     # Shown in the site footer and at the bottom of marketing emails (the law requires a mailing address there)
-    "business": {"name": "Crystal Images", "address": "", "phone": "(406) 404-6680", "email": "info@bigskyphotos.com"},
+    "business": {"name": "Crystal Images", "address": "PO Box 162712, Big Sky, MT 59716", "phone": "(406) 404-6680", "email": "info@bigskyphotos.com"},
     "frontend": {"accent": "#F5C430", "page_bg": "#093A52", "panel_bg": "#093A53"},
     "admin":    {"accent": "#F5C430", "page_bg": "#093A52", "panel_bg": "#093A52"},
 }
