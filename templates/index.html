@@ -965,6 +965,9 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 /* Photos can't be saved from the page: no long-press menu (iPhone/iPad "Save to Photos" / "Copy"),
    no dragging an image out, no selecting it. Purchased photos are delivered on the download pages. */
 img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -webkit-user-select:none; }
+
+/* The faint logo pattern is baked into the thumbnail files now, so the page doesn't draw it again */
+.watermark { display:none !important; }
 </style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
 </head>
@@ -2689,7 +2692,7 @@ function _fpOpenPosePhotos(label, photos) {
 function _fpRenderPoseGrid() {
   if (!_fpPosePhotos) return;
   const thumbsHtml = _fpPosePhotos.photos.map(p => {
-    const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+    const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
     const logoOn = _digitalLogoPhotos.has(p.path);
     return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="_fpTogglePosePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
   }).join('');
@@ -2732,7 +2735,7 @@ function renderPoseCartView() {
     const gridClick = rest > 0 ? `onclick="${clickFn}" style="margin:.5rem 0 .75rem;cursor:pointer"` : `style="margin:.5rem 0 .75rem"`;
     let t = `<div class="cartview-photo-grid" ${gridClick}>`;
     shown.forEach(p => {
-      const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+      const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
       const logoOn = _digitalLogoPhotos.has(p.path);
       t += `<div class="cartview-thumb"><img src="${src}" alt="" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
     });
@@ -3735,7 +3738,7 @@ function renderCartView() {
           const SHOW = 5;
           html += `<div class="cartview-photo-grid" style="margin-bottom:.25rem">`;
           posePhotos.slice(0, SHOW).forEach(p => {
-            const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+            const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
             const logoOn = _digitalLogoPhotos.has(p.path);
             html += `<div class="cartview-thumb"><img src="${src}" alt="" loading="lazy"/><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}');renderCartView()">Logo</button></div>`;
           });
@@ -3774,7 +3777,7 @@ function renderCartView() {
       const gridStyle = digitalCount > 10 ? 'max-height:220px;overflow-y:auto;' : '';
       html += `<div class="cartview-photo-grid" style="${gridStyle}">`;
       photos.forEach(p => {
-        const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+        const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
         const logoOn = _digitalLogoPhotos.has(p.path);
         html += `<div class="cartview-thumb">
           <img src="${src}" alt="${p.filename}" />
@@ -4645,7 +4648,7 @@ const _imgObserver = new IntersectionObserver((entries) => {
     const img = entry.target;
     const path = img.dataset.path;
     if (path) {
-      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb&v=3`;
+      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb&v=4`;
       img.src = imgCache[path];
     }
     _imgObserver.unobserve(img);
@@ -4661,7 +4664,7 @@ function lazyLoad(container) {
 
 function loadPhoto(path) {
   if (imgCache[path]) return Promise.resolve(imgCache[path]);
-  const src = `/api/photo?path=${enc(path)}&size=thumb&v=3`;
+  const src = `/api/photo?path=${enc(path)}&size=thumb&v=4`;
   imgCache[path] = src;
   return Promise.resolve(src);
 }
@@ -5197,7 +5200,7 @@ function openPrintsModal() {
   // Photo rows
   const listEl = document.getElementById('pu-photo-list');
   listEl.innerHTML = photos.map(({ idx, photo }) => {
-    const src = imgCache[photo.path] || `/api/photo?path=${enc(photo.path)}&size=thumb&v=3`;
+    const src = imgCache[photo.path] || `/api/photo?path=${enc(photo.path)}&size=thumb&v=4`;
     if (!imgCache[photo.path]) imgCache[photo.path] = src;
     const sizesHtml = PRINT_SIZES.map((s, si) => {
       return `<option value="${si}">${s.label} Print — $${s.price / 2}</option>`;
@@ -5244,7 +5247,7 @@ function openFolderPhotosModal(key) {
   document.getElementById('fp-title').textContent = `${label} — ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
   const grid = document.getElementById('fp-grid');
   grid.innerHTML = photos.map(p => {
-    const src = `/api/photo?path=${enc(p.path)}&size=thumb&v=3`;
+    const src = `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
     return `<img src="${src}" alt="${p.filename || ''}" loading="lazy" />`;
   }).join('');
   document.getElementById('fp-overlay').classList.add('open');

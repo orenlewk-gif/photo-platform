@@ -27,8 +27,9 @@ def nowm_thumb_r2_key(r2_key: str) -> str:
 
 
 def grid_thumb_r2_key(r2_key: str) -> str:
-    """maps images/foo/bar.jpg → thumbs/grid/foo/bar.jpg.webp (gallery thumbnails, WebP)"""
-    return _under("thumbs/grid/", r2_key, ".webp")
+    """maps images/foo/bar.jpg → thumbs/gridwm/foo/bar.jpg.webp (gallery thumbnails, WebP, with the
+    full watermark pattern baked in; the older thumbs/grid/ files only had the centered logo)"""
+    return _under("thumbs/gridwm/", r2_key, ".webp")
 
 
 def admin_thumb_r2_key(r2_key: str) -> str:

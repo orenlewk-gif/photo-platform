@@ -235,8 +235,7 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
                 if nowm:
                     variant, link = "pos", main._stored_thumb_link(key, "pos")
                 else:
-                    # Photos from before the WebP version keep their JPEG; new ones have WebP
-                    variant, link = "grid", main._stored_thumb_link(key, "grid") or main._stored_thumb_link(key, "public")
+                    variant, link = "grid", main._stored_thumb_link(key, "grid")   # full pattern; older ones are remade
                 if link:
                     return main._thumb_redirect(link)
                 data = main._thumb_on_demand(key, variant)

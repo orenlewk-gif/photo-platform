@@ -322,6 +322,9 @@
 /* Photos can't be saved from the page: no long-press menu (iPhone/iPad "Save to Photos" / "Copy"),
    no dragging an image out, no selecting it. Purchased photos are delivered on the download pages. */
 img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -webkit-user-select:none; }
+
+/* The faint logo pattern is baked into the thumbnail files now, so the page doesn't draw it again */
+.watermark { display:none !important; }
 </style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
 </head>
@@ -621,7 +624,7 @@ async function loadThumbs() {
     const img = document.createElement('img');
     img.className = 'co-thumb';
     img.alt = '';
-    img.src = `/api/photo?path=${encodeURIComponent(p.path)}&size=thumb`;
+    img.src = `/api/photo?path=${encodeURIComponent(p.path)}&size=thumb&v=4`;
     const wm = document.createElement('div');
     wm.className = 'watermark';
     wrap.appendChild(img);

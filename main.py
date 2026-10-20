@@ -256,6 +256,35 @@ def get_watermark():
             _watermark_cache = False  # False = tried and failed, don't retry
         return _watermark_cache if _watermark_cache else None
 
+# The faint logos the gallery used to draw over every thumbnail (CSS .watermark: the
+# transparent logo at 60% / 42% / 38% of the width, at center / 12% 18% / 88% 82%, 30% opacity).
+# Baked into gallery thumbnails so a saved file looks exactly like the tile on screen.
+_THUMB_OVERLAY = ((0.60, 0.50, 0.50), (0.42, 0.12, 0.18), (0.38, 0.88, 0.82))
+_THUMB_OVERLAY_OPACITY = 0.30
+_overlay_logo_cache = {}
+
+
+def apply_thumb_overlay(img):
+    logo = _overlay_logo_cache.get("logo")
+    if logo is None:
+        try:
+            logo = Image.open("static/watermark-transparent.png").convert("RGBA")
+        except Exception:
+            return img
+        _overlay_logo_cache["logo"] = logo
+    W, H = img.size
+    layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    for frac, px, py in _THUMB_OVERLAY:
+        w = max(1, round(W * frac))
+        h = max(1, round(logo.height * w / logo.width))
+        mark = logo.resize((w, h), Image.LANCZOS)
+        layer.alpha_composite(mark, (round((W - w) * px), round((H - h) * py)))
+    layer.putalpha(layer.getchannel("A").point(lambda a: int(a * _THUMB_OVERLAY_OPACITY)))
+    out = img.convert("RGBA")
+    out.alpha_composite(layer)
+    return out.convert("RGB")
+
+
 def apply_watermark(img, size="medium"):
     wm = get_watermark()
     if wm is None:
@@ -782,7 +811,7 @@ def _pricing_for(location: str = None, date: str = None, family: str = None) -> 
 
 # ── Thumbnails ────────────────────────────────────────────────────────────────
 # Every photo has small versions, cached in R2 next to the original:
-#   grid   — 700px WebP, watermarked: customer gallery    (thumbs/grid/)
+#   grid   — 700px WebP, centered logo + faint logo pattern: customer gallery (thumbs/gridwm/)
 #   pos    — 700px, no watermark: iPad POS               (thumbs/nowm/)
 #   admin  — 450px, no watermark: studio, download pages (admin_thumbs/)
 #   public — 700px JPEG, watermarked: the gallery version before WebP (thumbs/v2/).
@@ -819,6 +848,8 @@ def _encode_thumb(img: Image.Image, variant: str) -> bytes:
     t.thumbnail((max_px, max_px), Image.LANCZOS)
     if watermark:
         t = apply_watermark(t, "thumb")
+        if variant == "grid":
+            t = apply_thumb_overlay(t)        # the faint logos the page used to draw on top
     buf = BytesIO()
     if fmt == "WEBP":
         t.save(buf, format="WEBP", quality=quality, method=6)

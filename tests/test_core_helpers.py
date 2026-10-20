@@ -29,5 +29,5 @@ def test_thumbnail_storage_names():
     k = "images/2026-12-01/el-dorado-action/A.JPG"
     assert thumb_r2_key(k) == "thumbs/v2/2026-12-01/el-dorado-action/A.JPG"
     assert nowm_thumb_r2_key(k) == "thumbs/nowm/2026-12-01/el-dorado-action/A.JPG"
-    assert grid_thumb_r2_key(k) == "thumbs/grid/2026-12-01/el-dorado-action/A.JPG.webp"
+    assert grid_thumb_r2_key(k) == "thumbs/gridwm/2026-12-01/el-dorado-action/A.JPG.webp"
     assert admin_thumb_r2_key(k) == "admin_thumbs/2026-12-01/el-dorado-action/A.JPG"
