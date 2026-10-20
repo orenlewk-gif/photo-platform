@@ -101,6 +101,8 @@ def main():
         chunks.append(text)
 
     out = os.path.join(REPO, "routes", f"{area}.py")
+    if os.path.exists(out):
+        sys.exit(f"routes/{area}.py already exists; pick a new area name")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     init = os.path.join(REPO, "routes", "__init__.py")
     if not os.path.exists(init):
