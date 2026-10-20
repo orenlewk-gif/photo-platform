@@ -1,0 +1,42 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Photos — Crystal Images</title>
+<style>
+  body{margin:0;background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh;padding:2rem 1rem;box-sizing:border-box}
+  .wrap{max-width:680px;margin:0 auto}
+  h1{color:#F2C94C;margin-bottom:0.25rem}
+  .sub{color:rgba(255,255,255,0.5);margin-bottom:2rem;font-size:0.9rem}
+  .card{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}
+  .license-title{font-weight:700;color:#F2C94C;margin-bottom:0.75rem;font-size:1rem}
+  .license-item{display:flex;gap:0.5rem;margin-bottom:0.4rem;font-size:0.88rem;color:rgba(255,255,255,0.75)}
+  .expire{font-size:0.82rem;color:rgba(255,255,255,0.4);margin-top:1rem}
+</style></head><body><div class="wrap">
+  <h1>Your Photos Are Ready</h1>
+  <div class="sub">Order #__ORDER_ID__ &nbsp;·&nbsp; __LOCATION__ &nbsp;·&nbsp; __DATE__</div>
+
+  <div class="card">
+    <div class="license-title">📋 Digital Photo License</div>
+    <div class="license-item"><span>✓</span><span>Personal use permitted — print, frame, and share freely.</span></div>
+    <div class="license-item"><span>✓</span><span>Commercial use permitted <strong>when you tag @crystalimagesbigsky on Instagram.</strong></span></div>
+    <div class="license-item"><span>✗</span><span>No resale or redistribution of the original image files.</span></div>
+    <div class="license-item"><span>✗</span><span>Do not sell or transfer these files to third parties.</span></div>
+    <div class="license-item"><span>📸</span><span>We love seeing your memories — tag us when you share!</span></div>
+    <div style="margin-top:0.75rem;font-size:0.8rem;color:rgba(255,255,255,0.4)">
+      By downloading you agree to these terms.
+      Links expire <strong style="color:rgba(255,255,255,0.6)">__EXPIRES__</strong> —
+      contact us anytime at info@bigskyphotos.com to resend.
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
+      <div class="license-title" style="margin-bottom:0;">⬇ Download Your Photos (__FILE_COUNT__ files)</div>
+      <a href="/download/__TOKEN__/all" download="crystal-images-order-__ORDER_ID__.zip"
+         style="background:#F2C94C;color:#0d1f2d;padding:0.5rem 1.25rem;border-radius:6px;
+                font-weight:700;font-size:0.9rem;text-decoration:none;white-space:nowrap;">
+        ⬇ Download All
+      </a>
+    </div>
+    __PHOTO_ROWS__
+  </div>
+</div></body></html>

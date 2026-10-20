@@ -56,3 +56,12 @@ def test_zip_skips_a_missing_photo_but_keeps_the_rest(client, package):
 def test_page_offers_save_to_photos(client, package):
     html = client.get(f"/package/{package}").text
     assert 'id="save-photos"' in html and "navigator.share" in html and "/package/tok-live/links" in html
+
+
+def test_download_page_escapes_the_order_location(client, main_module):
+    from datetime import datetime, timedelta, timezone
+    exp = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    main_module._store_token("tokxss1", {"order_id": 7, "location": '<script>alert(1)</script>', "date": "2026-10-18",
+                                         "paths": ["images/2026-10-18/x/A.jpg"], "filenames": "A.jpg", "expires": exp})
+    html = client.get("/download/tokxss1").text
+    assert "<script>alert(1)</script>" not in html and "&lt;script&gt;alert(1)&lt;/script&gt;" in html

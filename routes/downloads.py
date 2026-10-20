@@ -18,7 +18,10 @@ from io import BytesIO
 
 from fastapi import APIRouter
 
+from html import escape as _html_escape
+
 import main
+from core.pages import render_page
 
 router = APIRouter()
 
@@ -52,48 +55,9 @@ def download_page(token: str):
           </a>
         </div>"""
 
-    html = f"""<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Your Photos — Crystal Images</title>
-<style>
-  body{{margin:0;background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh;padding:2rem 1rem;box-sizing:border-box}}
-  .wrap{{max-width:680px;margin:0 auto}}
-  h1{{color:#F2C94C;margin-bottom:0.25rem}}
-  .sub{{color:rgba(255,255,255,0.5);margin-bottom:2rem;font-size:0.9rem}}
-  .card{{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:1.5rem;margin-bottom:1.5rem}}
-  .license-title{{font-weight:700;color:#F2C94C;margin-bottom:0.75rem;font-size:1rem}}
-  .license-item{{display:flex;gap:0.5rem;margin-bottom:0.4rem;font-size:0.88rem;color:rgba(255,255,255,0.75)}}
-  .expire{{font-size:0.82rem;color:rgba(255,255,255,0.4);margin-top:1rem}}
-</style></head><body><div class="wrap">
-  <h1>Your Photos Are Ready</h1>
-  <div class="sub">Order #{rec['order_id']} &nbsp;·&nbsp; {rec['location']} &nbsp;·&nbsp; {rec['date']}</div>
-
-  <div class="card">
-    <div class="license-title">📋 Digital Photo License</div>
-    <div class="license-item"><span>✓</span><span>Personal use permitted — print, frame, and share freely.</span></div>
-    <div class="license-item"><span>✓</span><span>Commercial use permitted <strong>when you tag @crystalimagesbigsky on Instagram.</strong></span></div>
-    <div class="license-item"><span>✗</span><span>No resale or redistribution of the original image files.</span></div>
-    <div class="license-item"><span>✗</span><span>Do not sell or transfer these files to third parties.</span></div>
-    <div class="license-item"><span>📸</span><span>We love seeing your memories — tag us when you share!</span></div>
-    <div style="margin-top:0.75rem;font-size:0.8rem;color:rgba(255,255,255,0.4)">
-      By downloading you agree to these terms.
-      Links expire <strong style="color:rgba(255,255,255,0.6)">{expire_str}</strong> —
-      contact us anytime at info@bigskyphotos.com to resend.
-    </div>
-  </div>
-
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
-      <div class="license-title" style="margin-bottom:0;">⬇ Download Your Photos ({len(rec['paths'])} files)</div>
-      <a href="/download/{token}/all" download="crystal-images-order-{rec['order_id']}.zip"
-         style="background:#F2C94C;color:#0d1f2d;padding:0.5rem 1.25rem;border-radius:6px;
-                font-weight:700;font-size:0.9rem;text-decoration:none;white-space:nowrap;">
-        ⬇ Download All
-      </a>
-    </div>
-    {photo_rows}
-  </div>
-</div></body></html>"""
+    html = render_page("download_order.html", order_id=rec["order_id"], location=_html_escape(str(rec["location"])),
+                       date=_html_escape(str(rec["date"])), expires=expire_str, file_count=len(rec["paths"]),
+                       token=token, photo_rows=photo_rows)
     return HTMLResponse(html)
 
 
@@ -380,226 +344,9 @@ def package_page(token: str):
         for i, _ in enumerate(paths)
     )
 
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{title_esc} — Crystal Images</title>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#0d1f2d;color:#fff;font-family:'Segoe UI',sans-serif;min-height:100vh}}
-header{{background:rgba(0,0,0,.35);border-bottom:1px solid rgba(255,255,255,.08);padding:.9rem 1.5rem;
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;
-  position:sticky;top:0;z-index:10;backdrop-filter:blur(8px)}}
-header h1{{color:#F2C94C;font-size:1.1rem;font-weight:700}}
-header .meta{{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}}
-.dla{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:7px;padding:.55rem 1.2rem;
-  font-weight:700;font-size:.88rem;cursor:pointer;text-decoration:none;display:inline-block;white-space:nowrap}}
-.dla:disabled{{opacity:.6;cursor:default}}
-.dla.alt{{background:rgba(255,255,255,.1);color:#fff}}
-.acts{{display:flex;gap:.5rem;flex-wrap:wrap}}
-.wrap{{max-width:1400px;margin:0 auto;padding:1.25rem 1rem}}
-.lic{{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;
-  padding:.7rem 1rem;margin-bottom:1.1rem;font-size:.76rem;color:rgba(255,255,255,.42);line-height:1.8}}
-.lic strong{{color:rgba(255,255,255,.68)}}
-.grid{{position:relative;min-height:100px}}
-.pi{{position:absolute;overflow:hidden;border-radius:6px;background:#111;cursor:pointer;transition:opacity .15s}}
-.pi:hover{{opacity:.88}}
-.pi img{{width:100%;height:auto;display:block}}
-.pi:hover img{{opacity:.78}}
-.dib{{position:absolute;bottom:7px;right:7px;background:#F2C94C;color:#0d1f2d;border-radius:5px;
-  padding:.3rem .7rem;font-size:.75rem;font-weight:700;text-decoration:none;
-  opacity:0;transition:opacity .15s;display:flex;align-items:center;gap:.3rem}}
-.pi:hover .dib{{opacity:1}}
-#lb{{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:999;display:none;
-  flex-direction:column;align-items:center;justify-content:center}}
-#lb.open{{display:flex}}
-#lb-img{{max-width:92vw;max-height:84vh;object-fit:contain;border-radius:4px;cursor:default}}
-#lb-bar{{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:flex-end;
-  padding:.75rem 1rem;gap:.65rem;background:linear-gradient(rgba(0,0,0,.5),transparent)}}
-#lb-dl{{background:#F2C94C;color:#0d1f2d;border:none;border-radius:6px;padding:.38rem .9rem;
-  font-weight:700;font-size:.82rem;cursor:pointer;text-decoration:none}}
-#lb-close{{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:1.1rem;cursor:pointer;
-  border-radius:6px;padding:.35rem .7rem;opacity:.8}}
-#lb-close:hover{{opacity:1}}
-</style></head>
-<body>
-<header>
-  <div>
-    <h1>{title_esc}</h1>
-    <div class="meta">{len(paths)} photo{'s' if len(paths)!=1 else ''} &nbsp;·&nbsp; Link expires {expire_str}</div>
-  </div>
-  <div class="acts">
-    <button id="save-photos" class="dla" style="display:none" onclick="savePhotosClick()">Save to Photos</button>
-    <a href="/package/{token}/all" download class="dla" id="dl-all">⬇ Download All ({len(paths)} photos)</a>
-  </div>
-  <div id="save-hint" class="meta" style="display:none;width:100%"></div>
-</header>
-<div class="wrap">
-  <div class="lic">
-    All photos are for <strong>personal use</strong> — print, frame, and share freely.
-    For commercial use, tag <strong>@crystalimagesbigsky</strong> on Instagram.
-    Please do not resell or redistribute the original files.
-    Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
-  </div>
-  <div class="grid" id="masonry-grid">{photo_items}</div>
-</div>
-<div id="lb">
-  <div id="lb-bar">
-    <button id="lb-save" class="dla" style="display:none;padding:.38rem .9rem;font-size:.82rem" onclick="lbSaveClick()">Save to Photos</button>
-    <a id="lb-dl" href="#" download>⬇ Download</a>
-    <button id="lb-close" onclick="closeLb()">✕</button>
-  </div>
-  <img id="lb-img" src="" alt="">
-</div>
-<script>
-// Masonry: place each item into the shortest column so portrait/landscape alternate naturally
-function runMasonry() {{
-  const grid = document.getElementById('masonry-grid');
-  const items = [...grid.children];
-  if (!items.length) return;
-  const gap = 8;
-  const W = grid.offsetWidth;
-  const cols = W < 500 ? 2 : W < 780 ? 3 : W < 1100 ? 4 : 5;
-  const colW = (W - gap * (cols - 1)) / cols;
-  const heights = new Array(cols).fill(0);
-  grid.style.position = 'relative';
-  items.forEach(item => {{
-    item.style.width = colW + 'px';
-    const c = heights.indexOf(Math.min(...heights));
-    item.style.left = (c * (colW + gap)) + 'px';
-    item.style.top = heights[c] + 'px';
-    heights[c] += item.offsetHeight + gap;
-  }});
-  grid.style.height = Math.max(...heights) + 'px';
-}}
-let _masonryTimer;
-function scheduleMasonry() {{ clearTimeout(_masonryTimer); _masonryTimer = setTimeout(runMasonry, 60); }}
-// Run once each image loads so layout fills in progressively, then again on resize
-document.querySelectorAll('#masonry-grid img').forEach(img => {{
-  if (img.complete) scheduleMasonry();
-  else img.addEventListener('load', scheduleMasonry);
-}});
-window.addEventListener('resize', scheduleMasonry);
-
-let lbIdx = 0;
-document.querySelectorAll('.pi img').forEach((img,i)=>{{
-  img.parentElement.addEventListener('click',e=>{{
-    if(e.target.tagName==='A')return;
-    lbIdx = i;
-    document.getElementById('lb-img').src='/package/{token}/medium/'+i;
-    document.getElementById('lb-dl').href='/package/{token}/file/'+i;
-    document.getElementById('lb').classList.add('open');
-    prepareLbSave(i);
-  }});
-}});
-function closeLb(){{document.getElementById('lb').classList.remove('open')}}
-
-// ── Save to Photos ──
-// Phones put normal downloads in the Files app, where many people never find them.
-// The share sheet's "Save Images" puts them straight into Photos. Sharing has to
-// start from a tap, so photos are fetched first, then a second tap opens the sheet.
-const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const SAVE_OK = IS_MOBILE && (() => {{
-  try {{
-    const f = new File([new Blob(['x'], {{type: 'image/jpeg'}})], 't.jpg', {{type: 'image/jpeg'}});
-    return !!(navigator.canShare && navigator.canShare({{files: [f]}}));
-  }} catch(e) {{ return false; }}
-}})();
-const BATCH = 10;          // photos per share sheet: keeps memory use reasonable on phones
-let _links = null, _next = 0, _ready = null, _busy = false;
-const $id = id => document.getElementById(id);
-
-async function getLinks() {{
-  if (!_links) {{
-    const r = await fetch('/package/{token}/links');
-    if (!r.ok) throw new Error('This link has expired');
-    _links = (await r.json()).files;
-  }}
-  return _links;
-}}
-
-async function fetchFile(link) {{
-  const r = await fetch(link.url);
-  if (!r.ok) throw new Error('Could not load ' + link.name);
-  return new File([await r.blob()], link.name, {{type: 'image/jpeg'}});
-}}
-
-async function fetchAll(links, onEach) {{
-  const out = new Array(links.length);
-  let i = 0, done = 0;
-  async function worker() {{
-    while (i < links.length) {{
-      const k = i++;
-      out[k] = await fetchFile(links[k]);
-      onEach(++done);
-    }}
-  }}
-  await Promise.all([worker(), worker(), worker(), worker()]);
-  return out;
-}}
-
-function setSave(label, disabled, hint) {{
-  const b = $id('save-photos');
-  b.textContent = label; b.disabled = !!disabled;
-  $id('save-hint').style.display = hint ? '' : 'none';
-  $id('save-hint').textContent = hint || '';
-}}
-
-async function savePhotosClick() {{
-  if (_busy) return;
-  if (_ready) {{                                    // second tap: open the share sheet
-    const files = _ready;
-    try {{
-      await navigator.share({{files}});
-      _ready = null; _next += files.length;
-      const left = _links.length - _next;
-      if (left > 0) setSave(`Save next ${{Math.min(BATCH, left)}} photo${{left === 1 ? '' : 's'}}`, false,
-                            `${{_next}} of ${{_links.length}} saved`);
-      else setSave('All photos saved', true, 'They are in your Photos app.');
-    }} catch(e) {{
-      if (e.name !== 'AbortError') setSave('Save to Photos', false, "Saving didn't work here. Use Download All instead.");
-    }}
-    return;
-  }}
-  _busy = true;                                     // first tap: fetch the next batch
-  try {{
-    const links = (await getLinks()).slice(_next, _next + BATCH);
-    setSave(`Preparing 0 of ${{links.length}}...`, true);
-    _ready = await fetchAll(links, n => setSave(`Preparing ${{n}} of ${{links.length}}...`, true));
-    setSave(`Tap to save ${{_ready.length}} photo${{_ready.length === 1 ? '' : 's'}}`, false,
-            'Then choose "Save Images" (or "Save Image").');
-  }} catch(e) {{
-    setSave('Save to Photos', false, e.message + '. Please try again.');
-  }} finally {{ _busy = false; }}
-}}
-
-// Single photo from the enlarged view
-let _lbFile = null, _lbFor = -1;
-async function prepareLbSave(i) {{
-  if (!SAVE_OK) return;
-  const b = $id('lb-save');
-  b.style.display = ''; b.disabled = true; b.textContent = 'Preparing...';
-  _lbFile = null; _lbFor = i;
-  try {{
-    const f = await fetchFile((await getLinks())[i]);
-    if (_lbFor !== i) return;                       // moved on to another photo
-    _lbFile = f; b.disabled = false; b.textContent = 'Save to Photos';
-  }} catch(e) {{ b.textContent = 'Unavailable'; }}
-}}
-async function lbSaveClick() {{
-  if (!_lbFile) return;
-  try {{ await navigator.share({{files: [_lbFile]}}); }} catch(e) {{}}
-}}
-
-if (SAVE_OK) {{
-  $id('save-photos').style.display = '';
-  $id('dl-all').classList.add('alt');
-  $id('dl-all').textContent = 'Download as zip';
-}}
-document.getElementById('lb').addEventListener('click',e=>{{if(e.target.id==='lb'||e.target.id==='lb-img')closeLb()}});
-document.addEventListener('keydown',e=>{{if(e.key==='Escape')closeLb()}});
-</script>
-</body></html>""")
+    return HTMLResponse(render_page("package.html", title=title_esc, photo_count=len(paths),
+                                    plural="s" if len(paths) != 1 else "", expires=expire_str,
+                                    token=token, photo_items=photo_items))
 
 
 @router.get("/package/{token}/thumb/{idx}")
