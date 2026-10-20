@@ -7,6 +7,7 @@ from html import escape as _html_escape
 from fastapi import APIRouter
 
 import main
+from core.pages import render_page
 
 router = APIRouter()
 
@@ -15,7 +16,7 @@ router = APIRouter()
 def admin_get(request: Request):
     if not main._admin_authed(request):
         next_url = main._safe_next(request.query_params.get("next"))
-        return HTMLResponse(main.ADMIN_LOGIN_HTML.format(error="", next=_html_escape(next_url)))
+        return HTMLResponse(render_page("admin_login.html", error="", next=_html_escape(next_url)))
     return RedirectResponse("/admin/dashboard")
 
 

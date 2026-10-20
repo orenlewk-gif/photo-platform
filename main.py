@@ -301,7 +301,6 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 # ── Color labels ──────────────────────────────────────────────────────────────
 
 
-
 # ── Labeling model ────────────────────────────────────────────────────────────
 _color_model = ColorModel("model_v3.onnx", "model_v3_meta.json")
 
@@ -2254,29 +2253,6 @@ ADMIN_COOKIE    = "ci_admin_session"
 STRIPE_RATE     = 0.029
 STRIPE_FIXED    = 0.30
 
-ADMIN_LOGIN_HTML = """<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Admin Login</title>
-<style>
-*{{box-sizing:border-box;margin:0;padding:0}}
-body{{background:#0c2336;font-family:'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}}
-.card{{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:2.5rem 2rem;width:100%;max-width:360px}}
-h2{{color:#F5C518;font-size:1.3rem;margin-bottom:1.5rem;text-align:center}}
-input[type=password]{{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;
-  padding:.75rem 1rem;color:#fff;font-size:1rem;margin-bottom:1rem;outline:none}}
-input[type=password]:focus{{border-color:#F5C518}}
-button{{width:100%;background:#F5C518;color:#0c2336;border:none;border-radius:8px;
-  padding:.75rem;font-size:1rem;font-weight:700;cursor:pointer}}
-.err{{color:#e53e3e;font-size:.85rem;text-align:center;margin-top:.5rem}}
-</style></head><body>
-<div class="card">
-  <h2>Crystal Images Admin</h2>
-  <form method="post" action="/admin/login">
-    <input type="hidden" name="next" value="{next}" />
-    <input type="password" name="password" placeholder="Password" autofocus />
-    <button type="submit">Sign In</button>
-    {error}
-  </form>
-</div></body></html>"""
 
 # ── Studio sign-in ────────────────────────────────────────────────────────────
 # Each sign-in is its own session (90 days), kept in R2 so it can be ended: signing
@@ -2429,25 +2405,6 @@ def _send_login_code_email(code: str, info: dict) -> bool:
 def _masked_email(e: str) -> str:
     name, _, domain = e.partition("@")
     return (name[:2] + "•" * max(1, len(name) - 2) + "@" + domain) if domain else e
-
-
-ADMIN_CODE_HTML = ADMIN_LOGIN_HTML.replace("input[type=password]", "input.code").replace(
-    """  <form method="post" action="/admin/login">
-    <input type="hidden" name="next" value="{next}" />
-    <input type="password" name="password" placeholder="Password" autofocus />
-    <button type="submit">Sign In</button>
-    {error}
-  </form>""",
-    """  <p style="color:rgba(255,255,255,.7);font-size:.9rem;text-align:center;margin:-.5rem 0 1.2rem;line-height:1.5">
-    New device: we emailed a 6-digit code to {email}</p>
-  <form method="post" action="/admin/verify">
-    <input type="hidden" name="challenge" value="{challenge}" />
-    <input class="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
-           placeholder="6-digit code" autofocus style="text-align:center;letter-spacing:.4rem;font-size:1.3rem" />
-    <button type="submit">Verify</button>
-    {error}
-  </form>
-  <p style="text-align:center;margin-top:1rem"><a href="/admin" style="color:rgba(255,255,255,.45);font-size:.8rem">Start over</a></p>""")
 
 
 def _safe_next(url) -> str:

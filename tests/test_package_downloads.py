@@ -65,3 +65,12 @@ def test_download_page_escapes_the_order_location(client, main_module):
                                          "paths": ["images/2026-10-18/x/A.jpg"], "filenames": "A.jpg", "expires": exp})
     html = client.get("/download/tokxss1").text
     assert "<script>alert(1)</script>" not in html and "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+def test_regenerated_link_page_escapes_the_customers_name(admin_client, main_module, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    exp = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    rec = {"order_id": 8, "customer": '<img src=x onerror=alert(1)>', "email": "a@x.com", "paths": ["images/x/A.jpg"], "expires": exp}
+    monkeypatch.setattr(main_module, "_get_token_by_order_id", lambda oid: ("oldtok", dict(rec)))
+    html = admin_client.get("/admin/regen/8").text
+    assert "<img src=x" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html

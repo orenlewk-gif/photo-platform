@@ -155,21 +155,8 @@ def admin_regen(request: Request, order_id: int):
     rec["expires"] = new_expires
     main._store_token(new_token, rec)
     new_url = f"{main.SITE_URL}/download/{new_token}"
-    html = f"""<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Link Regenerated</title>
-<style>body{{background:#0c2336;font-family:'Segoe UI',sans-serif;color:#fff;padding:2rem;}}
-.card{{background:#0a1e2e;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:2rem;max-width:560px;}}
-h2{{color:#4ade80;margin-bottom:1rem}}p{{color:rgba(255,255,255,.6);font-size:.9rem;margin-bottom:.75rem}}
-.url{{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;
-  padding:.75rem 1rem;font-family:monospace;font-size:.85rem;word-break:break-all;color:#F5C518;margin-bottom:1.25rem}}
-a.back{{color:#F5C518;font-size:.9rem}}</style></head><body>
-<div class="card">
-  <h2>✓ Download Link Regenerated</h2>
-  <p>Customer: <strong>{rec.get('customer','')} ({rec.get('email','')})</strong></p>
-  <p>New link (valid 30 days):</p>
-  <div class="url">{new_url}</div>
-  <p>Copy and send this to the customer.</p>
-  <a class="back" href="/admin/orders">← Back to orders</a>
-</div></body></html>"""
+    html = render_page("link_regenerated.html", customer=_html_escape(str(rec.get('customer', ''))),
+                       email=_html_escape(str(rec.get('email', ''))), new_url=new_url)
     return HTMLResponse(html)
 
 

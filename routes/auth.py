@@ -14,6 +14,7 @@ from html import escape as _html_escape
 from fastapi import APIRouter
 
 import main
+from core.pages import render_page
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ async def admin_login(request: Request):
     pw   = form.get("password", "")
     next_url = main._safe_next(form.get("next"))
     def again(msg, status=401):
-        return HTMLResponse(main.ADMIN_LOGIN_HTML.format(error=f'<p class="err">{msg}</p>',
+        return HTMLResponse(render_page("admin_login.html", error=f'<p class="err">{msg}</p>',
                                                     next=_html_escape(next_url)), status_code=status)
     if main._admin_pw_fail_limiter.count(main._client_ip(request)) >= main._admin_pw_fail_limiter.max_calls:
         return again("Too many wrong passwords — wait 10 minutes.", 429)
@@ -46,7 +47,7 @@ async def admin_login(request: Request):
     if not main._send_login_code_email(code, info):
         main._login_challenges.pop(challenge, None)
         return again("Couldn't email the sign-in code — try again in a minute.", 503)
-    return HTMLResponse(main.ADMIN_CODE_HTML.format(email=_html_escape(main._masked_email(main.OWNER_EMAIL)),
+    return HTMLResponse(render_page("admin_code.html", email=_html_escape(main._masked_email(main.OWNER_EMAIL)),
                                                challenge=challenge, error=""))
 
 
@@ -58,15 +59,15 @@ async def admin_verify(request: Request):
     pending = main._login_challenges.get(challenge)
     if not pending or pending["expires"] < _time.time():
         main._login_challenges.pop(challenge, None)
-        return HTMLResponse(main.ADMIN_LOGIN_HTML.format(
+        return HTMLResponse(render_page("admin_login.html", 
             error='<p class="err">That code has expired — sign in again.</p>', next="/admin/dashboard"), status_code=401)
     pending["tries"] += 1
     if not hmac.compare_digest(main._token_hash(code), pending["code"]):
         if pending["tries"] >= main.LOGIN_CODE_TRIES:
             main._login_challenges.pop(challenge, None)
-            return HTMLResponse(main.ADMIN_LOGIN_HTML.format(
+            return HTMLResponse(render_page("admin_login.html", 
                 error='<p class="err">Too many wrong codes — sign in again.</p>', next="/admin/dashboard"), status_code=401)
-        return HTMLResponse(main.ADMIN_CODE_HTML.format(email=_html_escape(main._masked_email(main.OWNER_EMAIL)),
+        return HTMLResponse(render_page("admin_code.html", email=_html_escape(main._masked_email(main.OWNER_EMAIL)),
                                                    challenge=challenge, error='<p class="err">Incorrect code.</p>'),
                             status_code=401)
     main._login_challenges.pop(challenge, None)
