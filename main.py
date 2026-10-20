@@ -2565,21 +2565,44 @@ def _store_pos_order(record: dict):
     s3.put_object(Bucket=R2_BUCKET, Key=key,
                   Body=json.dumps(record).encode(), ContentType="application/json")
 
+_POS_PREFIX = "pos_orders/"
+_pos_order_cache: dict = {}        # storage key -> (ETag, sale record); a sale is re-read only when its file changes
+_pos_order_cache_lock = threading.Lock()
+
+
 def _fetch_pos_orders(after: str = None, before: str = None) -> list:
-    orders = []
+    """In-store sales, newest first, optionally only those dated after..before (YYYY-MM-DD).
+    Sale files are named by date, so out-of-range ones aren't opened; sales already read are
+    remembered by their file's ETag; new or changed ones are read in parallel."""
+    a, b = (after or "")[:10], (before or "")[:10]
+    listed = []
     try:
-        paginator = s3.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="pos_orders/"):
+        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=_POS_PREFIX):
             for obj in page.get("Contents", []):
-                try:
-                    data = s3.get_object(Bucket=R2_BUCKET, Key=obj["Key"])
-                    orders.append(json.loads(data["Body"].read()))
-                except Exception:
-                    pass
+                key = obj["Key"]
+                day = key[len(_POS_PREFIX):len(_POS_PREFIX) + 10]
+                if (a and day < a) or (b and day > b):
+                    continue
+                listed.append((key, obj.get("ETag", "")))
     except Exception:
         pass
+    with _pos_order_cache_lock:
+        stale = [(k, e) for k, e in listed if _pos_order_cache.get(k, ("",))[0] != e or not e]
+
+    def read(key_etag):
+        key, etag = key_etag
+        try:
+            rec = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=key)["Body"].read())
+        except Exception:
+            return
+        with _pos_order_cache_lock:
+            _pos_order_cache[key] = (etag, rec)
+    if stale:
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            list(ex.map(read, stale))
+    with _pos_order_cache_lock:
+        orders = [dict(_pos_order_cache[k][1]) for k, _ in listed if k in _pos_order_cache]
     if after or before:
-        a, b = (after or "")[:10], (before or "")[:10]
         orders = [o for o in orders
                   if (not a or o.get("date","") >= a)
                   and (not b or o.get("date","") <= b)]
