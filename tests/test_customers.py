@@ -185,5 +185,17 @@ def test_customer_save_failure_never_blocks_the_sale(client, main_module, monkey
 
 def test_history_gallery_link_points_at_real_download_route(main_module):
     import inspect
-    src = inspect.getsource(main_module.api_customer_history)
+    from routes import customers
+    src = inspect.getsource(customers.api_customer_history)
     assert '"/download/{token}"' in src.replace("f\"", "\"") and "/d/{token}" not in src
+
+
+def test_customer_filter_is_reachable_not_mistaken_for_a_customer_id(admin_client, main_module, monkeypatch):
+    # /api/admin/customers/filtered used to be caught by /api/admin/customers/{cid} ("Customer not found")
+    monkeypatch.setattr(main_module, "_fetch_pos_orders", lambda *a, **k: [
+        {"id": "p1", "date": "2026-10-18", "created": "2026-10-18T10:00:00", "email": "pos@example.com",
+         "name": "Pat Smith", "items": [], "total": 25}])
+    monkeypatch.setattr(main_module, "_fetch_wc_orders_all", lambda *a, **k: [])
+    r = admin_client.get("/api/admin/customers/filtered?date_from=2026-10-01&date_to=2026-10-31&types=in-person")
+    assert r.status_code == 200 and "customers" in r.json()
+    assert [c["email"] for c in r.json()["customers"]] == ["pos@example.com"]
