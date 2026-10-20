@@ -89,3 +89,17 @@ def owner_client(main_module):
     c.cookies.set(main_module.ADMIN_COOKIE, main_module._create_admin_session())
     c.cookies.set(main_module.OWNER_COOKIE, main_module._owner_token(int(time.time()) + 600))
     return c
+
+
+@pytest.fixture()
+def live_photos(main_module):
+    """Put photos in the live photo list for a test (restored afterwards)."""
+    saved = main_module.data
+
+    def use(items):
+        main_module.data = list(items)
+        main_module._index_state["version"] += 1
+        return main_module.data
+    yield use
+    main_module.data = saved
+    main_module._index_state["version"] += 1

@@ -35,6 +35,14 @@ def best_tier_price(count: int, tiers: list) -> float:
     return round(best, 2)
 
 
+def selection_limit(tiers: list):
+    """Most photos one folder can have in an online order (the gallery's rule): the largest
+    "Up to" tier, an "All Photos"-style capped tier counting as 30; None if no tier caps it."""
+    caps = [t["count"] if isinstance(t.get("count"), (int, float)) and not isinstance(t.get("count"), bool) else 30
+            for t in tiers if t.get("max")]
+    return max(caps) if caps else None
+
+
 def pricing_for(location: str = None, date: str = None, family: str = None, *,
                 load_pricing, load_folder_meta, load_zip_pricing, load_items_bundles) -> dict:
     """The pricing tiers the shop shows for a folder (location, date, family): zip group

@@ -39,8 +39,24 @@ class _Resp:
         return self._payload
 
 
+ED = "images/2026-06-07/el-dorado-action/"
+SM = "images/2026-06-07/big-sky-sign/smith/"
+
+
+def _photo(path, loc, **kw):
+    return {"path": path, "date": "2026-06-07", "location": loc, "last_name": "", "group": "", **kw}
+
+
 @pytest.fixture()
-def woo(main_module, monkeypatch):
+def woo(main_module, monkeypatch, live_photos):
+    live_photos([_photo(ED + n, "El Dorado Action") for n in ("A.jpg", "B.jpg", "Z.jpg")] +
+                [_photo(SM + n, "Big Sky Sign", last_name="Smith") for n in ("S1.jpg", "a.jpg", "b.jpg", "c.jpg", "d.jpg")])
+    S3.put_object(Bucket="test-bucket", Key="meta/folder_meta.json", Body=json.dumps({
+        "2026-06-07|Big Sky Sign|Smith": {"poses": [
+            {"color": "Red", "label": "Red", "files": ["S1.jpg", "a.jpg", "b.jpg"]},
+            {"color": "Blue", "label": "Blue", "files": ["c.jpg"]},
+            {"color": "", "label": "Unlabeled", "files": ["d.jpg"]}], "poses_live": True}}).encode())
+    main_module._folder_meta_cache["data"] = None
     S3.put_object(Bucket="test-bucket", Key="meta/pricing.json", Body=json.dumps({
         "default": {"tiers": [{"count": 1, "price": 30}, {"count": "all", "price": 100}]},
         "activity_categories": [{"name": "Winter Action", "acts": ["El Dorado Action"]},
@@ -66,7 +82,9 @@ def woo(main_module, monkeypatch):
     yield fake
     S3.delete_object(Bucket="test-bucket", Key="meta/pricing.json")
     S3.delete_object(Bucket="test-bucket", Key="meta/discount_codes.json")
+    S3.delete_object(Bucket="test-bucket", Key="meta/folder_meta.json")
     main_module._pricing_cache["data"] = None
+    main_module._folder_meta_cache["data"] = None
 
 
 def _order(client, woo, **body):
@@ -95,14 +113,17 @@ PRINT_8X10 = {"filename": "IMG_9.jpg", "size": '8×10"', "size_idx": 1, "orienta
 
 # ── Unchanged behaviour ──────────────────────────────────────────────────────
 
+POSE_BASE = {"family": "Smith", "date": "2026-06-07", "location": "Big Sky Sign"}
+
+
 def test_portrait_poses_and_singles(client, woo):
     order = _order(client, woo,
-                   portrait_poses=[{"pose_label": "Red", "files": ["a.jpg", "b.jpg"], "paths": ["images/a", "images/b"], "family": "Smith"},
-                                   {"pose_label": "Blue", "files": ["c.jpg"], "paths": ["images/c"], "family": "Smith"}],
-                   portrait_singles=[{"filename": "d.jpg", "path": "images/d", "family": "Smith"}])
+                   portrait_poses=[{**POSE_BASE, "pose_label": "Red", "color": "Red", "files": ["a.jpg", "b.jpg"], "paths": [SM + "a.jpg", SM + "b.jpg"]},
+                                   {**POSE_BASE, "pose_label": "Blue", "color": "Blue", "files": ["c.jpg"], "paths": [SM + "c.jpg"]}],
+                   portrait_singles=[{"filename": "d.jpg", "path": SM + "d.jpg", "family": "Smith"}])
     names = [n for n, _ in _lines(order)]
     assert names == ["Portrait Red (2 photos) — Smith", "Portrait Blue (1 photo) — Smith", "Portrait Single Photo — Smith"]
-    assert "images/a|images/b|images/c|images/d" in _meta(order)["_photo_paths"]
+    assert _meta(order)["_photo_paths"] == "|".join(SM + n for n in ("a.jpg", "b.jpg", "c.jpg", "d.jpg"))
 
 
 def test_one_unframed_print_pays_its_shipping(client, woo):
@@ -140,10 +161,10 @@ def test_coupon_goes_to_woocommerce_and_order_meta(client, woo):
 def test_order_meta_for_delivery(client, woo):
     order = _order(client, woo, digital_albums=[{"location": "El Dorado Action", "date": "2026-06-07", "count": 2,
                                                  "last_name": "El Dorado Action", "filenames": ["A.jpg", "B.jpg"],
-                                                 "paths": ["images/a", "images/b"]}],
-                   digital_filenames=["A.jpg", "B.jpg"], digital_paths=["images/a", "images/b"])
+                                                 "paths": [ED + "A.jpg", ED + "B.jpg"]}],
+                   digital_filenames=["A.jpg", "B.jpg"], digital_paths=[ED + "A.jpg", ED + "B.jpg"])
     meta = _meta(order)
-    assert meta["_photo_files"] == "A.jpg, B.jpg" and meta["_photo_paths"] == "images/a|images/b"
+    assert meta["_photo_files"] == "A.jpg, B.jpg" and meta["_photo_paths"] == ED + "A.jpg|" + ED + "B.jpg"
     assert meta["_photo_location"] == "El Dorado Action" and meta["_photo_date"] == "2026-06-07"
     assert order["billing"]["email"] == "ann@example.com"
     assert _lines(order) == [("Digital Photos — El Dorado Action", 50.0)]
@@ -152,14 +173,15 @@ def test_order_meta_for_delivery(client, woo):
 # ── Prices the server now works out itself ───────────────────────────────────
 
 ALBUM = {"location": "El Dorado Action", "date": "2026-06-07", "count": 2, "last_name": "El Dorado Action",
-         "filenames": ["A.jpg", "B.jpg"], "paths": ["images/2026-06-07/el-dorado/A.jpg", "images/2026-06-07/el-dorado/B.jpg"]}
-POSE = {"pose_label": "Red", "files": ["S1.jpg"], "paths": ["images/2026-06-07/big-sky-sign/S1.jpg"], "family": "Smith"}
+         "filenames": ["A.jpg", "B.jpg"], "paths": [ED + "A.jpg", ED + "B.jpg"]}
+POSE = {"pose_label": "Red", "color": "Red", "files": ["S1.jpg"], "paths": [SM + "S1.jpg"],
+        "family": "Smith", "date": "2026-06-07", "location": "Big Sky Sign"}
 
 
 def test_print_of_a_photo_also_bought_digitally_is_half_price(client, woo):
     order = _order(client, woo, digital_albums=[ALBUM],
                    prints=[{**PRINT_8X10, "filename": "A.jpg", "path": ALBUM["paths"][0]},
-                           {**PRINT_8X10, "filename": "Z.jpg", "path": "images/2026-06-07/el-dorado/Z.jpg"}])
+                           {**PRINT_8X10, "filename": "Z.jpg", "path": ED + "Z.jpg"}])
     assert _lines(order)[1:] == [('8×10" Print — A.jpg', 15.0), ('8×10" Print — Z.jpg', 30.0)]
 
 
@@ -223,7 +245,7 @@ def bundle(woo, main_module):
 
 
 BUNDLE_CART = dict(digital_albums=[ALBUM], portrait_poses=[POSE],
-                   prints=[{**PRINT_8X10, "filename": "Z.jpg", "path": "images/2026-06-07/el-dorado/Z.jpg"}])
+                   prints=[{**PRINT_8X10, "filename": "Z.jpg", "path": ED + "Z.jpg"}])
 
 
 def test_bundle_takes_its_percent_off_every_item(client, bundle):
@@ -298,3 +320,64 @@ def test_shop_prices_for_the_pages(client, woo):
     assert [s["price"] for s in d["print_sizes"]] == [25.0, 30.0, 45.0, 90.0]
     assert [f["landscape"] for f in d["frame_prices"]] == [30.0, 40.0, 60.0, 140.0]
     assert d["logo_fee"] == 2.0 and d["free_ship_threshold"] == 3
+
+
+# ── Only what's paid for is delivered (2026-10-19) ───────────────────────────
+
+def test_extra_photos_listed_by_the_browser_are_not_delivered(client, woo):
+    album = {**ALBUM, "count": 1, "filenames": ["A.jpg"], "paths": [ED + "A.jpg"]}
+    order = _order(client, woo, digital_albums=[album],
+                   digital_paths=[ED + "A.jpg", ED + "B.jpg", ED + "Z.jpg"])          # tries for the whole folder
+    assert _meta(order)["_photo_paths"] == ED + "A.jpg"
+    assert _lines(order) == [("Digital Photos — El Dorado Action", 25.0)]
+
+
+@pytest.mark.parametrize("paths,count", [
+    ([ED + "A.jpg", ED + "B.jpg", ED + "Z.jpg"], 1),          # more photos than paid for
+    ([ED + "A.jpg", SM + "a.jpg"], 2),                         # a photo from another folder
+    ([ED + "A.jpg", "images/2026-06-07/el-dorado-action/NOT_LIVE.jpg"], 2),   # not a published photo
+    ([], 2),                                                   # no photos listed at all
+])
+def test_album_photos_must_be_the_folders_and_match_the_count(client, woo, paths, count):
+    r = client.post("/api/checkout", json={"digital_albums": [{**ALBUM, "count": count, "paths": paths}],
+                                           "email": "ann@example.com", "date": "2026-06-07"})
+    assert r.status_code == 400 and "isn't right (photos)" in r.json()["error"]
+    assert woo.created == []
+
+
+def test_unpublished_draft_photos_cannot_be_bought(client, woo, main_module):
+    main_module.data.append(_photo(ED + "DRAFT.jpg", "El Dorado Action", draft=True))
+    main_module._index_state["version"] += 1
+    r = client.post("/api/checkout", json={"digital_albums": [{**ALBUM, "count": 1, "paths": [ED + "DRAFT.jpg"]}],
+                                           "email": "ann@example.com", "date": "2026-06-07"})
+    assert r.status_code == 400
+
+
+def test_more_than_30_winter_action_photos_online_is_refused(client, woo, main_module):
+    many = [_photo(ED + f"M{i}.jpg", "El Dorado Action") for i in range(31)]
+    main_module.data.extend(many); main_module._index_state["version"] += 1
+    album = {**ALBUM, "count": 31, "paths": [p["path"] for p in many]}
+    r = client.post("/api/checkout", json={"digital_albums": [album], "email": "ann@example.com", "date": "2026-06-07"})
+    assert r.status_code == 400 and "up to 30 photos" in r.json()["error"]
+    album30 = {**ALBUM, "count": 30, "paths": [p["path"] for p in many[:30]]}
+    assert _lines(_order(client, woo, digital_albums=[album30])) == [("Digital Photos — El Dorado Action", 115.0)]
+
+
+@pytest.mark.parametrize("pose", [
+    {**POSE, "paths": [SM + "S1.jpg", SM + "c.jpg"]},          # a photo from a different pose
+    {**POSE, "color": "Green"},                                 # a pose the folder doesn't have
+    {**POSE, "family": "Jones"},                                # another family's folder
+    {**POSE, "paths": [ED + "A.jpg"]},                          # an action photo dressed up as a pose
+])
+def test_portrait_poses_must_match_the_folders_poses(client, woo, pose):
+    r = client.post("/api/checkout", json={"portrait_poses": [pose], "email": "ann@example.com", "date": "2026-06-07"})
+    assert r.status_code == 400 and "portrait poses" in r.json()["error"]
+
+
+@pytest.mark.parametrize("single", [
+    {"filename": "A.jpg", "path": ED + "A.jpg", "family": "Smith"},        # not a portrait photo
+    {"filename": "d.jpg", "path": SM + "d.jpg", "family": "Jones"},        # another family
+])
+def test_portrait_singles_must_be_that_familys_photos(client, woo, single):
+    r = client.post("/api/checkout", json={"portrait_singles": [single], "email": "ann@example.com", "date": "2026-06-07"})
+    assert r.status_code == 400 and "portrait photos" in r.json()["error"]

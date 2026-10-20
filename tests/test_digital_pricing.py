@@ -60,7 +60,7 @@ def live_like_pricing(main_module):
 
 @pytest.mark.parametrize("location,date,count,expected", [
     ("El Dorado Action", "2026-06-07", 2, 50),       # category (Winter Action) pricing, not $115
-    ("Mr K Action", "2026-06-07", 40, 115),          # empty own tiers -> category pricing, capped
+    ("Mr K Action", "2026-06-07", 30, 115),          # empty own tiers -> category pricing, capped
     ("Mountain Biking", "2026-07-15", 4, 70),        # was charged $0
     ("Mountain Biking", "2026-07-15", 7, 70),        # was charged $0
     ("Dirt Days", "2026-07-15", 3, 60),              # its category's prices, as the gallery shows
@@ -71,6 +71,19 @@ def test_album_price_is_what_the_gallery_shows(main_module, live_like_pricing, l
     shown = main_module._best_tier_price(count, main_module._pricing_for(location, date, "Smith")["tiers"])
     charged = main_module._server_digital_price({"location": location, "count": count, "last_name": "Smith"}, date)
     assert shown == charged == expected
+
+
+@pytest.mark.parametrize("location,count,allowed", [
+    ("Mr K Action", 30, True), ("Mr K Action", 31, False), ("El Dorado Action", 900, False),   # "Up to 30"
+    ("Lone Peak Portraits", 40, True),                                                      # no cap: All Photos
+])
+def test_online_orders_stop_at_the_folders_photo_limit(main_module, live_like_pricing, location, count, allowed):
+    album = {"location": location, "count": count, "last_name": "Smith"}
+    if allowed:
+        assert main_module._server_digital_price(album, "2026-07-15") > 0
+    else:
+        with pytest.raises(ValueError, match="up to 30 photos"):
+            main_module._server_digital_price(album, "2026-07-15")
 
 
 def test_album_with_no_prices_set_up_is_refused(main_module, live_like_pricing):
@@ -98,25 +111,37 @@ def _checkout(client, albums, date="2026-06-07"):
                                               "date": date, "email": "ann@example.com"})
 
 
+def _live(date, loc, names, **kw):
+    slug = loc.lower().replace(" ", "-")
+    return [{"path": f"images/{date}/{slug}/{n}", "date": date, "location": loc, "last_name": "", "group": "", **kw}
+            for n in names]
+
+
 def test_checkout_charges_each_album_by_its_own_folder_and_date(client, main_module, live_like_pricing,
-                                                                monkeypatch):
+                                                                monkeypatch, live_photos):
     woo = _WooOrders()
     monkeypatch.setattr(main_module.http_requests, "post", woo.post)
+    ed = _live("2026-06-07", "El Dorado Action", ["A.jpg", "B.jpg"])
+    lp = _live("2026-08-07", "Lone Peak Portraits", ["C.jpg", "D.jpg", "E.jpg"], last_name="Smith")
+    live_photos(ed + lp)
     r = _checkout(client, [
         {"location": "El Dorado Action", "date": "2026-06-07", "count": 2, "last_name": "El Dorado Action",
-         "filenames": ["A.jpg", "B.jpg"], "paths": ["images/a", "images/b"]},
+         "filenames": ["A.jpg", "B.jpg"], "paths": [p["path"] for p in ed]},
         {"location": "Lone Peak Portraits", "date": "2026-08-07", "count": 3, "last_name": "Smith",
-         "filenames": ["C.jpg"], "paths": ["images/c"]},
+         "filenames": ["C.jpg", "D.jpg", "E.jpg"], "paths": [p["path"] for p in lp]},
     ], date="2026-06-07")
     assert r.status_code == 200
     totals = [float(li["total"]) for li in woo.created[0]["line_items"]]
     assert totals == [50.0, 30.0]
 
 
-def test_checkout_with_unpriced_photos_is_refused_not_free(client, main_module, live_like_pricing, monkeypatch):
+def test_checkout_with_unpriced_photos_is_refused_not_free(client, main_module, live_like_pricing, monkeypatch,
+                                                          live_photos):
     woo = _WooOrders()
     monkeypatch.setattr(main_module.http_requests, "post", woo.post)
-    r = _checkout(client, [{"location": "Big Sky Sign", "count": 2, "last_name": "Big Sky Sign"}])
+    sign = live_photos(_live("2026-06-07", "Big Sky Sign", ["S1.jpg", "S2.jpg"]))
+    r = _checkout(client, [{"location": "Big Sky Sign", "count": 2, "last_name": "Big Sky Sign",
+                            "paths": [p["path"] for p in sign]}])
     assert r.status_code == 400 and "aren't set up" in r.json()["error"]
     assert woo.created == []
 

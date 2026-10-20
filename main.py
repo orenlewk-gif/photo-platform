@@ -34,7 +34,7 @@ from core.checkout import (CATEGORIES, CheckoutError, activity_groups, bundle_fo
                            coupon_item_discount, coupon_scope, parse_int, shipping_for)
 from core.classify import MODEL_LABEL, ColorModel
 from core.index import SEARCHABLE_GROUP_LOCATIONS, build_folder_index as _build_folder_index
-from core.pricing import ZIP_LOCS_SET, best_tier_price, pricing_for
+from core.pricing import ZIP_LOCS_SET, best_tier_price, pricing_for, selection_limit
 from core.search import COLOR_ENUM, filter_by_labels, match_last_name
 from core.storage import JsonDoc
 from core.text import (clean_location, folder_key as _folder_key, item_group_from_path as _item_group_from_path,
@@ -685,6 +685,10 @@ def _server_digital_price(album: dict, order_date: str) -> float:
                          (album.get("last_name") or "").strip() or None).get("tiers") or []
     if count > 0 and not tiers:
         raise ValueError(f"Prices for {album.get('location') or 'these photos'} aren't set up yet")
+    limit = selection_limit(tiers)
+    if limit and count > limit:      # online orders only; staff can sell more at the POS
+        raise ValueError(f"You can choose up to {limit:g} photos from {album.get('location') or 'one folder'} — "
+                         f"please remove {count - limit:g} and try again")
     return _best_tier_price(count, tiers)
 
 def _server_print_price(size_idx: int) -> float:
@@ -1827,6 +1831,32 @@ def _frame_price(variation_id: int) -> float:
     return v["price"]
 
 
+def _checked_pose_paths(pose: dict, date: str, location: str, last_name: str, live: dict) -> list:
+    """The photos of a portrait pose, if they really are that pose in that family's folder
+    (from the folder's pose settings); otherwise the order is refused."""
+    p_date = (pose.get("date") or date or "").strip()
+    p_loc = (pose.get("location") or location or "").strip()
+    family = (pose.get("family") or last_name or "").strip()
+    meta_poses = _load_folder_meta().get(_folder_key(p_date, p_loc, family), {}).get("poses", [])
+    match = next((mp for mp in meta_poses if (mp.get("color") or "") == (pose.get("color") or "")
+                  and (not pose.get("pose_label") or mp.get("label") == pose.get("pose_label"))), None)
+    paths = list(dict.fromkeys(p for p in pose.get("paths", []) if p))
+    files = set((match or {}).get("files", []))
+    if not match or not paths or not all(live.get(p) and live[p]["date"] == p_date
+                                         and p.rsplit("/", 1)[-1] in files for p in paths):
+        raise CheckoutError("One of the portrait poses in your cart isn't available — please refresh the page and try again")
+    return paths
+
+
+def _check_portrait_single(single: dict, last_name: str, live: dict) -> None:
+    """A single portrait photo must be a published photo from that family's portrait folder."""
+    it = live.get(single.get("path") or "")
+    family = (single.get("family") or last_name or "").strip().lower()
+    if not it or not _is_portrait_location(it.get("location", "")) or \
+            (it.get("last_name") or it.get("group") or "").strip().lower() != family:
+        raise CheckoutError("One of the portrait photos in your cart isn't available — please refresh the page and try again")
+
+
 def _price_order(body: dict) -> dict:
     """Price an online cart. Returns the WooCommerce order parts (line_items,
     fee_lines, coupon_lines, meta) and the summary the checkout page shows."""
@@ -1848,8 +1878,17 @@ def _price_order(body: dict) -> dict:
     # ── Digital albums (priced like the gallery shows them) ──
     albums = [a for a in (body.get("digital_albums") or []) if int(a.get("count") or 0) > 0]
     album_paths, locations = [], set()
+    live = _folder_index()["by_path"]          # published photos by path
     for a in albums:
         count = parse_int(a.get("count"), 0, 1, 10000, "photo count")
+        # Only the photos paid for are delivered: each must be a published photo from this
+        # album's folder, and there must be exactly as many as are charged for.
+        a_paths = list(dict.fromkeys(p for p in (a.get("paths") or []) if p))
+        a_date, a_loc = (a.get("date") or date).strip(), clean_location(a.get("location") or "")
+        if len(a_paths) != count or not all(
+                (it := live.get(p)) and it["date"] == a_date and clean_location(it["location"]) == a_loc
+                for p in a_paths):
+            raise CheckoutError("Something in your cart isn't right (photos) — please refresh the page and try again")
         try:
             price = _server_digital_price(a, date)
         except ValueError as e:
@@ -1859,7 +1898,7 @@ def _price_order(body: dict) -> dict:
                                "name": f"Digital Photos — {label}",
                                "meta_data": [{"key": "Photos", "value": f"{count} digital photo{'s' if count != 1 else ''}"}]},
             sub=f"{count} photo{'s' if count != 1 else ''}")
-        album_paths += [p for p in (a.get("paths") or []) if p]
+        album_paths += a_paths
         if a.get("location"):
             locations.add(a["location"].strip().lower())
 
@@ -1874,7 +1913,7 @@ def _price_order(body: dict) -> dict:
         pose_price = float(pose_tiers[min(len(poses) - 1, len(pose_tiers) - 1)]) if poses else 0.0
         for pose in poses:
             n = len(pose.get("files", []))
-            paths = [p for p in pose.get("paths", []) if p]
+            paths = _checked_pose_paths(pose, date, location, last_name, live)
             add("digital", pose_price, {
                 "product_id": WC_DIGITAL_PRODUCT_ID, "quantity": 1,
                 "name": f"Portrait {pose.get('pose_label', 'Pose')} ({n} photo{'s' if n != 1 else ''}) — {pose.get('family', last_name or location)}",
@@ -1882,6 +1921,7 @@ def _price_order(body: dict) -> dict:
                               {"key": "_photo_paths", "value": "|".join(paths)}]})
             portrait_paths += paths
         for single in singles:
+            _check_portrait_single(single, last_name, live)
             add("digital", single_price, {
                 "product_id": WC_DIGITAL_PRODUCT_ID, "quantity": 1,
                 "name": f"Portrait Single Photo — {single.get('family', last_name or location)}",
@@ -1891,7 +1931,7 @@ def _price_order(body: dict) -> dict:
             if single.get("path"):
                 portrait_paths.append(single["path"])
 
-    bought_digital = set(album_paths) | set(portrait_paths) | {p for p in (body.get("digital_paths") or []) if p}
+    bought_digital = set(album_paths) | set(portrait_paths)
 
     # ── Big Sky Resort logo on digital photos (edited by hand, so listed by name) ──
     logo_paths = [p for p in dict.fromkeys(body.get("digital_logo_paths") or []) if p in bought_digital]
@@ -1984,12 +2024,12 @@ def _price_order(body: dict) -> dict:
     # ── WooCommerce order parts ──
     line_items = [{**it["line"], "subtotal": str(it["price"]), "total": str(it["price"])} for it in items]
     fee_lines = [{"name": "Shipping", "total": str(shipping)}] if shipping else []
-    filenames = list(body.get("digital_filenames") or []) + [s.get("filename", "") for s in singles]
+    filenames = [p.rsplit("/", 1)[-1] for p in album_paths] + [s.get("filename", "") for s in singles]
     meta = [
         {"key": "_photo_location", "value": location},
         {"key": "_photo_date",     "value": date},
         {"key": "_photo_files",    "value": ", ".join(filenames)},
-        {"key": "_photo_paths",    "value": "|".join(list(body.get("digital_paths") or []) + portrait_paths)},
+        {"key": "_photo_paths",    "value": "|".join(list(dict.fromkeys(album_paths + portrait_paths)))},
     ]
     if coupon:
         meta += [{"key": "_coupon_code", "value": code_in.lower()},

@@ -6,7 +6,7 @@ SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
 
 
 def build_folder_index(items: list) -> dict:
-    by_date, folders, date_locs = {}, {}, {}
+    by_date, folders, date_locs, by_path = {}, {}, {}, {}
     name_keys, name_previews = [], {}
     for item in items:
         loc = clean_location(item["location"])
@@ -31,6 +31,7 @@ def build_folder_index(items: list) -> dict:
                     name_previews[key].append(path)
         if item.get("draft"):
             continue
+        by_path[item.get("path", "")] = item
         by_date.setdefault(item["date"], []).append(item)
         folders.setdefault((item["date"], loc), []).append(item)
         if item.get("date", "").strip() and loc:
@@ -64,5 +65,5 @@ def build_folder_index(items: list) -> dict:
 
     pos_dates = [{"date": d, "locations": sorted(date_locs[d])}
                  for d in sorted(date_locs, reverse=True)[:90]]
-    return {"by_date": by_date, "folders": folders, "days": {"days": days},
+    return {"by_date": by_date, "folders": folders, "by_path": by_path, "days": {"days": days},
             "pos_dates": {"dates": pos_dates}, "name_keys": name_keys, "name_previews": name_previews}
