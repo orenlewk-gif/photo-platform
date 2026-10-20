@@ -2054,10 +2054,11 @@ def _build_followup_email(email: str, body: dict):
     {html_inner}
     <hr style="border:none;border-top:1px solid #eee;margin:1.5rem 0 1rem">
     <p style="margin:0;font-size:.75rem;color:#aaa">Questions? <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a></p>
+    {_marketing_footer_html(email)}
   </div>
 </div></body></html>"""
 
-    return ftype, subject, html, text_inner
+    return ftype, subject, html, text_inner + _marketing_footer_text(email)
 
 
 def _find_pos_order(order_id: str, date: str, token: str = ""):
@@ -3139,6 +3140,8 @@ import copy as _copy
 _SETTINGS_DEFAULTS: dict = {
     "time_filter_locations": [],
     "site":     {"name": "Crystal Images", "tagline": "", "logo_url": ""},
+    # Shown in the site footer and at the bottom of marketing emails (the law requires a mailing address there)
+    "business": {"name": "Crystal Images", "address": "", "phone": "(406) 404-6680", "email": "info@bigskyphotos.com"},
     "frontend": {"accent": "#F5C430", "page_bg": "#093A52", "panel_bg": "#093A53"},
     "admin":    {"accent": "#F5C430", "page_bg": "#093A52", "panel_bg": "#093A52"},
 }
@@ -3434,7 +3437,9 @@ def _review_button_html(review_url: str) -> str:
         f'Leave a Review</a></p>'
     )
 
-def _wrap_email_html(body_html: str) -> str:
+def _wrap_email_html(body_html: str, marketing_to: str = "") -> str:
+    """The email shell. marketing_to = the recipient of a marketing email (follow-ups,
+    offers): adds the business address and an unsubscribe link, as the law requires."""
     return (
         '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">'
         '<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">'
@@ -3443,8 +3448,83 @@ def _wrap_email_html(body_html: str) -> str:
         + body_html +
         '<hr style="border:none;border-top:1px solid #eee;margin:1.5rem 0 1rem">'
         '<p style="margin:0;font-size:.72rem;color:#aaa">Questions? <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a></p>'
+        + (_marketing_footer_html(marketing_to) if marketing_to else '') +
         '</div></div></body></html>'
     )
+
+
+# ── Marketing email opt-outs ──────────────────────────────────────────────────
+# Follow-ups, review requests and offers are marketing email: each one carries the business
+# mailing address and a working unsubscribe link (one click, also from Gmail/Apple Mail's own
+# button), and unsubscribed addresses are never sent marketing again. Receipts, download links
+# and sign-in codes are transactional and always go out.
+EMAIL_OPTOUTS_KEY = "meta/email_optouts.json"
+_email_optouts_doc = JsonDoc(s3, R2_BUCKET, EMAIL_OPTOUTS_KEY, ttl=30, default=dict)
+_email_optouts_lock = threading.Lock()
+
+
+def _unsub_sig(part: str) -> str:
+    secret = (os.getenv("UNSUBSCRIBE_SECRET") or ADMIN_PASSWORD or "").encode()
+    return hmac.new(secret, f"unsub|{part}".encode(), hashlib.sha256).hexdigest()[:24]
+
+
+def _unsubscribe_token(email: str) -> str:
+    e = base64.urlsafe_b64encode(email.strip().lower().encode()).decode().rstrip("=")
+    return f"{e}.{_unsub_sig(e)}"
+
+
+def _email_from_unsubscribe_token(token: str) -> str | None:
+    e, _, sig = (token or "").partition(".")
+    if not e or not hmac.compare_digest(sig, _unsub_sig(e)):
+        return None
+    try:
+        return base64.urlsafe_b64decode(e + "=" * (-len(e) % 4)).decode()
+    except Exception:
+        return None
+
+
+def _unsubscribe_url(email: str) -> str:
+    return f"{SITE_URL}/unsubscribe/{_unsubscribe_token(email)}"
+
+
+def _opted_out(email: str) -> dict | None:
+    return _email_optouts_doc.load().get((email or "").strip().lower())
+
+
+def _record_optout(email: str, how: str) -> None:
+    key = (email or "").strip().lower()
+    if not key:
+        return
+    with _email_optouts_lock:
+        _email_optouts_doc.cache["data"] = None          # read the latest before changing it
+        optouts = _email_optouts_doc.load()
+        if key not in optouts:
+            optouts[key] = {"date": datetime.now(timezone.utc).isoformat(), "how": how}
+            _email_optouts_doc.save(optouts)
+
+
+def _business_details() -> dict:
+    saved = _load_settings().get("business") or {}
+    return {**_SETTINGS_DEFAULTS["business"], **{k: v for k, v in saved.items() if v}}
+
+
+def _marketing_footer_html(email: str) -> str:
+    b = _business_details()
+    where = ", ".join(x for x in (b.get("name"), b.get("address")) if x)
+    return (f'<p style="margin:.75rem 0 0;font-size:.7rem;color:#aaa;line-height:1.5">{_html_escape(where)}<br>'
+            f'You\'re receiving this because you bought photos from us. '
+            f'<a href="{_unsubscribe_url(email)}" style="color:#888">Unsubscribe</a></p>')
+
+
+def _marketing_footer_text(email: str) -> str:
+    b = _business_details()
+    where = ", ".join(x for x in (b.get("name"), b.get("address")) if x)
+    return f"\n\n--\n{where}\nUnsubscribe: {_unsubscribe_url(email)}"
+
+
+def _list_unsubscribe_headers(email: str) -> dict:
+    return {"List-Unsubscribe": f"<{_unsubscribe_url(email)}>, <mailto:info@bigskyphotos.com?subject=unsubscribe>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
 
 def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str):
     if not RESEND_API_KEY:
@@ -3702,3 +3782,9 @@ app.include_router(_routes_admin_settings.router)
 
 from routes import admin_photos as _routes_admin_photos  # noqa: E402
 app.include_router(_routes_admin_photos.router)
+
+from routes import unsubscribe as _routes_unsubscribe  # noqa: E402
+app.include_router(_routes_unsubscribe.router)
+
+from routes import legal as _routes_legal  # noqa: E402
+app.include_router(_routes_legal.router)

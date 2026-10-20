@@ -304,6 +304,10 @@ def api_customer_followup(email: str, request: Request, body: dict = Body(...)):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     if not main.RESEND_API_KEY:
         return JSONResponse(status_code=503, content={"error": "Email not configured — RESEND_API_KEY is missing"})
+    optout = main._opted_out(email)
+    if optout:
+        return JSONResponse(status_code=409, content={
+            "error": f"This customer unsubscribed from marketing emails on {optout.get('date', '')[:10]}"})
     built = main._build_followup_email(email, body)
     if isinstance(built, JSONResponse):
         return built
@@ -313,7 +317,8 @@ def api_customer_followup(email: str, request: Request, body: dict = Body(...)):
         r = http_requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {main.RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={"from": main.RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": text_inner},
+            json={"from": main.RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": text_inner,
+                  "headers": main._list_unsubscribe_headers(email)},
             timeout=10,
         )
         if not r.ok:
@@ -370,6 +375,9 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
 
     results = []
     for email in emails:
+        if main._opted_out(email):
+            results.append({"email": email, "ok": False, "error": "unsubscribed", "subject": ""})
+            continue
         cust = main._customer_by_email(customers, email)
         first_name = (cust.get("first") or "").strip() if cust else ""
 
@@ -393,7 +401,8 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
         for k, v in plain_vars.items():
             subject = subject.replace(f"{{{{{k}}}}}", str(v))
         body_html, body_text = main._render_email_body(tmpl["body"], plain_vars, html_blocks)
-        html = main._wrap_email_html(body_html)
+        html = main._wrap_email_html(body_html, marketing_to=email)
+        body_text += main._marketing_footer_text(email)
 
         ok = False
         err = ""
@@ -401,7 +410,8 @@ def api_bulk_followup(request: Request, body: dict = Body(...)):
             r = http_requests.post(
                 "https://api.resend.com/emails",
                 headers={"Authorization": f"Bearer {main.RESEND_API_KEY}", "Content-Type": "application/json"},
-                json={"from": main.RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": body_text},
+                json={"from": main.RESEND_FROM, "to": [email], "subject": subject, "html": html, "text": body_text,
+                      "headers": main._list_unsubscribe_headers(email)},
                 timeout=10,
             )
             ok = r.ok

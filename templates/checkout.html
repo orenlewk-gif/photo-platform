@@ -33,7 +33,7 @@
       text-decoration: none;
     }
     .co-back {
-      color: rgba(255,255,255,.5);
+      color: rgba(255,255,255,.75);
       font-size: 0.85rem;
       text-decoration: none;
       display: flex;
@@ -76,7 +76,7 @@
       font-weight: 700;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      color: rgba(255,255,255,.35);
+      color: rgba(255,255,255,.65);
       margin-bottom: 1.25rem;
     }
 
@@ -86,7 +86,7 @@
     .co-label {
       font-size: 0.75rem;
       font-weight: 600;
-      color: rgba(255,255,255,.5);
+      color: rgba(255,255,255,.75);
       margin-bottom: 0.4rem;
       letter-spacing: .04em;
       text-transform: uppercase;
@@ -134,6 +134,8 @@
     }
 
     /* ── Submit button ── */
+    .co-consent { font-size: .8rem; line-height: 1.5; color: rgba(255,255,255,.75); margin: 0 0 .9rem; }
+    .co-consent a { color: #F5C518; }
     .co-submit {
       width: 100%;
       background: #F5C518;
@@ -206,7 +208,7 @@
     }
     .co-item:last-of-type { border-bottom: none; }
     .co-item-name { color: rgba(255,255,255,.8); flex: 1; padding-right: 1rem; }
-    .co-item-sub { font-size: 0.75rem; color: rgba(255,255,255,.35); margin-top: 2px; }
+    .co-item-sub { font-size: 0.75rem; color: rgba(255,255,255,.65); margin-top: 2px; }
     .co-item-price { font-weight: 700; color: #F5C518; white-space: nowrap; }
 
     /* Coupon */
@@ -271,7 +273,7 @@
     .co-total-final .amt { font-size: 1.2rem; color: #F5C518; }
     .co-tax-note {
       font-size: 0.72rem;
-      color: rgba(255,255,255,.25);
+      color: rgba(255,255,255,.6);
       text-align: right;
       margin-top: 0.5rem;
     }
@@ -297,7 +299,7 @@
     .co-empty {
       text-align: center;
       padding: 3rem 1rem;
-      color: rgba(255,255,255,.35);
+      color: rgba(255,255,255,.65);
     }
     .co-empty a { color: #F5C518; font-weight: 600; text-decoration: none; }
 
@@ -347,7 +349,7 @@
     <div class="co-card">
       <div class="co-card-title">Contact Information</div>
       <div class="co-field">
-        <label class="co-label">Email Address *</label>
+        <label class="co-label" for="co-email">Email Address *</label>
         <input type="email" id="co-email" class="co-input" placeholder="your@email.com" oninput="validateForm()" />
         <div class="co-error" id="err-email">Please enter a valid email address.</div>
       </div>
@@ -358,33 +360,33 @@
       <div class="co-card-title">Billing Address</div>
       <div class="co-row">
         <div class="co-field">
-          <label class="co-label">First Name *</label>
+          <label class="co-label" for="bill-first">First Name *</label>
           <input type="text" id="bill-first" class="co-input" placeholder="First name" oninput="validateForm()" />
           <div class="co-error" id="err-bill-first">Required</div>
         </div>
         <div class="co-field">
-          <label class="co-label">Last Name *</label>
+          <label class="co-label" for="bill-last">Last Name *</label>
           <input type="text" id="bill-last" class="co-input" placeholder="Last name" oninput="validateForm()" />
           <div class="co-error" id="err-bill-last">Required</div>
         </div>
       </div>
       <div class="co-field">
-        <label class="co-label">Street Address *</label>
+        <label class="co-label" for="bill-address">Street Address *</label>
         <input type="text" id="bill-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
         <div class="co-error" id="err-bill-address">Required</div>
       </div>
       <div class="co-field">
-        <label class="co-label">Address Line 2</label>
+        <label class="co-label" for="bill-address2">Address Line 2</label>
         <input type="text" id="bill-address2" class="co-input" placeholder="Apartment, suite, unit (optional)" />
       </div>
       <div class="co-row">
         <div class="co-field">
-          <label class="co-label">City *</label>
+          <label class="co-label" for="bill-city">City *</label>
           <input type="text" id="bill-city" class="co-input" placeholder="City" oninput="validateForm()" />
           <div class="co-error" id="err-bill-city">Required</div>
         </div>
         <div class="co-field" style="flex:0 0 150px">
-          <label class="co-label">State *</label>
+          <label class="co-label" for="bill-state">State *</label>
           <select id="bill-state" class="co-input" onchange="validateForm()">
             <option value="">Select…</option>
             <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
@@ -406,7 +408,7 @@
       </div>
       <div class="co-row">
         <div class="co-field" style="flex:0 0 180px">
-          <label class="co-label">ZIP Code *</label>
+          <label class="co-label" for="bill-zip">ZIP Code *</label>
           <input type="text" id="bill-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="validateForm()" />
           <div class="co-error" id="err-bill-zip">Required</div>
         </div>
@@ -423,29 +425,29 @@
       <div id="ship-fields" style="display:none">
         <div class="co-row">
           <div class="co-field">
-            <label class="co-label">First Name *</label>
+            <label class="co-label" for="ship-first">First Name *</label>
             <input type="text" id="ship-first" class="co-input" placeholder="First name" oninput="validateForm()" />
           </div>
           <div class="co-field">
-            <label class="co-label">Last Name *</label>
+            <label class="co-label" for="ship-last">Last Name *</label>
             <input type="text" id="ship-last" class="co-input" placeholder="Last name" oninput="validateForm()" />
           </div>
         </div>
         <div class="co-field">
-          <label class="co-label">Street Address *</label>
+          <label class="co-label" for="ship-address">Street Address *</label>
           <input type="text" id="ship-address" class="co-input" placeholder="House number and street name" oninput="validateForm()" />
         </div>
         <div class="co-field">
-          <label class="co-label">Address Line 2</label>
+          <label class="co-label" for="ship-address2">Address Line 2</label>
           <input type="text" id="ship-address2" class="co-input" placeholder="Apartment, suite, unit (optional)" />
         </div>
         <div class="co-row">
           <div class="co-field">
-            <label class="co-label">City *</label>
+            <label class="co-label" for="ship-city">City *</label>
             <input type="text" id="ship-city" class="co-input" placeholder="City" oninput="validateForm()" />
           </div>
           <div class="co-field" style="flex:0 0 150px">
-            <label class="co-label">State *</label>
+            <label class="co-label" for="ship-state">State *</label>
             <select id="ship-state" class="co-input" onchange="validateForm()">
               <option value="">Select…</option>
               <option>AL</option><option>AK</option><option>AZ</option><option>AR</option>
@@ -466,13 +468,16 @@
         </div>
         <div class="co-row">
           <div class="co-field" style="flex:0 0 180px">
-            <label class="co-label">ZIP Code *</label>
+            <label class="co-label" for="ship-zip">ZIP Code *</label>
             <input type="text" id="ship-zip" class="co-input" placeholder="ZIP" maxlength="10" oninput="validateForm()" />
           </div>
         </div>
       </div>
     </div>
 
+    <p class="co-consent">By continuing you agree to our <a href="/terms" target="_blank" rel="noopener">Terms of Sale &amp; Photo License</a>
+      and <a href="/refunds" target="_blank" rel="noopener">Refund Policy</a>. We'll email your receipt and download link, and
+      occasionally a follow-up or offer — you can unsubscribe anytime. See our <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
     <button class="co-submit" id="co-submit-btn" disabled onclick="placeOrder()">
       Continue to Payment →
     </button>
@@ -496,7 +501,7 @@
 
         <!-- Coupon -->
         <div class="co-coupon-row">
-          <input type="text" class="co-coupon-input" id="co-coupon-input" placeholder="Coupon code" />
+          <input type="text" class="co-coupon-input" id="co-coupon-input" placeholder="Coupon code" aria-label="Coupon code" />
           <button class="co-coupon-btn" id="co-coupon-btn" onclick="applyCoupon()">Apply</button>
         </div>
         <div id="co-coupon-feedback"></div>
@@ -893,6 +898,34 @@ async function placeOrder() {
     btn.disabled    = false;
   }
 }
+</script>
+
+<!-- Site footer: business details (Settings > Business details) and policies -->
+<footer class="site-footer" role="contentinfo">
+  <p><strong id="sf-name">Crystal Images</strong> · <span id="sf-where">Big Sky, Montana</span>
+     · <a id="sf-phone" href="tel:4064046680">(406) 404-6680</a>
+     · <a id="sf-email" href="mailto:info@bigskyphotos.com">info@bigskyphotos.com</a></p>
+  <p><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms &amp; Photo License</a> · <a href="/refunds">Refund Policy</a>
+     · <a href="mailto:info@bigskyphotos.com?subject=Photo%20removal%20request">Request a photo removal</a></p>
+  <p>All photos © <span id="sf-year"></span> Crystal Images. Watermarked previews may not be copied or used.</p>
+</footer>
+<style>
+.site-footer{max-width:1100px;margin:3rem auto 0;padding:1.5rem 1rem 6rem;border-top:1px solid rgba(255,255,255,.15);
+  text-align:center;font-size:.85rem;line-height:1.7;color:rgba(255,255,255,.75)}
+.site-footer a{color:#F5C518}
+.site-footer a:focus-visible{outline:3px solid #fff;outline-offset:2px}
+</style>
+<script>
+(function () {
+  document.getElementById('sf-year').textContent = new Date().getFullYear();
+  fetch('/api/site-info').then(r => r.ok ? r.json() : null).then(b => {
+    if (!b) return;
+    if (b.name) document.getElementById('sf-name').textContent = b.name;
+    if (b.address) document.getElementById('sf-where').textContent = b.address;
+    if (b.phone) { const a = document.getElementById('sf-phone'); a.textContent = b.phone; a.href = 'tel:' + b.phone.replace(/[^\d+]/g, ''); }
+    if (b.email) { const a = document.getElementById('sf-email'); a.textContent = b.email; a.href = 'mailto:' + b.email; }
+  }).catch(() => {});
+})();
 </script>
 </body>
 </html>

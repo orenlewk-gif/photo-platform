@@ -242,6 +242,30 @@ html.embedded #layout{height:100vh}
       </div>
     </div>
 
+    <!-- BUSINESS DETAILS -->
+    <div class="settings-section">
+      <div class="section-title">Business details</div>
+      <div class="section-desc">Shown in the footer of the photo site and at the bottom of marketing emails
+        (follow-ups, review requests, offers). The law requires a mailing address in marketing emails —
+        a street address or PO box.</div>
+      <div class="field-row">
+        <label class="field-label" for="biz-name">Business name</label>
+        <input class="field-input" id="biz-name" type="text" placeholder="Crystal Images">
+      </div>
+      <div class="field-row">
+        <label class="field-label" for="biz-address">Mailing address</label>
+        <input class="field-input" id="biz-address" type="text" placeholder="Street or PO Box, Big Sky, MT 59716">
+      </div>
+      <div class="field-row">
+        <label class="field-label" for="biz-phone">Phone</label>
+        <input class="field-input" id="biz-phone" type="text" placeholder="(406) 404-6680">
+      </div>
+      <div class="field-row">
+        <label class="field-label" for="biz-email">Email</label>
+        <input class="field-input" id="biz-email" type="email" placeholder="info@bigskyphotos.com">
+      </div>
+    </div>
+
     <!-- FRONTEND THEME -->
     <div class="settings-section">
       <div class="section-title">Frontend Theme</div>
@@ -564,6 +588,11 @@ function applyToForm() {
   v('site-name',    (s.site||{}).name    || '');
   v('site-tagline', (s.site||{}).tagline || '');
   v('site-logo',    (s.site||{}).logo_url|| '');
+  /* business details */
+  v('biz-name',    (s.business||{}).name    || '');
+  v('biz-address', (s.business||{}).address || '');
+  v('biz-phone',   (s.business||{}).phone   || '');
+  v('biz-email',   (s.business||{}).email   || '');
   /* frontend theme */
   setColor('f-accent', (s.frontend||{}).accent   || '#F5C518');
   setColor('f-page',   (s.frontend||{}).page_bg  || '#0c2336');
@@ -586,6 +615,12 @@ function collectFromForm() {
       name:     gv('site-name'),
       tagline:  gv('site-tagline'),
       logo_url: gv('site-logo'),
+    },
+    business: {
+      name:    gv('biz-name'),
+      address: gv('biz-address'),
+      phone:   gv('biz-phone'),
+      email:   gv('biz-email'),
     },
     frontend: {
       accent:   gv('hex-f-accent'),

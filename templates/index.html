@@ -48,10 +48,10 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .ln-dd-meta { font-size:0.76rem; color:rgba(255,255,255,0.45); text-align:right; white-space:nowrap; }
 
 /* Breadcrumb */
-.breadcrumb { display:none; align-items:center; gap:8px; margin-bottom:1.5rem; font-size:0.85rem; color:rgba(255,255,255,0.45); flex-wrap:wrap; }
+.breadcrumb { display:none; align-items:center; gap:8px; margin-bottom:1.5rem; font-size:0.85rem; color:rgba(255,255,255,0.72); flex-wrap:wrap; }
 .breadcrumb.show { display:flex; }
 .crumb { cursor:pointer; color:#F5C518; text-decoration:underline; text-underline-offset:3px; }
-.sep { color:rgba(255,255,255,0.2); }
+.sep { color:rgba(255,255,255,0.6); }
 .current { color:rgba(255,255,255,0.75); }
 
 /* Grid cards */
@@ -87,7 +87,7 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .collage-placeholder { width:100%; aspect-ratio:1/1; background:#0a1e2e; display:flex; align-items:center; justify-content:center; color:rgba(255,255,255,0.15); font-size:2rem; }
 
 .card-title { font-size:1rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#fff; margin-bottom:0.25rem; text-align:center; text-decoration:underline; text-underline-offset:3px; }
-.card-sub { font-size:0.8rem; color:rgba(255,255,255,0.45); text-align:center; }
+.card-sub { font-size:0.8rem; color:rgba(255,255,255,0.72); text-align:center; }
 
 /* Gallery */
 .gallery-header { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
@@ -111,7 +111,7 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 
 .size-slider-wrap {
   display:flex; align-items:center; gap:0.6rem;
-  color:rgba(255,255,255,0.45); font-size:0.8rem; white-space:nowrap;
+  color:rgba(255,255,255,0.72); font-size:0.8rem; white-space:nowrap;
 }
 .size-slider-wrap span { font-size:1rem; }
 
@@ -144,8 +144,8 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .time-filter-bar {
   display:flex; align-items:center; gap:.7rem; flex:1; min-width:200px;
 }
-.tf-label { font-size:.75rem; color:rgba(255,255,255,.4); letter-spacing:.5px; white-space:nowrap; }
-.tf-sep   { font-size:.75rem; color:rgba(255,255,255,.3); }
+.tf-label { font-size:.75rem; color:rgba(255,255,255,.72); letter-spacing:.5px; white-space:nowrap; }
+.tf-sep   { font-size:.75rem; color:rgba(255,255,255,.6); }
 .tf-select {
   background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15);
   border-radius:6px; color:#e8eaf0; font-size:.75rem;
@@ -285,6 +285,8 @@ input[type="range"]::-webkit-slider-thumb {
   transition:background 0.15s, border-color 0.15s; cursor:pointer;
 }
 .thumb-card.selected .select-check { background:#F5C518; border-color:#F5C518; color:#0c2336; }
+button.select-check { padding:0; font-family:inherit; line-height:1; appearance:none; -webkit-appearance:none; }
+.select-check:focus-visible, .card-shop-btn:focus-visible { outline:3px solid #fff; outline-offset:2px; }
 .thumb-card.selected {
   border-color:#F5C518;
   box-shadow:0 0 0 1px rgba(242,201,76,0.4), 0 8px 24px rgba(0,0,0,0.5);
@@ -941,8 +943,8 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .lb-upsell .upsell-perks { display:flex; gap:7px; justify-content:center; flex-wrap:wrap; }
 .lb-upsell .upsell-perk { background:rgba(74,222,128,0.1); border:1px solid rgba(74,222,128,0.28); color:#4ade80; font-size:.72rem; font-weight:500; padding:3px 11px; border-radius:20px; white-space:nowrap; }
 /* ── Calendar widget ── */
-.cal-label-text{font-size:.68rem;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:5px}
-.cal-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:8px 12px;color:rgba(255,255,255,.4);font-size:.88rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:space-between;gap:10px;min-width:160px;font-family:monospace;transition:border-color .2s}
+.cal-label-text{font-size:.68rem;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:5px}
+.cal-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:8px 12px;color:rgba(255,255,255,.72);font-size:.88rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:space-between;gap:10px;min-width:160px;font-family:monospace;transition:border-color .2s}
 .cal-btn:hover{border-color:rgba(255,255,255,.4);color:rgba(255,255,255,.7)}
 #cal-wrap{position:relative}
 #cal-dropdown{position:absolute;top:calc(100% + 8px);right:0;background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:1rem;width:270px;z-index:20000;box-shadow:0 8px 32px rgba(0,0,0,.5)}
@@ -1040,7 +1042,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   <div class="ln-bar" id="ln-bar">
     <div class="ln-input-wrap">
       <div class="ln-bar-label">Find My Photos by Last Name</div>
-      <input type="text" id="ln-input" placeholder="Enter your last name… e.g. Smith" autocomplete="off" />
+      <input type="text" id="ln-input" placeholder="Enter your last name… e.g. Smith" autocomplete="off" aria-label="Last name" />
       <div id="ln-dropdown" class="ln-dropdown" style="display:none;"></div>
     </div>
     <button class="btn" id="ln-btn">Find My Photos</button>
@@ -1050,7 +1052,7 @@ select.co-input option { background:#0a1e2e; color:#fff; }
   <div id="cal-wrap" style="text-align:center;margin-bottom:1.5rem">
     <div class="cal-label-text">Search by Day</div>
     <div style="position:relative;display:inline-block">
-      <button class="cal-btn" onclick="toggleCal(event)"><span>mm/dd/yyyy</span><span style="font-size:.9rem;opacity:.6">&#128197;</span></button>
+      <button class="cal-btn" onclick="toggleCal(event)" aria-label="Search by day: choose a date"><span>mm/dd/yyyy</span><span style="font-size:.9rem" aria-hidden="true">&#128197;</span></button>
       <div id="cal-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:2000;background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:1rem;width:270px;box-shadow:0 12px 40px rgba(0,0,0,.6)">
         <div class="cal-hdr">
           <button onclick="calNav(-1);event.stopPropagation()">‹</button>
@@ -1897,14 +1899,14 @@ async function showGallery(date, location, family, ln, group) {
     <div id="color-filter-container" style="display:none;margin:0 0 0.9rem"></div>` : ''}
     <div class="gallery-controls">
       <div class="size-slider-wrap">
-        <input type="range" id="size-slider" min="1" max="4" value="3" />
+        <input type="range" id="size-slider" min="1" max="4" value="3" aria-label="Photo size" />
         <span>⊞</span>
       </div>
       <div class="time-filter-bar" id="time-filter-bar" style="display:none">
         <span class="tf-label">TIME</span>
-        <select class="tf-select" id="tf-from"></select>
+        <select class="tf-select" id="tf-from" aria-label="From time"></select>
         <span class="tf-sep">–</span>
-        <select class="tf-select" id="tf-to"></select>
+        <select class="tf-select" id="tf-to" aria-label="To time"></select>
         <span class="tf-range" id="tf-range"></span>
       </div>
     </div>
@@ -2496,7 +2498,7 @@ function renderPoseSections(photos) {
       card.dataset.poseColor = color;
       card.innerHTML = `
         <div class="card-btn-row">
-          <div class="select-check" data-idx="${globalIdx}">✓</div>
+          <button type="button" class="select-check" data-idx="${globalIdx}" aria-label="Select photo ${escA(photo.filename || '')}" aria-pressed="${isFullPose || isSingleSel ? 'true' : 'false'}">✓</button>
         </div>
         <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
         <div class="watermark"></div>
@@ -2887,7 +2889,7 @@ function renderThumbs(photos) {
     card.dataset.idx = i;
     card.innerHTML = `
       <div class="card-btn-row">
-        <div class="select-check" data-idx="${i}">✓</div>
+        <button type="button" class="select-check" data-idx="${i}" aria-label="Select photo ${escA(photo.filename || '')}" aria-pressed="${_cartPhotoMap.has(photo.path) ? 'true' : 'false'}">✓</button>
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
@@ -2924,6 +2926,15 @@ function renderThumbs(photos) {
 }
 
 // ── Photo selection ──
+// Screen readers: each photo's checkmark button reports whether the photo is selected
+new MutationObserver(muts => muts.forEach(m => {
+  const card = m.target;
+  if (card.classList && card.classList.contains('thumb-card')) {
+    const b = card.querySelector('.select-check');
+    if (b) b.setAttribute('aria-pressed', card.classList.contains('selected') ? 'true' : 'false');
+  }
+})).observe(document.documentElement, {subtree: true, attributes: true, attributeFilter: ['class']});
+
 function getMaxSelectionLimit() {
   if (!currentPricing?.tiers) return null;
   const maxTiers = currentPricing.tiers
@@ -4887,7 +4898,7 @@ function setBreadcrumb(crumbs, current) {
   if (!crumbs.length && !current) { el.classList.remove('show'); return; }
   el.classList.add('show');
   let html = crumbs.map(c =>
-    `<span class="crumb" onclick='navigate(${JSON.stringify(c.state)})'>${c.label}</span><span class="sep">›</span>`
+    `<span class="crumb" onclick='navigate(${JSON.stringify(c.state)})'>${c.label}</span><span class="sep" aria-hidden="true">›</span>`
   ).join('');
   if (current) html += `<span class="current">${current}</span>`;
   el.innerHTML = html;
@@ -5583,6 +5594,34 @@ document.addEventListener('click', e => {
   if (!document.getElementById('cal-wrap').contains(e.target))
     document.getElementById('cal-dropdown').style.display = 'none';
 });
+</script>
+
+<!-- Site footer: business details (Settings > Business details) and policies -->
+<footer class="site-footer" role="contentinfo">
+  <p><strong id="sf-name">Crystal Images</strong> · <span id="sf-where">Big Sky, Montana</span>
+     · <a id="sf-phone" href="tel:4064046680">(406) 404-6680</a>
+     · <a id="sf-email" href="mailto:info@bigskyphotos.com">info@bigskyphotos.com</a></p>
+  <p><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms &amp; Photo License</a> · <a href="/refunds">Refund Policy</a>
+     · <a href="mailto:info@bigskyphotos.com?subject=Photo%20removal%20request">Request a photo removal</a></p>
+  <p>All photos © <span id="sf-year"></span> Crystal Images. Watermarked previews may not be copied or used.</p>
+</footer>
+<style>
+.site-footer{max-width:1100px;margin:3rem auto 0;padding:1.5rem 1rem 6rem;border-top:1px solid rgba(255,255,255,.15);
+  text-align:center;font-size:.85rem;line-height:1.7;color:rgba(255,255,255,.75)}
+.site-footer a{color:#F5C518}
+.site-footer a:focus-visible{outline:3px solid #fff;outline-offset:2px}
+</style>
+<script>
+(function () {
+  document.getElementById('sf-year').textContent = new Date().getFullYear();
+  fetch('/api/site-info').then(r => r.ok ? r.json() : null).then(b => {
+    if (!b) return;
+    if (b.name) document.getElementById('sf-name').textContent = b.name;
+    if (b.address) document.getElementById('sf-where').textContent = b.address;
+    if (b.phone) { const a = document.getElementById('sf-phone'); a.textContent = b.phone; a.href = 'tel:' + b.phone.replace(/[^\d+]/g, ''); }
+    if (b.email) { const a = document.getElementById('sf-email'); a.textContent = b.email; a.href = 'mailto:' + b.email; }
+  }).catch(() => {});
+})();
 </script>
 </body>
 </html>
