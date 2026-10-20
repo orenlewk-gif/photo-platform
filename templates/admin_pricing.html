@@ -304,6 +304,7 @@ input[type="text"].full{width:100%}
       <button class="pr-tab" id="ptab-base-area" onclick="showSection('base-area')">Base Area</button>
       <button class="pr-tab" id="ptab-bundles" onclick="showPricingGroup('bundles')">Bundles</button>
       <button class="pr-tab" id="ptab-logo-addon" onclick="showSection('logo-addon')">Logo Add-on</button>
+      <button class="pr-tab" id="ptab-unlimited" onclick="showSection('unlimited')">Unlimited Packages</button>
       <button class="pr-tab" id="ptab-discount-codes" onclick="showSection('discount-codes');dcLoad()">Discount Codes</button>
     </div>
     <div id="pr-tabs-sub" class="pr-tabs-row"></div>
@@ -542,6 +543,34 @@ input[type="text"].full{width:100%}
       </div>
     </div>
 
+
+    <!-- ── Unlimited Action Photo Packages ── -->
+    <div id="sec-unlimited" class="section">
+      <h1>Unlimited Action Photo Packages</h1>
+      <p class="subtitle">Sold in person on the POS only. The customer pays once; staff add their action photos to one download link each time they stop in, for the number of days in the package.</p>
+      <div class="card">
+        <div id="unl-tiers-list"></div>
+        <button class="btn btn-sm" style="margin-top:.8rem" onclick="addUnlTier()">+ Add Package</button>
+      </div>
+      <div class="card">
+        <div class="field-row">
+          <label for="unl-people" style="min-width:220px">People included in the price</label>
+          <input type="number" id="unl-people" min="1" max="50" style="width:80px">
+        </div>
+        <div class="field-row">
+          <label for="unl-extra" style="min-width:220px">Each extra person</label>
+          <span class="dollar">$</span><input type="number" id="unl-extra" min="0" step="1" style="width:80px">
+        </div>
+        <div class="field-row">
+          <label for="unl-linkdays" style="min-width:220px">Download link works for</label>
+          <input type="number" id="unl-linkdays" min="1" max="365" style="width:80px">
+          <span style="margin-left:.4rem;color:rgba(255,255,255,.6);font-size:13px">days after the package's last day</span>
+        </div>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary btn-sm" onclick="saveUnlimited()">Save</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ── Logo Add-on ── -->
     <div id="sec-logo-addon" class="section">
@@ -825,6 +854,7 @@ let printData           = null;
 let portraitPricingData = null;
 let portraitLocsData    = [];
 let posProductsData     = {base_area:[],mats:[],base_area_tiers:[],satin_black_frames:[]};
+let unlimitedData       = {tiers:[]};
 let privateSessionData  = {sessions:[]};
 let itemsBundlesData    = {bundles:[]};
 let _actGroupNames      = [];  // activity group names for bundle dropdowns
@@ -845,7 +875,9 @@ Promise.all([
   fetch('/api/pos-products').then(r=>r.json()),
   fetch('/api/private-session-pricing').then(r=>r.json()),
   fetch('/api/items-bundles').then(r=>r.json()),
-]).then(([pd,zd,ppd,portd,pld,posp,psd,ibd])=>{
+  fetch('/api/unlimited-packages').then(r=>r.json()),
+]).then(([pd,zd,ppd,portd,pld,posp,psd,ibd,unl])=>{
+  unlimitedData       = unl || {tiers:[]};
   pricingData         = pd;
   zipData             = zd;
   printData           = ppd;
@@ -864,6 +896,7 @@ function _safeStep(name, fn){
 }
 
 function renderAll(){
+  _safeStep('renderUnlimited', () => renderUnlimited());
   // Populate activity group names from activity_categories (category-level names)
   const _fromCats = (pricingData.activity_categories || []).map(cat => cat.name).filter(Boolean);
   if (_fromCats.length) {
@@ -1494,6 +1527,39 @@ function saveNewBundle(){
 async function saveItemsBundles(){
   const r=await fetch('/api/admin/items-bundles',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(itemsBundlesData)});
   if(r.ok) showToast('Items bundles saved'); else showToast('Save failed','err');
+}
+
+// ── Unlimited Action Photo Packages ──────────────────────────────────────────
+function renderUnlimited(){
+  const el = document.getElementById('unl-tiers-list');
+  if(!el) return;
+  const tiers = unlimitedData.tiers || [];
+  el.innerHTML = !tiers.length
+    ? '<div style="color:rgba(255,255,255,.6);font-size:.85rem;padding:.5rem 0">No packages yet. Click + Add Package below.</div>'
+    : `<table><thead><tr><th>Package name (shown on the POS and receipt)</th><th>Days</th><th>Price</th><th></th></tr></thead><tbody>
+      ${tiers.map((t,i)=>`<tr>
+        <td style="width:60%"><input type="text" class="wide" style="width:100%;min-width:260px" aria-label="Package name" value="${esc(t.name||'')}" oninput="unlField(${i},'name',this.value)" placeholder="e.g. 5-Day Unlimited Action Photos"></td>
+        <td><input type="number" aria-label="Days" value="${t.days||1}" min="1" max="30" style="width:70px" oninput="unlField(${i},'days',parseInt(this.value)||1)"></td>
+        <td><span class="dollar">$</span><input type="number" aria-label="Price" value="${t.price||0}" min="0" oninput="unlField(${i},'price',parseFloat(this.value)||0)"></td>
+        <td><button class="btn btn-danger btn-sm" aria-label="Remove package" onclick="removeUnlTier(${i})">&#10005;</button></td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  document.getElementById('unl-people').value   = unlimitedData.included_people ?? 4;
+  document.getElementById('unl-extra').value    = unlimitedData.extra_person_price ?? 30;
+  document.getElementById('unl-linkdays').value = unlimitedData.link_days_after ?? 30;
+}
+function unlField(i, field, val){ if(unlimitedData.tiers[i]) unlimitedData.tiers[i][field] = val; }
+function addUnlTier(){ unlimitedData.tiers = unlimitedData.tiers || []; unlimitedData.tiers.push({name:'', days:3, price:0}); renderUnlimited(); }
+function removeUnlTier(i){ unlimitedData.tiers.splice(i,1); renderUnlimited(); }
+async function saveUnlimited(){
+  const body = {...unlimitedData,
+    included_people:    parseInt(document.getElementById('unl-people').value),
+    extra_person_price: parseFloat(document.getElementById('unl-extra').value),
+    link_days_after:    parseInt(document.getElementById('unl-linkdays').value)};
+  const r = await fetch('/api/admin/unlimited-packages', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json().catch(()=>({}));
+  if(r.ok){ unlimitedData = d; renderUnlimited(); showToast('Unlimited packages saved'); }
+  else if(!d.pin_required) showToast(d.error || 'Save failed', 'err');
 }
 
 async function saveLogoAddon(){

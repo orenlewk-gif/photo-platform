@@ -3484,6 +3484,62 @@ def _wrap_email_html(body_html: str, marketing_to: str = "") -> str:
     )
 
 
+# ── Unlimited Action Photo Packages (POS only) ───────────────────────────────
+# A customer pays once for a set number of days; staff add their action photos to one download
+# link as they come into the store. Names, days and prices are edited in Admin > Pricing.
+UNLIMITED_PACKAGES_KEY = "meta/unlimited_packages.json"
+_UNLIMITED_DEFAULTS = {
+    "tiers": [
+        {"id": "unl-3", "name": "3-Day Unlimited Action Photos", "days": 3, "price": 205},
+        {"id": "unl-5", "name": "5-Day Unlimited Action Photos", "days": 5, "price": 275},
+        {"id": "unl-7", "name": "7-Day Unlimited Action Photos", "days": 7, "price": 345},
+    ],
+    "included_people": 4,         # people covered by the package price
+    "extra_person_price": 30,     # each person beyond that
+    "link_days_after": 30,        # the download link keeps working this many days after the last day
+}
+_unlimited_doc = JsonDoc(s3, R2_BUCKET, UNLIMITED_PACKAGES_KEY, ttl=30, indent=2,
+                         default=lambda: _copy.deepcopy(_UNLIMITED_DEFAULTS),
+                         valid=lambda d: isinstance(d, dict) and isinstance(d.get("tiers"), list))
+
+
+def _load_unlimited_packages() -> dict:
+    return _unlimited_doc.load()
+
+
+def _clean_unlimited_packages(body: dict) -> dict:
+    """Checked settings from the Pricing page; raises ValueError with a message for the page."""
+    def num(v, what, lo, hi, integer=False):
+        try:
+            n = int(v) if integer else round(float(v), 2)
+        except (TypeError, ValueError):
+            raise ValueError(f"{what} must be a number")
+        if not lo <= n <= hi:
+            raise ValueError(f"{what} must be between {lo} and {hi}")
+        return n
+    tiers, ids = [], set()
+    for i, t in enumerate(body.get("tiers") or []):
+        name = str(t.get("name") or "").strip()[:80]
+        if not name:
+            raise ValueError(f"Package {i + 1} needs a name")
+        tid = str(t.get("id") or "").strip() or f"unl-{uuid.uuid4().hex[:6]}"
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,32}", tid) or tid in ids:
+            tid = f"unl-{uuid.uuid4().hex[:6]}"
+        ids.add(tid)
+        tiers.append({"id": tid, "name": name, "days": num(t.get("days"), f"Days for {name}", 1, 30, True),
+                      "price": num(t.get("price"), f"Price for {name}", 0, 10000)})
+    if not tiers:
+        raise ValueError("Add at least one package")
+    return {"tiers": tiers,
+            "included_people": num(body.get("included_people"), "People included", 1, 50, True),
+            "extra_person_price": num(body.get("extra_person_price"), "Price per extra person", 0, 1000),
+            "link_days_after": num(body.get("link_days_after"), "Download link days", 1, 365, True)}
+
+
+def _save_unlimited_packages(d: dict) -> None:
+    _unlimited_doc.save(d)
+
+
 # ── Marketing email opt-outs ──────────────────────────────────────────────────
 # Follow-ups, review requests and offers are marketing email: each one carries the business
 # mailing address and a working unsubscribe link (one click, also from Gmail/Apple Mail's own
@@ -3819,3 +3875,6 @@ app.include_router(_routes_unsubscribe.router)
 
 from routes import legal as _routes_legal  # noqa: E402
 app.include_router(_routes_legal.router)
+
+from routes import unlimited as _routes_unlimited  # noqa: E402
+app.include_router(_routes_unlimited.router)
