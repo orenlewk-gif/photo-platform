@@ -474,7 +474,6 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .pkg-meta{font-size:.74rem;color:var(--muted);margin-top:.2rem}
 .pkg-status{display:inline-block;font-size:.68rem;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:.35rem}
 .pkg-status.open{background:rgba(74,222,128,.15);color:#4ade80}
-.pkg-status.pickup{background:rgba(245,196,48,.15);color:var(--accent)}
 .pkg-status.closed{background:rgba(255,255,255,.08);color:var(--muted)}
 .pkg-section{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:.9rem 0 .45rem}
 .pkg-head{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:.75rem}
@@ -2829,7 +2828,6 @@ function pkgShortDate(iso){
 
 function pkgStatusHtml(p){
   if(!p.open) return '<span class="pkg-status closed">Closed</span>';
-  if(p.day_num > p.days) return '<span class="pkg-status pickup">Pickup day</span>';
   return `<span class="pkg-status open">Day ${Math.max(1, p.day_num)} of ${p.days}</span>`;
 }
 
@@ -2873,9 +2871,9 @@ function pkgBackToList(){ loadPackages($('pkg-search').value.trim()); }
 function renderPackageDetail(){
   const p = S.pkg;
   if(!p) return;
-  const until = p.day_num > p.days
-    ? `Pickup day: last chance to add photos (taken through ${pkgShortDate(p.last_day)}).`
-    : `Photos can be added through ${pkgShortDate(p.adding_until)} (pickup day after ${pkgShortDate(p.last_day)}).`;
+  const until = p.day_num >= p.days
+    ? `Last day: photos can be added until the end of today.`
+    : `Photos can be added through ${pkgShortDate(p.last_day)}.`;
   const grid = p.photos.length ? `<div class="ap-photo-grid">` + p.photos.map((ph, i) => `
       <div class="ap-photo-item" style="cursor:default">
         <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(ph.path)}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">

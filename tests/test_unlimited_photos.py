@@ -77,7 +77,7 @@ def test_packages_list_needs_the_pin_and_finds_by_name_or_phone(client, no_pos_o
     assert names("jones") == ["Bo Jones"]
     assert names("5557788") == ["Bo Jones"]          # phone digits match however it was typed
     p = client.get("/api/pos/unlimited?q=ann", headers=PIN_HDR).json()["packages"][0]
-    assert p["open"] and p["day_num"] == 1 and p["photo_count"] == 0 and p["adding_until"] == _day(3)
+    assert p["open"] and p["day_num"] == 1 and p["photo_count"] == 0 and p["adding_until"] == _day(2)
 
 
 def test_adding_photos_shows_them_to_the_customer_right_away(client, no_pos_orders):
@@ -114,11 +114,11 @@ def test_adding_needs_the_pin(client, no_pos_orders):
     assert client.post(f"/api/pos/unlimited/{token}/photos", json={"add": _paths("DSC_0001.JPG")}).status_code == 401
 
 
-def test_pickup_day_then_closed(client, no_pos_orders, main_module, monkeypatch):
+def test_adding_ends_with_the_last_day_then_closed(client, no_pos_orders, main_module, monkeypatch):
     token = _sell(client)                                      # 3 days: today .. today+2
-    monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(3))   # the pickup day
+    monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(2))   # the last day
     assert _add(client, token, _paths("DSC_0001.JPG")).status_code == 200
-    monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(4))
+    monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(3))
     r = _add(client, token, _paths("DSC_0002.JPG"))
     assert r.status_code == 400 and "closed" in r.json()["error"]
     [p] = client.get("/api/pos/unlimited", headers=PIN_HDR).json()["packages"]
@@ -155,7 +155,7 @@ def test_closing_splits_the_sale_by_each_photographers_share(client, owner_clien
     assert comm()["Dana Shooter"] == 0                         # nothing credited while open
     assert "split when it closes" in admin_client.get("/admin/orders?days=7").text
 
-    monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(4))
+    monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(3))
     by_name = comm()
     assert (by_name["Dana Shooter"], by_name["Alex Shooter"], by_name["Oren Lewkowski"]) == (100.0, 50.0, 50.0)
     assert by_name["Test Photog"] == 0                         # the seller isn't credited

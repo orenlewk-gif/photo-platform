@@ -3665,7 +3665,6 @@ def _unlimited_dates(days: int, link_days_after: int, now: datetime | None = Non
 # from all of them in memory, re-read from storage at most once a minute; every save here
 # updates the memory too. Changes to one package (adding photos, closing) take its lock.
 UNLIMITED_RECORDS_SECONDS = 60
-UNLIMITED_GRACE_DAYS = 1          # photos can still be added the day after the last day (pickup day)
 _unlimited_records_cache = {"records": None, "ts": 0.0}
 _unlimited_records_guard = threading.Lock()
 _unlimited_locks = _KeyedLocks()
@@ -3711,8 +3710,8 @@ def _mountain_today() -> str:
 
 
 def _unlimited_adding_until(record: dict) -> str:
-    """Last day staff can add photos: the package's last day plus the pickup day."""
-    return (datetime.fromisoformat(record["last_day"]) + timedelta(days=UNLIMITED_GRACE_DAYS)).date().isoformat()
+    """Last day staff can add photos: the package's last day (the package closes after it)."""
+    return record["last_day"]
 
 
 def _unlimited_is_open(record: dict, today: str | None = None) -> bool:
