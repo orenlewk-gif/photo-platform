@@ -158,6 +158,8 @@ def browse(request: Request, date: str, location: str, family: str = Query(None)
             "w": w,
             "h": h,
         })
+        if item.get("partner"):                 # only the POS/studio ever get these
+            results[-1]["partner"] = item["partner"]
     # Attach pose group index from folder_meta when available
     if family and results:
         fk = _folder_key(date, location, family)

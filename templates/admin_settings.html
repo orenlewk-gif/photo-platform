@@ -47,6 +47,7 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
   transition:border-color .15s}
 .field-input:focus{border-color:#F5C518}
 .field-hint{font-size:.73rem;color:rgba(255,255,255,.3)}
+textarea.field-input{font-family:inherit;line-height:1.5;resize:vertical}
 
 /* color picker rows */
 .color-row{display:flex;align-items:center;gap:.85rem;margin-bottom:.9rem}
@@ -218,6 +219,7 @@ html.embedded #layout{height:100vh}
       <button class="subtab" onclick="switchTab('presets',this)">Text Presets</button>
       <button class="subtab" onclick="switchTab('classify',this)">Color Labels</button>
       <button class="subtab" onclick="switchTab('email',this)">Email Templates</button>
+      <button class="subtab" onclick="switchTab('partners',this)">Partners</button>
     </div>
 
     <!-- ── GENERAL TAB ── -->
@@ -474,6 +476,15 @@ html.embedded #layout{height:100vh}
     </div><!-- /tab-classify -->
 
     <!-- ── EMAIL TEMPLATES TAB ── -->
+    <!-- ── PARTNERS TAB (Eagle Mount) ── -->
+    <div id="tab-partners" class="tab-panel">
+      <div id="partners-box"><div class="settings-section">Loading…</div></div>
+      <div class="save-row">
+        <button class="btn-save" onclick="savePartners()">Save Partners</button>
+        <span id="partners-status"></span>
+      </div>
+    </div>
+
     <div id="tab-email" class="tab-panel">
       <div class="settings-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem">
@@ -754,6 +765,62 @@ function switchTab(name, btn) {
   document.getElementById('tab-' + name).classList.add('active');
   btn.classList.add('active');
   if (name === 'presets') loadPresetsTab();
+  if (name === 'partners') loadPartners();
+}
+
+// ── Partners (Eagle Mount): free photo page settings ──
+let _partners = [], _partnerDefaultMsg = '', _siteUrl = '';
+async function loadPartners() {
+  const box = document.getElementById('partners-box');
+  try {
+    const d = await (await fetch('/api/admin/partner-settings')).json();
+    _partners = d.partners || []; _partnerDefaultMsg = d.default_message || ''; _siteUrl = d.site_url || '';
+  } catch (e) { box.innerHTML = '<div class="settings-section">Could not load partners.</div>'; return; }
+  box.innerHTML = _partners.map((p, i) => `
+    <div class="settings-section">
+      <div class="section-title">${esc(p.name)}</div>
+      <div class="section-desc">Their participants download their photos free on
+        <a href="/partner/${escAttr(p.slug)}" target="_blank" style="color:#F5C518">${esc(_siteUrl)}/partner/${esc(p.slug)}</a>.
+        Photographers mark those photos while culling with the color label below; they never show in the public gallery.</div>
+      <div class="field-row"><label class="field-label" for="pt-name-${i}">Name</label>
+        <input class="field-input" id="pt-name-${i}" value="${escAttr(p.name)}"></div>
+      <div class="field-row"><label class="field-label" for="pt-pw-${i}">Page password</label>
+        <input class="field-input" id="pt-pw-${i}" value="${escAttr(p.password || '')}" autocomplete="off" placeholder="At least 6 characters">
+        <div class="field-hint">${p.password ? 'Changing it signs every device out; they enter the new one.' : 'The page stays closed until a password is set.'}</div></div>
+      <div class="field-row"><label class="field-label" for="pt-welcome-${i}">Welcome line (top of the page)</label>
+        <textarea class="field-input" id="pt-welcome-${i}" rows="2">${esc(p.welcome || '')}</textarea></div>
+      <div class="field-row"><label class="field-label" for="pt-label-${i}">Color label that marks their photos</label>
+        <input class="field-input" id="pt-label-${i}" value="${escAttr(p.label || '')}" style="max-width:220px">
+        <div class="field-hint">The label name written into the photo while culling, e.g. Orange.</div></div>
+      <div class="field-row"><label class="field-label" for="pt-code-${i}">Family discount code</label>
+        <input class="field-input" id="pt-code-${i}" value="${escAttr(p.family_code || '')}" style="max-width:220px" placeholder="e.g. EAGLEMOUNT25">
+        <div class="field-hint">Shown on their page. Leave blank to hide the box.</div></div>
+      <div class="field-row"><label class="field-label" for="pt-codepct-${i}">Family code: % off</label>
+        <input class="field-input" id="pt-codepct-${i}" type="number" min="0" max="100" value="${p.family_code_pct}" style="max-width:120px"></div>
+      <div class="field-row"><label class="field-label" for="pt-msg-${i}">Family code message</label>
+        <textarea class="field-input" id="pt-msg-${i}" rows="3" placeholder="${escAttr(_partnerDefaultMsg)}">${esc(p.family_code_message || '')}</textarea>
+        <div class="field-hint">Leave blank for the standard wording. Write {code} for the code and {pct} for the percent.</div></div>
+      <div class="field-row"><label class="field-label" for="pt-printpct-${i}">Prints of their photos: % off</label>
+        <input class="field-input" id="pt-printpct-${i}" type="number" min="0" max="100" value="${p.print_discount_pct}" style="max-width:120px"></div>
+      <div class="field-row"><label class="field-label" for="pt-value-${i}">Donation value per photo downloaded ($)</label>
+        <input class="field-input" id="pt-value-${i}" type="number" min="0" step="1" value="${p.value_per_photo}" style="max-width:120px"></div>
+    </div>`).join('');
+}
+async function savePartners() {
+  const status = document.getElementById('partners-status');
+  const partners = _partners.map((p, i) => ({
+    id: p.id,
+    name: gv(`pt-name-${i}`), password: gv(`pt-pw-${i}`), welcome: gv(`pt-welcome-${i}`),
+    label: gv(`pt-label-${i}`), family_code: gv(`pt-code-${i}`), family_code_pct: gv(`pt-codepct-${i}`),
+    family_code_message: gv(`pt-msg-${i}`), print_discount_pct: gv(`pt-printpct-${i}`), value_per_photo: gv(`pt-value-${i}`),
+  }));
+  status.textContent = 'Saving…';
+  const r = await fetch('/api/admin/partner-settings', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                       body: JSON.stringify({partners})});
+  const d = await r.json().catch(() => ({}));
+  if (r.ok) { status.textContent = 'Saved.'; await loadPartners(); }
+  else status.textContent = d.error || 'Error saving.';
+  setTimeout(() => { if (status.textContent === 'Saved.') status.textContent = ''; }, 4000);
 }
 
 // ── Text Presets ──

@@ -3886,7 +3886,10 @@ _PARTNER_FIELDS = {                 # every partner has these (older saved partn
     "print_discount_pct": 40,       # prints of their photos
     "family_code": "",              # discount code shown on the page for families
     "family_code_pct": 25,
+    "family_code_message": "",      # the box's wording; blank = the standard wording below
 }
+FAMILY_CODE_MESSAGE_DEFAULT = ("Family and friends: use code {code} for {pct}% off photos and prints, "
+                               "online at photos.bigskyphotos.com and in our store.")
 _PARTNER_DEFAULTS = [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange", "slug": "eaglemount",
                       "welcome": "Welcome! Your photos are free to download. Thank you for skiing with Eagle Mount."}]
 _partners_doc = JsonDoc(s3, R2_BUCKET, PARTNERS_KEY, ttl=30, indent=2,
@@ -3897,6 +3900,58 @@ PARTNER_SESSION_DAYS = 180          # a device that entered the password stays i
 
 def _load_partners() -> list:
     return [{**_PARTNER_FIELDS, **p} for p in _partners_doc.load() if isinstance(p, dict)]
+
+
+def _save_partners(partners: list) -> None:
+    _partners_doc.save(partners)
+
+
+def _family_code_message(partner: dict) -> str:
+    """The family code box text ('' when there's no code). {code} and {pct} are filled in."""
+    code = (partner.get("family_code") or "").strip()
+    if not code:
+        return ""
+    msg = (partner.get("family_code_message") or "").strip() or FAMILY_CODE_MESSAGE_DEFAULT
+    return msg.replace("{code}", code).replace("{pct}", f"{partner.get('family_code_pct', 0):g}")
+
+
+def _clean_partners(body: list) -> list:
+    """Checked partner settings from the Settings page; raises ValueError with a message for the page."""
+    if not isinstance(body, list) or not body:
+        raise ValueError("Nothing to save")
+    current = {p["id"]: p for p in _load_partners()}
+
+    def num(v, what, lo, hi):
+        try:
+            n = round(float(v), 2)
+        except (TypeError, ValueError):
+            raise ValueError(f"{what} must be a number")
+        if not lo <= n <= hi:
+            raise ValueError(f"{what} must be between {lo} and {hi}")
+        return int(n) if n == int(n) else n
+    out = []
+    for b in body:
+        pid = str(b.get("id") or "")
+        if pid not in current:
+            raise ValueError("Unknown partner")
+        name = str(b.get("name") or "").strip()[:60]
+        if not name:
+            raise ValueError("The partner needs a name")
+        label = str(b.get("label") or "").strip()[:30]
+        if not label:
+            raise ValueError(f"{name}: the color label can't be empty")
+        password = str(b.get("password") or "").strip()
+        if password and len(password) < 6:
+            raise ValueError(f"{name}: the password needs at least 6 characters (or leave it empty to keep the page closed)")
+        code = re.sub(r"\s+", "", str(b.get("family_code") or "")).upper()[:30]
+        out.append({**current[pid], "name": name, "label": label, "password": password[:100],
+                    "welcome": str(b.get("welcome") or "").strip()[:500],
+                    "family_code": code,
+                    "family_code_pct": num(b.get("family_code_pct", 25), f"{name}: family code %", 0, 100),
+                    "family_code_message": str(b.get("family_code_message") or "").strip()[:500],
+                    "print_discount_pct": num(b.get("print_discount_pct", 40), f"{name}: print discount %", 0, 100),
+                    "value_per_photo": num(b.get("value_per_photo", 25), f"{name}: value per photo", 0, 1000)})
+    return out
 
 
 def _partner_ids() -> set:
@@ -3939,6 +3994,35 @@ def _partner_signed_in(request: Request, partner: dict) -> bool:
 def _partner_photos(partner: dict) -> dict:
     """{date: [photo items]} for this partner's published photos."""
     return _folder_index()["partners"].get(partner["id"], {})
+
+
+def _photo_taken(path: str) -> str:
+    """When a photo was taken, 'YYYY:MM:DD HH:MM:SS[.sub]' from its EXIF, or '' if it has none."""
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=to_r2_key(path), Range="bytes=0-131071")
+        exif = Image.open(BytesIO(obj["Body"].read()))._getexif() or {}
+        taken = str(exif.get(36867) or exif.get(306) or "").strip()      # DateTimeOriginal, else DateTime
+        sub = str(exif.get(37521) or "").strip()                         # fractions of a second, for bursts
+        return f"{taken}.{sub}" if taken and sub.isdigit() else taken
+    except Exception:
+        return ""
+
+
+def _fill_taken_times(items: list) -> None:
+    """Remember the capture time on each photo that doesn't have one yet (item["taken"])."""
+    todo = [i for i in items if "taken" not in i]
+    if not todo:
+        return
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for item, taken in zip(todo, ex.map(lambda i: _photo_taken(i["path"]), todo)):
+            item["taken"] = taken
+    _save_photo_list_soon()
+
+
+def _taken_order(item: dict) -> tuple:
+    """Sort key: by time taken; photos with no time go last, then by file name."""
+    taken = item.get("taken") or ""
+    return (0 if taken else 1, taken, natural_sort_key(item["path"]))
 
 
 def _partner_photo(partner: dict, path: str) -> dict | None:

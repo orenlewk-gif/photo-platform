@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from html import escape
 from io import BytesIO
 
-from fastapi import APIRouter, Form, Query, Request
+from fastapi import APIRouter, Body, Form, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from PIL import Image
 
@@ -74,12 +74,14 @@ def partner_photos(slug: str, request: Request):
     p = _signed_in_partner(slug, request)
     if not p:
         return JSONResponse(status_code=401, content={"error": "Please enter the password"})
+    by_day = main._partner_photos(p)
+    main._fill_taken_times([i for items in by_day.values() for i in items])   # usually done at upload
     days = []
-    for date, items in sorted(main._partner_photos(p).items(), reverse=True):
-        photos = sorted(items, key=lambda i: natural_sort_key(i["path"]))
+    for date, items in sorted(by_day.items(), reverse=True):
+        photos = sorted(items, key=main._taken_order)            # in the order they were taken
         days.append({"date": date, "photos": [{"path": i["path"], "filename": os.path.basename(i["path"])}
                                               for i in photos]})
-    return {"days": days, "family_code": p.get("family_code") or "", "family_code_pct": p.get("family_code_pct")}
+    return {"days": days, "family_code": p.get("family_code") or "", "family_code_message": main._family_code_message(p)}
 
 
 @router.get("/partner/{slug}/thumb")
@@ -142,7 +144,8 @@ def partner_zip(slug: str, request: Request, paths: str = Form("[]"), date: str 
             wanted = []
         items = [i for i in (main._partner_photo(p, x) for x in dict.fromkeys(wanted) if isinstance(x, str)) if i]
         how, name = "selection", f"{p['name']} photos"
-    items = sorted(items, key=lambda i: natural_sort_key(i["path"]))
+    main._fill_taken_times(items)                               # usually done at upload
+    items = sorted(items, key=main._taken_order)
     if not items:
         return JSONResponse(status_code=404, content={"error": "No photos"})
     main._log_partner_downloads(p, items, how)
@@ -177,3 +180,42 @@ def partner_zip(slug: str, request: Request, paths: str = Form("[]"), date: str 
 
     return StreamingResponse(iter_zip(), media_type="application/zip",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/partner/{slug}/links")
+def partner_links(slug: str, request: Request, body: dict = Body(...)):
+    """Short-lived direct links to originals for "Save to Photos" on phones and tablets
+    (fetched straight from storage). Logged like any other download."""
+    p = _signed_in_partner(slug, request)
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Please enter the password"})
+    wanted = body.get("paths") if isinstance(body.get("paths"), list) else []
+    items = [i for i in (main._partner_photo(p, x) for x in dict.fromkeys(wanted) if isinstance(x, str)) if i]
+    if not items:
+        return JSONResponse(status_code=404, content={"error": "No photos"})
+    main._log_partner_downloads(p, items, "save")
+    return {"files": [{"name": os.path.basename(i["path"]),
+                       "url": main.s3.generate_presigned_url("get_object", ExpiresIn=3600, Params={
+                           "Bucket": main.R2_BUCKET, "Key": to_r2_key(i["path"])})} for i in items]}
+
+
+# ── Settings (Admin > Settings > Partners) ────────────────────────────────────
+
+@router.get("/api/admin/partner-settings")
+def partner_settings(request: Request):
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"partners": main._load_partners(), "default_message": main.FAMILY_CODE_MESSAGE_DEFAULT,
+            "site_url": main.SITE_URL}
+
+
+@router.post("/api/admin/partner-settings")
+def save_partner_settings(request: Request, body: dict = Body(...)):
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    try:
+        cleaned = main._clean_partners(body.get("partners"))
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    main._save_partners(cleaned)
+    return {"partners": cleaned}

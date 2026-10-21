@@ -453,6 +453,11 @@ async def admin_upload_index(request: Request):
                               Body=json.dumps(merged).encode(), ContentType="application/json")
             except Exception:
                 pass
+    # Partner photos are shown in the order they were taken: read those times now, in the background
+    keyset = set(keys)
+    marked = [i for i in main.data if i.get("partner") and i["path"] in keyset]
+    if marked:
+        threading.Thread(target=main._fill_taken_times, args=(marked,), daemon=True).start()
     # Thumbnails for every uploaded photo (drafts too — the studio shows them)
     thumbs_job = main._queue_new_photo_thumbs(keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder,

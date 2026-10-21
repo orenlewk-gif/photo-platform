@@ -13,9 +13,12 @@ DAY1, DAY2 = "2026-12-05", "2026-12-06"
 PW = "eagle-test"
 
 
-def _jpeg(color=(30, 120, 200)) -> bytes:
+def _jpeg(color=(30, 120, 200), taken=None) -> bytes:
     buf = BytesIO()
-    Image.new("RGB", (1200, 800), color).save(buf, "JPEG", quality=85)
+    exif = Image.Exif()
+    if taken:
+        exif[306] = taken                                # DateTime, "YYYY:MM:DD HH:MM:SS"
+    Image.new("RGB", (1200, 800), color).save(buf, "JPEG", quality=85, exif=exif.tobytes())
     return buf.getvalue()
 
 
@@ -38,10 +41,17 @@ def _partners(password=PW, **extra):
          "password": password, "welcome": "Welcome!", **extra}]).encode())
 
 
+TAKEN = {"DSC_0002.JPG": "2026:12:05 11:40:00", "DSC_0003.JPG": "2026:12:05 09:15:00"}   # 0003 was first
+
+
 @pytest.fixture(autouse=True)
-def setup(main_module, live_photos):
+def setup(main_module, live_photos, monkeypatch):
+    # Capture times are remembered with a background save; save right away here so no save
+    # is left waiting when the next test starts
+    monkeypatch.setattr(main_module, "_save_photo_list_soon", main_module._save_photo_list)
     for p in PHOTOS:
-        S3.put_object(Bucket="test-bucket", Key=p["path"], Body=_jpeg())
+        p.pop("taken", None)
+        S3.put_object(Bucket="test-bucket", Key=p["path"], Body=_jpeg(taken=TAKEN.get(p["path"].rsplit("/", 1)[-1])))
     S3.delete_object(Bucket="test-bucket", Key="meta/partner_downloads/eagle-mount.json")
     main_module._partner_logs.clear()
     main_module._pin_fail_limiter._calls.clear()
@@ -112,7 +122,7 @@ def test_signed_in_member_sees_their_photos_by_day(member):
     assert page.status_code == 200 and "Welcome!" in page.text and "Download all from this day" in page.text
     d = member.get("/api/partner/eaglemount/photos").json()
     assert [day["date"] for day in d["days"]] == ["2026-12-07", DAY2, DAY1]          # newest first
-    assert [p["filename"] for p in d["days"][2]["photos"]] == ["DSC_0002.JPG", "DSC_0003.JPG"]
+    assert [p["filename"] for p in d["days"][2]["photos"]] == ["DSC_0003.JPG", "DSC_0002.JPG"]   # by time taken
 
 
 def test_changing_the_password_signs_everyone_out(member, main_module):
@@ -151,8 +161,8 @@ def test_download_a_whole_day_as_a_zip(member):
     r = member.post("/partner/eaglemount/zip", data={"date": DAY1})
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     import zipfile
-    names = sorted(zipfile.ZipFile(BytesIO(r.content)).namelist())
-    assert names == ["DSC_0002.JPG", "DSC_0003.JPG"]
+    names = zipfile.ZipFile(BytesIO(r.content)).namelist()
+    assert names == ["DSC_0003.JPG", "DSC_0002.JPG"]
     assert set(_log()["photos"]) == {PHOTOS[1]["path"], PHOTOS[2]["path"]}
 
 
@@ -169,3 +179,55 @@ def test_member_thumbnails_and_enlarged_view_are_unwatermarked(member, main_modu
     assert member.get("/partner/eaglemount/thumb", params={"path": PHOTOS[1]["path"]}).status_code == 200
     v = member.get("/partner/eaglemount/view", params={"path": PHOTOS[1]["path"]})
     assert v.status_code == 200 and v.headers["content-type"] == "image/jpeg" and marked == []
+
+
+def test_capture_times_are_read_once_and_remembered(member, main_module, monkeypatch):
+    member.get("/api/partner/eaglemount/photos")
+    assert PHOTOS[2]["taken"] == "2026:12:05 09:15:00" and PHOTOS[3]["taken"] == ""   # no EXIF time -> ""
+    monkeypatch.setattr(main_module, "_photo_taken", lambda path: pytest.fail("read again"))
+    member.get("/api/partner/eaglemount/photos")
+
+
+def test_save_to_photos_links_are_logged_and_only_theirs(member, client):
+    r = member.post("/partner/eaglemount/links", json={"paths": [PHOTOS[1]["path"], PHOTOS[0]["path"]]})
+    assert r.status_code == 200 and [f["name"] for f in r.json()["files"]] == ["DSC_0002.JPG"]
+    assert _log()["photos"][PHOTOS[1]["path"]]["how"] == "save"
+    assert client.post("/partner/eaglemount/links", json={"paths": [PHOTOS[1]["path"]]}).status_code == 401
+
+
+def test_owner_edits_partner_settings(admin_client, client, member, main_module):
+    d = admin_client.get("/api/admin/partner-settings").json()
+    p = d["partners"][0]
+    p.update(welcome="Hi Eagle Mount!", family_code="eaglemount 25", family_code_pct=25,
+             family_code_message="Families: {code} saves {pct}%")
+    r = admin_client.post("/api/admin/partner-settings", json={"partners": [p]})
+    assert r.status_code == 200 and r.json()["partners"][0]["family_code"] == "EAGLEMOUNT25"
+    main_module._partners_doc.cache["data"] = None
+    assert "Hi Eagle Mount!" in member.get("/partner/eaglemount").text
+    assert member.get("/api/partner/eaglemount/photos").json()["family_code_message"] == "Families: EAGLEMOUNT25 saves 25%"
+    assert client.get("/api/admin/partner-settings").status_code == 401
+
+
+@pytest.mark.parametrize("change,msg", [
+    ({"password": "abc"}, "at least 6"), ({"name": " "}, "needs a name"), ({"label": ""}, "color label"),
+    ({"print_discount_pct": 150}, "print discount"), ({"value_per_photo": "x"}, "must be a number"),
+])
+def test_bad_partner_settings_are_refused(admin_client, change, msg):
+    p = admin_client.get("/api/admin/partner-settings").json()["partners"][0]
+    r = admin_client.post("/api/admin/partner-settings", json={"partners": [{**p, **change}]})
+    assert r.status_code == 400 and msg in r.json()["error"]
+
+
+def test_standard_family_code_wording(main_module):
+    msg = main_module._family_code_message({"family_code": "EAGLEMOUNT25", "family_code_pct": 25})
+    assert msg == ("Family and friends: use code EAGLEMOUNT25 for 25% off photos and prints, "
+                   "online at photos.bigskyphotos.com and in our store.")
+    assert main_module._family_code_message({"family_code": ""}) == ""
+
+
+def test_pos_browse_marks_eagle_mount_photos(admin_client, client):
+    pos = admin_client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
+    assert {p["filename"]: p.get("partner") for p in pos} == {
+        "DSC_0001.JPG": None, "DSC_0002.JPG": "eagle-mount", "DSC_0003.JPG": "eagle-mount"}
+    public = client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
+    assert all("partner" not in p for p in public)

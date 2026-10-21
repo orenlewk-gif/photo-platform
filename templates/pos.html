@@ -484,6 +484,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   border-radius:var(--radius);padding:.6rem .8rem;margin-bottom:.75rem;font-size:.8rem}
 .pkg-banner b{color:var(--accent)}
 .pkg-banner .ap-add-btn{margin-left:auto;padding:.45rem 1rem}
+/* Eagle Mount (partner) photo: an orange border drawn over the thumbnail */
+.ap-photo-item.ap-partner::after{content:"";position:absolute;inset:0;border:3px solid #ed8936;border-radius:8px;pointer-events:none}
 .ap-photo-item.in-pkg{cursor:default}
 .ap-photo-item.in-pkg .ap-photo-img{opacity:.35}
 .in-pkg-tag{position:absolute;top:4px;left:4px;font-size:.55rem;font-weight:700;color:#0a1929;background:var(--accent);
@@ -2207,7 +2209,7 @@ function renderApPhotos(){
     const photoNum = numMatch ? numMatch[numMatch.length - 1] : (i + 1);
     const inPkg = S.pkgAdd && S.pkgAdd.paths.has(p.path || '');
     return `
-      <div class="ap-photo-item${inPkg ? ' in-pkg' : ''}" id="apph-${i}" onclick="apTogglePhoto(${i})">
+      <div class="ap-photo-item${inPkg ? ' in-pkg' : ''}${p.partner ? ' ap-partner' : ''}" id="apph-${i}" onclick="apTogglePhoto(${i})"${p.partner ? ' title="Eagle Mount photo: free digital, prints at the partner discount"' : ''}>
         <img class="ap-photo-img" src="${url}" loading="lazy" decoding="async" alt="${filename}">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
         ${inPkg ? '<div class="in-pkg-tag">In package</div>' : ''}
