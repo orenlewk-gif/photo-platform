@@ -81,6 +81,19 @@ def test_a_wrong_package_is_refused_before_square_charges(client, square, no_pen
     assert r.status_code == 400 and msg in r.json()["error"]
 
 
+def test_staff_can_set_a_custom_price(client, square, no_pending, no_pos_orders):
+    square(FakeSquareAndResend())
+    item = _pkg_item(price=240.0, package_custom_price=True)
+    sale = {k: v for k, v in _sale([item], 240.0).items() if k not in ("pin", "square_payment_id")}
+    assert client.post("/api/pos/square-pending", json={"state": STATE, "sale": sale},
+                       headers=PIN_HDR).status_code == 200
+    token = client.post("/api/pos-checkout", json=_sale([item], 240.0)).json()["token"]
+    record = _json(f"unlimited_sales/{token}.json")
+    assert record["price"] == 240.0 and record["custom_price"] is True
+    assert client.post("/api/pos-checkout", json=_sale(
+        [_pkg_item(price=-5.0, package_custom_price=True)], 0)).status_code == 400
+
+
 def test_a_comp_package_is_checked_too(client, square, no_pos_orders):
     square(FakeSquareAndResend())
     r = client.post("/api/pos-checkout", json=_sale([_pkg_item(price=1.0)], 1.0))

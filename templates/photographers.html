@@ -521,6 +521,19 @@ async function loadCommission() {
       </div>`;
     }).join('');
 
+    // Unlimited packages still taking photos: their sales are split by photographer when they close
+    if (d.unlimited_pending_count) {
+      const n = d.unlimited_pending_count;
+      grid.innerHTML += `
+      <div class="stat-card" style="cursor:default">
+        <div class="stat-name">Unlimited Packages</div>
+        <div class="stat-row"><span>Still open</span><span>${n}</span></div>
+        <div class="stat-row"><span>Pending revenue</span><span>$${d.unlimited_pending.toFixed(2)}</span></div>
+        <div style="font-size:.72rem;color:rgba(255,255,255,.4);margin-top:.4rem;line-height:1.4">
+          Split by each photographer's share of the photos when ${n === 1 ? 'it closes' : 'they close'}.</div>
+      </div>`;
+    }
+
     // Grand total card
     if (data.length > 1 && grandTotal > 0) {
       grid.innerHTML += `

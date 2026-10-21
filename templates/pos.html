@@ -465,6 +465,33 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   pointer-events:none;
 }
 
+/* ── Unlimited packages ── */
+.pkg-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem 1rem;margin-bottom:.55rem;cursor:pointer;touch-action:manipulation}
+.pkg-card:active{background:var(--surface2)}
+.pkg-card-top{display:flex;justify-content:space-between;align-items:baseline;gap:.75rem}
+.pkg-name{font-size:.92rem;font-weight:600}
+.pkg-count{font-size:.8rem;color:var(--accent);font-weight:700;white-space:nowrap}
+.pkg-meta{font-size:.74rem;color:var(--muted);margin-top:.2rem}
+.pkg-status{display:inline-block;font-size:.68rem;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:.35rem}
+.pkg-status.open{background:rgba(74,222,128,.15);color:#4ade80}
+.pkg-status.pickup{background:rgba(245,196,48,.15);color:var(--accent)}
+.pkg-status.closed{background:rgba(255,255,255,.08);color:var(--muted)}
+.pkg-section{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:.9rem 0 .45rem}
+.pkg-head{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1rem;margin-bottom:.75rem}
+.pkg-head-name{font-size:1.05rem;font-weight:700}
+.pkg-head-line{font-size:.78rem;color:var(--muted);margin-top:.25rem;line-height:1.5}
+.pkg-actions{display:flex;gap:.5rem;margin:.75rem 0 .2rem;flex-wrap:wrap}
+.pkg-banner{display:flex;align-items:center;gap:.6rem;background:rgba(245,196,48,.1);border:1px solid rgba(245,196,48,.35);
+  border-radius:var(--radius);padding:.6rem .8rem;margin-bottom:.75rem;font-size:.8rem}
+.pkg-banner b{color:var(--accent)}
+.pkg-banner .ap-add-btn{margin-left:auto;padding:.45rem 1rem}
+.ap-photo-item.in-pkg{cursor:default}
+.ap-photo-item.in-pkg .ap-photo-img{opacity:.35}
+.in-pkg-tag{position:absolute;top:4px;left:4px;font-size:.55rem;font-weight:700;color:#0a1929;background:var(--accent);
+  border-radius:3px;padding:1px 4px;pointer-events:none}
+.pkg-remove{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.65);
+  color:#fff;font-size:.75rem;cursor:pointer;line-height:22px;padding:0}
+
 /* ── Recent Sales ── */
 .sale-card{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
@@ -795,6 +822,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-action-photos" class="tab-panel active">
           <div class="panel-pad">
             <div class="section-title">Action Photos</div>
+            <div id="ap-pkg-banner" class="pkg-banner hidden"></div>
             <!-- Date + Location selects -->
             <div class="ap-filter-row">
               <select id="ap-date-select" class="ap-select" onchange="apDateChanged()">
@@ -943,6 +971,24 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           </div>
         </div>
 
+        <!-- Packages tab: open Unlimited packages, and adding photos to one -->
+        <div id="tab-packages" class="tab-panel">
+          <div class="panel-pad">
+            <div id="pkg-list-view">
+              <div class="section-title">Unlimited Packages</div>
+              <div class="ap-search-row">
+                <input type="text" id="pkg-search" class="ap-search-input" placeholder="Name or phone..."
+                       autocomplete="off" autocorrect="off" oninput="pkgSearchType(this.value)">
+              </div>
+              <div id="pkg-list"></div>
+            </div>
+            <div id="pkg-detail-view" class="hidden">
+              <div class="ap-breadcrumb"><button class="ap-breadcrumb-btn" onclick="pkgBackToList()">&#8592; Packages</button></div>
+              <div id="pkg-detail"></div>
+            </div>
+          </div>
+        </div>
+
         <!-- Shipping tab -->
         <div id="tab-shipping" class="tab-panel">
           <div class="panel-pad">
@@ -1042,6 +1088,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 
   <!-- Bottom utility bar -->
   <div class="bottom-bar">
+    <button class="bottom-btn" data-tab="packages" onclick="openCategory('packages','Packages')">Packages</button>
     <button class="bottom-btn" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</button>
     <button class="bottom-btn" data-tab="customers" onclick="openCategory('customers','Customers')">Customers</button>
     <button class="bottom-btn" onclick="lockPOS()">Lock</button>
@@ -1054,6 +1101,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <div class="confirm-check">&#10003;</div>
   <div class="confirm-title">Sale Complete</div>
   <div class="confirm-sub">Receipt sent to <span class="confirm-email" id="confirm-email"></span></div>
+  <button class="confirm-new-btn hidden" id="confirm-pkg-btn" onclick="pkgAfterSale()" style="margin-bottom:.6rem">Add Photos to This Package</button>
   <button class="confirm-new-btn" id="confirm-new-btn" onclick="newSale()">Start New Sale</button>
   <div class="confirm-sub hidden" id="confirm-elsewhere" style="margin-top:1rem;max-width:26rem;text-align:center">
     Square opened this page in Safari. You can close this tab and go back to the POS app — it will show the sale as complete.
@@ -1223,6 +1271,9 @@ const S = {
   recentSales: null,
   privateSessions: [],
   unlimited: null,           // Unlimited package names, days and prices (Admin > Pricing)
+  pkg: null,                 // the package open on the Packages tab
+  pkgAdd: null,              // {token, name, last_day, paths:Set} while adding photos to a package
+  _lastPkgToken: '',
   actionPricing: {per_photo: 25, all_photos: 115},
 
   // Pending (Square redirect recovery)
@@ -1383,6 +1434,7 @@ function switchTab(tab){
   if(tab === 'prints'){ if(!S.printSizes) loadPrintSizes(); loadPtDates(); }
   if(tab === 'frames' && !S.frames) loadFrames();
   if(tab === 'unlimited') loadUnlimited();
+  if(tab === 'packages' && !S.pkg) loadPackages($('pkg-search').value.trim());
   if(tab === 'recent') loadRecentSales();
   if(tab === 'shipping') renderShipping();
   if(tab === 'customers') custLoadAll();
@@ -2152,10 +2204,12 @@ function renderApPhotos(){
     const filename = p.filename || (p.path || '').split('/').pop() || '';
     const numMatch = filename.match(/(\d+)/g);
     const photoNum = numMatch ? numMatch[numMatch.length - 1] : (i + 1);
+    const inPkg = S.pkgAdd && S.pkgAdd.paths.has(p.path || '');
     return `
-      <div class="ap-photo-item" id="apph-${i}" onclick="apTogglePhoto(${i})">
+      <div class="ap-photo-item${inPkg ? ' in-pkg' : ''}" id="apph-${i}" onclick="apTogglePhoto(${i})">
         <img class="ap-photo-img" src="${url}" loading="lazy" decoding="async" alt="${filename}">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
+        ${inPkg ? '<div class="in-pkg-tag">In package</div>' : ''}
         <div class="ap-photo-num">${photoNum}</div>
       </div>
     `;
@@ -2173,9 +2227,12 @@ function apRangeModeChanged(){
   if(label) label.textContent = on ? 'Tap first, then last photo' : 'Range select';
 }
 
+function apInPkg(p){ return !!(S.pkgAdd && p && S.pkgAdd.paths.has(p.path || '')); }
+
 function apTogglePhoto(idx){
   const p = S.ap.photos[idx];
   if(!p) return;
+  if(apInPkg(p)){ showToast('Already in the package'); return; }
   const rangeMode = $('ap-range-toggle') && $('ap-range-toggle').checked;
   if(rangeMode){
     if(_apRangeAnchor === null){
@@ -2192,7 +2249,7 @@ function apTogglePhoto(idx){
       const hi = Math.max(_apRangeAnchor, idx);
       for(let i = lo; i <= hi; i++){
         const ph = S.ap.photos[i];
-        if(ph){ S.ap.selected.add(ph.path || String(i)); const el = $('apph-'+i); if(el) el.classList.add('selected'); }
+        if(ph && !apInPkg(ph)){ S.ap.selected.add(ph.path || String(i)); const el = $('apph-'+i); if(el) el.classList.add('selected'); }
       }
       _apRangeAnchor = null;
       const hint = $('ap-range-hint');
@@ -2210,6 +2267,13 @@ function apTogglePhoto(idx){
 
 function renderApSelCount(){
   const n = S.ap.selected.size;
+  if(S.pkgAdd){
+    $('ap-sel-count').textContent = n === 0 ? 'Tap photos to add to the package' : `${n} selected`;
+    $('ap-add-btn').textContent = 'Add to Package';
+    $('ap-add-btn').disabled = n === 0;
+    return;
+  }
+  $('ap-add-btn').textContent = 'Add to Cart';
   let label = n === 0 ? 'Tap photos to select' : `${n} selected`;
   if(n > 0){
     const ap = S.actionPricing || {per_photo:25, all_photos:115};
@@ -2223,6 +2287,7 @@ function renderApSelCount(){
 
 function apAddToCart(){
   if(!S.ap.selected.size) return;
+  if(S.pkgAdd){ pkgAddSelected(); return; }
   if(S.cart.some(i => i.category === 'unlimited_package')){
     showToast('This sale has an Unlimited package — add photos to it after the sale');
     return;
@@ -2719,16 +2784,205 @@ function unlDatesHtml(tier){
 }
 
 function unlAddToCart(im){
-  const t = im._tier, price = unlPrice(t, im.people);
+  const t = im._tier, custom = im.customPrice != null;
+  const price = custom ? im.customPrice : unlPrice(t, im.people);
   const last = unlLastDay(t).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
   cartAdd({
     category: 'unlimited_package',
     label: t.name,
-    detail: `${im.people} ${im.people === 1 ? 'person' : 'people'} · through ${last}`,
+    detail: `${im.people} ${im.people === 1 ? 'person' : 'people'} · through ${last}` + (custom ? ' · Custom price' : ''),
     price, qty: 1, subtotal: price,
     package_tier_id: t.id, package_people: im.people, package_days: t.days,
+    package_custom_price: custom,
   });
   closeItemModal();
+}
+
+// ─── Packages: open Unlimited packages, adding photos to one ─────────────────
+let _pkgSearchTimer = null;
+
+function pkgSearchType(v){
+  clearTimeout(_pkgSearchTimer);
+  _pkgSearchTimer = setTimeout(() => loadPackages(v.trim()), 250);
+}
+
+async function loadPackages(q){
+  S.pkg = null;
+  $('pkg-list-view').classList.remove('hidden');
+  $('pkg-detail-view').classList.add('hidden');
+  const box = $('pkg-list');
+  if(!box.children.length) box.innerHTML = '<div class="ap-loading">Loading packages...</div>';
+  try {
+    const r = await fetch('/api/pos/unlimited?q=' + encodeURIComponent(q || ''), {headers: posPinHeaders()});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not load packages');
+    renderPackages(d.packages || [], q);
+  } catch(e){
+    box.innerHTML = `<div class="ap-loading">${escHtml(e.message)}</div>`;
+  }
+}
+
+function pkgShortDate(iso){
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {weekday: 'short', month: 'short', day: 'numeric'});
+}
+
+function pkgStatusHtml(p){
+  if(!p.open) return '<span class="pkg-status closed">Closed</span>';
+  if(p.day_num > p.days) return '<span class="pkg-status pickup">Pickup day</span>';
+  return `<span class="pkg-status open">Day ${Math.max(1, p.day_num)} of ${p.days}</span>`;
+}
+
+function renderPackages(list, q){
+  const box = $('pkg-list');
+  if(!list.length){
+    box.innerHTML = `<div class="ap-loading">${q ? 'No packages match' : 'No packages yet. Sell one from the Unlimited Package tile.'}</div>`;
+    return;
+  }
+  const card = p => `
+    <div class="pkg-card" data-token="${escHtml(p.token)}">
+      <div class="pkg-card-top">
+        <div class="pkg-name">${escHtml(p.name || p.email || 'No name')}</div>
+        <div class="pkg-count">${p.photo_count} photo${p.photo_count === 1 ? '' : 's'}</div>
+      </div>
+      <div class="pkg-meta">${pkgStatusHtml(p)}${escHtml(p.tier_name || '')} · ${p.people} ${p.people === 1 ? 'person' : 'people'}${p.phone ? ' · ' + escHtml(p.phone) : ''}</div>
+    </div>`;
+  const open = list.filter(p => p.open), closed = list.filter(p => !p.open);
+  box.innerHTML = (open.length ? `<div class="pkg-section">Open (${open.length})</div>` + open.map(card).join('') : '')
+    + (closed.length ? `<div class="pkg-section">Closed, link still works (${closed.length})</div>` + closed.map(card).join('') : '');
+  box.querySelectorAll('[data-token]').forEach(el => el.addEventListener('click', () => openPackage(el.dataset.token)));
+}
+
+async function openPackage(token){
+  $('pkg-list-view').classList.add('hidden');
+  $('pkg-detail-view').classList.remove('hidden');
+  $('pkg-detail').innerHTML = '<div class="ap-loading">Loading package...</div>';
+  try {
+    const r = await fetch('/api/pos/unlimited/' + encodeURIComponent(token), {headers: posPinHeaders()});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not load the package');
+    S.pkg = d;
+    renderPackageDetail();
+  } catch(e){
+    $('pkg-detail').innerHTML = `<div class="ap-loading">${escHtml(e.message)}</div>`;
+  }
+}
+
+function pkgBackToList(){ loadPackages($('pkg-search').value.trim()); }
+
+function renderPackageDetail(){
+  const p = S.pkg;
+  if(!p) return;
+  const until = p.day_num > p.days
+    ? `Pickup day: last chance to add photos (taken through ${pkgShortDate(p.last_day)}).`
+    : `Photos can be added through ${pkgShortDate(p.adding_until)} (pickup day after ${pkgShortDate(p.last_day)}).`;
+  const grid = p.photos.length ? `<div class="ap-photo-grid">` + p.photos.map((ph, i) => `
+      <div class="ap-photo-item" style="cursor:default">
+        <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(ph.path)}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">
+        ${p.open ? `<button class="pkg-remove" data-rm="${i}" aria-label="Remove photo">&#10005;</button>` : ''}
+        <div class="ap-photo-num">${escHtml((ph.filename.match(/(\d+)/g) || ['']).pop())}</div>
+      </div>`).join('') + `</div>`
+    : '<div class="ap-loading">No photos in this package yet.</div>';
+  $('pkg-detail').innerHTML = `
+    <div class="pkg-head">
+      <div class="pkg-head-name">${escHtml(p.name || p.email || 'No name')}</div>
+      <div class="pkg-head-line">${pkgStatusHtml(p)}${escHtml(p.tier_name || '')} · ${p.people} ${p.people === 1 ? 'person' : 'people'}</div>
+      <div class="pkg-head-line">${escHtml([p.phone, p.email].filter(Boolean).join(' · '))}</div>
+      <div class="pkg-head-line">${p.open ? until : 'This package is closed. Its link still works; photos can no longer be added.'}</div>
+      <div class="pkg-actions">
+        ${p.open ? '<button class="ap-add-btn" onclick="pkgStartAdding()">Add Photos</button>' : ''}
+        <span style="align-self:center;font-size:.8rem;color:var(--muted)">${p.photos.length} photo${p.photos.length === 1 ? '' : 's'} in the package</span>
+      </div>
+    </div>
+    ${grid}`;
+  $('pkg-detail').querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    pkgRemovePhoto(S.pkg.photos[+b.dataset.rm].path);
+  }));
+}
+
+async function pkgChange(token, add, remove){
+  const r = await fetch(`/api/pos/unlimited/${encodeURIComponent(token)}/photos`, {
+    method: 'POST', headers: {'Content-Type': 'application/json', ...posPinHeaders()},
+    body: JSON.stringify({add, remove}),
+  });
+  const d = await r.json();
+  if(!r.ok) throw new Error(d.error || 'Could not update the package');
+  return d;
+}
+
+async function pkgRemovePhoto(path){
+  if(!confirm('Remove this photo from the package? The customer will no longer see it.')) return;
+  try {
+    await pkgChange(S.pkg.token, [], [path]);
+    showToast('Photo removed');
+    openPackage(S.pkg.token);
+  } catch(e){ showToast(e.message); }
+}
+
+function pkgStartAdding(){
+  const p = S.pkg;
+  S.pkgAdd = {token: p.token, name: p.name || p.email || 'customer', last_day: p.last_day,
+              paths: new Set(p.photos.map(ph => ph.path))};
+  openCategory('action-photos', 'Action Photos');
+  renderPkgBanner();
+  S.ap.selected.clear();
+  if(S.ap.photos.length) renderApPhotos();
+  renderApSelCount();
+}
+
+function renderPkgBanner(){
+  const b = $('ap-pkg-banner');
+  if(!b) return;
+  if(!S.pkgAdd){ b.classList.add('hidden'); b.innerHTML = ''; return; }
+  const n = S.pkgAdd.paths.size;
+  b.innerHTML = `<div>Adding to <b>${escHtml(S.pkgAdd.name)}</b>'s package · ${n} photo${n === 1 ? '' : 's'} so far.
+    <span style="color:var(--muted)">Photos through ${pkgShortDate(S.pkgAdd.last_day)}.</span></div>
+    <button class="ap-add-btn" onclick="pkgDoneAdding()">Done</button>`;
+  b.classList.remove('hidden');
+}
+
+function pkgStopAdding(){
+  S.pkgAdd = null;
+  renderPkgBanner();
+  try { renderApSelCount(); } catch(e){}
+}
+
+function pkgDoneAdding(){
+  const token = S.pkgAdd && S.pkgAdd.token;
+  pkgStopAdding();
+  if(S.ap.photos.length) renderApPhotos();
+  S.pkg = token ? {token} : null;        // straight to that package, not the list
+  openCategory('packages', 'Packages');
+  if(token) openPackage(token);
+}
+
+async function pkgAddSelected(){
+  const pa = S.pkgAdd;
+  const chosen = S.ap.photos.filter(p => S.ap.selected.has(p.path || '') && !pa.paths.has(p.path || ''));
+  if(!chosen.length) return;
+  const late = chosen.find(p => (p.date || '') > pa.last_day);
+  if(late){ showToast(`${late.filename || 'A photo'} was taken after the package's last day`); return; }
+  setLoading(true);
+  try {
+    const d = await pkgChange(pa.token, chosen.map(p => p.path), []);
+    pa.paths = new Set(d.paths);
+    S.ap.selected.clear();
+    renderApPhotos();
+    renderApSelCount();
+    renderPkgBanner();
+    showToast(`${d.added} photo${d.added === 1 ? '' : 's'} added to the package`);
+  } catch(e){
+    showToast(e.message);
+  } finally { setLoading(false); }
+}
+
+function pkgAfterSale(){
+  const token = S._lastPkgToken;
+  newSale();
+  S.pkg = token ? {token} : null;
+  openCategory('packages', 'Packages');
+  if(token) openPackage(token);
 }
 
 // ─── Prints date/location context ────────────────────────────────────────────
@@ -3391,8 +3645,9 @@ function renderItemModal(){
       </div>
     </div>
     <div class="im-price-note" id="im-people-note">${escHtml(unlPriceNote(im._tier, im.people))}</div>
-    <div class="unl-dates">${unlDatesHtml(im._tier)}</div>
-    <div class="unl-rules">Action photos only. No refunds or extensions.</div>`;
+    <div class="unl-dates">${unlDatesHtml(im._tier)}</div>`;
+    body += _imCustomPriceField(im.customPrice, `Leave blank — ${fmt(unlPrice(im._tier, im.people))}`);
+    body += `<div class="unl-rules">Action photos only. No refunds.</div>`;
 
   } else if(im.type === 'private_fixed'){
     body += `<div class="im-row" style="margin-bottom:.55rem">
@@ -3506,7 +3761,7 @@ function imUpdatePrice(){
     price = (im.customPrice != null) ? im.customPrice : calc;
     qty = 1;
   } else if(im.type === 'unlimited'){
-    price = unlPrice(im._tier, im.people);
+    price = im.customPrice != null ? im.customPrice : unlPrice(im._tier, im.people);
     qty = 1;
   } else if(im.type === 'private_fixed'){
     price = (im.customPrice != null) ? im.customPrice : im.basePrice;
@@ -3578,6 +3833,8 @@ function imPeopleChange(d){
   if(S._im.type === 'unlimited'){
     const n = $('im-people-note');
     if(n) n.textContent = unlPriceNote(S._im._tier, S._im.people);
+    const cp = $('im-custom-price-input');
+    if(cp) cp.placeholder = `Leave blank — ${fmt(unlPrice(S._im._tier, S._im.people))}`;
     imUpdatePrice();
     return;
   }
@@ -4032,7 +4289,8 @@ async function launchSquare(){
       date:        i.date        || '',
       location:    i.location    || '',
       ...(i.category === 'unlimited_package' ? {detail: i.detail, package_tier_id: i.package_tier_id,
-          package_people: i.package_people, package_days: i.package_days} : {}),
+          package_people: i.package_people, package_days: i.package_days,
+          package_custom_price: !!i.package_custom_price} : {}),
     })),
     name:    `${c.first} ${c.last}`.trim(),
     email:   c.email,
@@ -4306,6 +4564,8 @@ async function completeCheckout(squareTxId){
 }
 
 function showConfirmation(data, inOtherBrowser){
+  S._lastPkgToken = (data && data.unlimited && !inOtherBrowser) ? data.token : '';
+  $('confirm-pkg-btn').classList.toggle('hidden', !S._lastPkgToken);
   $('confirm-email').textContent = S.customer.email || (S.pendingOrder && S.pendingOrder.email) || data.email || '';
   $('confirm-new-btn').classList.toggle('hidden', !!inOtherBrowser);
   $('confirm-elsewhere').classList.toggle('hidden', !inOtherBrowser);
@@ -4332,6 +4592,8 @@ function newSale(){
   S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set() };
   S.privatePeople = 1;
   S._im = null;
+  S.pkg = null;
+  pkgStopAdding();
   // Reset inner photo views so next sale starts fresh
   try { apClearPhotos(); } catch(e){}
   try { portraitClearPhotos(); } catch(e){}

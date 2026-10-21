@@ -1625,7 +1625,7 @@ def _record_pos_sale_now(body: dict):
     if unlimited:
         # Commission for a package is split by photographer when it closes, not credited now
         order_record["unlimited"] = {k: unlimited[k] for k in ("tier_id", "tier_name", "days", "people",
-                                                               "start", "last_day", "status")}
+                                                               "custom_price", "start", "last_day", "status")}
     _store_pos_order(order_record)
     if square_check:
         _mark_square_id_used(square_id, order_id)
@@ -2784,6 +2784,7 @@ def _pos_order_row(o: dict) -> dict:
         "tax":         round(tax, 2),
         "is_comp":     is_comp,
         "package_token": o.get("package_token", ""),
+        "unlimited":   bool(o.get("unlimited")),
     }
 
 
@@ -3622,11 +3623,18 @@ def _check_unlimited_cart(items: list, strict: bool = True):
         return None, "Number of people for the package is missing"
     settings = _load_unlimited_packages()
     tier = next((t for t in settings["tiers"] if t.get("id") == item.get("package_tier_id")), None)
+    custom = bool(item.get("package_custom_price"))
+    try:
+        price = round(float(item.get("price") or 0), 2)
+    except (TypeError, ValueError):
+        price = -1
+    if not 0 <= price <= 10000 or int(item.get("qty") or 1) != 1:
+        return None, "The package price isn't valid"
     if strict:
         if not tier:
             return None, "That package is no longer offered — refresh the POS"
-        if abs(float(item.get("price") or 0) - _unlimited_price(settings, tier, people)) > 0.005 \
-                or int(item.get("qty") or 1) != 1:
+        # Staff may set a custom price (typed in on the POS); otherwise it must match Pricing
+        if not custom and abs(price - _unlimited_price(settings, tier, people)) > 0.005:
             return None, "Package prices changed — remove the package and add it again"
     if not tier:
         try:
@@ -3638,7 +3646,7 @@ def _check_unlimited_cart(items: list, strict: bool = True):
         tier = {"id": str(item.get("package_tier_id") or ""), "name": str(item.get("label") or "Unlimited Package"),
                 "days": days}
     return {"tier_id": tier["id"], "tier_name": tier["name"], "days": int(tier["days"]), "people": people,
-            "price": round(float(item.get("price") or 0), 2),
+            "price": price, "custom_price": custom,
             "link_days_after": int(settings.get("link_days_after") or 30)}, ""
 
 
@@ -3653,9 +3661,22 @@ def _unlimited_dates(days: int, link_days_after: int, now: datetime | None = Non
             "expires": end_of_link.astimezone(timezone.utc).isoformat()}
 
 
+# Package records are few (hundreds a season), so the POS list and the commission page work
+# from all of them in memory, re-read from storage at most once a minute; every save here
+# updates the memory too. Changes to one package (adding photos, closing) take its lock.
+UNLIMITED_RECORDS_SECONDS = 60
+UNLIMITED_GRACE_DAYS = 1          # photos can still be added the day after the last day (pickup day)
+_unlimited_records_cache = {"records": None, "ts": 0.0}
+_unlimited_records_guard = threading.Lock()
+_unlimited_locks = _KeyedLocks()
+
+
 def _store_unlimited_sale(record: dict) -> None:
     s3.put_object(Bucket=R2_BUCKET, Key=f"{UNLIMITED_SALES_PREFIX}{record['token']}.json",
                   Body=json.dumps(record).encode(), ContentType="application/json")
+    with _unlimited_records_guard:
+        if _unlimited_records_cache["records"] is not None:
+            _unlimited_records_cache["records"][record["token"]] = record
 
 
 def _load_unlimited_sale(token: str):
@@ -3666,6 +3687,171 @@ def _load_unlimited_sale(token: str):
         return json.loads(obj["Body"].read())
     except Exception:
         return None
+
+
+def _unlimited_records() -> dict:
+    """Every package ever sold, token -> record."""
+    with _unlimited_records_guard:
+        c = _unlimited_records_cache
+        if c["records"] is not None and _time.monotonic() - c["ts"] < UNLIMITED_RECORDS_SECONDS:
+            return dict(c["records"])
+    tokens = []
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=UNLIMITED_SALES_PREFIX):
+        tokens += [o["Key"][len(UNLIMITED_SALES_PREFIX):-5] for o in page.get("Contents", [])
+                   if o["Key"].endswith(".json")]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        records = {r["token"]: r for r in ex.map(_load_unlimited_sale, tokens) if r}
+    with _unlimited_records_guard:
+        _unlimited_records_cache.update(records=records, ts=_time.monotonic())
+    return dict(records)
+
+
+def _mountain_today() -> str:
+    return datetime.now(_MOUNTAIN).date().isoformat()
+
+
+def _unlimited_adding_until(record: dict) -> str:
+    """Last day staff can add photos: the package's last day plus the pickup day."""
+    return (datetime.fromisoformat(record["last_day"]) + timedelta(days=UNLIMITED_GRACE_DAYS)).date().isoformat()
+
+
+def _unlimited_is_open(record: dict, today: str | None = None) -> bool:
+    return record.get("status") != "closed" and (today or _mountain_today()) <= _unlimited_adding_until(record)
+
+
+def _photo_prefix(path: str) -> str:
+    """The photographer's JPEG code: the first three letters of the file name (dsc, ams, jrm...)."""
+    return os.path.basename(path or "")[:3].lower()
+
+
+def _close_due_unlimited() -> None:
+    """Close every package whose adding days are over: freeze how many of its photos each
+    photographer took, which splits the sale for commission. Safe to call often."""
+    today = _mountain_today()
+    for rec in _unlimited_records().values():
+        if rec.get("status") == "closed" or _unlimited_is_open(rec, today):
+            continue
+        with _unlimited_locks.hold(rec["token"]):
+            current = _load_unlimited_sale(rec["token"]) or rec
+            if current.get("status") == "closed":
+                continue
+            pkg = _load_pkg(rec["token"]) or {}
+            split: dict = {}
+            for p in pkg.get("paths") or []:
+                split[_photo_prefix(p)] = split.get(_photo_prefix(p), 0) + 1
+            _store_unlimited_sale({**current, "status": "closed", "split": split,
+                                   "photo_count": len(pkg.get("paths") or []),
+                                   "closed_at": datetime.now(timezone.utc).isoformat()})
+
+
+def _unlimited_shares(record: dict | None, photographers: list) -> list | None:
+    """A closed package's sale split by photographer: [(name, photographer id, fraction)].
+    Photos with an unknown code, or a package closed with no photos, count for the owner.
+    None while the package is still open."""
+    if not record or record.get("status") != "closed":
+        return None
+    by_prefix = {(p.get("file_prefix") or "").strip().lower(): p for p in photographers
+                 if (p.get("file_prefix") or "").strip()}
+    owner = next((p for p in photographers if (p.get("name") or "").strip().lower() == OWNER_NAME.lower()),
+                 {"id": "", "name": OWNER_NAME})
+    split = record.get("split") or {}
+    total = sum(split.values())
+    if not total:
+        return [(owner["name"], owner.get("id", ""), 1.0)]
+    merged: dict = {}
+    for prefix, n in split.items():
+        p = by_prefix.get(prefix, owner)
+        key = p.get("id") or p["name"]
+        name, pid, frac = merged.get(key, (p["name"], p.get("id", ""), 0.0))
+        merged[key] = (name, pid, frac + n / total)
+    return sorted(merged.values(), key=lambda t: (-t[2], t[0].lower()))
+
+
+def _unlimited_photog_label(order_row: dict, photographers: list, records: dict) -> str | None:
+    """What the Orders page and CSV show as the photographer of a package sale (None if not one)."""
+    if not order_row.get("unlimited"):
+        return None
+    shares = _unlimited_shares(records.get(order_row.get("package_token") or ""), photographers)
+    if shares is None:
+        return "Unlimited package (split when it closes)"
+    return " & ".join(f"{name} {round(frac * 100)}%" for name, _, frac in shares)
+
+
+def _unlimited_summary(rec: dict, today: str | None = None) -> dict:
+    """What the POS shows for a package in its list."""
+    today = today or _mountain_today()
+    start = datetime.fromisoformat(rec["start"]).date()
+    day_num = (datetime.fromisoformat(today).date() - start).days + 1
+    return {k: rec.get(k) for k in ("token", "name", "phone", "email", "tier_name", "people", "days",
+                                    "start", "last_day")} | {
+        "photo_count": int(rec.get("photo_count") or 0),
+        "open": _unlimited_is_open(rec, today),
+        "adding_until": _unlimited_adding_until(rec),
+        "day_num": day_num,
+    }
+
+
+def _unlimited_photo_problem(rec: dict, item: dict | None) -> str:
+    """Why a photo can't go in this package ('' if it can)."""
+    if not item:
+        return "isn't a published photo"
+    if _is_portrait_location(item.get("location", "")):
+        return "is a portrait (packages are action photos only)"
+    if item.get("date", "") > rec["last_day"]:
+        return "was taken after the package's last day"
+    return ""
+
+
+def _unlimited_change_photos(token: str, add: list, remove: list) -> dict:
+    """Add and/or remove photos in an open package. Raises ValueError with a message for staff."""
+    with _unlimited_locks.hold(token):
+        rec = _load_unlimited_sale(token)
+        if not rec:
+            raise LookupError("Package not found")
+        if not _unlimited_is_open(rec):
+            raise ValueError("This package is closed — its days are over")
+        pkg = _load_pkg(token)
+        if not pkg:
+            raise LookupError("Package not found")
+        live = _folder_index()["by_path"]
+        paths = list(pkg.get("paths") or [])
+        have = set(paths)
+        new = []
+        for p in dict.fromkeys(x for x in (add or []) if isinstance(x, str) and x):
+            if p in have:
+                continue                                 # already in the package
+            problem = _unlimited_photo_problem(rec, live.get(p))
+            if problem:
+                raise ValueError(f"{os.path.basename(p)} {problem}")
+            new.append(p)
+        gone = {x for x in (remove or []) if isinstance(x, str)}
+        paths = sorted([p for p in paths if p not in gone] + new)   # by day, then folder and file
+        _store_pkg(token, {**pkg, "paths": paths})
+        _store_unlimited_sale({**rec, "photo_count": len(paths)})
+        return {"added": len(new), "removed": len(have & gone), "paths": paths}
+
+
+def _remap_unlimited_paths(remap: dict) -> None:
+    """Photos moved or renamed in the studio: keep every package that has them pointing at them."""
+    if not remap:
+        return
+    now = datetime.now(timezone.utc)
+    for rec in _unlimited_records().values():
+        try:
+            if datetime.fromisoformat(rec["expires"]) < now:
+                continue
+        except Exception:
+            continue
+        with _unlimited_locks.hold(rec["token"]):
+            pkg = _load_pkg(rec["token"])
+            if not pkg or not any(p in remap for p in pkg.get("paths") or []):
+                continue
+            _store_pkg(rec["token"], {**pkg, "paths": sorted(remap.get(p, p) for p in pkg["paths"])})
+
+
+def _remap_unlimited_paths_soon(remap: dict) -> None:
+    if remap:
+        threading.Thread(target=_remap_unlimited_paths, args=(dict(remap),), daemon=True).start()
 
 
 def _mountain_date_str(iso: str) -> str:

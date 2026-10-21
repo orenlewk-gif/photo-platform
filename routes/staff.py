@@ -228,6 +228,7 @@ def photographer_commission(request: Request,
             prefix_map[pfx] = p["id"]
     rev_by_pid: dict[str, float] = {p["id"]: 0.0 for p in photographers}
     refunds = main._load_order_refunds()
+    pending_unlimited, pending_count = 0.0, 0
     try:
         wc_orders = main._fetch_wc_orders_all(after=date_from, before=date_to)
         pos_orders = main._fetch_pos_orders(after=date_from, before=date_to)
@@ -241,8 +242,23 @@ def photographer_commission(request: Request,
                     if pid_match and pid_match in rev_by_pid:
                         rev_by_pid[pid_match] += main._commission_amount(row, refunds)
                         break
+        if any(o.get("unlimited") for o in pos_orders):
+            main._close_due_unlimited()
+            unl_records = main._unlimited_records()
         for o in pos_orders:
             row = main._pos_order_row(o)
+            if o.get("unlimited"):
+                # Unlimited package: split by each photographer's share of its photos once it
+                # closes; until then the amount shows as pending
+                amount = main._commission_amount(row, refunds)
+                shares = main._unlimited_shares(unl_records.get(o.get("package_token") or ""), photographers)
+                if shares is None:
+                    pending_unlimited += amount
+                    pending_count += 1
+                for _, pid, frac in shares or []:
+                    if pid in rev_by_pid:
+                        rev_by_pid[pid] += amount * frac
+                continue
             fnames = (row.get("filenames") or "").split(",")
             for f in fnames:
                 f = f.strip()
@@ -275,7 +291,8 @@ def photographer_commission(request: Request,
             "revenue": round(rev_by_pid.get(pid, 0.0), 2),
             "clock_records": shifts,
         })
-    return {"commission": result, "date_from": date_from, "date_to": date_to}
+    return {"commission": result, "date_from": date_from, "date_to": date_to,
+            "unlimited_pending": round(pending_unlimited, 2), "unlimited_pending_count": pending_count}
 
 
 @router.get("/admin/photographers", response_class=HTMLResponse)

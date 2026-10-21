@@ -1214,6 +1214,7 @@ async def admin_folder_move(request: Request):
             main._save_folder_meta(fm)
     except Exception as e:
         print(f"folder_meta move error: {e}")
+    main._remap_unlimited_paths_soon(path_remap)   # Unlimited packages keep their photos
     main._queue_new_photo_thumbs(list(path_remap.values()))
     return {"moved": len(path_remap), "new_date": new_date, "new_location": new_location}
 
@@ -1287,6 +1288,7 @@ async def admin_folder_rename(request: Request):
             main._save_folder_meta(fm)
     except Exception as e:
         print(f"folder_meta rename error: {e}")
+    main._remap_unlimited_paths_soon(path_remap)   # Unlimited packages keep their photos
     main._queue_new_photo_thumbs(list(path_remap.values()))
     return {"renamed": len(path_remap), "new_folder": new_folder}
 

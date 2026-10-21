@@ -205,6 +205,11 @@ def admin_orders(request: Request, days: int = 30,
                 names.append(name); seen.add(name)
         return " & ".join(names) if names else "Oren Lewkowski"
 
+    _unl_records = {}
+    if any(r.get("unlimited") for r in rows):
+        main._close_due_unlimited()
+        _unl_records = main._unlimited_records()
+
     import json as _json
     def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
     trs = ""
@@ -214,7 +219,8 @@ def admin_orders(request: Request, days: int = 30,
         # is public), so they're escaped and can't inject anything into this page
         first_file  = E((r['filenames'] or '').split(',')[0].strip() or '—')
         is_pos      = r.get("source") == "pos"
-        photographer = _detect_photog(r['filenames'])   # commission follows the photo's JPEG code, not who sold it
+        photographer = (main._unlimited_photog_label(r, _photogs, _unl_records)
+                        or _detect_photog(r['filenames']))   # commission follows the photo's JPEG code, not who sold it
         e_name, e_email = E(f"{r['first']} {r['last']}"), E(r['email'] or '')
         e_loc, e_what   = E(r['location'] or '—'), E(r['what'] or '')
         e_photog, e_files = E(photographer), E(r['filenames'] or '—')
@@ -359,8 +365,12 @@ def admin_export(request: Request, days: int = 30,
     writer.writerow(["Date","Order #","First Name","Last Name","Email","Photographer","What Ordered",
                      "Photo Files","Location","Photo Date","Total","Tip","Discount",
                      "Card Fee","Net","Refunded","Coupon Code","Shipping Cost","Shipping Address"])
+    _exp_unl = {}
+    if any(r.get("unlimited") for r in rows):
+        main._close_due_unlimited()
+        _exp_unl = main._unlimited_records()
     for r in rows:
-        photog = _exp_photog(r["filenames"])
+        photog = main._unlimited_photog_label(r, _exp_photogs, _exp_unl) or _exp_photog(r["filenames"])
         if r.get("source") == "pos":
             fee_csv = "pending" if r.get("fee_pending") else (f"${r['stripe_fee']:.2f}" if r["stripe_fee"] else "")
             order_csv = ("Square " + r["order_no"]) if r.get("order_no") else ""
