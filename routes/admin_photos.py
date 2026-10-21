@@ -1,6 +1,7 @@
 """Routes: admin_photos. Moved from main.py unchanged; shared helpers still live in main.py."""
 import json
 import os
+import re
 import threading
 import uuid
 import zipfile
@@ -315,6 +316,34 @@ async def api_set_folder_item_list(request: Request):
     return {"status": "ok"}
 
 
+# Studio uploads: only photo files, and the date, location and family folder name can only
+# name a folder (no slashes), so every upload lands in images/<date>/<location>[/<family>]/.
+# Winter action photos ignore the folder (the location is chosen at upload); portrait families
+# each get their own folder. File names are kept exactly as they are: poses are matched by them.
+UPLOAD_EXTENSIONS = (".jpg", ".jpeg", ".png")
+_UPLOAD_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def _upload_names_problem(date: str, location: str, folder: str) -> str:
+    if not _UPLOAD_DATE_RE.fullmatch(date or ""):
+        return "The date isn't valid"
+    for value, what in ((location, "Location"), (folder, "Folder name")):
+        if "/" in value or "\\" in value or value.strip() in (".", "..") or any(ord(c) < 32 for c in value):
+            return f"{what} can't contain slashes"
+    return ""
+
+
+def _upload_prefix(date: str, location: str, folder: str) -> str:
+    """Where a studio upload's photos go (same slugs the studio has always used)."""
+    loc_slug = location.lower().replace(" ", "-")
+    folder_slug = folder.lower().replace(" ", "-") if folder else ""
+    return f"images/{date}/{loc_slug}/{folder_slug}/" if folder_slug else f"images/{date}/{loc_slug}/"
+
+
+def _is_upload_photo(name: str) -> bool:
+    return name.lower().endswith(UPLOAD_EXTENSIONS)
+
+
 @router.post("/api/admin/upload/presign")
 async def admin_upload_presign(request: Request):
     if not main._admin_authed(request):
@@ -327,6 +356,16 @@ async def admin_upload_presign(request: Request):
         return JSONResponse(status_code=400, content={"error": "Missing date, location, or files"})
     is_portrait = main._is_portrait_location(location)
     folder      = body.get("folder", "").strip() if is_portrait else ""
+    problem = _upload_names_problem(date, location, folder)
+    if problem:
+        return JSONResponse(status_code=400, content={"error": problem})
+    refused = [os.path.basename(str(f.get("name") or "")) for f in files
+               if not _is_upload_photo(os.path.basename(str(f.get("name") or "")))
+               or not str(f.get("type") or "image/jpeg").lower().startswith("image/")
+               or "svg" in str(f.get("type") or "").lower()]
+    if refused:
+        return JSONResponse(status_code=400, content={
+            "error": "Only photos (JPG or PNG) can be uploaded: " + ", ".join(refused[:5])})
     loc_slug    = location.lower().replace(" ", "-")
     folder_slug = folder.lower().replace(" ", "-") if folder else ""
     urls = []
@@ -359,6 +398,14 @@ async def admin_upload_index(request: Request):
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
     is_portrait = main._is_portrait_location(location)
     folder   = body.get("folder", "").strip() if is_portrait else ""
+    problem = _upload_names_problem(date, location, folder)
+    if problem:
+        return JSONResponse(status_code=400, content={"error": problem})
+    # Only the photos just uploaded to this folder can be added to the photo list
+    prefix = _upload_prefix(date, location, folder)
+    if any(not isinstance(k, str) or not k.startswith(prefix) or "/" in k[len(prefix):]
+           or not _is_upload_photo(k) for k in keys):
+        return JSONResponse(status_code=400, content={"error": "Those files don't belong to this upload"})
     existing    = {item["path"] for item in main.data}
     added       = 0
     location = clean_location(location)
