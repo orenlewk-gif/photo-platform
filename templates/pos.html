@@ -344,6 +344,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .im-orient-price{font-size:.9rem;font-weight:700;color:var(--accent);margin-top:.1rem}
 .im-people-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem}
 .im-price-note{font-size:.75rem;color:var(--muted);text-align:center;margin-bottom:.4rem}
+.unl-intro{font-size:.8rem;color:var(--muted);line-height:1.5;margin:0 0 .75rem}
+.unl-dates{background:var(--surface2);border-radius:8px;padding:.6rem .75rem;font-size:.8rem;line-height:1.55;margin:.2rem 0 .6rem}
+.unl-rules{font-size:.72rem;color:var(--muted);text-align:center;margin-bottom:.3rem}
 
 /* ── Ship item toggle ── */
 .ship-row{display:flex;align-items:center;gap:.6rem;padding:.5rem .85rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:.5rem}
@@ -776,6 +779,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           <div class="cat-tile" data-tab="prints" onclick="openCategory('prints','Prints')">Prints</div>
           <div class="cat-tile" data-tab="frames" onclick="openCategory('frames','Frames')">Frames</div>
           <div class="cat-tile" data-tab="mats" onclick="openCategory('mats','Mats')">Mats</div>
+          <div class="cat-tile" data-tab="unlimited" onclick="openCategory('unlimited','Unlimited Package')">Unlimited Package</div>
         </div>
       </div>
 
@@ -927,6 +931,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
             <div class="section-title">Mats</div>
             <div id="mats-grid" class="product-grid"></div>
             <p id="mats-empty" class="hidden" style="font-size:.82rem;color:var(--muted)">No items configured. Add them from the admin panel.</p>
+          </div>
+        </div>
+
+        <!-- Unlimited Action Photo Package tab -->
+        <div id="tab-unlimited" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Unlimited Action Photo Package</div>
+            <p class="unl-intro" id="unl-intro"></p>
+            <div id="unl-tiers"></div>
           </div>
         </div>
 
@@ -1209,6 +1222,7 @@ const S = {
   products: null,
   recentSales: null,
   privateSessions: [],
+  unlimited: null,           // Unlimited package names, days and prices (Admin > Pricing)
   actionPricing: {per_photo: 25, all_photos: 115},
 
   // Pending (Square redirect recovery)
@@ -1368,6 +1382,7 @@ function switchTab(tab){
   if(tab === 'action-photos') loadApDates();
   if(tab === 'prints'){ if(!S.printSizes) loadPrintSizes(); loadPtDates(); }
   if(tab === 'frames' && !S.frames) loadFrames();
+  if(tab === 'unlimited') loadUnlimited();
   if(tab === 'recent') loadRecentSales();
   if(tab === 'shipping') renderShipping();
   if(tab === 'customers') custLoadAll();
@@ -2208,6 +2223,10 @@ function renderApSelCount(){
 
 function apAddToCart(){
   if(!S.ap.selected.size) return;
+  if(S.cart.some(i => i.category === 'unlimited_package')){
+    showToast('This sale has an Unlimited package — add photos to it after the sale');
+    return;
+  }
   const f = S.ap.family;
   const selectedKeys = [...S.ap.selected];
   const selectedPhotos = S.ap.photos.filter(p => selectedKeys.includes(p.path || ''));
@@ -2632,6 +2651,84 @@ function privateAddToCart(label){
   S.privatePeople = 1;
   $('private-people').textContent = '1';
   adjustPrivatePeople(0); // reset price display
+}
+
+// ─── Unlimited Action Photo Package ───────────────────────────────────────────
+// One price covers every action photo of up to N people for 3/5/7 days (names, days and
+// prices come from Admin > Pricing). The package starts empty; photos are added after the sale.
+async function loadUnlimited(){
+  try {
+    const r = await fetch('/api/unlimited-packages');
+    if(!r.ok) throw new Error();
+    S.unlimited = await r.json();
+  } catch(e){
+    if(!S.unlimited){ $('unl-tiers').innerHTML = '<p class="unl-intro">Could not load the packages. Check the connection and try again.</p>'; return; }
+  }
+  renderUnlimited();
+}
+
+function renderUnlimited(){
+  const u = S.unlimited || {tiers: []};
+  $('unl-intro').textContent = `Every action photo for up to ${u.included_people} people, `
+    + `${fmt(u.extra_person_price)} for each extra person. The download link grows during the trip `
+    + `and works ${u.link_days_after} days after the last day.`;
+  const box = $('unl-tiers');
+  box.innerHTML = (u.tiers || []).map((t, i) => `
+    <div class="private-card" data-unl="${i}">
+      <div class="private-card-name">${escHtml(t.name)}</div>
+      <div class="private-card-hint">${t.days} day${t.days === 1 ? '' : 's'} · ${fmt(t.price)} &rsaquo;</div>
+    </div>`).join('');
+  box.querySelectorAll('[data-unl]').forEach(el => el.addEventListener('click', () => {
+    const t = (S.unlimited.tiers || [])[+el.dataset.unl];
+    if(!t) return;
+    if(S.cart.some(i => i.category === 'unlimited_package')){ showToast('Only one Unlimited package per sale'); return; }
+    if(S.cart.some(i => i.category === 'action_photos')){
+      showToast('Remove the action photos from the cart first — add them to the package after the sale');
+      return;
+    }
+    openItemModal({type: 'unlimited', label: t.name, category: 'unlimited_package', basePrice: t.price, people: 1, _tier: t});
+  }));
+}
+
+function unlPrice(tier, people){
+  const u = S.unlimited || {};
+  const extra = Math.max(0, people - (u.included_people || 0));
+  return Math.round((Number(tier.price) + extra * Number(u.extra_person_price || 0)) * 100) / 100;
+}
+
+function unlPriceNote(tier, people){
+  const u = S.unlimited || {};
+  const extra = Math.max(0, people - (u.included_people || 0));
+  if(!extra) return `${fmt(tier.price)} covers up to ${u.included_people} people`;
+  return `${fmt(tier.price)} + ${extra} extra ${extra === 1 ? 'person' : 'people'} x ${fmt(u.extra_person_price)} = ${fmt(unlPrice(tier, people))}`;
+}
+
+function unlLastDay(tier){
+  const d = new Date();
+  d.setDate(d.getDate() + tier.days - 1);
+  return d;
+}
+
+function unlDatesHtml(tier){
+  const u = S.unlimited || {};
+  const opts = {weekday: 'short', month: 'short', day: 'numeric'};
+  const last = unlLastDay(tier);
+  const linkEnd = new Date(last); linkEnd.setDate(linkEnd.getDate() + (u.link_days_after || 30));
+  return `Starts today. Photos can be added through <b>${last.toLocaleDateString('en-US', opts)}</b>.<br>`
+    + `Download link works until ${linkEnd.toLocaleDateString('en-US', {month: 'short', day: 'numeric', year: 'numeric'})}.`;
+}
+
+function unlAddToCart(im){
+  const t = im._tier, price = unlPrice(t, im.people);
+  const last = unlLastDay(t).toLocaleDateString('en-US', {month: 'short', day: 'numeric'});
+  cartAdd({
+    category: 'unlimited_package',
+    label: t.name,
+    detail: `${im.people} ${im.people === 1 ? 'person' : 'people'} · through ${last}`,
+    price, qty: 1, subtotal: price,
+    package_tier_id: t.id, package_people: im.people, package_days: t.days,
+  });
+  closeItemModal();
 }
 
 // ─── Prints date/location context ────────────────────────────────────────────
@@ -3163,6 +3260,7 @@ function openItemModal(cfg){
     _photoPath:    cfg._photoPath || null,
     _photoName:    cfg._photoName || '',
     _logo:         cfg._logo || false,
+    _tier:         cfg._tier || null,
   };
   renderItemModal();
   $('item-modal').classList.remove('hidden');
@@ -3283,6 +3381,19 @@ function renderItemModal(){
     body += _imCustomPriceField(im.customPrice, `Leave blank — ${fmt(total)}`);
     body += _imNotesField(2);
 
+  } else if(im.type === 'unlimited'){
+    body += `<div class="im-people-row">
+      <span class="im-row-label">Number of People</span>
+      <div class="stepper" style="gap:.6rem">
+        <button class="step-btn" onclick="imPeopleChange(-1)">-</button>
+        <span class="step-val" id="im-people-val">${im.people}</span>
+        <button class="step-btn" onclick="imPeopleChange(1)">+</button>
+      </div>
+    </div>
+    <div class="im-price-note" id="im-people-note">${escHtml(unlPriceNote(im._tier, im.people))}</div>
+    <div class="unl-dates">${unlDatesHtml(im._tier)}</div>
+    <div class="unl-rules">Action photos only. No refunds or extensions.</div>`;
+
   } else if(im.type === 'private_fixed'){
     body += `<div class="im-row" style="margin-bottom:.55rem">
       <span class="im-row-label">Session Price</span>
@@ -3394,6 +3505,9 @@ function imUpdatePrice(){
     const calc = base + extra;
     price = (im.customPrice != null) ? im.customPrice : calc;
     qty = 1;
+  } else if(im.type === 'unlimited'){
+    price = unlPrice(im._tier, im.people);
+    qty = 1;
   } else if(im.type === 'private_fixed'){
     price = (im.customPrice != null) ? im.customPrice : im.basePrice;
     qty = 1;
@@ -3458,9 +3572,15 @@ function imQtyChange(d){
 
 function imPeopleChange(d){
   if(!S._im) return;
-  S._im.people = Math.max(1, S._im.people + d);
+  S._im.people = Math.min(S._im.type === 'unlimited' ? 50 : Infinity, Math.max(1, S._im.people + d));
   const el = $('im-people-val');
   if(el) el.textContent = S._im.people;
+  if(S._im.type === 'unlimited'){
+    const n = $('im-people-note');
+    if(n) n.textContent = unlPriceNote(S._im._tier, S._im.people);
+    imUpdatePrice();
+    return;
+  }
   const base = 550, extra = Math.max(0, S._im.people - 4) * 75;
   const note = $('im-people-note');
   if(note) note.textContent = S._im.people <= 4 ? fmt(base) + ' base rate (up to 4)' : fmt(base) + ' base + ' + fmt(extra) + ' extra = ' + fmt(base + extra);
@@ -3615,6 +3735,7 @@ function itemModalAddToCart(){
   }
 
   // ── New item ──────────────────────────────────────────────────────────────
+  if(im.type === 'unlimited'){ unlAddToCart(im); return; }
   let price, qty = im.qty, detail = '';
 
   if(im.type === 'private_people'){
@@ -3669,6 +3790,7 @@ function itemModalAddToCart(){
 function cartItemEdit(id){
   const item = S.cart.find(i => i.id === id);
   if(!item || item.category === '_shipping') return;
+  if(item.category === 'unlimited_package'){ showToast('To change the package, remove it and add it again'); return; }
   openItemModal({
     type:          'cart_edit',
     _editId:       id,
@@ -3909,6 +4031,8 @@ async function launchSquare(){
       filenames:   i.filenames   || [],
       date:        i.date        || '',
       location:    i.location    || '',
+      ...(i.category === 'unlimited_package' ? {detail: i.detail, package_tier_id: i.package_tier_id,
+          package_people: i.package_people, package_days: i.package_days} : {}),
     })),
     name:    `${c.first} ${c.last}`.trim(),
     email:   c.email,

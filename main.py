@@ -19,6 +19,7 @@ import ipaddress
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from rapidfuzz import fuzz
 import os
 import base64
@@ -1527,6 +1528,12 @@ def _record_pos_sale_now(body: dict):
     if not customer_email:
         return JSONResponse(status_code=400, content={"error": "Customer email required"})
 
+    # An Unlimited package was checked against the Pricing settings before Square took the
+    # payment, so a paid one is recorded even if its price was edited since (comps are checked now)
+    unlimited, problem = _check_unlimited_cart(items, strict=(square_id == "COMP"))
+    if problem:
+        return JSONResponse(status_code=400, content={"error": problem})
+
     # Square sales: confirm with Square that it was really paid before recording
     # the sale or sending photos. "COMP" is a deliberate free sale by staff.
     square_check = {}
@@ -1564,6 +1571,29 @@ def _record_pos_sale_now(body: dict):
             "source":      "pos",
         }
         _store_pkg(token, pkg)
+    elif unlimited:
+        # The package's own download page: empty now, photos are added during the trip
+        dates = _unlimited_dates(unlimited["days"], unlimited["link_days_after"], now)
+        expires = dates["expires"]
+        expire_days_req = max(1, (datetime.fromisoformat(expires) - now).days + 1)
+        title = "Your Unlimited Action Photos"
+        unlimited = {**unlimited, **dates, "token": token, "order_id": f"pos-{token[:8]}",
+                     "name": customer_name, "email": customer_email, "phone": customer_phone,
+                     "photographer_id": photog.get("id", ""), "photographer_name": photog.get("name", ""),
+                     "created": now.isoformat(), "status": "open"}
+        _store_pkg(token, {
+            "token":       token,
+            "title":       title,
+            "emails":      [customer_email],
+            "paths":       [],
+            "created":     now.isoformat(),
+            "expires":     expires,
+            "expire_days": expire_days_req,
+            "source":      "pos",
+            "unlimited":   {k: unlimited[k] for k in ("tier_id", "tier_name", "days", "people",
+                                                       "start", "last_day", "order_id")},
+        })
+        _store_unlimited_sale(unlimited)
     else:
         title = "In-Person Sale"
 
@@ -1588,10 +1618,14 @@ def _record_pos_sale_now(body: dict):
         "coupon_code":       coupon_code,
         "coupon_discount":   coupon_discount,
         "square_payment_id": square_id,
-        "package_token":     token if photo_paths else "",
+        "package_token":     token if (photo_paths or unlimited) else "",
         "items":             items,
         **square_check,
     }
+    if unlimited:
+        # Commission for a package is split by photographer when it closes, not credited now
+        order_record["unlimited"] = {k: unlimited[k] for k in ("tier_id", "tier_name", "days", "people",
+                                                               "start", "last_day", "status")}
     _store_pos_order(order_record)
     if square_check:
         _mark_square_id_used(square_id, order_id)
@@ -1628,10 +1662,15 @@ def _record_pos_sale_now(body: dict):
 
     result = {"order_id": order_id}
     download_url = expire_str = None
-    if photo_paths:
+    package_note = ""
+    if photo_paths or unlimited:
         # The package was saved above, so this link works the moment the email arrives
         download_url = f"{SITE_URL}/package/{token}"
         expire_str   = (now + timedelta(days=expire_days_req)).strftime("%B %d, %Y")
+        if unlimited:
+            expire_str = _mountain_date_str(unlimited["expires"])
+            package_note = _unlimited_note(unlimited["last_day"], expire_str)
+            result["unlimited"] = {k: unlimited[k] for k in ("tier_name", "people", "start", "last_day")}
         result["token"]        = token
         result["download_url"] = download_url
 
@@ -1648,6 +1687,7 @@ def _record_pos_sale_now(body: dict):
         expire_str=expire_str,
         square=square_check or None,
         comp=(square_id == "COMP"),
+        package_note=package_note,
     )
 
     return result
@@ -2121,6 +2161,10 @@ def _resend_pos_receipt(order: dict) -> str:
             expire_str = expires.strftime("%B %d, %Y")
         else:
             note = "The download link has expired, so the receipt was sent without it"
+    package_note = ""
+    if download_url and (pkg or {}).get("unlimited"):
+        expire_str = _mountain_date_str(pkg["expires"])
+        package_note = _unlimited_note(pkg["unlimited"].get("last_day", ""), expire_str)
     square = None
     if order.get("square_verified"):
         square = {k: order.get(k) for k in ("square_paid", "square_tax", "square_tip")}
@@ -2129,7 +2173,7 @@ def _resend_pos_receipt(order: dict) -> str:
         items=order.get("items") or [], total=float(order.get("total") or 0),
         coupon_code=order.get("coupon_code", ""), coupon_discount=float(order.get("coupon_discount") or 0),
         download_url=download_url, expire_str=expire_str, square=square,
-        comp=(order.get("square_payment_id") == "COMP"))
+        comp=(order.get("square_payment_id") == "COMP"), package_note=package_note)
     return note
 
 
@@ -3540,6 +3584,104 @@ def _save_unlimited_packages(d: dict) -> None:
     _unlimited_doc.save(d)
 
 
+# A sold package: the customer's download page (packages/<token>/meta.json, whose photo list
+# grows during the trip) plus a small record per package (unlimited_sales/<token>.json) that
+# the POS lists and searches. Days run in Big Sky time: a 3-day package bought today covers
+# today and the next two days; the link keeps working link_days_after days past the last day.
+UNLIMITED_SALES_PREFIX = "unlimited_sales/"
+_MOUNTAIN = ZoneInfo("America/Denver")
+
+
+def _unlimited_cart_items(items: list) -> list:
+    return [i for i in (items or []) if isinstance(i, dict) and i.get("category") == "unlimited_package"]
+
+
+def _unlimited_price(settings: dict, tier: dict, people: int) -> float:
+    extra = max(0, people - int(settings.get("included_people") or 0))
+    return round(float(tier["price"]) + extra * float(settings.get("extra_person_price") or 0), 2)
+
+
+def _check_unlimited_cart(items: list, strict: bool = True):
+    """The package in a POS cart, checked. Returns (package or None, error or "").
+    strict (before charging): the package and price must match the current Pricing settings.
+    Not strict (after Square has taken payment): a package renamed or repriced in the
+    meantime still goes through, using the days and name the POS showed."""
+    pkgs = _unlimited_cart_items(items)
+    if not pkgs:
+        return None, ""
+    if len(pkgs) > 1:
+        return None, "Only one Unlimited package per sale"
+    if any(i.get("category") == "action_photos" for i in items):
+        return None, "Sell the Unlimited package on its own — add photos to it after the sale"
+    item = pkgs[0]
+    try:
+        people = int(item.get("package_people"))
+    except (TypeError, ValueError):
+        people = 0
+    if not 1 <= people <= 50:
+        return None, "Number of people for the package is missing"
+    settings = _load_unlimited_packages()
+    tier = next((t for t in settings["tiers"] if t.get("id") == item.get("package_tier_id")), None)
+    if strict:
+        if not tier:
+            return None, "That package is no longer offered — refresh the POS"
+        if abs(float(item.get("price") or 0) - _unlimited_price(settings, tier, people)) > 0.005 \
+                or int(item.get("qty") or 1) != 1:
+            return None, "Package prices changed — remove the package and add it again"
+    if not tier:
+        try:
+            days = int(item.get("package_days"))
+        except (TypeError, ValueError):
+            days = 0
+        if not 1 <= days <= 30:
+            return None, "That package is no longer offered"
+        tier = {"id": str(item.get("package_tier_id") or ""), "name": str(item.get("label") or "Unlimited Package"),
+                "days": days}
+    return {"tier_id": tier["id"], "tier_name": tier["name"], "days": int(tier["days"]), "people": people,
+            "price": round(float(item.get("price") or 0), 2),
+            "link_days_after": int(settings.get("link_days_after") or 30)}, ""
+
+
+def _unlimited_dates(days: int, link_days_after: int, now: datetime | None = None) -> dict:
+    """Start day, last day to add photos, and when the link stops working (end of that day)."""
+    now = now or datetime.now(timezone.utc)
+    start = now.astimezone(_MOUNTAIN).date()
+    last_day = start + timedelta(days=days - 1)
+    end_of_link = datetime.combine(last_day + timedelta(days=link_days_after), datetime.max.time(),
+                                   tzinfo=_MOUNTAIN).replace(microsecond=0)
+    return {"start": start.isoformat(), "last_day": last_day.isoformat(),
+            "expires": end_of_link.astimezone(timezone.utc).isoformat()}
+
+
+def _store_unlimited_sale(record: dict) -> None:
+    s3.put_object(Bucket=R2_BUCKET, Key=f"{UNLIMITED_SALES_PREFIX}{record['token']}.json",
+                  Body=json.dumps(record).encode(), ContentType="application/json")
+
+
+def _load_unlimited_sale(token: str):
+    if not re.fullmatch(r"[A-Za-z0-9]{16,64}", token or ""):
+        return None
+    try:
+        obj = s3.get_object(Bucket=R2_BUCKET, Key=f"{UNLIMITED_SALES_PREFIX}{token}.json")
+        return json.loads(obj["Body"].read())
+    except Exception:
+        return None
+
+
+def _mountain_date_str(iso: str) -> str:
+    return datetime.fromisoformat(iso).astimezone(_MOUNTAIN).strftime("%B %d, %Y")
+
+
+def _unlimited_note(last_day: str, expire_str: str) -> str:
+    """One line for the receipt and download page about how the package link works."""
+    try:
+        last = datetime.fromisoformat(last_day).strftime("%A, %B %d").replace(" 0", " ")
+    except Exception:
+        last = last_day
+    return (f"We'll add your action photos to this page during your trip, through {last}. "
+            f"Check back anytime. Your link works until {expire_str}.")
+
+
 # ── Marketing email opt-outs ──────────────────────────────────────────────────
 # Follow-ups, review requests and offers are marketing email: each one carries the business
 # mailing address and a working unsubscribe link (one click, also from Gmail/Apple Mail's own
@@ -3655,7 +3797,8 @@ def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
                             items: list, total: float, coupon_code: str,
                             coupon_discount: float, download_url: str | None,
                             expire_str: str | None = None,
-                            square: dict | None = None, comp: bool = False):
+                            square: dict | None = None, comp: bool = False,
+                            package_note: str = ""):
     if not RESEND_API_KEY or not to_email:
         return
     tmpl = _load_email_templates().get("pos_receipt", _EMAIL_TEMPLATE_DEFAULTS["pos_receipt"])
@@ -3724,8 +3867,9 @@ def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
             f'<p style="margin:0 0 1rem"><a href="{download_url}" '
             f'style="background:#1a73e8;color:#fff;padding:.55rem 1.25rem;border-radius:6px;'
             f'font-size:.88rem;font-weight:600;text-decoration:none;display:inline-block">'
-            f'Download Your Photos</a></p>'
-            + (f'<p style="margin:0 0 1rem;font-size:.8rem;color:#888">Your download link is available until {expire_str}.</p>'
+            f'{"Open Your Photo Page" if package_note else "Download Your Photos"}</a></p>'
+            + (f'<p style="margin:0 0 1rem;font-size:.8rem;color:#888">{_html_escape(package_note)}</p>' if package_note else
+               f'<p style="margin:0 0 1rem;font-size:.8rem;color:#888">Your download link is available until {expire_str}.</p>'
                if expire_str else '')
         )
     body_tmpl = tmpl["body"]

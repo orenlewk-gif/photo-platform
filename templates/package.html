@@ -18,6 +18,9 @@ header .meta{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}
 .lic{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:8px;
   padding:.7rem 1rem;margin-bottom:1.1rem;font-size:.76rem;color:rgba(255,255,255,.42);line-height:1.8}
 .lic strong{color:rgba(255,255,255,.68)}
+.note{background:rgba(242,201,76,.1);border:1px solid rgba(242,201,76,.3);border-radius:8px;
+  padding:.75rem 1rem;margin-bottom:1.1rem;font-size:.86rem;color:#fff;line-height:1.6}
+.empty{text-align:center;color:rgba(255,255,255,.55);font-size:.9rem;padding:3rem 1rem}
 .grid{position:relative;min-height:100px}
 .pi{position:absolute;overflow:hidden;border-radius:6px;background:#111;cursor:pointer;transition:opacity .15s}
 .pi:hover{opacity:.88}
@@ -45,13 +48,13 @@ header .meta{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}
     <h1>__TITLE__</h1>
     <div class="meta">__PHOTO_COUNT__ photo__PLURAL__ &nbsp;·&nbsp; Link expires __EXPIRES__</div>
   </div>
-  <div class="acts">
+  <div class="acts"__ACTS_HIDDEN__>
     <button id="save-photos" class="dla" style="display:none" onclick="savePhotosClick()">Save to Photos</button>
     <a href="/package/__TOKEN__/all" download class="dla" id="dl-all">⬇ Download All (__PHOTO_COUNT__ photos)</a>
   </div>
   <div id="save-hint" class="meta" style="display:none;width:100%"></div>
 </header>
-<div class="wrap">
+<div class="wrap">__NOTICE__
   <div class="lic">
     All photos are for <strong>personal use</strong> — print, frame, and share freely. We'd love a tag: @crystalimagesbigsky
     For commercial use, tag <strong>@crystalimagesbigsky</strong> on Instagram.

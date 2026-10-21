@@ -331,9 +331,18 @@ def package_page(token: str):
         for i, _ in enumerate(paths)
     )
 
+    notice = ""
+    if pkg.get("unlimited"):
+        # Unlimited package: photos are added during the trip, so say so (and when it's still empty)
+        expire_str = main._mountain_date_str(pkg["expires"])
+        notice = f'<div class="note">{_html_escape(main._unlimited_note(pkg["unlimited"].get("last_day", ""), expire_str))}</div>'
+        if not paths:
+            notice += '<div class="empty">No photos yet. They will show up here after your first day on the mountain.</div>'
+
     return HTMLResponse(render_page("package.html", title=title_esc, photo_count=len(paths),
                                     plural="s" if len(paths) != 1 else "", expires=expire_str,
-                                    token=token, photo_items=photo_items))
+                                    token=token, photo_items=photo_items, notice=notice,
+                                    acts_hidden="" if paths else ' style="display:none"'))
 
 
 @router.get("/package/{token}/thumb/{idx}")

@@ -72,6 +72,9 @@ def pos_square_pending(request: Request, body: dict = Body(...)):
         return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
     if not (sale.get("email") or "").strip():
         return JSONResponse(status_code=400, content={"error": "Customer email required"})
+    _, problem = main._check_unlimited_cart(sale.get("items") or [])
+    if problem:   # caught here, before Square takes the payment
+        return JSONResponse(status_code=400, content={"error": problem})
     existing = main._load_pos_pending(state)
     if existing and existing.get("status") == "completed":
         return JSONResponse(status_code=409, content={"error": "This sale was already completed"})
