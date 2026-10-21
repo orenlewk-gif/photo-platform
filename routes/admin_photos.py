@@ -406,6 +406,14 @@ async def admin_upload_index(request: Request):
     if any(not isinstance(k, str) or not k.startswith(prefix) or "/" in k[len(prefix):]
            or not _is_upload_photo(k) for k in keys):
         return JSONResponse(status_code=400, content={"error": "Those files don't belong to this upload"})
+    # Winter action photos the photographer color-labeled for a partner (read from the files
+    # by the upload page): {partner id: [file names]}. Portrait colors are poses, never partners.
+    partner_of = {}
+    if not is_portrait:
+        known = main._partner_ids()
+        for pid, names in (body.get("partner_files") or {}).items():
+            if pid in known and isinstance(names, list):
+                partner_of.update({str(n): pid for n in names})
     existing    = {item["path"] for item in main.data}
     added       = 0
     location = clean_location(location)
@@ -420,6 +428,8 @@ async def admin_upload_index(request: Request):
             }
             if not is_portrait:
                 entry["draft"] = True
+            if os.path.basename(key) in partner_of:
+                entry["partner"] = partner_of[os.path.basename(key)]
             main.data.append(entry)
             existing.add(key)
             added += 1
@@ -446,7 +456,7 @@ async def admin_upload_index(request: Request):
     # Thumbnails for every uploaded photo (drafts too — the studio shows them)
     thumbs_job = main._queue_new_photo_thumbs(keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder,
-            "thumbs_job_id": thumbs_job}
+            "thumbs_job_id": thumbs_job, "partner_marked": sum(1 for k in keys if os.path.basename(k) in partner_of)}
 
 
 @router.post("/api/admin/reindex-folder")
@@ -1387,3 +1397,11 @@ async def api_rebuild_poses(request: Request):
     fm    = main._load_folder_meta()
     poses = fm.get(fk, {}).get("poses", [])
     return {"ok": True, "poses_found": len(poses), "photos_scanned": len(all_keys)}
+
+
+@router.get("/api/admin/partners")
+def admin_partners(request: Request):
+    """Partner programs and the color label photographers use to mark their photos."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"partners": main._load_partners()}

@@ -87,3 +87,37 @@ def test_only_this_uploads_photos_join_the_photo_list(admin_client, main_module,
 
 def test_uploads_need_the_studio_login(client):
     assert _presign(client, "Big Sky Ski School", [("IMG_1.jpg", "image/jpeg")]).status_code == 401
+
+
+def test_orange_labeled_action_photos_are_marked_eagle_mount(admin_client, main_module):
+    files = [("DSC_1.JPG", "image/jpeg"), ("DSC_2.JPG", "image/jpeg"), ("DSC_3.JPG", "image/jpeg")]
+    keys = [u["key"] for u in _presign(admin_client, "Big Sky Ski School", files).json()["urls"]]
+    r = admin_client.post("/api/admin/upload/index", json={
+        "date": DATE, "location": "Big Sky Ski School", "folder": "", "keys": keys,
+        "partner_files": {"eagle-mount": ["DSC_2.JPG", "DSC_3.JPG"], "made-up": ["DSC_1.JPG"]}})
+    assert r.status_code == 200 and r.json()["partner_marked"] == 2
+    marks = {i["path"].rsplit("/", 1)[-1]: i.get("partner") for i in main_module.data}
+    assert marks == {"DSC_1.JPG": None, "DSC_2.JPG": "eagle-mount", "DSC_3.JPG": "eagle-mount"}
+
+
+def test_portrait_colors_are_poses_never_partners(admin_client, main_module):
+    keys = [u["key"] for u in _presign(admin_client, "Lone Peak Portraits", [("P1.jpg", "image/jpeg")],
+                                       folder="Smith").json()["urls"]]
+    r = admin_client.post("/api/admin/upload/index", json={
+        "date": DATE, "location": "Lone Peak Portraits", "folder": "Smith", "keys": keys,
+        "partner_files": {"eagle-mount": ["P1.jpg"]}})
+    assert r.status_code == 200 and r.json()["partner_marked"] == 0
+    assert all("partner" not in i for i in main_module.data)
+
+
+def test_partner_settings_default_to_eagle_mount_orange(admin_client, client):
+    assert admin_client.get("/api/admin/partners").json()["partners"][0] == {
+        "id": "eagle-mount", "name": "Eagle Mount", "label": "Orange"}
+    assert client.get("/api/admin/partners").status_code == 401
+
+
+def test_label_reader_finds_the_color_written_while_culling(main_module):
+    xmp = (b'\xff\xd8\xff\xe1\x00\x10http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta><rdf:Description '
+           b'xmp:Label="Orange" xmp:Rating="3"/></x:xmpmeta>')
+    assert main_module.read_xmp_color_label(xmp) == "Orange"
+    assert main_module.read_xmp_color_label(b'\xff\xd8 no metadata') == ""

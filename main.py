@@ -3872,6 +3872,25 @@ def _unlimited_note(last_day: str, expire_str: str) -> str:
             f"Check back anytime. Your link works until {expire_str}.")
 
 
+# ── Partner programs (Eagle Mount) ────────────────────────────────────────────
+# A partner's participants get their photos free on their own page. Photographers mark those
+# photos while culling with the partner's color label (written into the photo file); winter
+# action photos uploaded with that label are flagged item["partner"] = <partner id>.
+PARTNERS_KEY = "meta/partners.json"
+_PARTNER_DEFAULTS = [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange"}]
+_partners_doc = JsonDoc(s3, R2_BUCKET, PARTNERS_KEY, ttl=30, indent=2,
+                        default=lambda: _copy.deepcopy(_PARTNER_DEFAULTS),
+                        valid=lambda d: isinstance(d, list))
+
+
+def _load_partners() -> list:
+    return _partners_doc.load()
+
+
+def _partner_ids() -> set:
+    return {p.get("id") for p in _load_partners() if p.get("id")}
+
+
 # ── Marketing email opt-outs ──────────────────────────────────────────────────
 # Follow-ups, review requests and offers are marketing email: each one carries the business
 # mailing address and a working unsubscribe link (one click, also from Gmail/Apple Mail's own

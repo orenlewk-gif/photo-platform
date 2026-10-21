@@ -379,7 +379,7 @@ input[type=file]{display:none}
         </div>
         <div class="field" id="upload-location-wrap" style="display:none;margin-top:.6rem">
           <label>Location</label>
-          <select id="upload-location" onchange="renderDetectedFolders();updateUploadBtn()">
+          <select id="upload-location" onchange="renderDetectedFolders();updateUploadBtn();scanUploadLabels()">
             <option value="">Select location…</option>
           </select>
         </div>
@@ -403,6 +403,7 @@ input[type=file]{display:none}
           onchange="handleFileInput(this.files);this.value=''">
 
         <div id="detected-folders"></div>
+        <div id="partner-summary"></div>
 
         <div id="batch-header" style="display:none"></div>
 
@@ -681,6 +682,59 @@ async function readExifTimes(files) {
   }));
   return times;
 }
+// ── Color labels written while culling (GraphicConverter, Lightroom, Bridge...) ──
+// Read from inside each photo file (XMP), the same way the server's read_xmp_color_label does.
+// Winter action: a partner's color (Eagle Mount = orange) marks that partner's photos.
+// Portraits: each color is a pose.
+async function readColorLabel(f) {
+  if (!/\.(jpg|jpeg)$/i.test(f.name)) return '';
+  try {
+    const txt = new TextDecoder('latin1').decode(await f.slice(0, 1048576).arrayBuffer());
+    const at = txt.indexOf('http://ns.adobe.com/xap/1.0/');
+    if (at < 0) return '';
+    const xmp = txt.slice(at);
+    const m = xmp.match(/xmp:Label\s*=\s*"([^"]*)"/) || xmp.match(/<xmp:Label>\s*([^<]*?)\s*<\/xmp:Label>/);
+    return m ? m[1].trim() : '';
+  } catch(e) { return ''; }
+}
+async function readColorLabels(files) {
+  const out = new Map();
+  const list = [...files];
+  for (let i = 0; i < list.length; i += 16)
+    await Promise.all(list.slice(i, i + 16).map(async f => out.set(f, await readColorLabel(f))));
+  return out;
+}
+let PARTNERS = [];                 // [{id, name, label}] from /api/admin/partners
+let _uploadLabels = new Map();     // File -> color label, for the winter action files picked
+async function loadPartners() {
+  try { PARTNERS = (await (await fetch('/api/admin/partners')).json()).partners || []; } catch(e) {}
+}
+function partnerFilesFor(files) {
+  // {partner id: [file names]} for the files whose color label is that partner's color
+  const out = {};
+  for (const f of files) {
+    const lab = (_uploadLabels.get(f) || '').toLowerCase();
+    const p = lab && PARTNERS.find(p => (p.label || '').toLowerCase() === lab);
+    if (p) (out[p.id] = out[p.id] || []).push(f.name);
+  }
+  return out;
+}
+async function scanUploadLabels() {
+  // Winter action files just picked: read their labels and say how many go to each partner
+  const files = [...uploadFolders.flatMap(f => f.files), ...looseFiles];
+  const el = document.getElementById('partner-summary');
+  if (!el) return;
+  if (!files.length || _currentLocationIsPortrait() || !PARTNERS.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<span style="color:rgba(255,255,255,.4)">Reading color labels…</span>';
+  _uploadLabels = await readColorLabels(files);
+  const counts = partnerFilesFor(files);
+  el.innerHTML = PARTNERS.map(p => {
+    const n = (counts[p.id] || []).length;
+    return `<div class="det-folder"><span class="fname">${esc(p.name)} (${esc(p.label)} label)</span>`
+      + `<span class="fcount">${n} photo${n === 1 ? '' : 's'}${n ? ' · go to the ' + esc(p.name) + ' page, not the gallery' : ''}</span></div>`;
+  }).join('');
+}
+
 const ZIP_LOCS      = new Set(["adventure zip","adventure zip line","adventure zipline","nature zip","nature zip line","nature zipline"]);
 let PORTRAIT_LOCS = new Set(["lone peak portraits","explorer gondola","ramcharger portraits","adventure zip line","adventure zip"]);
 
@@ -763,6 +817,7 @@ function onUploadCategoryChange() {
 document.addEventListener('DOMContentLoaded', async function() {
   document.getElementById('upload-date').value = new Date().toISOString().slice(0,10);
   loadUploadLocations();
+  loadPartners();
   setupDropZone();
   setupInlineEdit();
   loadSidebar(); // fire and forget — sidebar populates in background
@@ -1857,8 +1912,13 @@ async function handleAddPhotosInput(fileList) {
   const failedCount = items.length - okKeys.length;
   if (okKeys.length) {
     const times = await readExifTimes(files);
+    let partner_files = {};
+    if (!PORTRAIT_LOCS.has(location.trim().toLowerCase())) {
+      _uploadLabels = await readColorLabels(files);
+      partner_files = partnerFilesFor(files);
+    }
     const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys:okKeys,times})});
+      body:JSON.stringify({date,location,folder,keys:okKeys,times,partner_files})});
     if (!ir.ok) { showToast('Index failed','error'); document.getElementById('add-photos-input').value=''; return; }
   }
   if (failedCount) showToast(`${okKeys.length} added, ${failedCount} failed — try again`,'error');
@@ -1875,9 +1935,10 @@ function showUploadView() {
   _batchQueue=[]; _batchCursor=-1;
   document.getElementById('batch-header').style.display='none';
   document.getElementById('drop-zone').style.display='';
-  uploadFolders=[]; looseFiles=[];
+  uploadFolders=[]; looseFiles=[]; _uploadLabels = new Map();
   clearPoseState();
   renderDetectedFolders(); updateUploadBtn();
+  const ps = document.getElementById('partner-summary'); if (ps) ps.innerHTML = '';
 }
 
 function setupDropZone() {
@@ -1905,7 +1966,7 @@ function handleFolderInput(files) {
   } else {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
-    renderDetectedFolders(); updateUploadBtn();
+    renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
   }
 }
 function handleFileInput(files) {
@@ -1916,7 +1977,7 @@ function handleFileInput(files) {
   } else {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
-    renderDetectedFolders(); updateUploadBtn();
+    renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
   }
 }
 
@@ -1939,7 +2000,7 @@ async function handleDrop(e) {
   } else {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
-    renderDetectedFolders(); updateUploadBtn();
+    renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
   }
 }
 
@@ -2036,6 +2097,27 @@ function initPoseAssign(files) {
   document.getElementById('folder-name-field').style.display = 'block';
   document.getElementById('pose-assign-panel').style.display = 'block';
   renderPosePanel(true);
+  posesFromLabels(imgs);
+}
+
+// Each color label set while culling becomes a pose (in photo order). Photos without a
+// label stay unassigned; the photographer checks and can still change everything by hand.
+async function posesFromLabels(imgs) {
+  const labels = await readColorLabels(imgs);
+  if (poseFiles !== imgs || poseGroups.length) return;      // another family loaded, or poses already picked
+  const order = [], byColor = {};
+  imgs.forEach((f, i) => {
+    const lab = (labels.get(f) || '').toLowerCase();
+    if (!lab) return;
+    if (!byColor[lab]) { byColor[lab] = new Set(); order.push(lab); }
+    byColor[lab].add(i);
+  });
+  if (!order.length) return;
+  poseGroups = order.map((lab, gi) => ({color: POSE_COLORS[gi % POSE_COLORS.length], label: `Pose ${gi + 1}`,
+                                        indices: byColor[lab]}));
+  renderPosePanel(true);
+  updateUploadBtn();
+  showToast(`${order.length} pose${order.length === 1 ? '' : 's'} filled in from color labels — check them, then upload`);
 }
 
 function renderPosePanel(fullRebuild) {
@@ -2232,8 +2314,11 @@ async function renderDetectedFolders() {
     fnField.style.display = _currentLocationIsPortrait() ? 'block' : 'none';
   }
   el.innerHTML=html;
+  if (!uploadFolders.length && !looseFiles.length) {
+    const ps = document.getElementById('partner-summary'); if (ps) ps.innerHTML = '';
+  }
 }
-function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); }
+function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); scanUploadLabels(); }
 function updateUploadBtn() {
   const btn = document.getElementById('upload-action-btn');
   if (_isPoseMode()) {
@@ -2429,8 +2514,10 @@ async function startUpload() {
   for (const [fi, {folder}] of batches.entries()) {
     const keys = byFolder[folder];
     if (!keys?.length) continue;
+    const batchFiles = (batches[fi] && batches[fi].files) || [];
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys,times:batchTimes[folder]||{}})});
+      body:JSON.stringify({date,location,folder,keys,times:batchTimes[folder]||{},
+                           partner_files: _isPortraitLoc ? {} : partnerFilesFor(batchFiles)})});
     if (isZip) {
       const gs = getUploadGroupSize(fi);
       if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
