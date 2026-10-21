@@ -34,7 +34,7 @@ def get_days():
 
 @router.get("/api/dates")
 def get_dates():
-    dates = sorted(set(item["date"] for item in main.data), reverse=True)
+    dates = sorted(set(item["date"] for item in main.data if not item.get("partner")), reverse=True)
     return {"dates": dates}
 
 
@@ -43,7 +43,7 @@ def get_locations(date: str = Query(None)):
     if date:
         items = main._folder_index()["by_date"].get(date, [])
     else:
-        items = [item for item in main.data if not item.get("draft")]
+        items = [item for item in main.data if not item.get("draft") and not item.get("partner")]
     loc_map = {}
     all_previews = {}
     for item in items:
@@ -126,7 +126,7 @@ def last_name_search(request: Request, q: str = Query("")):
 
 
 @router.get("/api/browse")
-def browse(date: str, location: str, family: str = Query(None), group: str = Query(None),
+def browse(request: Request, date: str, location: str, family: str = Query(None), group: str = Query(None),
            dims: bool = Query(True)):
     """Photos in a folder. dims=0 skips measuring each photo's width/height — the POS
     doesn't use them, and measuring uncached photos can take seconds on first open."""
@@ -138,7 +138,8 @@ def browse(date: str, location: str, family: str = Query(None), group: str = Que
             g = _item_group_from_path(item)
         return g.lower() == group.lower()
 
-    pool = [item for item in main._folder_photos(date, location)
+    # The POS and studio also see partner photos (Eagle Mount); the public gallery doesn't
+    pool = [item for item in main._folder_photos(date, location, pos=main._nowm_allowed(request))
             if (not family or item.get("last_name","").strip().lower() == family.lower()
                  or (family and not item.get("last_name","").strip() and item.get("group","").strip().lower() == family.lower()))
             and group_matches(item)]
@@ -281,7 +282,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
     for item in main.data:
-        if item.get("draft"):
+        if item.get("draft") or item.get("partner"):
             continue
         if date and item.get("date") != date:
             continue
@@ -342,7 +343,7 @@ def get_folder_times(date: str = Query(...), location: str = Query(...)):
     loc_lower = location.strip().lower()
     paths = [
         item["path"] for item in main.data
-        if not item.get("draft")
+        if not item.get("draft") and not item.get("partner")
         and item.get("date") == date
         and (item.get("location") or "").strip().lower() == loc_lower
     ]

@@ -1404,4 +1404,5 @@ def admin_partners(request: Request):
     """Partner programs and the color label photographers use to mark their photos."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    return {"partners": main._load_partners()}
+    # Only what the upload page needs (never the page password)
+    return {"partners": [{k: p.get(k) for k in ("id", "name", "label")} for p in main._load_partners()]}

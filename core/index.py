@@ -6,11 +6,24 @@ SEARCHABLE_GROUP_LOCATIONS = {"mountain biking"}
 
 
 def build_folder_index(items: list) -> dict:
+    """Partner photos (item["partner"], e.g. Eagle Mount) are free on their partner's page:
+    they're left out of everything the public gallery and online checkout use, but stay on
+    the POS (pos_folders, pos_dates, all_by_path) and are listed by day under "partners"."""
     by_date, folders, date_locs, by_path = {}, {}, {}, {}
+    pos_folders, all_by_path, partners = {}, {}, {}
     name_keys, name_previews = [], {}
     for item in items:
         loc = clean_location(item["location"])
         path = item.get("path", "")
+        partner = item.get("partner")
+        if partner:
+            if not item.get("draft"):
+                all_by_path[path] = item
+                pos_folders.setdefault((item["date"], loc), []).append(item)
+                partners.setdefault(partner, {}).setdefault(item["date"], []).append(item)
+                if item.get("date", "").strip() and loc:
+                    date_locs.setdefault(item.get("date", "").strip(), set()).add(loc)
+            continue
         # Name lookups (like last_name_search, drafts included)
         ln = item.get("last_name", "").strip()
         if ln:
@@ -32,8 +45,10 @@ def build_folder_index(items: list) -> dict:
         if item.get("draft"):
             continue
         by_path[item.get("path", "")] = item
+        all_by_path[item.get("path", "")] = item
         by_date.setdefault(item["date"], []).append(item)
         folders.setdefault((item["date"], loc), []).append(item)
+        pos_folders.setdefault((item["date"], loc), []).append(item)
         if item.get("date", "").strip() and loc:
             date_locs.setdefault(item.get("date", "").strip(), set()).add(loc)
 
@@ -66,4 +81,5 @@ def build_folder_index(items: list) -> dict:
     pos_dates = [{"date": d, "locations": sorted(date_locs[d])}
                  for d in sorted(date_locs, reverse=True)[:90]]
     return {"by_date": by_date, "folders": folders, "by_path": by_path, "days": {"days": days},
-            "pos_dates": {"dates": pos_dates}, "name_keys": name_keys, "name_previews": name_previews}
+            "pos_dates": {"dates": pos_dates}, "name_keys": name_keys, "name_previews": name_previews,
+            "pos_folders": pos_folders, "all_by_path": all_by_path, "partners": partners}

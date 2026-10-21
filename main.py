@@ -762,9 +762,10 @@ def _folder_index() -> dict:
         return index
 
 
-def _folder_photos(date: str, location: str) -> list:
-    """Live (non-draft) photos in a folder, in photo-list order. location = cleaned name."""
-    return _folder_index()["folders"].get((date, location), [])
+def _folder_photos(date: str, location: str, pos: bool = False) -> list:
+    """Live (non-draft) photos in a folder, in photo-list order. location = cleaned name.
+    pos=True also includes partner photos (Eagle Mount), which the public gallery leaves out."""
+    return _folder_index()["pos_folders" if pos else "folders"].get((date, location), [])
 
 
 # ─────────────────────────────────────────
@@ -780,11 +781,11 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
 
     # (time_from / time_to are applied in the browser from /api/folder-times)
     if has_labels:
-        pool = _folder_photos(date, location) if date and location else data
+        pool = _folder_photos(date, location) if date and location else [i for i in data if not i.get("partner")]
         results = [(0.0, item) for item in filter_by_labels(pool, date, location, group, jacket_colors_filter,
                                                             pants_color, sport, ski_instructor)]
     else:
-        results = match_last_name(data, last_name, date, location, group)
+        results = match_last_name([i for i in data if not i.get("partner")], last_name, date, location, group)
 
     paths  = [item["path"] for _, item in results]
     dims   = _dims_for_paths(paths)
@@ -3817,7 +3818,7 @@ def _unlimited_change_photos(token: str, add: list, remove: list) -> dict:
         pkg = _load_pkg(token)
         if not pkg:
             raise LookupError("Package not found")
-        live = _folder_index()["by_path"]
+        live = _folder_index()["all_by_path"]      # POS: partner photos count too
         paths = list(pkg.get("paths") or [])
         have = set(paths)
         new = []
@@ -3877,18 +3878,116 @@ def _unlimited_note(last_day: str, expire_str: str) -> str:
 # photos while culling with the partner's color label (written into the photo file); winter
 # action photos uploaded with that label are flagged item["partner"] = <partner id>.
 PARTNERS_KEY = "meta/partners.json"
-_PARTNER_DEFAULTS = [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange"}]
+_PARTNER_FIELDS = {                 # every partner has these (older saved partners get the defaults)
+    "slug": "",                     # page address: /partner/<slug>
+    "password": "",                 # shared password; the page stays closed while it's empty
+    "welcome": "",                  # line at the top of the page
+    "value_per_photo": 25,          # in-kind donation value of each photo downloaded
+    "print_discount_pct": 40,       # prints of their photos
+    "family_code": "",              # discount code shown on the page for families
+    "family_code_pct": 25,
+}
+_PARTNER_DEFAULTS = [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange", "slug": "eaglemount",
+                      "welcome": "Welcome! Your photos are free to download. Thank you for skiing with Eagle Mount."}]
 _partners_doc = JsonDoc(s3, R2_BUCKET, PARTNERS_KEY, ttl=30, indent=2,
                         default=lambda: _copy.deepcopy(_PARTNER_DEFAULTS),
                         valid=lambda d: isinstance(d, list))
+PARTNER_SESSION_DAYS = 180          # a device that entered the password stays in for the season
 
 
 def _load_partners() -> list:
-    return _partners_doc.load()
+    return [{**_PARTNER_FIELDS, **p} for p in _partners_doc.load() if isinstance(p, dict)]
 
 
 def _partner_ids() -> set:
     return {p.get("id") for p in _load_partners() if p.get("id")}
+
+
+def _partner_by_slug(slug: str) -> dict | None:
+    slug = (slug or "").strip().lower()
+    return next((p for p in _load_partners() if slug and (p.get("slug") or "").lower() == slug), None)
+
+
+def _partner_cookie_name(partner: dict) -> str:
+    return "ci_partner_" + re.sub(r"[^a-z0-9]", "", partner["id"].lower())
+
+
+def _partner_sig(partner: dict, expires: int) -> str:
+    # Tied to the current password: changing it signs every device out
+    pw = hashlib.sha256((partner.get("password") or "").encode()).hexdigest()[:16]
+    return hmac.new((ADMIN_PASSWORD or "").encode(), f"partner|{partner['id']}|{pw}|{expires}".encode(),
+                    hashlib.sha256).hexdigest()
+
+
+def _partner_token(partner: dict) -> tuple[str, int]:
+    expires = int(_time.time()) + PARTNER_SESSION_DAYS * 86400
+    return f"{expires}.{_partner_sig(partner, expires)}", PARTNER_SESSION_DAYS * 86400
+
+
+def _partner_signed_in(request: Request, partner: dict) -> bool:
+    if not partner.get("password"):
+        return False
+    raw = request.cookies.get(_partner_cookie_name(partner), "")
+    exp, _, sig = raw.partition(".")
+    try:
+        expires = int(exp)
+    except ValueError:
+        return False
+    return expires > _time.time() and hmac.compare_digest(sig, _partner_sig(partner, expires))
+
+
+def _partner_photos(partner: dict) -> dict:
+    """{date: [photo items]} for this partner's published photos."""
+    return _folder_index()["partners"].get(partner["id"], {})
+
+
+def _partner_photo(partner: dict, path: str) -> dict | None:
+    item = _folder_index()["all_by_path"].get(path or "")
+    return item if item and item.get("partner") == partner["id"] else None
+
+
+# Downloads are logged for the partner's in-kind donation report: each photo counts once
+# (the first download), with how many times it was downloaded. One file per partner; a read
+# that fails for any reason other than "not there yet" stops the save, so it's never wiped.
+_partner_log_lock = threading.Lock()
+_partner_logs: dict = {}
+
+
+def _partner_log_key(pid: str) -> str:
+    return f"meta/partner_downloads/{pid}.json"
+
+
+def _load_partner_log(pid: str) -> dict:
+    if pid in _partner_logs:
+        return _partner_logs[pid]
+    try:
+        log = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=_partner_log_key(pid))["Body"].read())
+    except Exception as e:
+        code = str(getattr(e, "response", {}).get("Error", {}).get("Code", ""))
+        if code not in ("404", "NoSuchKey", "NotFound"):
+            raise
+        log = {"photos": {}}
+    _partner_logs[pid] = log
+    return log
+
+
+def _log_partner_downloads(partner: dict, items: list, how: str) -> None:
+    if not items:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with _partner_log_lock:
+            log = _load_partner_log(partner["id"])
+            for item in items:
+                rec = log["photos"].setdefault(item["path"], {"first": now, "photo_date": item.get("date", ""),
+                                                              "count": 0})
+                rec["count"] += 1
+                rec["last"] = now
+                rec["how"] = how
+            s3.put_object(Bucket=R2_BUCKET, Key=_partner_log_key(partner["id"]),
+                          Body=json.dumps(log).encode(), ContentType="application/json")
+    except Exception as e:
+        print(f"Partner download log not saved ({partner['id']}): {e}")
 
 
 # ── Marketing email opt-outs ──────────────────────────────────────────────────
@@ -4231,3 +4330,6 @@ app.include_router(_routes_legal.router)
 
 from routes import unlimited as _routes_unlimited  # noqa: E402
 app.include_router(_routes_unlimited.router)
+
+from routes import partners as _routes_partners  # noqa: E402
+app.include_router(_routes_partners.router)

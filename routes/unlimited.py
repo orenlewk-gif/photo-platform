@@ -68,7 +68,7 @@ def pos_unlimited_detail(token: str, request: Request):
     pkg = main._load_pkg(token) if rec else None
     if not rec or not pkg:
         return JSONResponse(status_code=404, content={"error": "Package not found"})
-    live = main._folder_index()["by_path"]
+    live = main._folder_index()["all_by_path"]
     photos = [{"path": p, "filename": os.path.basename(p), "date": (live.get(p) or {}).get("date", ""),
                "location": (live.get(p) or {}).get("location", "")} for p in pkg.get("paths") or []]
     return {**main._unlimited_summary({**rec, "photo_count": len(photos)}), "photos": photos,

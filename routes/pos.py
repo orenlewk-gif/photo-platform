@@ -28,7 +28,7 @@ def pos_families(date: str = Query(""), location: str = Query("")):
     from collections import defaultdict
     families: dict = {}
     previews: dict = defaultdict(list)
-    for item in main._folder_photos(date, location):
+    for item in main._folder_photos(date, location, pos=True):
         ln = item.get("last_name", "").strip()
         grp = item.get("group", "").strip()
         name = ln or grp

@@ -20,7 +20,7 @@ def get_folder_dates(location: str = Query("")):
         return {"dates": []}
     dates = sorted(
         {item["date"] for item in main.data
-         if not item.get("draft")
+         if not item.get("draft") and not item.get("partner")
          and clean_location(item.get("location", "")).lower() == loc_lower},
         reverse=True,
     )
