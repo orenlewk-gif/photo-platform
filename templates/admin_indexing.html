@@ -60,6 +60,8 @@ html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c233
 .pt.focused{outline:2px solid rgba(245,197,24,.5);outline-offset:2px}
 .pt img{width:100%;aspect-ratio:2/3;object-fit:contain;background:#0d1b2a;display:block}
 .pt-meta{padding:.3rem .45rem .35rem;font-size:.65rem}
+.pt-partner{position:absolute;top:5px;left:5px;background:#ed8936;color:#1a1000;font-size:.6rem;font-weight:700;
+  border-radius:3px;padding:1px 5px;pointer-events:none}
 .pt-dots{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
 .pt-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .pt-sport{font-size:.6rem;color:rgba(255,255,255,.35);font-weight:600;margin-left:auto}
@@ -144,6 +146,7 @@ const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink',
 let _folders       = [];
 let _currentFolder = null;   // folder object
 let _photos        = [];     // current folder photos
+let _partners      = [];     // [{id, name, label}] (Eagle Mount): photos can be marked as theirs
 let _selected      = new Set();
 let _lastClicked   = null;   // path for shift-select anchor
 let _focusedIdx    = -1;     // keyboard nav index
@@ -232,6 +235,7 @@ function renderGrid() {
       <button onclick="event.stopPropagation();openZoom('${esc(p.path)}')" title="Enlarge" style="position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:4px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);cursor:pointer;color:#fff;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="5" r="3.5"/><line x1="7.8" y1="7.8" x2="11" y2="11"/></svg>
       </button>
+      ${p.partner ? `<span class="pt-partner">${esc(partnerName(p.partner))}</span>` : ''}
       <div class="pt-meta">
         <div class="pt-dots">${jDots||'<span class="pt-unlabeled">—</span>'}${pDots?'<span style="color:rgba(255,255,255,.15);margin:0 2px">/</span>'+pDots:''}${sport}</div>
       </div>
@@ -375,8 +379,43 @@ function showPanel() {
       ${copyBtn}
       <button onclick="deselectAll()" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.07);color:rgba(255,255,255,.5);font-size:.72rem;cursor:pointer;font-family:inherit">Cancel</button>
       <span id="panel-status" style="font-size:.7rem;color:rgba(255,255,255,.4)"></span>
-    </div>`;
+    </div>
+    ${_partners.map(pt => {
+      const marked = selPhotos.filter(p => p.partner === pt.id).length;
+      return `<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.55rem;padding-top:.5rem;border-top:1px solid rgba(255,255,255,.08)">
+        <span class="cf-row-label">${esc(pt.name)}</span>
+        ${marked < selPhotos.length ? `<button onclick="setPartner('${esc(pt.id)}')" style="padding:3px 10px;border-radius:5px;border:none;background:#ed8936;color:#1a1000;font-size:.72rem;font-weight:700;cursor:pointer;font-family:inherit">Mark as ${esc(pt.name)}</button>` : ''}
+        ${marked ? `<button onclick="setPartner('')" style="padding:3px 10px;border-radius:5px;border:1px solid rgba(237,137,54,.6);background:transparent;color:#ed8936;font-size:.72rem;cursor:pointer;font-family:inherit">Remove from ${esc(pt.name)}${marked < selPhotos.length ? ' (' + marked + ')' : ''}</button>` : ''}
+        <span style="font-size:.68rem;color:rgba(255,255,255,.35)">Marked photos leave the public gallery and go on their free page.</span>
+      </div>`;
+    }).join('')}`;
   panel.style.display = 'block';
+}
+
+function partnerName(id) {
+  const pt = _partners.find(x => x.id === id);
+  return pt ? pt.name : id;
+}
+
+async function setPartner(partnerId) {
+  const sel = [..._selected];
+  if (!sel.length) return;
+  const statusEl = document.getElementById('panel-status');
+  statusEl.textContent = 'Saving…';
+  try {
+    const r = await fetch('/api/admin/set-photos-partner', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                           body: JSON.stringify({paths: sel, partner: partnerId})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Error saving');
+    (d.paths || []).forEach(path => {                 // only the photos the server changed
+      const i = _photos.findIndex(p => p.path === path);
+      if (i >= 0) _photos[i].partner = partnerId;
+    });
+    renderGrid();
+    showPanel();
+    document.getElementById('panel-status').textContent =
+      `Saved ${d.updated}` + (d.skipped_portraits ? ` (${d.skipped_portraits} portraits skipped)` : '');
+  } catch (e) { statusEl.textContent = e.message; }
 }
 
 function hidePanel() {
@@ -526,6 +565,7 @@ function focusTile(idx) {
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 loadFolders();
+fetch('/api/admin/partners').then(r => r.json()).then(d => { _partners = d.partners || []; }).catch(() => {});
 </script>
 </body>
 </html>

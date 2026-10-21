@@ -33,6 +33,7 @@ def _photo(name, date=DAY1, partner=None):
 PHOTOS = [_photo("DSC_0001.JPG"), _photo("DSC_0002.JPG", partner="eagle-mount"),
           _photo("DSC_0003.JPG", partner="eagle-mount"), _photo("DSC_0010.JPG", date=DAY2, partner="eagle-mount"),
           _photo("DSC_0020.JPG", date="2026-12-07", partner="eagle-mount")]   # a day with only Eagle Mount
+MARKED = [bool(p.get("partner")) for p in PHOTOS]
 
 
 def _partners(password=PW, **extra):
@@ -49,8 +50,12 @@ def setup(main_module, live_photos, monkeypatch):
     # Capture times are remembered with a background save; save right away here so no save
     # is left waiting when the next test starts
     monkeypatch.setattr(main_module, "_save_photo_list_soon", main_module._save_photo_list)
-    for p in PHOTOS:
+    for p, marked in zip(PHOTOS, MARKED):
         p.pop("taken", None)
+        if marked:                                         # every test starts from the same marks
+            p["partner"] = "eagle-mount"
+        else:
+            p.pop("partner", None)
         S3.put_object(Bucket="test-bucket", Key=p["path"], Body=_jpeg(taken=TAKEN.get(p["path"].rsplit("/", 1)[-1])))
     S3.delete_object(Bucket="test-bucket", Key="meta/partner_downloads/eagle-mount.json")
     main_module._partner_logs.clear()
@@ -231,3 +236,139 @@ def test_pos_browse_marks_eagle_mount_photos(admin_client, client):
         "DSC_0001.JPG": None, "DSC_0002.JPG": "eagle-mount", "DSC_0003.JPG": "eagle-mount"}
     public = client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
     assert all("partner" not in p for p in public)
+
+
+# ── Marking photos on the Indexing page ───────────────────────────────────────
+
+def test_indexing_page_marks_and_unmarks_eagle_mount(admin_client, client, main_module):
+    path = PHOTOS[0]["path"]                                   # a regular photo
+    r = admin_client.post("/api/admin/set-photos-partner", json={"paths": [path], "partner": "eagle-mount"})
+    assert r.status_code == 200 and r.json()["paths"] == [path]
+    browse = lambda: _names(client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"])
+    assert browse() == []                                      # gone from the public gallery
+    shown = admin_client.get("/api/admin/folder-photos", params={"date": DAY1, "location": "Big Sky Ski School"}).json()
+    assert {p["file"]: p["partner"] for p in shown["photos"]}["DSC_0001.JPG"] == "eagle-mount"
+    r = admin_client.post("/api/admin/set-photos-partner", json={"paths": [path, PHOTOS[1]["path"]], "partner": ""})
+    assert r.json()["updated"] == 2
+    assert browse() == ["DSC_0001.JPG", "DSC_0002.JPG"]        # back in the gallery
+
+
+def test_marking_needs_login_a_real_partner_and_skips_portraits(admin_client, client, live_photos, main_module):
+    assert client.post("/api/admin/set-photos-partner", json={"paths": [], "partner": "eagle-mount"}).status_code == 401
+    assert admin_client.post("/api/admin/set-photos-partner", json={"paths": [], "partner": "nope"}).status_code == 400
+    portrait = {"path": "images/2026-12-05/lone-peak-portraits/smith/P1.jpg", "date": DAY1,
+                "location": "Lone Peak Portraits", "last_name": "Smith", "group": ""}
+    live_photos(PHOTOS + [portrait])
+    r = admin_client.post("/api/admin/set-photos-partner", json={"paths": [portrait["path"]], "partner": "eagle-mount"})
+    assert r.json() == {"updated": 0, "skipped_portraits": 1, "paths": []} and "partner" not in portrait
+
+
+# ── Prints at the partner discount ────────────────────────────────────────────
+
+def _quote(c, path, size_idx=1):
+    return c.post("/api/checkout/quote", json={"prints": [{"path": path, "size_idx": size_idx, "filename": "x.jpg",
+                                                          "size": "8x10"}]}).json()
+
+
+def test_signed_in_members_get_40_percent_off_prints_at_checkout(member, client, main_module):
+    full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
+    assert _quote(member, PHOTOS[1]["path"])["subtotal"] == round(full * 0.6, 2)
+    assert _quote(client, PHOTOS[1]["path"])["subtotal"] == full              # not signed in: full price
+    assert _quote(member, PHOTOS[0]["path"])["subtotal"] == full              # not an Eagle Mount photo
+
+
+def test_partner_print_discount_is_in_the_order(member, main_module):
+    priced = main_module._price_order({"prints": [{"path": PHOTOS[1]["path"], "size_idx": 0, "filename": "a.jpg"}]},
+                                      {PHOTOS[1]["path"]: (40, "Eagle Mount")})
+    assert {"key": "Price", "value": "40% off (Eagle Mount photo)"} in priced["line_items"][0]["meta_data"]
+
+
+def test_pos_browse_carries_the_print_discount(admin_client):
+    pos = admin_client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
+    em = next(p for p in pos if p["filename"] == "DSC_0002.JPG")
+    assert em["partner_name"] == "Eagle Mount" and em["partner_print_pct"] == 40
+
+
+# ── The family code ───────────────────────────────────────────────────────────
+
+def _codes():
+    try:
+        return json.loads(S3.get_object(Bucket="test-bucket", Key="meta/discount_codes.json")["Body"].read())
+    except Exception:
+        return []
+
+
+@pytest.fixture()
+def no_codes():
+    S3.delete_object(Bucket="test-bucket", Key="meta/discount_codes.json")
+    yield
+    S3.delete_object(Bucket="test-bucket", Key="meta/discount_codes.json")
+
+
+def _save_code(admin_client, main_module, code, pct=25):
+    p = admin_client.get("/api/admin/partner-settings").json()["partners"][0]
+    r = admin_client.post("/api/admin/partner-settings", json={"partners": [{**p, "family_code": code, "family_code_pct": pct}]})
+    main_module._partners_doc.cache["data"] = None
+    return r
+
+
+def test_family_code_is_added_to_discounts_and_works(admin_client, client, main_module, no_codes):
+    r = _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    assert "added to Discounts" in r.json()["notes"][0]
+    [c] = _codes()
+    assert (c["code"], c["type"], c["amount"], c["applies_to"], c["active"], c["partner_id"]) == \
+        ("EAGLEMOUNT25", "percent", 25, "all", True, "eagle-mount")
+    v = client.get("/api/validate-coupon", params={"code": "eaglemount25"}).json()
+    assert v["valid"] and v["amount"] == 25                                   # online and POS both use this
+
+
+def test_changing_the_percent_or_the_code(admin_client, main_module, no_codes):
+    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    _save_code(admin_client, main_module, "EAGLEMOUNT25", pct=30)
+    assert [c["amount"] for c in _codes()] == [30]
+    _save_code(admin_client, main_module, "EMFAMILY", pct=30)
+    by_code = {c["code"]: c["active"] for c in _codes()}
+    assert by_code == {"EAGLEMOUNT25": False, "EMFAMILY": True}               # the old code is turned off
+
+
+def test_a_hand_made_code_with_the_same_name_is_left_alone(admin_client, main_module, no_codes):
+    S3.put_object(Bucket="test-bucket", Key="meta/discount_codes.json", Body=json.dumps([
+        {"id": "x1", "code": "EAGLEMOUNT25", "type": "fixed", "amount": 5, "active": True}]).encode())
+    r = _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    assert "already exists" in r.json()["notes"][0]
+    assert _codes() == [{"id": "x1", "code": "EAGLEMOUNT25", "type": "fixed", "amount": 5, "active": True}]
+
+
+def test_discounts_arent_wiped_if_they_cant_be_read(admin_client, main_module, monkeypatch, no_codes):
+    S3.put_object(Bucket="test-bucket", Key="meta/discount_codes.json", Body=json.dumps([{"id": "k", "code": "KEEP"}]).encode())
+    real = main_module.s3.get_object
+
+    def flaky(**kw):
+        if kw.get("Key") == "meta/discount_codes.json":
+            raise RuntimeError("storage hiccup")
+        return real(**kw)
+    monkeypatch.setattr(main_module.s3, "get_object", flaky)
+    r = _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    monkeypatch.setattr(main_module.s3, "get_object", real)
+    assert "Couldn't reach Discounts" in r.json()["notes"][0]
+    assert _codes() == [{"id": "k", "code": "KEEP"}]
+
+
+# ── The donation report ───────────────────────────────────────────────────────
+
+def test_donation_report_counts_each_photo_once(member, admin_client, client):
+    member.get("/partner/eaglemount/file", params={"path": PHOTOS[1]["path"]}, follow_redirects=False)
+    member.get("/partner/eaglemount/file", params={"path": PHOTOS[1]["path"]}, follow_redirects=False)
+    member.post("/partner/eaglemount/zip", data={"date": DAY2})
+    d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount"}).json()
+    assert (d["photos"], d["downloads"], d["total_value"]) == (2, 3, 50.0)
+    assert client.get("/api/admin/partner-report", params={"partner": "eagle-mount"}).status_code == 401
+    csv_text = admin_client.get("/admin/partner-report.csv", params={"partner": "eagle-mount"}).text
+    assert "Total donated value,$50.00" in csv_text and "DSC_0010.JPG" in csv_text
+
+
+def test_donation_report_date_range(member, admin_client):
+    member.get("/partner/eaglemount/file", params={"path": PHOTOS[1]["path"]}, follow_redirects=False)
+    d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount", "date_from": "2030-01-01"}).json()
+    assert d["photos"] == 0
+    assert admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount", "date_from": "bad"}).status_code == 400

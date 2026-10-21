@@ -82,9 +82,42 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
             "pants":      item.get("pants_colors"),
             "sport":      item.get("sport"),
             "instructor": bool(item.get("ski_instructor")),
+            "partner":    item.get("partner", ""),
         })
     results.sort(key=lambda x: natural_sort_key(x["file"]))
     return {"photos": results}
+
+
+@router.post("/api/admin/set-photos-partner")
+def admin_set_photos_partner(request: Request, body: dict = Body(...)):
+    """Indexing page: mark photos as a partner's (Eagle Mount), or take the mark off (partner "").
+    For photos missed at upload. Marked photos leave the public gallery and appear on the
+    partner's page; unmarked ones go back to the gallery. Portraits are never partner photos."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    partner = str(body.get("partner") or "")
+    if partner and partner not in main._partner_ids():
+        return JSONResponse(status_code=400, content={"error": "Unknown partner"})
+    wanted = {p for p in (body.get("paths") or []) if isinstance(p, str)}
+    changed, skipped = [], 0
+    for item in main.data:
+        if item["path"] not in wanted:
+            continue
+        if partner and main._is_portrait_location(item.get("location", "")):
+            skipped += 1
+            continue
+        if (item.get("partner") or "") == partner:
+            continue
+        if partner:
+            item["partner"] = partner
+        else:
+            item.pop("partner", None)
+        changed.append(item)
+    if changed:
+        main._save_photo_list()
+        if partner:
+            threading.Thread(target=main._fill_taken_times, args=(changed,), daemon=True).start()
+    return {"updated": len(changed), "skipped_portraits": skipped, "paths": [i["path"] for i in changed]}
 
 
 @router.post("/api/admin/reclassify-photos")

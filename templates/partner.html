@@ -45,6 +45,23 @@ main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
 #lb img{max-width:94vw;max-height:80vh;object-fit:contain;border-radius:4px}
 #lb-bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem}
 #lb-nav{display:flex;gap:.6rem;margin-top:.8rem}
+#pm{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:60;display:none;align-items:flex-start;justify-content:center;
+  overflow-y:auto;padding:2rem 1rem}
+#pm.open{display:flex}
+.pm-box{background:#12283a;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:100%;max-width:640px;padding:1.1rem 1.1rem 1rem}
+.pm-title{font-size:1.1rem;font-weight:700;color:#F2C94C}
+.pm-sub{font-size:.8rem;color:rgba(255,255,255,.6);margin:.25rem 0 .9rem;line-height:1.5}
+.pm-row{display:flex;align-items:center;gap:.65rem;padding:.55rem 0;border-top:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
+.pm-row img{width:64px;height:44px;object-fit:cover;border-radius:4px;background:#111}
+.pm-name{font-size:.8rem;color:rgba(255,255,255,.75);flex:1;min-width:110px}
+.pm-row select{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:.4rem .5rem;font-size:.82rem}
+.pm-row select option{background:#12283a}
+.pm-logo{font-size:.75rem;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:.3rem}
+.pm-cart{margin-top:.8rem;border-top:1px solid rgba(255,255,255,.12);padding-top:.7rem;font-size:.82rem}
+.pm-item{display:flex;justify-content:space-between;gap:.5rem;padding:.2rem 0;color:rgba(255,255,255,.8)}
+.pm-item button{background:none;border:none;color:#ff8a80;cursor:pointer;font-size:.78rem}
+.pm-foot{display:flex;align-items:center;gap:.6rem;margin-top:.8rem;flex-wrap:wrap}
+.pm-total{margin-right:auto;font-weight:700}
 .save-hint{width:100%;font-size:.8rem;color:rgba(255,255,255,.7)}
 .foot{text-align:center;font-size:.75rem;color:rgba(255,255,255,.35);padding:1rem}
 </style></head>
@@ -62,6 +79,8 @@ main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
   </label>
   <button class="btn alt" id="clear" onclick="clearSel()" disabled>Clear</button>
   <button class="btn" id="save-sel" onclick="saveSelected()" disabled style="display:none">Save to Photos</button>
+  <button class="btn alt" id="pr-sel" onclick="openPrints()" disabled style="display:none">Order prints</button>
+  <button class="btn alt" id="pr-cart" onclick="openPrints(true)" style="display:none"></button>
   <button class="btn" id="dl-sel" onclick="downloadSelected()" disabled>Download selected</button>
   <div id="save-hint" class="save-hint" style="display:none"></div>
 </div></div>
@@ -72,12 +91,27 @@ main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
   <div id="lb-bar">
     <button class="btn" id="lb-save" style="display:none" onclick="saveOne()">Save to Photos</button>
     <a class="btn" id="lb-dl" href="#">Download this photo</a>
+    <button class="btn alt" id="lb-print" style="display:none" onclick="openPrints(false, [photos[lbIdx].path])">Order prints</button>
     <button class="btn alt" onclick="closeLb()">Close</button>
   </div>
   <img id="lb-img" alt="Enlarged photo">
   <div id="lb-nav">
     <button class="btn alt" onclick="lbStep(-1)">Previous</button>
     <button class="btn alt" onclick="lbStep(1)">Next</button>
+  </div>
+</div>
+
+<div id="pm" onclick="if(event.target.id==='pm')closePrints()">
+  <div class="pm-box">
+    <div class="pm-title">Order prints</div>
+    <div class="pm-sub" id="pm-sub"></div>
+    <div id="pm-rows"></div>
+    <div class="pm-cart" id="pm-cart"></div>
+    <div class="pm-foot">
+      <span class="pm-total" id="pm-total"></span>
+      <button class="btn alt" onclick="closePrints()">Keep browsing</button>
+      <button class="btn" id="pm-checkout" onclick="printCheckout()">Checkout</button>
+    </div>
   </div>
 </div>
 
@@ -106,6 +140,12 @@ async function load(){
     const c = document.getElementById('code');
     c.innerHTML = esc(d.family_code_message).split(esc(d.family_code)).join(`<b>${esc(d.family_code)}</b>`);
     c.style.display = '';
+  }
+  PRINT_PCT = Number(d.print_pct) || 0;
+  if(PRINT_PCT > 0){
+    document.getElementById('pr-sel').style.display = '';
+    document.getElementById('lb-print').style.display = '';
+    renderPrintCartButton();
   }
   photos = [];
   const box = document.getElementById('days');
@@ -184,6 +224,7 @@ function updateBar(){
   document.getElementById('clear').disabled = !n;
   document.getElementById('dl-sel').textContent = n === 1 ? 'Download photo' : 'Download selected';
   document.getElementById('save-sel').disabled = !n;
+  document.getElementById('pr-sel').disabled = !n;
 }
 
 function downloadSelected(){
@@ -218,6 +259,77 @@ document.addEventListener('keydown', e => {
   if(e.key === 'ArrowRight') lbStep(1);
   if(e.key === 'ArrowLeft') lbStep(-1);
 });
+
+// ── Prints, at the partner's discount, through the store's normal checkout ──
+// Prices here are what the checkout will show; the server works them out again (the discount
+// only applies while this browser is signed in to this page). Prints ship to the customer.
+let PRINT_PCT = 0, PRINT_SIZES = [], LOGO_FEE = 2, FREE_SHIP = 3, pmPaths = [];
+const CART_KEY = `ci_partner_prints_${SLUG}`;
+let printCart = (() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e) { return []; } })();
+function money(n){ return '$' + Number(n).toFixed(2); }
+function salePrice(si){ return Math.round(PRINT_SIZES[si].price * (1 - PRINT_PCT / 100) * 100) / 100; }
+function storeCart(){ try { localStorage.setItem(CART_KEY, JSON.stringify(printCart)); } catch(e) {} renderPrintCartButton(); }
+function renderPrintCartButton(){
+  const b = document.getElementById('pr-cart');
+  b.style.display = printCart.length ? '' : 'none';
+  b.textContent = `Prints (${printCart.length})`;
+}
+async function loadPrintPrices(){
+  if(PRINT_SIZES.length) return;
+  const [pp, sp] = await Promise.all([fetch('/api/print-pricing').then(r => r.json()), fetch('/api/shop-prices').then(r => r.json())]);
+  PRINT_SIZES = pp.sizes || []; FREE_SHIP = pp.free_ship_threshold || 3;
+  if(typeof sp.logo_fee === 'number') LOGO_FEE = sp.logo_fee;
+}
+async function openPrints(cartOnly, paths){
+  try { await loadPrintPrices(); } catch(e) { alert('Print prices could not be loaded. Please try again.'); return; }
+  pmPaths = cartOnly ? [] : (paths || photos.filter(p => selected.has(p.path)).map(p => p.path));
+  document.getElementById('pm-sub').textContent = `${PRINT_PCT}% off prints of your photos. Prints are shipped to you; shipping is added at checkout`
+    + ` (free on ${FREE_SHIP} or more unframed prints).`;
+  const opts = PRINT_SIZES.map((s, i) => `<option value="${i}">${esc(s.label)} — ${money(salePrice(i))} (was ${money(s.price)})</option>`).join('');
+  document.getElementById('pm-rows').innerHTML = pmPaths.map((path, k) => {
+    const p = photos.find(x => x.path === path);
+    return `<div class="pm-row">
+      <img src="${thumb(path)}" alt="">
+      <span class="pm-name">${esc(p ? p.filename : '')}</span>
+      <select id="pm-size-${k}" aria-label="Print size">${opts}</select>
+      <label class="pm-logo"><input type="checkbox" id="pm-logo-${k}"> Big Sky Resort logo (+${money(LOGO_FEE)})</label>
+      <button class="btn" onclick="addPrint(${k})">Add</button>
+    </div>`;
+  }).join('');
+  renderPrintCart();
+  document.getElementById('pm').classList.add('open');
+}
+function closePrints(){ document.getElementById('pm').classList.remove('open'); }
+function addPrint(k){
+  const path = pmPaths[k], p = photos.find(x => x.path === path);
+  const si = Number(document.getElementById(`pm-size-${k}`).value);
+  const logo = document.getElementById(`pm-logo-${k}`).checked;
+  if(printCart.some(it => it.photoPath === path && it.sizeIdx === si)){
+    alert('That print is already in your order.'); return;
+  }
+  printCart.push({photoPath: path, filename: p ? p.filename : path.split('/').pop(), sizeIdx: si,
+                  size: PRINT_SIZES[si].label, price: salePrice(si) + (logo ? LOGO_FEE : 0),
+                  frame: 'No Frame', framePrice: 0, orientation: 'landscape', _logo: logo, _logoPrice: logo ? LOGO_FEE : 0,
+                  location: ''});
+  storeCart(); renderPrintCart();
+}
+function removePrint(i){ printCart.splice(i, 1); storeCart(); renderPrintCart(); }
+function renderPrintCart(){
+  const box = document.getElementById('pm-cart');
+  if(!printCart.length){ box.innerHTML = '<span style="color:rgba(255,255,255,.5)">No prints added yet.</span>'; }
+  else box.innerHTML = printCart.map((it, i) => `<div class="pm-item"><span>${esc(it.size)} print — ${esc(it.filename)}${it._logo ? ' + logo' : ''}</span>
+      <span>${money(it.price)} <button onclick="removePrint(${i})" aria-label="Remove">Remove</button></span></div>`).join('');
+  const total = printCart.reduce((a, it) => a + it.price, 0);
+  document.getElementById('pm-total').textContent = printCart.length ? `${printCart.length} print${printCart.length === 1 ? '' : 's'} · ${money(total)}` : '';
+  document.getElementById('pm-checkout').disabled = !printCart.length;
+}
+function printCheckout(){
+  if(!printCart.length) return;
+  localStorage.setItem('ci_checkout_cart', JSON.stringify({
+    folderCarts: {}, printCart, frameCart: [], returnUrl: location.href, timestamp: Date.now(),
+  }));
+  location.href = '/checkout';          // the checkout empties this print list once the order goes through
+}
 
 // ── Save to Photos (phones and tablets) ──
 // A normal download lands in the Files app, where many people never find it. The share

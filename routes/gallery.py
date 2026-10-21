@@ -146,6 +146,7 @@ def browse(request: Request, date: str, location: str, family: str = Query(None)
     pool.sort(key=lambda x: natural_sort_key(x["path"]))
     paths = [item["path"] for item in pool]
     sizes = main._dims_for_paths(paths) if dims else {}
+    partners = {p["id"]: p for p in main._load_partners()} if any(i.get("partner") for i in pool) else {}
     results = []
     for item in pool:
         w, h = sizes.get(item["path"], (0, 0))
@@ -159,7 +160,9 @@ def browse(request: Request, date: str, location: str, family: str = Query(None)
             "h": h,
         })
         if item.get("partner"):                 # only the POS/studio ever get these
-            results[-1]["partner"] = item["partner"]
+            pt = partners.get(item["partner"]) or {}
+            results[-1].update(partner=item["partner"], partner_name=pt.get("name", ""),
+                               partner_print_pct=float(pt.get("print_discount_pct") or 0))
     # Attach pose group index from folder_meta when available
     if family and results:
         fk = _folder_key(date, location, family)

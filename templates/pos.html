@@ -3104,7 +3104,7 @@ async function ptSelectFamily(f){
     grid.innerHTML = photos.map((p,i) => {
       const fn = p.filename || (p.path||'').split('/').pop() || '';
       const num = ((fn.match(/\d+/g))||[]).pop() || (i+1);
-      return `<div class="ap-photo-item" data-ptpi="${i}" style="outline:3px solid transparent;outline-offset:-3px">
+      return `<div class="ap-photo-item${p.partner ? ' ap-partner' : ''}" data-ptpi="${i}" style="outline:3px solid transparent;outline-offset:-3px">
         <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="eager" decoding="async" alt="">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
         <div class="ap-photo-num">${num}</div>
@@ -3122,7 +3122,9 @@ async function ptSelectFamily(f){
 
 function ptPickPhoto(photo){
   _ptPhoto = { path: photo.path || '', filename: photo.filename || (photo.path||'').split('/').pop() || '' };
-  openPSM(_ptPhoto);
+  // Partner photos (Eagle Mount): their print discount is applied automatically
+  if(photo.partner && photo.partner_print_pct > 0) openPSM(_ptPhoto, false, photo.partner_print_pct, photo.partner_name || 'Partner');
+  else openPSM(_ptPhoto);
 }
 
 function ptBackToFamilies(){
@@ -3155,16 +3157,17 @@ function renderPrintSizes(){
 }
 
 // ─── Print Size Modal (PSM) ────────────────────────────────────────────────────
-const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false, pkgPct: 0 };
+const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false, pkgPct: 0, pkgLabel: '' };
 // What a print costs here: Unlimited package photos get the package's discount, otherwise half price if switched on
 function psmFactor(){ return _psm.pkgPct ? 1 - _psm.pkgPct / 100 : (_psm.half ? 0.5 : 1); }
 
-function openPSM(photo, halfDefault, pkgPct){
+function openPSM(photo, halfDefault, pkgPct, pkgLabel){
   if(!S.printSizes || !S.printSizes.length) return;
   _psm.photo = photo;
   _psm.sizes.clear();
   _psm.half = !!halfDefault;
   _psm.pkgPct = pkgPct || 0;
+  _psm.pkgLabel = pkgLabel || 'Unlimited package';   // whose discount it is (package or partner)
   _psm.logo = false;
   _psm.ship = false;
   renderPSM();
@@ -3234,7 +3237,7 @@ function renderPSM(){
   // Toggles
   body += `<div style="display:flex;flex-direction:column;gap:.45rem;margin-bottom:.7rem">`;
   body += _psm.pkgPct
-    ? `<div class="toggle-label" style="color:var(--accent);font-weight:600">Unlimited package photo: ${_psm.pkgPct}% off prints</div>`
+    ? `<div class="toggle-label" style="color:var(--accent);font-weight:600">${escHtml(_psm.pkgLabel)} photo: ${_psm.pkgPct}% off prints</div>`
     : `<div style="display:flex;align-items:center;gap:.55rem;cursor:pointer" onclick="psmToggleHalf()">
     <label class="toggle-switch" style="pointer-events:none"><input type="checkbox" id="psm-half-cb" ${_psm.half?'checked':''}><div class="toggle-track"></div></label>
     <span class="toggle-label">Half-price (50% off)</span>
@@ -3306,7 +3309,7 @@ function psmAddToCart(){
   const sizes = S.printSizes || [];
   const sizeIndices = [..._psm.sizes].sort((a,b) => a-b);
   const ptCtx = _psm.pkgPct
-    ? [p.filename, `${_psm.pkgPct}% off (Unlimited package)`].join(' · ')
+    ? [p.filename, `${_psm.pkgPct}% off (${_psm.pkgLabel})`].join(' · ')
     : [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
   // Ship is handled as a separate auto line item via ensureShipping(); don't embed in price
   sizeIndices.forEach(idx => {

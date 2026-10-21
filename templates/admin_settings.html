@@ -794,7 +794,7 @@ async function loadPartners() {
         <div class="field-hint">The label name written into the photo while culling, e.g. Orange.</div></div>
       <div class="field-row"><label class="field-label" for="pt-code-${i}">Family discount code</label>
         <input class="field-input" id="pt-code-${i}" value="${escAttr(p.family_code || '')}" style="max-width:220px" placeholder="e.g. EAGLEMOUNT25">
-        <div class="field-hint">Shown on their page. Leave blank to hide the box.</div></div>
+        <div class="field-hint">Shown on their page and added to Discounts automatically, so it works online and on the POS. Leave blank to hide the box.</div></div>
       <div class="field-row"><label class="field-label" for="pt-codepct-${i}">Family code: % off</label>
         <input class="field-input" id="pt-codepct-${i}" type="number" min="0" max="100" value="${p.family_code_pct}" style="max-width:120px"></div>
       <div class="field-row"><label class="field-label" for="pt-msg-${i}">Family code message</label>
@@ -804,8 +804,38 @@ async function loadPartners() {
         <input class="field-input" id="pt-printpct-${i}" type="number" min="0" max="100" value="${p.print_discount_pct}" style="max-width:120px"></div>
       <div class="field-row"><label class="field-label" for="pt-value-${i}">Donation value per photo downloaded ($)</label>
         <input class="field-input" id="pt-value-${i}" type="number" min="0" step="1" value="${p.value_per_photo}" style="max-width:120px"></div>
+      <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:1rem;padding-top:1rem">
+        <div class="section-title" style="font-size:.95rem">Donation report</div>
+        <div class="section-desc">Photos their participants downloaded, each counted once (the first time), at the value per photo above. Leave a date blank for no limit.</div>
+        <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+          <label style="font-size:.8rem;color:rgba(255,255,255,.6)">From <input type="date" id="pr-from-${i}" class="field-input" style="width:auto;display:inline-block"></label>
+          <label style="font-size:.8rem;color:rgba(255,255,255,.6)">To <input type="date" id="pr-to-${i}" class="field-input" style="width:auto;display:inline-block"></label>
+          <button class="btn-save" style="background:#1a5cc8" onclick="partnerReport(${i})">Show report</button>
+          <button class="btn-save" style="background:rgba(255,255,255,.12);color:#fff" onclick="partnerReportCsv(${i})">Download spreadsheet</button>
+        </div>
+        <div id="pr-out-${i}" style="margin-top:.8rem;font-size:.85rem;line-height:1.7"></div>
+      </div>
     </div>`).join('');
 }
+function partnerReportQuery(i) {
+  return new URLSearchParams({partner: _partners[i].id, date_from: gv(`pr-from-${i}`), date_to: gv(`pr-to-${i}`)});
+}
+async function partnerReport(i) {
+  const out = document.getElementById(`pr-out-${i}`);
+  out.textContent = 'Loading…';
+  const r = await fetch('/api/admin/partner-report?' + partnerReportQuery(i));
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { out.textContent = d.error || 'Could not load the report.'; return; }
+  const money = n => '$' + Number(n).toFixed(2);
+  out.innerHTML = `<b>${d.photos} photo${d.photos === 1 ? '' : 's'} downloaded · ${money(d.total_value)} donated</b>
+    <span style="color:rgba(255,255,255,.45)">(${money(d.value_per_photo)} each; ${d.downloads} downloads in all)</span>`
+    + (d.by_day.length ? '<div style="margin-top:.4rem">' + d.by_day.map(x =>
+        `<div>${esc(x.date)}: ${x.photos} photo${x.photos === 1 ? '' : 's'} · ${money(x.value)}</div>`).join('') + '</div>' : '');
+}
+function partnerReportCsv(i) {
+  window.location.href = '/admin/partner-report.csv?' + partnerReportQuery(i);
+}
+
 async function savePartners() {
   const status = document.getElementById('partners-status');
   const partners = _partners.map((p, i) => ({
@@ -818,7 +848,7 @@ async function savePartners() {
   const r = await fetch('/api/admin/partner-settings', {method: 'POST', headers: {'Content-Type': 'application/json'},
                                                        body: JSON.stringify({partners})});
   const d = await r.json().catch(() => ({}));
-  if (r.ok) { status.textContent = 'Saved.'; await loadPartners(); }
+  if (r.ok) { status.textContent = 'Saved.' + ((d.notes || []).length ? ' ' + d.notes.join(' ') : ''); await loadPartners(); }
   else status.textContent = d.error || 'Error saving.';
   setTimeout(() => { if (status.textContent === 'Saved.') status.textContent = ''; }, 4000);
 }

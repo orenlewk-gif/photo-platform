@@ -26,14 +26,15 @@ async def create_checkout(request: Request):
         return JSONResponse(status_code=500, content={"error": str(e)})
     # Pricing lookups and the WooCommerce order request are slow; run them off the
     # main loop so other visitors aren't held up while this checkout is created
-    return await run_in_threadpool(main._create_checkout, body)
+    partner_prints = main._partner_print_discounts(request, body)     # Eagle Mount prints, from the cookie
+    return await run_in_threadpool(main._create_checkout, body, partner_prints)
 
 
 @router.post("/api/checkout/quote")
-def checkout_quote(body: dict = Body(...)):
+def checkout_quote(request: Request, body: dict = Body(...)):
     """The checkout page's totals: exactly what /api/checkout will charge."""
     try:
-        return main._price_order(body)["summary"]
+        return main._price_order(body, main._partner_print_discounts(request, body))["summary"]
     except CheckoutError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
 

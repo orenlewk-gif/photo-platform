@@ -1190,9 +1190,13 @@ def _check_portrait_single(single: dict, last_name: str, live: dict) -> None:
         raise CheckoutError("One of the portrait photos in your cart isn't available — please refresh the page and try again")
 
 
-def _price_order(body: dict) -> dict:
+def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
     """Price an online cart. Returns the WooCommerce order parts (line_items,
-    fee_lines, coupon_lines, meta) and the summary the checkout page shows."""
+    fee_lines, coupon_lines, meta) and the summary the checkout page shows.
+    partner_prints: {photo path: (percent off, partner name)} for prints of partner photos
+    (Eagle Mount) when the buyer is signed in to that partner's page — worked out by the
+    checkout route from the visitor's cookie, never taken from the cart."""
+    partner_prints = partner_prints or {}
     pricing = _load_pricing()
     logo_fee = float(pricing.get("logo_fee", 2) or 0)
     date = (body.get("date") or "").strip()
@@ -1286,10 +1290,20 @@ def _price_order(body: dict) -> dict:
         size_label = p.get("size") or sizes[size_idx].get("label", "")
         half = bool(p.get("path")) and p["path"] in bought_digital
         logo = bool(p.get("logo"))
-        price = float(sizes[size_idx].get("price", 0)) / (2 if half else 1) + (logo_fee if logo else 0)
+        base = float(sizes[size_idx].get("price", 0))
+        partner_pct, partner_name = partner_prints.get(p.get("path") or "", (0, ""))
+        if partner_pct and base * (1 - partner_pct / 100) < (base / 2 if half else base):
+            half = False                          # the partner discount is the better one
+            base = round(base * (1 - partner_pct / 100), 2)
+        else:
+            partner_pct = 0
+            base = base / (2 if half else 1)
+        price = base + (logo_fee if logo else 0)
         meta = []
         if half:
             meta.append({"key": "Price", "value": "50% off (digital photo also purchased)"})
+        if partner_pct:
+            meta.append({"key": "Price", "value": f"{partner_pct:g}% off ({partner_name} photo)"})
         if logo:
             meta.append({"key": "Logo", "value": "Big Sky Resort logo"})
         frame = p.get("frame") if p.get("frame") not in ("", None, "No Frame") else None
@@ -1390,9 +1404,26 @@ def _price_order(body: dict) -> dict:
     }
 
 
-def _create_checkout(body: dict):
+def _partner_print_discounts(request: Request, body: dict) -> dict:
+    """{path: (percent off, partner name)} for the prints in this cart that are photos of a
+    partner whose page this visitor is signed in to."""
+    out = {}
+    paths = {p.get("path") for p in (body.get("prints") or []) if isinstance(p, dict) and p.get("path")}
+    if not paths:
+        return out
+    for partner in _load_partners():
+        pct = float(partner.get("print_discount_pct") or 0)
+        if pct <= 0 or not _partner_signed_in(request, partner):
+            continue
+        for path in paths:
+            if _partner_photo(partner, path):
+                out[path] = (pct, partner["name"])
+    return out
+
+
+def _create_checkout(body: dict, partner_prints: dict | None = None):
     try:
-        priced = _price_order(body)
+        priced = _price_order(body, partner_prints)
     except CheckoutError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     try:
@@ -3954,6 +3985,64 @@ def _clean_partners(body: list) -> list:
     return out
 
 
+def _sync_family_code(partner: dict, old_code: str = "") -> str:
+    """Keep the partner's family code working everywhere: a percent-off code in Discounts
+    (online checkout and the POS read the same codes). Creates it, updates its percent, and
+    turns off the partner's previous code when the code is changed. A code with the same name
+    that was made by hand in Discounts is left alone. Returns a note for the Settings page."""
+    code = (partner.get("family_code") or "").strip().upper()
+    old_code = (old_code or "").strip().upper()
+    if not code and not old_code:
+        return ""
+    with _discount_codes_lock:
+        try:
+            codes = json.loads(s3.get_object(Bucket=R2_BUCKET, Key="meta/discount_codes.json")["Body"].read())
+        except Exception as e:
+            if str(getattr(e, "response", {}).get("Error", {}).get("Code", "")) not in ("404", "NoSuchKey", "NotFound"):
+                return "Couldn't reach Discounts to set up the family code — save again in a minute"
+            codes = []
+        if not isinstance(codes, list):
+            return "Discounts couldn't be read, so the family code wasn't set up"
+        note, touched = "", []
+        if old_code and old_code != code:
+            for c in codes:
+                if c.get("code", "").upper() == old_code and c.get("partner_id") == partner["id"] and c.get("active", True):
+                    c["active"] = False
+                    touched.append(c)
+        if code:
+            c = next((x for x in codes if x.get("code", "").upper() == code), None)
+            pct = float(partner.get("family_code_pct") or 0)
+            desc = f"{partner['name']} family code"
+            if c is None:
+                c = {"id": str(uuid.uuid4())[:8], "code": code,
+                     "created": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                     "description": desc, "source": "partner", "partner_id": partner["id"],
+                     "type": "percent", "amount": pct, "free_shipping": False, "applies_to": "all",
+                     "min_order": 0.0, "min_qty": 0, "usage_limit": None, "usage_limit_per_user": None,
+                     "expires": None, "start_date": None, "active": True,
+                     "usage_count": 0, "total_saved": 0.0, "uses": []}
+                codes.append(c)
+                touched.append(c)
+                note = f"Code {code} was added to Discounts ({pct:g}% off)."
+            elif c.get("partner_id") == partner["id"]:
+                if c.get("amount") != pct or not c.get("active", True) or c.get("type") != "percent":
+                    c.update(type="percent", amount=pct, active=True)
+                    touched.append(c)
+            else:
+                note = (f"A code named {code} already exists in Discounts, so its own settings there are used "
+                        f"({c.get('type')}, {c.get('amount')}).")
+        for c in touched:                       # WooCommerce needs the same codes for the online checkout
+            wc = _wc_sync_coupon(c)
+            if "wc_id" in wc:
+                c["wc_id"] = wc["wc_id"]
+                c.pop("wc_sync_error", None)
+            else:
+                c["wc_sync_error"] = wc.get("error", "")
+        if touched:
+            _save_discount_codes(codes)
+        return note
+
+
 def _partner_ids() -> set:
     return {p.get("id") for p in _load_partners() if p.get("id")}
 
@@ -4053,6 +4142,34 @@ def _load_partner_log(pid: str) -> dict:
         log = {"photos": {}}
     _partner_logs[pid] = log
     return log
+
+
+def _partner_report(partner: dict, date_from: str = "", date_to: str = "") -> dict:
+    """In-kind donation report: photos first downloaded between the dates (Big Sky days,
+    inclusive; blank = no limit), each counted once at the partner's value per photo."""
+    with _partner_log_lock:
+        log = _load_partner_log(partner["id"])
+        photos = dict(log.get("photos") or {})
+    value = float(partner.get("value_per_photo") or 0)
+    rows = []
+    for path, rec in photos.items():
+        try:
+            day = datetime.fromisoformat(rec["first"]).astimezone(_MOUNTAIN).date().isoformat()
+        except Exception:
+            continue
+        if (date_from and day < date_from) or (date_to and day > date_to):
+            continue
+        rows.append({"first_download": day, "photo_date": rec.get("photo_date", ""),
+                     "file": os.path.basename(path), "path": path, "downloads": int(rec.get("count") or 0)})
+    rows.sort(key=lambda r: (r["first_download"], r["photo_date"], r["file"]))
+    by_day: dict = {}
+    for r in rows:
+        by_day[r["first_download"]] = by_day.get(r["first_download"], 0) + 1
+    return {"partner": partner["name"], "date_from": date_from, "date_to": date_to,
+            "value_per_photo": value, "photos": len(rows), "total_value": round(len(rows) * value, 2),
+            "downloads": sum(r["downloads"] for r in rows),
+            "by_day": [{"date": d, "photos": n, "value": round(n * value, 2)} for d, n in sorted(by_day.items())],
+            "rows": rows}
 
 
 def _log_partner_downloads(partner: dict, items: list, how: str) -> None:

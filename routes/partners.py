@@ -1,15 +1,18 @@
 """Partner programs (Eagle Mount): a password-protected page where participants download their
 photos free, by day. Photos are marked for a partner at upload (their color label). Every
 download is logged for the partner's in-kind donation report."""
+import csv
+import io
 import json
 import os
+import re
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from html import escape
 from io import BytesIO
 
 from fastapi import APIRouter, Body, Form, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from PIL import Image
 
 import main
@@ -81,7 +84,8 @@ def partner_photos(slug: str, request: Request):
         photos = sorted(items, key=main._taken_order)            # in the order they were taken
         days.append({"date": date, "photos": [{"path": i["path"], "filename": os.path.basename(i["path"])}
                                               for i in photos]})
-    return {"days": days, "family_code": p.get("family_code") or "", "family_code_message": main._family_code_message(p)}
+    return {"days": days, "family_code": p.get("family_code") or "", "family_code_message": main._family_code_message(p),
+            "print_pct": float(p.get("print_discount_pct") or 0)}
 
 
 @router.get("/partner/{slug}/thumb")
@@ -217,5 +221,54 @@ def save_partner_settings(request: Request, body: dict = Body(...)):
         cleaned = main._clean_partners(body.get("partners"))
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
+    before = {p["id"]: p for p in main._load_partners()}
     main._save_partners(cleaned)
-    return {"partners": cleaned}
+    notes = [n for n in (main._sync_family_code(p, before.get(p["id"], {}).get("family_code", "")) for p in cleaned) if n]
+    return {"partners": cleaned, "notes": notes}
+
+
+def _report_args(request: Request, partner_id: str, date_from: str, date_to: str):
+    if not main._admin_authed(request):
+        return None, JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    p = next((x for x in main._load_partners() if x["id"] == partner_id), None)
+    if not p:
+        return None, JSONResponse(status_code=404, content={"error": "Unknown partner"})
+    for d in (date_from, date_to):
+        if d and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d):
+            return None, JSONResponse(status_code=400, content={"error": "Dates must look like 2026-12-05"})
+    return p, None
+
+
+@router.get("/api/admin/partner-report")
+def partner_report(request: Request, partner: str = Query(""), date_from: str = Query(""), date_to: str = Query("")):
+    """The in-kind donation report for the Settings page (totals and by day)."""
+    p, err = _report_args(request, partner, date_from, date_to)
+    if err:
+        return err
+    rep = main._partner_report(p, date_from, date_to)
+    rep.pop("rows")
+    return rep
+
+
+@router.get("/admin/partner-report.csv")
+def partner_report_csv(request: Request, partner: str = Query(""), date_from: str = Query(""), date_to: str = Query("")):
+    """The same report as a spreadsheet: one row per photo, then the totals."""
+    p, err = _report_args(request, partner, date_from, date_to)
+    if err:
+        return err
+    rep = main._partner_report(p, date_from, date_to)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow([f"{rep['partner']} — photos donated (Crystal Images)"])
+    w.writerow([f"Downloaded {date_from or 'from the start'} to {date_to or 'today'}"])
+    w.writerow([])
+    w.writerow(["First downloaded", "Photo taken", "File", "Times downloaded", "Value"])
+    for r in rep["rows"]:
+        w.writerow([r["first_download"], r["photo_date"], r["file"], r["downloads"], f"${rep['value_per_photo']:.2f}"])
+    w.writerow([])
+    w.writerow(["Total photos", rep["photos"]])
+    w.writerow(["Value per photo", f"${rep['value_per_photo']:.2f}"])
+    w.writerow(["Total donated value", f"${rep['total_value']:.2f}"])
+    name = re.sub(r"[^A-Za-z0-9]+", "-", rep["partner"]).strip("-").lower() or "partner"
+    return Response(buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{name}-donated-photos.csv"'})

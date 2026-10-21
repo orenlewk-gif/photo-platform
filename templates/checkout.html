@@ -901,6 +901,8 @@ async function placeOrder() {
     if (data.checkout_url) {
       localStorage.removeItem('ci_checkout_cart');
       localStorage.removeItem('bsp_cart_v1');
+      // A partner page's print list (Eagle Mount) has now been ordered
+      Object.keys(localStorage).filter(k => k.startsWith('ci_partner_prints_')).forEach(k => localStorage.removeItem(k));
       window.location.href = data.checkout_url;
     } else {
       throw new Error(resp.status === 400 && data.error ? data.error : '');
