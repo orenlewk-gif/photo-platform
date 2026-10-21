@@ -488,6 +488,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .ap-photo-item.in-pkg .ap-photo-img{opacity:.35}
 .in-pkg-tag{position:absolute;top:4px;left:4px;font-size:.55rem;font-weight:700;color:#0a1929;background:var(--accent);
   border-radius:3px;padding:1px 4px;pointer-events:none}
+.pkg-print{position:absolute;bottom:3px;right:3px;border:none;border-radius:5px;background:var(--accent);color:#0a1929;
+  font-size:.62rem;font-weight:700;padding:2px 7px;cursor:pointer}
 .pkg-remove{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:none;background:rgba(0,0,0,.65);
   color:#fff;font-size:.75rem;cursor:pointer;line-height:22px;padding:0}
 
@@ -2878,6 +2880,7 @@ function renderPackageDetail(){
       <div class="ap-photo-item" style="cursor:default">
         <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(ph.path)}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">
         ${p.open ? `<button class="pkg-remove" data-rm="${i}" aria-label="Remove photo">&#10005;</button>` : ''}
+        <button class="pkg-print" data-pr="${i}">Print</button>
         <div class="ap-photo-num">${escHtml((ph.filename.match(/(\d+)/g) || ['']).pop())}</div>
       </div>`).join('') + `</div>`
     : '<div class="ap-loading">No photos in this package yet.</div>';
@@ -2893,10 +2896,31 @@ function renderPackageDetail(){
       </div>
     </div>
     ${grid}`;
+  $('pkg-detail').querySelectorAll('[data-pr]').forEach(b => b.addEventListener('click', e => {
+    e.stopPropagation();
+    pkgPrint(S.pkg.photos[+b.dataset.pr]);
+  }));
   $('pkg-detail').querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', e => {
     e.stopPropagation();
     pkgRemovePhoto(S.pkg.photos[+b.dataset.rm].path);
   }));
+}
+
+// Prints of a package photo, at the package's print discount (set in Admin > Pricing).
+// Starts the sale for the package's customer when the cart doesn't have one yet.
+async function pkgPrint(photo){
+  if(!S.printSizes) await loadPrintSizes();
+  if(!S.unlimited) await loadUnlimited();
+  if(!(S.printSizes || []).length){ showToast('Print sizes could not be loaded'); return; }
+  const p = S.pkg;
+  if(!S.customer.email && !S.cart.length){
+    const parts = (p.name || '').split(' ');
+    S.customer = {first: parts[0] || '', last: parts.slice(1).join(' '), email: p.email || '', phone: p.phone || '',
+                  street: '', city: '', state: '', zip: ''};
+    updateCartCustomerBar();
+  }
+  const pct = (S.unlimited && S.unlimited.print_discount_pct != null) ? S.unlimited.print_discount_pct : 60;
+  openPSM({path: photo.path, filename: photo.filename}, false, pct);
 }
 
 async function pkgChange(token, add, remove){
@@ -3129,13 +3153,16 @@ function renderPrintSizes(){
 }
 
 // ─── Print Size Modal (PSM) ────────────────────────────────────────────────────
-const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false };
+const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false, pkgPct: 0 };
+// What a print costs here: Unlimited package photos get the package's discount, otherwise half price if switched on
+function psmFactor(){ return _psm.pkgPct ? 1 - _psm.pkgPct / 100 : (_psm.half ? 0.5 : 1); }
 
-function openPSM(photo, halfDefault){
+function openPSM(photo, halfDefault, pkgPct){
   if(!S.printSizes || !S.printSizes.length) return;
   _psm.photo = photo;
   _psm.sizes.clear();
   _psm.half = !!halfDefault;
+  _psm.pkgPct = pkgPct || 0;
   _psm.logo = false;
   _psm.ship = false;
   renderPSM();
@@ -3175,7 +3202,7 @@ function psmUpdateFooter(){
   _psm.sizes.forEach(idx => {
     const s = sizes[idx];
     if(s){
-      const p = _psm.half ? s.price * 0.5 : s.price;
+      const p = s.price * psmFactor();
       total += p + (_psm.logo ? 2 : 0);
     }
   });
@@ -3204,7 +3231,9 @@ function renderPSM(){
   </div>`;
   // Toggles
   body += `<div style="display:flex;flex-direction:column;gap:.45rem;margin-bottom:.7rem">`;
-  body += `<div style="display:flex;align-items:center;gap:.55rem;cursor:pointer" onclick="psmToggleHalf()">
+  body += _psm.pkgPct
+    ? `<div class="toggle-label" style="color:var(--accent);font-weight:600">Unlimited package photo: ${_psm.pkgPct}% off prints</div>`
+    : `<div style="display:flex;align-items:center;gap:.55rem;cursor:pointer" onclick="psmToggleHalf()">
     <label class="toggle-switch" style="pointer-events:none"><input type="checkbox" id="psm-half-cb" ${_psm.half?'checked':''}><div class="toggle-track"></div></label>
     <span class="toggle-label">Half-price (50% off)</span>
   </div>`;
@@ -3220,13 +3249,13 @@ function renderPSM(){
   // Size rows
   body += `<div class="print-size-list">`;
   sizes.forEach((s, idx) => {
-    const price = _psm.half ? s.price * 0.5 : s.price;
+    const price = s.price * psmFactor();
     const isSel = _psm.sizes.has(idx);
     body += `<div id="psm-row-${idx}" style="cursor:pointer;background:${isSel?'rgba(245,196,48,.07)':''};">
       <div class="print-size-row" onclick="psmToggleSize(${idx})" style="border:none;padding-bottom:.1rem">
         <div class="pr-pose-check${isSel?' checked':''}" id="psm-sz-${idx}" style="flex-shrink:0">${isSel?'&#10003;':''}</div>
         <span class="print-size-name" style="flex:1">${escHtml(s.label)}</span>
-        <span class="print-size-price">${_psm.half ? `<s style="opacity:.5;font-size:.75rem">${fmt(s.price)}</s> ` : ''}${fmt(price)}</span>
+        <span class="print-size-price">${psmFactor() < 1 ? `<s style="opacity:.5;font-size:.75rem">${fmt(s.price)}</s> ` : ''}${fmt(price)}</span>
       </div>
       <div id="psm-logo-sub-${idx}" style="display:${(isSel&&_psm.logo)?'':'none'};font-size:.7rem;color:var(--muted);padding:0 .5rem .35rem 2.4rem">Logo +${fmt(2)}</div>
     </div>`;
@@ -3274,12 +3303,14 @@ function psmAddToCart(){
   const p = _psm.photo;
   const sizes = S.printSizes || [];
   const sizeIndices = [..._psm.sizes].sort((a,b) => a-b);
-  const ptCtx = [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
+  const ptCtx = _psm.pkgPct
+    ? [p.filename, `${_psm.pkgPct}% off (Unlimited package)`].join(' · ')
+    : [p.filename, _pt.date, _pt.location].filter(Boolean).join(' · ');
   // Ship is handled as a separate auto line item via ensureShipping(); don't embed in price
   sizeIndices.forEach(idx => {
     const s = sizes[idx];
     if(!s) return;
-    const baseP = _psm.half ? s.price * 0.5 : s.price;
+    const baseP = Math.round(s.price * psmFactor() * 100) / 100;
     const logoPrice = _psm.logo ? 2 : 0;
     const price = baseP + logoPrice;
     const cartItem = {
@@ -3288,7 +3319,8 @@ function psmAddToCart(){
       detail: ptCtx,
       price, qty: 1, subtotal: price,
       _ship: _psm.ship,
-      _half: _psm.half,
+      _half: _psm.half && !_psm.pkgPct,
+      _pkgPct: _psm.pkgPct || 0,
       _logo: _psm.logo,
       _logoPrice: logoPrice || 0,
       _size_idx: s.size_idx !== undefined ? s.size_idx : idx,

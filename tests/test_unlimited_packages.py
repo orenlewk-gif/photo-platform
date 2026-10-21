@@ -18,6 +18,14 @@ def test_defaults_are_the_agreed_packages(client):
     d = client.get("/api/unlimited-packages").json()
     assert [(t["days"], t["price"]) for t in d["tiers"]] == [(3, 205), (5, 275), (7, 345)]
     assert d["included_people"] == 4 and d["extra_person_price"] == 30 and d["link_days_after"] == 30
+    assert d["print_discount_pct"] == 60
+
+
+def test_settings_saved_before_the_print_discount_get_60(client, main_module):
+    old = {k: v for k, v in main_module._UNLIMITED_DEFAULTS.items() if k != "print_discount_pct"}
+    S3.put_object(Bucket="test-bucket", Key="meta/unlimited_packages.json", Body=__import__("json").dumps(old).encode())
+    main_module._unlimited_doc.cache["data"] = None
+    assert client.get("/api/unlimited-packages").json()["print_discount_pct"] == 60
 
 
 def test_owner_can_rename_and_reprice(owner_client, client):
@@ -45,6 +53,7 @@ def test_saving_needs_the_owner_pin(admin_client, client):
     (lambda b: b["tiers"].__setitem__(0, {**b["tiers"][0], "price": "abc"}), "must be a number"),
     (lambda b: b.__setitem__("tiers", []), "at least one"),
     (lambda b: b.__setitem__("included_people", 0), "People included"),
+    (lambda b: b.__setitem__("print_discount_pct", 120), "Print discount"),
 ])
 def test_bad_settings_are_refused_with_a_reason(owner_client, client, change, msg):
     body = client.get("/api/unlimited-packages").json()

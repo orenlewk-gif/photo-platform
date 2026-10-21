@@ -3542,6 +3542,7 @@ _UNLIMITED_DEFAULTS = {
     "included_people": 4,         # people covered by the package price
     "extra_person_price": 30,     # each person beyond that
     "link_days_after": 30,        # the download link keeps working this many days after the last day
+    "print_discount_pct": 60,     # in person: prints of photos in a package are this much off
 }
 _unlimited_doc = JsonDoc(s3, R2_BUCKET, UNLIMITED_PACKAGES_KEY, ttl=30, indent=2,
                          default=lambda: _copy.deepcopy(_UNLIMITED_DEFAULTS),
@@ -3549,7 +3550,9 @@ _unlimited_doc = JsonDoc(s3, R2_BUCKET, UNLIMITED_PACKAGES_KEY, ttl=30, indent=2
 
 
 def _load_unlimited_packages() -> dict:
-    return _unlimited_doc.load()
+    d = _unlimited_doc.load()
+    # Settings saved before a setting existed get its default
+    return {**{k: v for k, v in _UNLIMITED_DEFAULTS.items() if k != "tiers"}, **d}
 
 
 def _clean_unlimited_packages(body: dict) -> dict:
@@ -3578,7 +3581,9 @@ def _clean_unlimited_packages(body: dict) -> dict:
     return {"tiers": tiers,
             "included_people": num(body.get("included_people"), "People included", 1, 50, True),
             "extra_person_price": num(body.get("extra_person_price"), "Price per extra person", 0, 1000),
-            "link_days_after": num(body.get("link_days_after"), "Download link days", 1, 365, True)}
+            "link_days_after": num(body.get("link_days_after"), "Download link days", 1, 365, True),
+            "print_discount_pct": num(body.get("print_discount_pct", _UNLIMITED_DEFAULTS["print_discount_pct"]),
+                                      "Print discount", 0, 100, True)}
 
 
 def _save_unlimited_packages(d: dict) -> None:

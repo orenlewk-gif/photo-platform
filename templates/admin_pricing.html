@@ -566,6 +566,11 @@ input[type="text"].full{width:100%}
           <input type="number" id="unl-linkdays" min="1" max="365" style="width:80px">
           <span style="margin-left:.4rem;color:rgba(255,255,255,.6);font-size:13px">days after the package's last day</span>
         </div>
+        <div class="field-row">
+          <label for="unl-printpct" style="min-width:220px">Prints of package photos</label>
+          <input type="number" id="unl-printpct" min="0" max="100" step="1" style="width:80px">
+          <span style="margin-left:.4rem;color:rgba(255,255,255,.6);font-size:13px">% off (in person only)</span>
+        </div>
         <div class="btn-row" style="margin-top:1rem">
           <button class="btn btn-primary btn-sm" onclick="saveUnlimited()">Save</button>
         </div>
@@ -1547,6 +1552,7 @@ function renderUnlimited(){
   document.getElementById('unl-people').value   = unlimitedData.included_people ?? 4;
   document.getElementById('unl-extra').value    = unlimitedData.extra_person_price ?? 30;
   document.getElementById('unl-linkdays').value = unlimitedData.link_days_after ?? 30;
+  document.getElementById('unl-printpct').value = unlimitedData.print_discount_pct ?? 60;
 }
 function unlField(i, field, val){ if(unlimitedData.tiers[i]) unlimitedData.tiers[i][field] = val; }
 function addUnlTier(){ unlimitedData.tiers = unlimitedData.tiers || []; unlimitedData.tiers.push({name:'', days:3, price:0}); renderUnlimited(); }
@@ -1555,7 +1561,8 @@ async function saveUnlimited(){
   const body = {...unlimitedData,
     included_people:    parseInt(document.getElementById('unl-people').value),
     extra_person_price: parseFloat(document.getElementById('unl-extra').value),
-    link_days_after:    parseInt(document.getElementById('unl-linkdays').value)};
+    link_days_after:    parseInt(document.getElementById('unl-linkdays').value),
+    print_discount_pct: parseInt(document.getElementById('unl-printpct').value)};
   const r = await fetch('/api/admin/unlimited-packages', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const d = await r.json().catch(()=>({}));
   if(r.ok){ unlimitedData = d; renderUnlimited(); showToast('Unlimited packages saved'); }
