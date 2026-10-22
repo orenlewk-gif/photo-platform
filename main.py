@@ -522,6 +522,32 @@ def healthz():
         return JSONResponse(status_code=503, content={"status": "loading"})
     return {"status": "ok", "photos": len(data)}
 
+_storage_check = {"ok": None, "ts": 0.0, "error": ""}
+_storage_check_lock = threading.Lock()
+
+
+@app.get("/healthz/storage")
+def healthz_storage():
+    """For the uptime monitor: can the site actually reach photo storage? (The home page keeps
+    loading even when storage can't be read, so /healthz alone can't tell.) 503 when it can't.
+    The answer is reused for 20 seconds so frequent checks don't add load."""
+    if not _data_ready.is_set():
+        return JSONResponse(status_code=503, content={"status": "loading"})
+    with _storage_check_lock:
+        if _time.monotonic() - _storage_check["ts"] > 20:
+            try:
+                s3.head_object(Bucket=R2_BUCKET, Key="images.json")
+                _storage_check.update(ok=True, error="")
+            except Exception as e:
+                code = str(getattr(e, "response", {}).get("Error", {}).get("Code", "")) or type(e).__name__
+                _storage_check.update(ok=False, error=code)
+            _storage_check["ts"] = _time.monotonic()
+        if _storage_check["ok"]:
+            return {"status": "ok", "storage": "reachable"}
+        return JSONResponse(status_code=503, content={"status": "error", "storage": "unreachable",
+                                                      "reason": _storage_check["error"]})
+
+
 # Pre-load portrait locations from R2 so PORTRAIT_LOCATIONS is current on startup
 try:
     _load_portrait_locations()
