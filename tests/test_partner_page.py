@@ -401,3 +401,17 @@ def test_partner_prints_never_combine_with_a_code(member, main_module, no_codes,
         {"path": PHOTOS[0]["path"], "size_idx": 1, "filename": "b.jpg"}]}).json()
     assert q["coupon"]["discount"] == round(full * 0.25, 2)
     assert q["total"] == round(full * 0.6 + full - full * 0.25 + q["shipping"], 2)
+
+
+def test_framed_partner_print_frame_is_full_price_and_takes_the_code(member, main_module, no_codes, admin_client,
+                                                                      monkeypatch):
+    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    vid = main_module.FRAME_VARIATION_MAP[(1, "landscape")]
+    monkeypatch.setattr(main_module, "_frame_variations", lambda: {vid: {"price": 45.0, "stock_status": "instock"}})
+    full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
+    cart = {"prints": [{"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg",
+                        "frame": "Rustic Big Sky Picture Frame", "orientation": "landscape"}]}
+    q = member.post("/api/checkout/quote", json=cart).json()
+    assert q["subtotal"] == round(full * 0.6 + 45.0, 2)                    # 40% off the print, frame full price
+    q = member.post("/api/checkout/quote", json={**cart, "coupon_code": "EAGLEMOUNT25"}).json()
+    assert q["coupon"]["discount"] == round(45.0 * 0.25, 2)                 # the code only touches the frame

@@ -264,6 +264,9 @@ document.addEventListener('keydown', e => {
 // Prices here are what the checkout will show; the server works them out again (the discount
 // only applies while this browser is signed in to this page). Prints ship to the customer.
 let PRINT_PCT = 0, PRINT_SIZES = [], LOGO_FEE = 2, FREE_SHIP = 3, pmPaths = [];
+// The store's frame, at its regular price (only the print gets the partner discount)
+const FRAME_NAME = 'Rustic Big Sky Picture Frame';
+let FRAME_PRICES = [];
 const CART_KEY = `ci_partner_prints_${SLUG}`;
 let printCart = (() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e) { return []; } })();
 function money(n){ return '$' + Number(n).toFixed(2); }
@@ -279,12 +282,13 @@ async function loadPrintPrices(){
   const [pp, sp] = await Promise.all([fetch('/api/print-pricing').then(r => r.json()), fetch('/api/shop-prices').then(r => r.json())]);
   PRINT_SIZES = pp.sizes || []; FREE_SHIP = pp.free_ship_threshold || 3;
   if(typeof sp.logo_fee === 'number') LOGO_FEE = sp.logo_fee;
+  FRAME_PRICES = (sp.frame_prices || []).map(f => (f && f.landscape != null) ? Number(f.landscape) : null);
 }
 async function openPrints(cartOnly, paths){
   try { await loadPrintPrices(); } catch(e) { alert('Print prices could not be loaded. Please try again.'); return; }
   pmPaths = cartOnly ? [] : (paths || photos.filter(p => selected.has(p.path)).map(p => p.path));
-  document.getElementById('pm-sub').textContent = `${PRINT_PCT}% off prints of your photos. Prints are shipped to you; shipping is added at checkout`
-    + ` (free on ${FREE_SHIP} or more unframed prints).`;
+  document.getElementById('pm-sub').textContent = `${PRINT_PCT}% off prints of your photos (frames are regular price).`
+    + ` Prints are shipped to you; shipping is added at checkout (free on ${FREE_SHIP} or more unframed prints).`;
   const opts = PRINT_SIZES.map((s, i) => `<option value="${i}">${esc(s.label)} — ${money(salePrice(i))} (was ${money(s.price)})</option>`).join('');
   document.getElementById('pm-rows').innerHTML = pmPaths.map((path, k) => {
     const p = photos.find(x => x.path === path);
@@ -292,12 +296,34 @@ async function openPrints(cartOnly, paths){
       <img src="${thumb(path)}" alt="">
       <span class="pm-name">${esc(p ? p.filename : '')}</span>
       <select id="pm-size-${k}" aria-label="Print size">${opts}</select>
+      <select id="pm-frame-${k}" aria-label="Frame"></select>
       <label class="pm-logo"><input type="checkbox" id="pm-logo-${k}"> Big Sky Resort logo (+${money(LOGO_FEE)})</label>
       <button class="btn" onclick="addPrint(${k})">Add</button>
     </div>`;
   }).join('');
+  pmPaths.forEach((_, k) => {
+    const size = document.getElementById(`pm-size-${k}`);
+    size.addEventListener('change', () => fillFrames(k));
+    fillFrames(k);
+  });
   renderPrintCart();
   document.getElementById('pm').classList.add('open');
+}
+function fillFrames(k){
+  // Frame price follows the print size
+  const si = Number(document.getElementById(`pm-size-${k}`).value);
+  const fp = FRAME_PRICES[si];
+  const sel = document.getElementById(`pm-frame-${k}`);
+  const was = sel.value;
+  sel.innerHTML = '<option value="">No frame</option>'
+    + (fp ? `<option value="frame">${esc(FRAME_NAME)} (+${money(fp)})</option>` : '');
+  sel.value = (was === 'frame' && fp) ? 'frame' : '';
+}
+function photoOrientation(path){
+  // From the thumbnail on the page (frames come in landscape and portrait)
+  const i = photos.findIndex(p => p.path === path);
+  const img = i >= 0 ? document.querySelector(`#ph${i} img`) : null;
+  return img && img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
 }
 function closePrints(){ document.getElementById('pm').classList.remove('open'); }
 function addPrint(k){
@@ -307,17 +333,19 @@ function addPrint(k){
   if(printCart.some(it => it.photoPath === path && it.sizeIdx === si)){
     alert('That print is already in your order.'); return;
   }
+  const framed = document.getElementById(`pm-frame-${k}`).value === 'frame' && FRAME_PRICES[si];
+  const framePrice = framed ? FRAME_PRICES[si] : 0;
   printCart.push({photoPath: path, filename: p ? p.filename : path.split('/').pop(), sizeIdx: si,
-                  size: PRINT_SIZES[si].label, price: salePrice(si) + (logo ? LOGO_FEE : 0),
-                  frame: 'No Frame', framePrice: 0, orientation: 'landscape', _logo: logo, _logoPrice: logo ? LOGO_FEE : 0,
-                  location: ''});
+                  size: PRINT_SIZES[si].label, price: salePrice(si) + (logo ? LOGO_FEE : 0) + framePrice,
+                  frame: framed ? FRAME_NAME : 'No Frame', framePrice, orientation: photoOrientation(path),
+                  _logo: logo, _logoPrice: logo ? LOGO_FEE : 0, location: ''});
   storeCart(); renderPrintCart();
 }
 function removePrint(i){ printCart.splice(i, 1); storeCart(); renderPrintCart(); }
 function renderPrintCart(){
   const box = document.getElementById('pm-cart');
   if(!printCart.length){ box.innerHTML = '<span style="color:rgba(255,255,255,.5)">No prints added yet.</span>'; }
-  else box.innerHTML = printCart.map((it, i) => `<div class="pm-item"><span>${esc(it.size)} print — ${esc(it.filename)}${it._logo ? ' + logo' : ''}</span>
+  else box.innerHTML = printCart.map((it, i) => `<div class="pm-item"><span>${esc(it.size)} print — ${esc(it.filename)}${it._logo ? ' + logo' : ''}${it.frame && it.frame !== 'No Frame' ? ' + frame' : ''}</span>
       <span>${money(it.price)} <button onclick="removePrint(${i})" aria-label="Remove">Remove</button></span></div>`).join('');
   const total = printCart.reduce((a, it) => a + it.price, 0);
   document.getElementById('pm-total').textContent = printCart.length ? `${printCart.length} print${printCart.length === 1 ? '' : 's'} · ${money(total)}` : '';

@@ -2924,7 +2924,7 @@ async function pkgPrint(photo){
     updateCartCustomerBar();
   }
   const pct = (S.unlimited && S.unlimited.print_discount_pct != null) ? S.unlimited.print_discount_pct : 60;
-  openPSM({path: photo.path, filename: photo.filename}, false, pct);
+  openPSM({path: photo.path, filename: photo.filename}, false, pct, 'Unlimited package', true);   // never with a code
 }
 
 async function pkgChange(token, add, remove){
