@@ -99,3 +99,32 @@ def test_a_paid_order_empties_their_saved_cart(client, main_module):
     main_module._handle_paid_wc_order({"id": 9, "status": "processing", "billing": {"email": "SARAH.smith@example.com"},
                                        "meta_data": []})
     assert client.post("/api/saved-cart/load", json={"email": EMAIL}).status_code == 404
+
+
+def test_pos_finds_the_saved_cart_by_email(client, main_module):
+    import json as _json
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json",
+                  Body=_json.dumps([{"id": "p1", "name": "Test Photog", "pin": "4821"}]).encode())
+    main_module._pin_fail_limiter._calls.clear()
+    cart = _cart()
+    cart["folderCarts"] = {"2026-12-05||Big Sky Ski School": cart["folderCarts"]["k1"]}
+    _save(client, cart=cart)
+    r = client.get("/api/pos/saved-cart", params={"email": "sarah.smith@example.com"}, headers={"X-POS-PIN": "4821"})
+    assert r.status_code == 200
+    f = r.json()["folders"][0]
+    assert (f["date"], f["location"], f["family"]) == ("2026-12-05", "Big Sky Ski School", "")
+    assert len(f["photos"]) == 2 and f["prints"][0]["size"] == '8×10"'
+    assert client.get("/api/pos/saved-cart", params={"email": "sarah.smith@example.com"}).status_code == 401
+    assert client.get("/api/pos/saved-cart", params={"email": "nobody@example.com"},
+                      headers={"X-POS-PIN": "4821"}).status_code == 404
+
+
+def test_an_in_store_sale_empties_their_saved_cart(client, main_module):
+    import json as _json
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json",
+                  Body=_json.dumps([{"id": "p1", "name": "Test Photog", "pin": "4821"}]).encode())
+    _save(client)
+    r = client.post("/api/pos-checkout", json={"pin": "4821", "email": "sarah.smith@example.com", "name": "Sarah Smith",
+                                               "items": [], "total": 0, "square_payment_id": "COMP"})
+    assert r.status_code == 200
+    assert client.post("/api/saved-cart/load", json={"email": EMAIL}).status_code == 404

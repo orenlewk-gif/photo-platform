@@ -1153,7 +1153,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
 <div id="save-prompt" class="save-prompt" role="dialog" aria-labelledby="save-prompt-title" aria-hidden="true">
   <div class="save-prompt-box">
     <div class="save-prompt-title" id="save-prompt-title">Save your photos for later?</div>
-    <div class="save-prompt-sub">We'll keep your selection so you can come back to it anytime, on any device. To get it back later, open the cart and enter your email.</div>
+    <div class="save-prompt-sub">We'll keep your selection so you can come back to it anytime, on any device. To get it back (or save changes), open the cart and enter your email.</div>
     <div class="save-form">
       <label class="sr-only" for="sp-first">First name</label>
       <input id="sp-first" type="text" placeholder="First name" autocomplete="given-name" maxlength="40">
@@ -1650,12 +1650,10 @@ function saveCart() {
 }
 
 // ── Saved carts: the selection saved under the customer's first name + email ──
-// Once they've saved it, every change saves again automatically (a moment later). On any
-// device they can load it from the cart by typing their email.
-const SAVED_ID_KEY = 'ci_saved_cart';               // {first_name, email} on this device
+// Saving stores the cart as it is right then (no automatic saving afterwards: to save changes
+// they enter their email again). On any device they load it from the cart by typing their email.
 const SAVE_PROMPT_KEY = 'ci_save_prompt_done';      // asked once per device
-let _remoteSaveTimer = null, _savePromptShown = false;
-function savedIdentity(){ try { return JSON.parse(localStorage.getItem(SAVED_ID_KEY) || 'null'); } catch(e) { return null; } }
+let _savePromptShown = false;
 function cartItemCount(data){
   let n = (data.frameCart || []).reduce((s, f) => s + (f.quantity || 1), 0);
   Object.values(data.folderCarts || {}).forEach(fc => {
@@ -1664,13 +1662,7 @@ function cartItemCount(data){
   return n;
 }
 function afterCartSaved(data){
-  const who = savedIdentity();
-  if(who){
-    clearTimeout(_remoteSaveTimer);
-    _remoteSaveTimer = setTimeout(() => remoteSaveCart(who, data), 1500);
-    return;
-  }
-  // First selection on this device: offer to save it
+  // First selection on this device: offer to save it (once; the cart always has the Save box)
   let asked = false; try { asked = !!localStorage.getItem(SAVE_PROMPT_KEY); } catch(e) {}
   if(!asked && !_savePromptShown && cartItemCount(data) > 0){
     _savePromptShown = true;
@@ -1692,12 +1684,15 @@ async function startSaving(first, email, msgEl){
   first = (first || '').trim(); email = (email || '').trim();
   if(!first){ msgEl.textContent = 'Please enter your first name.'; msgEl.className = 'save-msg err'; return false; }
   if(!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email)){ msgEl.textContent = 'Please enter a valid email.'; msgEl.className = 'save-msg err'; return false; }
+  const data = currentCartData();
+  if(!cartItemCount(data)){ msgEl.textContent = 'Select some photos first, then save them here.'; msgEl.className = 'save-msg err'; return false; }
   msgEl.textContent = 'Saving…'; msgEl.className = 'save-msg';
   const who = {first_name: first, email};
-  const problem = await remoteSaveCart(who, currentCartData());
+  const problem = await remoteSaveCart(who, data);
   if(problem){ msgEl.textContent = problem; msgEl.className = 'save-msg err'; return false; }
-  try { localStorage.setItem(SAVED_ID_KEY, JSON.stringify(who)); localStorage.setItem(SAVE_PROMPT_KEY, '1'); } catch(e) {}
-  renderSaveBoxes();
+  try { localStorage.setItem(SAVE_PROMPT_KEY, '1'); } catch(e) {}
+  msgEl.textContent = `Saved, ${first}. To save changes later, enter your email again and press Save.`;
+  msgEl.className = 'save-msg';
   return true;
 }
 function openSavePrompt(){
@@ -1715,17 +1710,13 @@ async function savePromptSubmit(){
                                document.getElementById('sp-msg'));
   if(ok){
     document.getElementById('sp-msg').textContent = 'Saved. Load them anytime from the cart with your email.';
-    setTimeout(dismissSavePrompt, 1600);
+    setTimeout(dismissSavePrompt, 2200);
   }
 }
-function maskEmail(e){ const [u, d] = String(e).split('@'); return (u || '').slice(0, 2) + '•••@' + (d || ''); }
 function renderSaveBoxes(){
-  const who = savedIdentity();
   document.querySelectorAll('[data-savebox]').forEach((box, i) => {
-    const saveHtml = who
-      ? `<div class="save-box-line">Saved for <strong>${escHtml(who.first_name)}</strong> (${escHtml(maskEmail(who.email))}). Changes save automatically.
-           <button class="save-link" onclick="forgetSavedIdentity()">Not you?</button></div>`
-      : `<div class="save-box-line">Save your selection and come back to it anytime, on any device.</div>
+    const saveHtml = `<div class="save-box-line">Save your selection and come back to it anytime, on any device.
+           Already saved? Saving again updates it.</div>
          <div class="save-form">
            <label class="sr-only" for="sb-first-${i}">First name</label>
            <input id="sb-first-${i}" type="text" placeholder="First name" autocomplete="given-name" maxlength="40">
@@ -1745,11 +1736,6 @@ function renderSaveBoxes(){
       <div class="save-msg" id="sl-msg-${i}" role="status"></div>`;
   });
 }
-function forgetSavedIdentity(){
-  // Only stops saving on this device; the saved photos stay saved
-  try { localStorage.removeItem(SAVED_ID_KEY); } catch(e) {}
-  renderSaveBoxes();
-}
 async function loadSavedCart(email, msgEl){
   email = (email || '').trim();
   if(!email){ msgEl.textContent = 'Please enter your email.'; msgEl.className = 'save-msg err'; return; }
@@ -1762,7 +1748,6 @@ async function loadSavedCart(email, msgEl){
     const d = await r.json().catch(() => ({}));
     if(!r.ok){ msgEl.textContent = d.error || 'Could not load'; msgEl.className = 'save-msg err'; return; }
     localStorage.setItem(CART_KEY, JSON.stringify({...d.cart, ts: Date.now()}));
-    localStorage.setItem(SAVED_ID_KEY, JSON.stringify({first_name: d.first_name, email: d.email}));
     localStorage.setItem(SAVE_PROMPT_KEY, '1');
     location.reload();                 // the gallery and cart pick it up from here
   } catch(e) { msgEl.textContent = 'Could not load — check your connection'; msgEl.className = 'save-msg err'; }
@@ -3406,9 +3391,6 @@ function clearCart() {
   if (_poseData) updatePoseHeaders();
   updateHeaderCartBtn();
   try { localStorage.removeItem(CART_KEY); } catch(e) {}
-  // "Remove All" empties their saved photos too
-  const who = savedIdentity();
-  if(who){ clearTimeout(_remoteSaveTimer); remoteSaveCart(who, {ts: Date.now(), frameCart: [], folderCarts: {}}); }
 }
 
 // ── Pricing logic ──

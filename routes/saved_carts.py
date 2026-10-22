@@ -64,17 +64,14 @@ def admin_saved_carts(request: Request):
     return {"carts": rows}
 
 
-@router.get("/api/admin/saved-carts/{cart_id}")
-def admin_saved_cart(cart_id: str, request: Request):
-    if not main._admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    rec = main._load_saved_cart(cart_id)
-    if not rec:
-        return JSONResponse(status_code=404, content={"error": "Not found"})
+def _cart_detail(rec: dict) -> dict:
+    """A saved cart laid out for the studio and the POS: per folder its date, location and
+    family (from the gallery's folder key), selected photos, poses and prints."""
     folders = []
     for key, fc in (rec.get("cart", {}).get("folderCarts") or {}).items():
         if not isinstance(fc, dict):
             continue
+        parts = str(key).split("||")
         poses = []
         pose_list = fc.get("poses") if isinstance(fc.get("poses"), list) else []
         for color, state in (fc.get("poseState") or {}).items():
@@ -85,16 +82,41 @@ def admin_saved_cart(cart_id: str, request: Request):
             elif isinstance(state, list):
                 poses.append({"label": pose.get("label", "Pose"), "whole": False,
                               "paths": [pp[i] for i in state if isinstance(i, int) and 0 <= i < len(pp)]})
-        folders.append({"label": fc.get("label") or key, "location": fc.get("location", ""),
+        folders.append({"label": fc.get("label") or key, "location": fc.get("location", "") or (parts[1] if len(parts) > 1 else ""),
+                        "date": parts[0] if parts else "", "family": parts[2] if len(parts) > 2 else "",
                         "photos": [p for p in (fc.get("selectedPaths") or []) if isinstance(p, str)],
                         "poses": poses,
-                        "prints": [{"path": p.get("photoPath", ""), "size": p.get("size", ""),
+                        "prints": [{"path": p.get("photoPath", ""), "size": p.get("size", ""), "size_idx": p.get("sizeIdx", 0),
                                     "frame": p.get("frame", ""), "logo": bool(p.get("_logo"))}
                                    for p in (fc.get("printCart") or []) if isinstance(p, dict)]})
     return {"id": rec["id"], "email": rec["email"], "first_name": rec.get("first_name", ""),
             "created": rec.get("created", ""), "updated": rec.get("updated", ""),
             "summary": rec.get("summary", {}), "folders": folders,
             "frames": [f for f in (rec.get("cart", {}).get("frameCart") or []) if isinstance(f, dict)]}
+
+
+@router.get("/api/admin/saved-carts/{cart_id}")
+def admin_saved_cart(cart_id: str, request: Request):
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    rec = main._load_saved_cart(cart_id)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    return _cart_detail(rec)
+
+
+@router.get("/api/pos/saved-cart")
+def pos_saved_cart(request: Request, email: str = ""):
+    """POS: the online saved cart of the customer staff just picked (by their email)."""
+    if not main._pos_pin_photographer(request):
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    email = (email or "").strip()
+    if not main._EMAIL_RE.match(email):
+        return JSONResponse(status_code=404, content={"error": "No saved cart"})
+    rec = main._load_saved_cart(main._saved_cart_id(email))
+    if not rec or not (rec.get("summary") or {}).get("items"):
+        return JSONResponse(status_code=404, content={"error": "No saved cart"})
+    return _cart_detail(rec)
 
 
 @router.delete("/api/admin/saved-carts/{cart_id}")

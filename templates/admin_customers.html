@@ -398,6 +398,13 @@ select.fu-input{cursor:pointer}
   <div id="saved-list-pane">
     <div id="saved-list-header">
       <input type="text" id="saved-search" placeholder="Search name or email…" oninput="renderSavedList()" autocomplete="off" aria-label="Search saved carts">
+      <div style="display:flex;align-items:center;gap:.4rem;margin-top:.5rem;font-size:.72rem;color:rgba(255,255,255,.45)">
+        <label for="saved-sort">Sort</label>
+        <select id="saved-sort" onchange="renderSavedList()" style="background:rgba(255,255,255,.06);color:#e8eaf0;border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:.2rem .4rem;font-size:.72rem">
+          <option value="new">Date added: newest first</option>
+          <option value="old">Date added: oldest first</option>
+        </select>
+      </div>
       <div id="saved-count" style="font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.45rem">Loading…</div>
     </div>
     <div id="saved-list"></div>
@@ -500,12 +507,14 @@ async function loadSavedCarts(){
 }
 function renderSavedList(){
   const q = (document.getElementById('saved-search').value || '').trim().toLowerCase();
-  const rows = _savedCarts.filter(r => !q || (r.first_name || '').toLowerCase().includes(q) || (r.email || '').includes(q));
+  const oldest = document.getElementById('saved-sort').value === 'old';
+  const rows = _savedCarts.filter(r => !q || (r.first_name || '').toLowerCase().includes(q) || (r.email || '').includes(q))
+    .sort((a, b) => oldest ? (a.created || '').localeCompare(b.created || '') : (b.created || '').localeCompare(a.created || ''));
   document.getElementById('saved-count').textContent = `${rows.length} saved cart${rows.length === 1 ? '' : 's'}`;
   document.getElementById('saved-list').innerHTML = rows.map(r => `
     <div class="sc-row${r.id === _savedActive ? ' active' : ''}" onclick="openSavedCart('${r.id}')">
-      <div class="sc-name">${esc(r.first_name || '')} <span style="font-weight:400;color:rgba(255,255,255,.45)">${esc(r.email || '')}</span></div>
-      <div class="sc-meta">${esc(scCounts(r))} · updated ${esc(scDate(r.updated))}</div>
+      <div class="sc-name">${esc(r.first_name || '')}</div>
+      <div class="sc-meta">${esc(r.email || '')}</div>
     </div>`).join('') || '<div style="padding:1rem;color:rgba(255,255,255,.35);font-size:.8rem">No saved carts yet.</div>';
 }
 function scThumbs(paths, caption){

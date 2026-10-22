@@ -1699,6 +1699,11 @@ def _record_pos_sale_now(body: dict):
         fee_check.daemon = True
         fee_check.start()
 
+    try:                                     # an in-store order: their online saved cart is done
+        _clear_saved_cart_for(customer_email)
+    except Exception as e:
+        print(f"Saved cart not cleared after POS sale ({customer_email}): {e}")
+
     # Add the customer to the directory (or refresh their contact info).
     # A failure here must never block the sale.
     try:

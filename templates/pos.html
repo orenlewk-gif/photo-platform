@@ -465,6 +465,16 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   pointer-events:none;
 }
 
+/* ── Online saved cart (customer saved their selection on the website) ── */
+.saved-cart-banner{display:block;width:100%;text-align:left;border:none;border-bottom:1px solid var(--border);
+  background:rgba(245,196,48,.1);color:var(--text);padding:.55rem .9rem;font-size:.8rem;cursor:pointer;line-height:1.4}
+.saved-cart-banner b{color:var(--accent)}
+.sc-modal-folder{margin:.9rem 0 .4rem;font-size:.78rem;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
+.sc-modal-sub{font-size:.76rem;color:var(--muted);margin:.35rem 0}
+.sc-modal-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:5px;margin-bottom:.4rem}
+.sc-modal-thumbs img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:5px;background:var(--surface2);display:block}
+.sc-modal-row{display:flex;align-items:center;gap:.5rem;justify-content:space-between;flex-wrap:wrap;margin:.3rem 0}
+
 /* ── Unlimited packages ── */
 .pkg-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem 1rem;margin-bottom:.55rem;cursor:pointer;touch-action:manipulation}
 .pkg-card:active{background:var(--surface2)}
@@ -1039,6 +1049,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <button class="cart-customer-add-btn" id="cart-customer-add-btn" onclick="customerBarNew()" style="display:none">+ Add</button>
         <div class="cust-bar-dropdown" id="cust-bar-dropdown"></div>
       </div>
+      <!-- The customer's online saved cart (found by their email) -->
+      <button class="saved-cart-banner hidden" id="saved-cart-banner" onclick="openSavedCartModal()"></button>
 
       <!-- Cart section header -->
       <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
@@ -1103,6 +1115,17 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 </div><!-- /s-main -->
 
 <!-- ─── CONFIRMATION ─── -->
+<div id="sc-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeSavedCartModal()">
+  <div class="modal-sheet" onclick="event.stopPropagation()" style="max-height:85vh;overflow-y:auto">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="sc-modal-title">Online saved cart</div>
+    <div id="sc-modal-body" style="padding:0 1.25rem"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:1rem;padding:0 1.25rem 1.25rem">
+      <button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="closeSavedCartModal()">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="s-confirm" class="screen hidden">
   <div class="confirm-check">&#10003;</div>
   <div class="confirm-title">Sale Complete</div>
@@ -1677,6 +1700,119 @@ function updateCartCustomerBar(){
     $('cust-bar-dropdown').classList.remove('open');
   }
   $('btn-checkout').disabled = !hasCustomer || S.cart.length === 0;
+  checkSavedCart(c.email);
+}
+
+// ─── The customer's online saved cart ────────────────────────────────────────
+// Customers can save their selection on the website with their email. When staff pick a
+// customer here, their saved cart shows above the cart: action photos go into the sale in one
+// tap (priced like any selection), portraits open their session, prints open the print sizes.
+let _scEmail = '';
+async function checkSavedCart(email){
+  email = (email || '').trim().toLowerCase();
+  if(email === _scEmail) return;
+  _scEmail = email;
+  S.savedCart = null;
+  renderSavedCartBanner();
+  if(!email) return;
+  try {
+    const r = await fetch('/api/pos/saved-cart?email=' + encodeURIComponent(email), {headers: posPinHeaders()});
+    if(!r.ok || email !== _scEmail) return;
+    S.savedCart = await r.json();
+  } catch(e) { return; }
+  renderSavedCartBanner();
+}
+function savedCartCounts(sm){
+  const parts = [];
+  if(sm.photos) parts.push(`${sm.photos} photo${sm.photos === 1 ? '' : 's'}`);
+  if(sm.poses) parts.push(`${sm.poses} pose${sm.poses === 1 ? '' : 's'}`);
+  if(sm.prints) parts.push(`${sm.prints} print${sm.prints === 1 ? '' : 's'}`);
+  if(sm.frames) parts.push(`${sm.frames} frame${sm.frames === 1 ? '' : 's'}`);
+  return parts.join(', ');
+}
+function renderSavedCartBanner(){
+  const b = $('saved-cart-banner');
+  if(!b) return;
+  if(!S.savedCart){ b.classList.add('hidden'); b.innerHTML = ''; return; }
+  b.innerHTML = `<b>Saved online:</b> ${escHtml(savedCartCounts(S.savedCart.summary || {}))} · Tap to view`;
+  b.classList.remove('hidden');
+}
+function scThumbsHtml(paths){
+  return `<div class="sc-modal-thumbs">${paths.slice(0, 24).map(p =>
+    `<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`).join('')}</div>`
+    + (paths.length > 24 ? `<div class="sc-modal-sub">+${paths.length - 24} more</div>` : '');
+}
+function openSavedCartModal(){
+  const d = S.savedCart;
+  if(!d) return;
+  $('sc-modal-title').textContent = `${d.first_name || 'Customer'}'s saved cart`;
+  let html = `<div class="sc-modal-sub">Saved on the website by ${escHtml(d.email)}.</div>`;
+  (d.folders || []).forEach((f, fi) => {
+    if(!f.photos.length && !f.poses.length && !f.prints.length) return;
+    html += `<div class="sc-modal-folder">${escHtml(f.label)}</div>`;
+    if(f.photos.length){
+      html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.photos.length} digital photo${f.photos.length === 1 ? '' : 's'}</span>
+        <button class="ap-add-btn" onclick="posAddSavedPhotos(${fi})">Add to sale</button></div>` + scThumbsHtml(f.photos);
+    }
+    if(f.poses.length){
+      html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.poses.map(p => escHtml(`${p.label}: ${p.whole ? 'whole pose' : p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's')}`)).join(' · ')}</span>
+        <button class="ap-add-btn" onclick="posOpenSavedPortrait(${fi})">Open session</button></div>`
+        + scThumbsHtml(f.poses.flatMap(p => p.paths));
+    }
+    f.prints.forEach((pr, pi) => {
+      html += `<div class="sc-modal-row"><span class="sc-modal-sub">${escHtml(pr.size)} print of ${escHtml(pr.path.split('/').pop())}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}</span>
+        <button class="ap-add-btn" onclick="posSavedPrint(${fi},${pi})">Print sizes</button></div>`;
+    });
+  });
+  $('sc-modal-body').innerHTML = html;
+  $('sc-modal').classList.remove('hidden');
+}
+function closeSavedCartModal(){ $('sc-modal').classList.add('hidden'); }
+async function posAddSavedPhotos(fi){
+  const f = S.savedCart.folders[fi];
+  closeSavedCartModal();
+  openCategory('action-photos', 'Action Photos');
+  await loadApDates();
+  const dateSel = $('ap-date-select');
+  if(![...dateSel.options].some(o => o.value === f.date)){ showToast('That day is no longer on the POS'); return; }
+  dateSel.value = f.date; apDateChanged();
+  const locSel = $('ap-loc-select');
+  if(![...locSel.options].some(o => o.value === f.location)){ showToast('That location is no longer on the POS'); return; }
+  locSel.value = f.location;
+  await apLocChanged();
+  const fam = (f.family || '').toLowerCase();
+  let idx = S.ap.families.findIndex(x => (x.name || '').toLowerCase() === fam);
+  if(idx < 0 && S.ap.families.length === 1) idx = 0;
+  if(idx < 0){ showToast('That folder is no longer on the POS'); return; }
+  await apSelectFamily(idx);
+  const here = new Set(S.ap.photos.map(p => p.path));
+  const want = f.photos.filter(p => here.has(p));
+  if(!want.length){ showToast('Those photos are no longer on the POS'); return; }
+  S.ap.selected = new Set(want);
+  S.ap.photos.forEach((p, i) => { const el = $('apph-' + i); if(el) el.classList.toggle('selected', S.ap.selected.has(p.path)); });
+  renderApSelCount();
+  apAddToCart();
+  const missing = f.photos.length - want.length;
+  showToast(`${want.length} saved photo${want.length === 1 ? '' : 's'} added` + (missing ? ` (${missing} no longer on the site)` : ''));
+}
+async function posOpenSavedPortrait(fi){
+  const f = S.savedCart.folders[fi];
+  closeSavedCartModal();
+  openCategory('portraits', 'Portraits');
+  $('pr-search-input').value = f.family || '';
+  await portraitSearch();
+  const idx = S.pr.sessions.findIndex(x => x.date === f.date && (x.last_name || x.name || '').toLowerCase() === (f.family || '').toLowerCase());
+  if(idx < 0){ showToast('That session is no longer on the POS'); return; }
+  await portraitSelectSession(idx);
+  showToast('Saved: ' + f.poses.map(p => `${p.label} ${p.whole ? '(whole)' : '(' + p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's') + ')'}`).join(', '));
+}
+async function posSavedPrint(fi, pi){
+  const pr = S.savedCart.folders[fi].prints[pi];
+  closeSavedCartModal();
+  if(!S.printSizes) await loadPrintSizes();
+  _ptPhoto = {path: pr.path, filename: pr.path.split('/').pop()};
+  openPSM(_ptPhoto);
+  showToast(`Saved choice: ${pr.size}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}`);
 }
 
 // ─── Customer bar inline search ───────────────────────────────────────────────
@@ -4652,6 +4788,7 @@ function newSale(){
   S._im = null;
   S.pkg = null;
   pkgStopAdding();
+  _scEmail = ''; S.savedCart = null; renderSavedCartBanner();
   // Reset inner photo views so next sale starts fresh
   try { apClearPhotos(); } catch(e){}
   try { portraitClearPhotos(); } catch(e){}
