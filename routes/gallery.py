@@ -138,8 +138,8 @@ def browse(request: Request, date: str, location: str, family: str = Query(None)
             g = _item_group_from_path(item)
         return g.lower() == group.lower()
 
-    # The POS and studio also see partner photos (Eagle Mount); the public gallery doesn't
-    pool = [item for item in main._folder_photos(date, location, pos=main._nowm_allowed(request))
+    # The POS also sees partner photos (Eagle Mount); the gallery doesn't, even for a studio login
+    pool = [item for item in main._folder_photos(date, location, pos=main._pos_signed_in(request))
             if (not family or item.get("last_name","").strip().lower() == family.lower()
                  or (family and not item.get("last_name","").strip() and item.get("group","").strip().lower() == family.lower()))
             and group_matches(item)]

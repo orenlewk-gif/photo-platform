@@ -1205,11 +1205,13 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
 
     items, rows = [], []          # items become WooCommerce lines; rows are what the page lists
 
-    def add(cat, full, line, row=None, name=None, sub=""):
+    def add(cat, full, line, row=None, name=None, sub="", no_discount=False):
         if row is None:
             rows.append({"name": name or line["name"], "sub": sub, "full": 0.0, "price": 0.0})
             row = len(rows) - 1
-        items.append({"cat": cat, "full": round(full, 2), "line": line, "row": row})
+        # no_discount: already discounted (a partner photo's print) and never combined with
+        # a bundle or a code
+        items.append({"cat": cat, "full": round(full, 2), "line": line, "row": row, "no_discount": no_discount})
         return row
 
     # ── Digital albums (priced like the gallery shows them) ──
@@ -1311,7 +1313,7 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
                                     "name": f"{size_label} Print — {p.get('filename', '')}" + (" + Big Sky Resort logo" if logo else ""),
                                     "meta_data": meta},
                   name=f"{size_label} Print" + (f" + {frame}" if frame else "") + (" + Logo" if logo else ""),
-                  sub=p.get("filename", ""))
+                  sub=p.get("filename", ""), no_discount=bool(partner_pct))
         if p.get("location"):
             locations.add(str(p["location"]).strip().lower())
         if frame:
@@ -1341,8 +1343,8 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
                                            _load_print_pricing().get("free_ship_threshold", 3))
 
     # ── Discounts: a bundle takes its % off every item, except items a code takes more off ──
-    def worth(cats, key="full"):
-        return round(sum(it[key] for it in items if it["cat"] in cats), 2)
+    def worth(cats, key="full", discountable=False):
+        return round(sum(it[key] for it in items if it["cat"] in cats and not (discountable and it["no_discount"])), 2)
 
     bundle, upsell = _bundle_for_cart(locations, bool(poses or singles))
     coupon, coupon_note = None, ""
@@ -1350,22 +1352,26 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
     if code_in:
         coupon, coupon_note = _check_coupon(code_in, body.get("email", ""))
     bundle_cats = set(CATEGORIES) if bundle else set()
+    if coupon and coupon_item_discount(coupon, 1.0) > 0 and not worth(coupon_scope(coupon), discountable=True) \
+            and any(it["no_discount"] for it in items):
+        coupon_note = "Codes can't be combined with the partner discount on these prints"
+        coupon = None
     if bundle and coupon:
         scope = coupon_scope(coupon) & {it["cat"] for it in items}
-        code_off = coupon_item_discount(coupon, worth(scope))
+        code_off = coupon_item_discount(coupon, worth(scope, discountable=True))
         if code_off > 0:
-            if code_off > round(worth(scope) * bundle["pct"] / 100, 2):
+            if code_off > round(worth(scope, discountable=True) * bundle["pct"] / 100, 2):
                 bundle_cats -= scope            # the code gives these items more
             else:
                 coupon_note = f"The {bundle['label']} ({bundle['pct']:g}% off) saves you more than this code"
                 coupon = None
     for it in items:
-        pct = bundle["pct"] if it["cat"] in bundle_cats else 0
+        pct = bundle["pct"] if it["cat"] in bundle_cats and not it["no_discount"] else 0
         it["price"] = round(it["full"] * (1 - pct / 100), 2)
         rows[it["row"]]["full"] = round(rows[it["row"]]["full"] + it["full"], 2)
         rows[it["row"]]["price"] = round(rows[it["row"]]["price"] + it["price"], 2)
     bundle_savings = round(worth(CATEGORIES) - worth(CATEGORIES, "price"), 2)
-    coupon_off = coupon_item_discount(coupon, worth(coupon_scope(coupon), "price")) if coupon else 0.0
+    coupon_off = coupon_item_discount(coupon, worth(coupon_scope(coupon), "price", discountable=True)) if coupon else 0.0
     subtotal = worth(CATEGORIES, "price")
 
     # ── WooCommerce order parts ──

@@ -69,6 +69,16 @@ def setup(main_module, live_photos, monkeypatch):
 
 
 @pytest.fixture()
+def pos(main_module):
+    """A POS iPad that has entered a photographer PIN."""
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json",
+                  Body=json.dumps([{"id": "p1", "name": "Test Photog", "pin": "4821"}]).encode())
+    c = TestClient(main_module.app)
+    assert c.post("/api/photographer/auth", json={"pin": "4821"}).status_code == 200
+    return c
+
+
+@pytest.fixture()
 def member(main_module):
     c = TestClient(main_module.app)
     r = c.post("/partner/eaglemount/login", data={"password": PW}, follow_redirects=False)
@@ -92,8 +102,8 @@ def test_public_gallery_doesnt_show_eagle_mount_photos(client):
     assert client.get("/api/folder-dates", params={"location": "Big Sky Ski School"}).json()["dates"] == [DAY1]
 
 
-def test_the_pos_still_sees_them(admin_client, main_module):
-    browse = admin_client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()
+def test_the_pos_still_sees_them(pos, admin_client, main_module):
+    browse = pos.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()
     assert _names(browse["photos"]) == ["DSC_0001.JPG", "DSC_0002.JPG", "DSC_0003.JPG"]
     pos_days = [d["date"] for d in admin_client.get("/api/pos-dates").json()["dates"]]
     assert DAY2 in pos_days and "2026-12-07" in pos_days
@@ -230,9 +240,9 @@ def test_standard_family_code_wording(main_module):
     assert main_module._family_code_message({"family_code": ""}) == ""
 
 
-def test_pos_browse_marks_eagle_mount_photos(admin_client, client):
-    pos = admin_client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
-    assert {p["filename"]: p.get("partner") for p in pos} == {
+def test_pos_browse_marks_eagle_mount_photos(pos, client):
+    seen = pos.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
+    assert {p["filename"]: p.get("partner") for p in seen} == {
         "DSC_0001.JPG": None, "DSC_0002.JPG": "eagle-mount", "DSC_0003.JPG": "eagle-mount"}
     public = client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
     assert all("partner" not in p for p in public)
@@ -283,9 +293,9 @@ def test_partner_print_discount_is_in_the_order(member, main_module):
     assert {"key": "Price", "value": "40% off (Eagle Mount photo)"} in priced["line_items"][0]["meta_data"]
 
 
-def test_pos_browse_carries_the_print_discount(admin_client):
-    pos = admin_client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
-    em = next(p for p in pos if p["filename"] == "DSC_0002.JPG")
+def test_pos_browse_carries_the_print_discount(pos):
+    seen = pos.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"]
+    em = next(p for p in seen if p["filename"] == "DSC_0002.JPG")
     assert em["partner_name"] == "Eagle Mount" and em["partner_print_pct"] == 40
 
 
@@ -372,3 +382,22 @@ def test_donation_report_date_range(member, admin_client):
     d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount", "date_from": "2030-01-01"}).json()
     assert d["photos"] == 0
     assert admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount", "date_from": "bad"}).status_code == 400
+
+
+def test_studio_login_sees_the_gallery_like_the_public(admin_client):
+    browse = admin_client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()
+    assert _names(browse["photos"]) == ["DSC_0001.JPG"]
+
+
+def test_partner_prints_never_combine_with_a_code(member, main_module, no_codes, admin_client):
+    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
+    q = member.post("/api/checkout/quote", json={"coupon_code": "EAGLEMOUNT25", "prints": [
+        {"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg"}]}).json()
+    assert q["subtotal"] == round(full * 0.6, 2) and q["coupon"] is None and "can't be combined" in q["coupon_note"]
+    # with a regular print in the same cart, the code takes 25% off only that one
+    q = member.post("/api/checkout/quote", json={"coupon_code": "EAGLEMOUNT25", "prints": [
+        {"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg"},
+        {"path": PHOTOS[0]["path"], "size_idx": 1, "filename": "b.jpg"}]}).json()
+    assert q["coupon"]["discount"] == round(full * 0.25, 2)
+    assert q["total"] == round(full * 0.6 + full - full * 0.25 + q["shipping"], 2)

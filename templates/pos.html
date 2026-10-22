@@ -1490,7 +1490,8 @@ function cartSubRemove(itemId, type, idx){
 
 function cartDiscount(){
   if(!S.coupon) return 0;
-  const sub = S.cart.reduce((a,i) => a + i.subtotal, 0);
+  // Partner prints (Eagle Mount) already have their discount and never combine with a code
+  const sub = S.cart.reduce((a,i) => a + (i._noCoupon ? 0 : i.subtotal), 0);
   const c = S.coupon;
   if(c.type === 'percent') return Math.min(sub, sub * (c.amount / 100));
   if(c.type === 'fixed')   return Math.min(sub, c.amount);
@@ -1585,6 +1586,7 @@ function renderCart(){
     }
     if(item._shipPrice) subLines += `<div class="cart-item-detail">Ship +${fmt(item._shipPrice)}</div>`;
     if(item._half) subLines += `<div class="cart-item-detail" style="color:var(--accent)">50% off applied</div>`;
+    if(item._noCoupon && S.coupon) subLines += `<div class="cart-item-detail">Code doesn't apply (already discounted)</div>`;
     div.innerHTML = `
       <div class="cart-item-info${!isShipping ? ' cart-item-editable' : ''}" ${!isShipping ? `onclick="cartItemEdit('${item.id}')"` : ''} style="flex:1;min-width:0">
         <div class="cart-item-label">${escHtml(item.label)}</div>
@@ -3123,7 +3125,7 @@ async function ptSelectFamily(f){
 function ptPickPhoto(photo){
   _ptPhoto = { path: photo.path || '', filename: photo.filename || (photo.path||'').split('/').pop() || '' };
   // Partner photos (Eagle Mount): their print discount is applied automatically
-  if(photo.partner && photo.partner_print_pct > 0) openPSM(_ptPhoto, false, photo.partner_print_pct, photo.partner_name || 'Partner');
+  if(photo.partner && photo.partner_print_pct > 0) openPSM(_ptPhoto, false, photo.partner_print_pct, photo.partner_name || 'Partner', true);
   else openPSM(_ptPhoto);
 }
 
@@ -3157,17 +3159,18 @@ function renderPrintSizes(){
 }
 
 // ─── Print Size Modal (PSM) ────────────────────────────────────────────────────
-const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false, pkgPct: 0, pkgLabel: '' };
+const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: false, pkgPct: 0, pkgLabel: '', noCoupon: false };
 // What a print costs here: Unlimited package photos get the package's discount, otherwise half price if switched on
 function psmFactor(){ return _psm.pkgPct ? 1 - _psm.pkgPct / 100 : (_psm.half ? 0.5 : 1); }
 
-function openPSM(photo, halfDefault, pkgPct, pkgLabel){
+function openPSM(photo, halfDefault, pkgPct, pkgLabel, noCoupon){
   if(!S.printSizes || !S.printSizes.length) return;
   _psm.photo = photo;
   _psm.sizes.clear();
   _psm.half = !!halfDefault;
   _psm.pkgPct = pkgPct || 0;
   _psm.pkgLabel = pkgLabel || 'Unlimited package';   // whose discount it is (package or partner)
+  _psm.noCoupon = !!noCoupon;                         // partner prints: no discount codes on top
   _psm.logo = false;
   _psm.ship = false;
   renderPSM();
@@ -3326,6 +3329,7 @@ function psmAddToCart(){
       _ship: _psm.ship,
       _half: _psm.half && !_psm.pkgPct,
       _pkgPct: _psm.pkgPct || 0,
+      _noCoupon: _psm.noCoupon || false,
       _logo: _psm.logo,
       _logoPrice: logoPrice || 0,
       _size_idx: s.size_idx !== undefined ? s.size_idx : idx,
