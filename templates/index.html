@@ -37,6 +37,24 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .ln-bar { display:flex; gap:0.75rem; align-items:flex-end; margin-bottom:2rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:1rem 1.2rem; }
 .ln-bar input { flex:1; }
 .ln-bar .btn { width:auto; padding:0.65rem 1.4rem; white-space:nowrap; }
+.save-box { margin-top:1.1rem; padding:0.9rem 1rem; border:1px solid rgba(245,197,24,0.3); border-radius:10px; background:rgba(245,197,24,0.06); font-size:0.85rem; }
+.save-box-title { color:#F5C518; font-weight:600; font-size:0.8rem; letter-spacing:1px; text-transform:uppercase; margin-bottom:0.45rem; }
+.save-box-line { color:rgba(255,255,255,0.75); line-height:1.5; }
+.save-box a, .save-link { color:#F5C518; cursor:pointer; text-decoration:underline; background:none; border:none; font:inherit; padding:0; }
+.save-form { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.55rem; }
+.save-form input { flex:1; min-width:140px; background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.2); border-radius:8px; color:#fff; padding:0.55rem 0.7rem; font-size:0.9rem; font-family:inherit; }
+.save-form input:focus { outline:none; border-color:#F5C518; }
+.save-form .btn { white-space:nowrap; }
+.save-msg { font-size:0.8rem; margin-top:0.4rem; color:rgba(255,255,255,0.65); min-height:1em; }
+.save-msg.err { color:#ff8a80; }
+.save-divider { border-top:1px solid rgba(255,255,255,0.1); margin:0.8rem 0 0.6rem; }
+.save-prompt { position:fixed; inset:0; z-index:400; background:rgba(0,0,0,0.55); display:none; align-items:flex-end; justify-content:center; padding:1rem 1rem 90px; }
+.save-prompt.open { display:flex; }
+.save-prompt-box { width:100%; max-width:460px; background:#12283a; border:1px solid rgba(245,197,24,0.35); border-radius:14px; padding:1.1rem 1.1rem 1rem; margin-bottom:1rem; }
+.save-prompt-title { color:#F5C518; font-weight:700; font-size:1.05rem; }
+.save-prompt-sub { color:rgba(255,255,255,0.7); font-size:0.85rem; line-height:1.5; margin-top:0.3rem; }
+.save-prompt-actions { display:flex; justify-content:flex-end; gap:0.6rem; margin-top:0.8rem; }
+.sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .ln-bar-label { font-size:0.7rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#F5C518; margin-bottom:6px; }
 /* Last-name autocomplete dropdown */
 .ln-input-wrap { flex:1; position:relative; }
@@ -1123,9 +1141,29 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
     </div>
     <div id="cartview-body"></div>
     <div class="cartview-total"></div>
+    <div class="save-box" data-savebox></div>
     <div class="cartview-actions">
       <button class="btn-ghost btn-secondary" onclick="clearCart(); closeCartView()">Remove All</button>
       <button class="btn" onclick="closeCartView(); openCheckout()">Checkout →</button>
+    </div>
+  </div>
+</div>
+
+<!-- "Save your photos for later?" — shown once, after the first selection -->
+<div id="save-prompt" class="save-prompt" role="dialog" aria-labelledby="save-prompt-title" aria-hidden="true">
+  <div class="save-prompt-box">
+    <div class="save-prompt-title" id="save-prompt-title">Save your photos for later?</div>
+    <div class="save-prompt-sub">We'll keep your selection so you can come back to it anytime, on any device. To get it back later, open the cart and enter your email.</div>
+    <div class="save-form">
+      <label class="sr-only" for="sp-first">First name</label>
+      <input id="sp-first" type="text" placeholder="First name" autocomplete="given-name" maxlength="40">
+      <label class="sr-only" for="sp-email">Email</label>
+      <input id="sp-email" type="email" placeholder="Email" autocomplete="email">
+    </div>
+    <div class="save-msg" id="sp-msg" role="status"></div>
+    <div class="save-prompt-actions">
+      <button class="btn-ghost btn-secondary" onclick="dismissSavePrompt()">Not now</button>
+      <button class="btn" onclick="savePromptSubmit()">Save my photos</button>
     </div>
   </div>
 </div>
@@ -1138,6 +1176,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
       <button onclick="closePoseCartView()" style="background:none;border:none;color:rgba(255,255,255,.45);font-size:0.75rem;cursor:pointer;text-decoration:underline;padding:0;letter-spacing:.5px">Close</button>
     </div>
     <div id="pose-cartview-body"></div>
+    <div class="save-box" data-savebox></div>
     <div class="cartview-actions">
       <button class="btn-ghost btn-secondary" onclick="clearPoseCart(); closePoseCartView()">Remove All</button>
       <button class="btn" onclick="closePoseCartView(); openCheckout()">Checkout →</button>
@@ -1598,14 +1637,135 @@ const CART_TTL = 7 * 24 * 60 * 60 * 1000;
 function saveCart() {
   try {
     saveCurrentFolder();   // flush current gallery state before persisting
-    localStorage.setItem(CART_KEY, JSON.stringify({
+    const data = {
       ts: Date.now(),
       frameCart,
       folderCarts,
       currentFolderKey,
       digitalLogoPaths: [..._digitalLogoPhotos],
-    }));
+    };
+    localStorage.setItem(CART_KEY, JSON.stringify(data));
+    afterCartSaved(data);
   } catch(e) {}
+}
+
+// ── Saved carts: the selection saved under the customer's first name + email ──
+// Once they've saved it, every change saves again automatically (a moment later). On any
+// device they can load it from the cart by typing their email.
+const SAVED_ID_KEY = 'ci_saved_cart';               // {first_name, email} on this device
+const SAVE_PROMPT_KEY = 'ci_save_prompt_done';      // asked once per device
+let _remoteSaveTimer = null, _savePromptShown = false;
+function savedIdentity(){ try { return JSON.parse(localStorage.getItem(SAVED_ID_KEY) || 'null'); } catch(e) { return null; } }
+function cartItemCount(data){
+  let n = (data.frameCart || []).reduce((s, f) => s + (f.quantity || 1), 0);
+  Object.values(data.folderCarts || {}).forEach(fc => {
+    n += (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) + (fc.poseState ? Object.keys(fc.poseState).length : 0);
+  });
+  return n;
+}
+function afterCartSaved(data){
+  const who = savedIdentity();
+  if(who){
+    clearTimeout(_remoteSaveTimer);
+    _remoteSaveTimer = setTimeout(() => remoteSaveCart(who, data), 1500);
+    return;
+  }
+  // First selection on this device: offer to save it
+  let asked = false; try { asked = !!localStorage.getItem(SAVE_PROMPT_KEY); } catch(e) {}
+  if(!asked && !_savePromptShown && cartItemCount(data) > 0){
+    _savePromptShown = true;
+    setTimeout(openSavePrompt, 600);
+  }
+}
+async function remoteSaveCart(who, data){
+  try {
+    const r = await fetch('/api/saved-cart', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({email: who.email, first_name: who.first_name, cart: data})});
+    return r.ok ? null : ((await r.json().catch(() => ({}))).error || 'Could not save');
+  } catch(e) { return 'Could not save — check your connection'; }
+}
+function currentCartData(){
+  saveCurrentFolder();
+  return {ts: Date.now(), frameCart, folderCarts, currentFolderKey, digitalLogoPaths: [..._digitalLogoPhotos]};
+}
+async function startSaving(first, email, msgEl){
+  first = (first || '').trim(); email = (email || '').trim();
+  if(!first){ msgEl.textContent = 'Please enter your first name.'; msgEl.className = 'save-msg err'; return false; }
+  if(!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email)){ msgEl.textContent = 'Please enter a valid email.'; msgEl.className = 'save-msg err'; return false; }
+  msgEl.textContent = 'Saving…'; msgEl.className = 'save-msg';
+  const who = {first_name: first, email};
+  const problem = await remoteSaveCart(who, currentCartData());
+  if(problem){ msgEl.textContent = problem; msgEl.className = 'save-msg err'; return false; }
+  try { localStorage.setItem(SAVED_ID_KEY, JSON.stringify(who)); localStorage.setItem(SAVE_PROMPT_KEY, '1'); } catch(e) {}
+  renderSaveBoxes();
+  return true;
+}
+function openSavePrompt(){
+  const p = document.getElementById('save-prompt');
+  p.classList.add('open'); p.setAttribute('aria-hidden', 'false');
+  setTimeout(() => document.getElementById('sp-first').focus(), 50);
+}
+function dismissSavePrompt(){
+  try { localStorage.setItem(SAVE_PROMPT_KEY, '1'); } catch(e) {}
+  const p = document.getElementById('save-prompt');
+  p.classList.remove('open'); p.setAttribute('aria-hidden', 'true');
+}
+async function savePromptSubmit(){
+  const ok = await startSaving(document.getElementById('sp-first').value, document.getElementById('sp-email').value,
+                               document.getElementById('sp-msg'));
+  if(ok){
+    document.getElementById('sp-msg').textContent = 'Saved. Load them anytime from the cart with your email.';
+    setTimeout(dismissSavePrompt, 1600);
+  }
+}
+function maskEmail(e){ const [u, d] = String(e).split('@'); return (u || '').slice(0, 2) + '•••@' + (d || ''); }
+function renderSaveBoxes(){
+  const who = savedIdentity();
+  document.querySelectorAll('[data-savebox]').forEach((box, i) => {
+    const saveHtml = who
+      ? `<div class="save-box-line">Saved for <strong>${escHtml(who.first_name)}</strong> (${escHtml(maskEmail(who.email))}). Changes save automatically.
+           <button class="save-link" onclick="forgetSavedIdentity()">Not you?</button></div>`
+      : `<div class="save-box-line">Save your selection and come back to it anytime, on any device.</div>
+         <div class="save-form">
+           <label class="sr-only" for="sb-first-${i}">First name</label>
+           <input id="sb-first-${i}" type="text" placeholder="First name" autocomplete="given-name" maxlength="40">
+           <label class="sr-only" for="sb-email-${i}">Email</label>
+           <input id="sb-email-${i}" type="email" placeholder="Email" autocomplete="email">
+           <button class="btn" onclick="startSaving(document.getElementById('sb-first-${i}').value, document.getElementById('sb-email-${i}').value, document.getElementById('sb-msg-${i}'))">Save</button>
+         </div>
+         <div class="save-msg" id="sb-msg-${i}" role="status"></div>`;
+    box.innerHTML = `<div class="save-box-title">Save your photos</div>${saveHtml}
+      <div class="save-divider"></div>
+      <div class="save-box-line">Saved photos before? Load them here.</div>
+      <div class="save-form">
+        <label class="sr-only" for="sl-email-${i}">Email to load saved photos</label>
+        <input id="sl-email-${i}" type="email" placeholder="Your email" autocomplete="email">
+        <button class="btn btn-ghost btn-secondary" onclick="loadSavedCart(document.getElementById('sl-email-${i}').value, document.getElementById('sl-msg-${i}'))">Load my photos</button>
+      </div>
+      <div class="save-msg" id="sl-msg-${i}" role="status"></div>`;
+  });
+}
+function forgetSavedIdentity(){
+  // Only stops saving on this device; the saved photos stay saved
+  try { localStorage.removeItem(SAVED_ID_KEY); } catch(e) {}
+  renderSaveBoxes();
+}
+async function loadSavedCart(email, msgEl){
+  email = (email || '').trim();
+  if(!email){ msgEl.textContent = 'Please enter your email.'; msgEl.className = 'save-msg err'; return; }
+  const here = cartItemCount(currentCartData());
+  if(here && !confirm('Loading your saved photos replaces what is in your cart now. Continue?')) return;
+  msgEl.textContent = 'Loading…'; msgEl.className = 'save-msg';
+  try {
+    const r = await fetch('/api/saved-cart/load', {method:'POST', headers:{'Content-Type':'application/json'},
+                                                   body: JSON.stringify({email})});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok){ msgEl.textContent = d.error || 'Could not load'; msgEl.className = 'save-msg err'; return; }
+    localStorage.setItem(CART_KEY, JSON.stringify({...d.cart, ts: Date.now()}));
+    localStorage.setItem(SAVED_ID_KEY, JSON.stringify({first_name: d.first_name, email: d.email}));
+    localStorage.setItem(SAVE_PROMPT_KEY, '1');
+    location.reload();                 // the gallery and cart pick it up from here
+  } catch(e) { msgEl.textContent = 'Could not load — check your connection'; msgEl.className = 'save-msg err'; }
 }
 
 function loadCart() {
@@ -2654,6 +2814,7 @@ function closePPModal() {
 
 function openPoseCartView() {
   renderPoseCartView();
+  renderSaveBoxes();
   document.getElementById('pose-cartview-overlay').classList.add('open');
 }
 function closePoseCartView() {
@@ -3245,6 +3406,9 @@ function clearCart() {
   if (_poseData) updatePoseHeaders();
   updateHeaderCartBtn();
   try { localStorage.removeItem(CART_KEY); } catch(e) {}
+  // "Remove All" empties their saved photos too
+  const who = savedIdentity();
+  if(who){ clearTimeout(_remoteSaveTimer); remoteSaveCart(who, {ts: Date.now(), frameCart: [], folderCarts: {}}); }
 }
 
 // ── Pricing logic ──
@@ -3553,6 +3717,7 @@ function updateCart() {
 function openCartView() {
   document.body.style.overflow = 'hidden';
   renderCartView();
+  renderSaveBoxes();
   document.getElementById('cartview-overlay').classList.add('open');
   // Async: fetch pricing for any non-current folder that isn't already cached
   Object.values(folderCarts).forEach(async fc => {

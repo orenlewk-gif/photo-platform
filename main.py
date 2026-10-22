@@ -2281,6 +2281,10 @@ def _handle_paid_wc_order(order: dict):
     # WooCommerce calls this when an order is paid and again when it's completed
     # (often seconds apart). One link and one email per order: the second call waits
     # for the first, then sees the order already has a valid link.
+    try:                                     # their saved cart is done once they've ordered
+        _clear_saved_cart_for((order.get("billing") or {}).get("email", ""))
+    except Exception as e:
+        print(f"Saved cart not cleared for order {order.get('id')}: {e}")
     with _sale_locks.hold(f"wc:{order.get('id')}"):
         if _order_has_valid_link(order.get("id")):
             return Response(status_code=200)
@@ -3936,6 +3940,129 @@ def _unlimited_note(last_day: str, expire_str: str) -> str:
             f"Check back anytime. Your link works until {expire_str}.")
 
 
+# ── Saved carts ───────────────────────────────────────────────────────────────
+# A customer can save their gallery selection (the same cart the Select button builds) with
+# their first name and email, then load it on any device by typing that email. One file per
+# email (saved_carts/<hash>.json); the studio lists them under Customers > Saved Carts. A paid
+# online order empties that email's saved cart; the studio clears them all at season's end.
+SAVED_CARTS_PREFIX = "saved_carts/"
+SAVED_CART_MAX_BYTES = 400_000
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,24}$")
+_saved_cart_save_limiter = _RateLimiter(max_calls=60, window=600)    # per visitor
+_saved_cart_load_limiter = _RateLimiter(max_calls=10, window=600)    # per visitor: no guessing emails
+_saved_carts_cache = {"records": None, "ts": 0.0}
+_saved_carts_guard = threading.Lock()
+
+
+def _saved_cart_id(email: str) -> str:
+    return hashlib.sha256((email or "").strip().lower().encode()).hexdigest()[:32]
+
+
+def _saved_cart_key(cart_id: str) -> str:
+    return f"{SAVED_CARTS_PREFIX}{cart_id}.json"
+
+
+def _cart_summary(cart: dict) -> dict:
+    """What's in a gallery cart: photo paths (selected photos, poses, prints) and counts."""
+    paths, photos, poses, prints = [], 0, 0, 0
+    folders = cart.get("folderCarts") if isinstance(cart.get("folderCarts"), dict) else {}
+    labels = []
+    for fc in folders.values():
+        if not isinstance(fc, dict):
+            continue
+        sel = [p for p in (fc.get("selectedPaths") or []) if isinstance(p, str)]
+        photos += len(sel)
+        paths += sel
+        pose_list = fc.get("poses") if isinstance(fc.get("poses"), list) else []
+        for color, state in (fc.get("poseState") or {}).items():
+            pose = next((p for p in pose_list if isinstance(p, dict) and p.get("color") == color), {})
+            pose_paths = [p for p in (pose.get("paths") or []) if isinstance(p, str)]
+            if state == "pose":
+                poses += 1
+                paths += pose_paths
+            elif isinstance(state, list):
+                picked = [pose_paths[i] for i in state if isinstance(i, int) and 0 <= i < len(pose_paths)]
+                photos += len(picked)
+                paths += picked
+        fprints = [p for p in (fc.get("printCart") or []) if isinstance(p, dict)]
+        prints += len(fprints)
+        paths += [p.get("photoPath") for p in fprints if isinstance(p.get("photoPath"), str)]
+        if fc.get("label"):
+            labels.append(str(fc["label"])[:80])
+    frames = sum(int(f.get("quantity") or 1) for f in (cart.get("frameCart") or []) if isinstance(f, dict))
+    return {"photos": photos, "poses": poses, "prints": prints, "frames": frames,
+            "items": photos + poses + prints + frames, "folders": labels,
+            "paths": list(dict.fromkeys(p for p in paths if p.startswith("images/")))[:400]}
+
+
+def _load_saved_cart(cart_id: str):
+    if not re.fullmatch(r"[0-9a-f]{32}", cart_id or ""):
+        return None
+    try:
+        return json.loads(s3.get_object(Bucket=R2_BUCKET, Key=_saved_cart_key(cart_id))["Body"].read())
+    except Exception:
+        return None
+
+
+def _remember_saved_cart(cart_id: str, record: dict | None) -> None:
+    with _saved_carts_guard:
+        if _saved_carts_cache["records"] is not None:
+            if record is None:
+                _saved_carts_cache["records"].pop(cart_id, None)
+            else:
+                _saved_carts_cache["records"][cart_id] = record
+
+
+def _save_cart_record(email: str, first_name: str, cart: dict) -> dict:
+    """Save (or, for an empty cart, remove) this email's cart. Returns the summary."""
+    cart_id = _saved_cart_id(email)
+    summary = _cart_summary(cart)
+    if not summary["items"]:
+        _delete_saved_cart(cart_id)
+        return summary
+    old = _load_saved_cart(cart_id) or {}
+    now = datetime.now(timezone.utc).isoformat()
+    record = {"id": cart_id, "email": email.strip().lower(), "first_name": first_name.strip()[:40],
+              "cart": cart, "summary": summary, "created": old.get("created") or now, "updated": now}
+    s3.put_object(Bucket=R2_BUCKET, Key=_saved_cart_key(cart_id), Body=json.dumps(record).encode(),
+                  ContentType="application/json")
+    _remember_saved_cart(cart_id, {k: v for k, v in record.items() if k != "cart"})
+    return summary
+
+
+def _delete_saved_cart(cart_id: str) -> None:
+    try:
+        s3.delete_object(Bucket=R2_BUCKET, Key=_saved_cart_key(cart_id))
+    except Exception as e:
+        print(f"Saved cart not removed ({cart_id}): {e}")
+    _remember_saved_cart(cart_id, None)
+
+
+def _clear_saved_cart_for(email: str) -> None:
+    """An order was paid: that customer's saved cart is done."""
+    if email and _EMAIL_RE.match(email.strip()):
+        cart_id = _saved_cart_id(email)
+        if _load_saved_cart(cart_id):
+            _delete_saved_cart(cart_id)
+
+
+def _saved_cart_list() -> list:
+    """Every saved cart without its full contents (for the studio list), newest first."""
+    with _saved_carts_guard:
+        c = _saved_carts_cache
+        if c["records"] is not None and _time.monotonic() - c["ts"] < 60:
+            return sorted(c["records"].values(), key=lambda r: r.get("updated", ""), reverse=True)
+    ids = []
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=SAVED_CARTS_PREFIX):
+        ids += [o["Key"][len(SAVED_CARTS_PREFIX):-5] for o in page.get("Contents", []) if o["Key"].endswith(".json")]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        found = [r for r in ex.map(_load_saved_cart, ids) if r]
+    records = {r["id"]: {k: v for k, v in r.items() if k != "cart"} for r in found}
+    with _saved_carts_guard:
+        _saved_carts_cache.update(records=records, ts=_time.monotonic())
+    return sorted(records.values(), key=lambda r: r.get("updated", ""), reverse=True)
+
+
 # ── Partner programs (Eagle Mount) ────────────────────────────────────────────
 # A partner's participants get their photos free on their own page. Photographers mark those
 # photos while culling with the partner's color label (written into the photo file); winter
@@ -4566,3 +4693,6 @@ app.include_router(_routes_unlimited.router)
 
 from routes import partners as _routes_partners  # noqa: E402
 app.include_router(_routes_partners.router)
+
+from routes import saved_carts as _routes_saved_carts  # noqa: E402
+app.include_router(_routes_saved_carts.router)

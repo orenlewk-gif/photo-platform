@@ -16,7 +16,29 @@ html.embedded #layout{height:100vh}
 #topbar a{color:rgba(255,255,255,.45);font-size:.82rem;text-decoration:none}
 #topbar a:hover{color:#fff}
 
-#layout{display:flex;height:calc(100vh - 46px);overflow:hidden}
+#layout,#saved-layout{display:flex;height:calc(100vh - 46px - 40px);overflow:hidden}
+html.embedded #layout,html.embedded #saved-layout{height:calc(100vh - 40px)}
+#cust-tabs{display:flex;gap:.25rem;height:40px;align-items:flex-end;padding:0 1rem;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08)}
+.cust-tab{background:none;border:none;color:rgba(255,255,255,.5);font-size:.84rem;font-weight:600;padding:.55rem .9rem;cursor:pointer;border-bottom:2px solid transparent}
+.cust-tab.active{color:#F5C518;border-bottom-color:#F5C518}
+#saved-layout{display:none}
+#saved-list-pane{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.07);background:#081929}
+#saved-list-header{padding:.85rem 1rem .7rem;border-bottom:1px solid rgba(255,255,255,.06)}
+#saved-search{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.42rem .75rem;color:#e8eaf0;font-size:13px;outline:none}
+#saved-search:focus{border-color:#F5C518}
+#saved-list{flex:1;overflow-y:auto}
+.sc-row{padding:.65rem 1rem;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer}
+.sc-row:hover,.sc-row.active{background:rgba(255,255,255,.05)}
+.sc-name{font-weight:600;font-size:.86rem}
+.sc-meta{font-size:.72rem;color:rgba(255,255,255,.4);margin-top:.15rem}
+#saved-detail{flex:1;overflow-y:auto;padding:1.2rem 1.4rem}
+.sc-folder{margin:1rem 0 .4rem;font-size:.78rem;font-weight:700;color:#F5C518;text-transform:uppercase;letter-spacing:.05em}
+.sc-sub{font-size:.75rem;color:rgba(255,255,255,.5);margin:.5rem 0 .3rem}
+.sc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px}
+.sc-grid figure{margin:0;position:relative}
+.sc-grid img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:5px;background:#0a1e2e;display:block}
+.sc-grid figcaption{font-size:.65rem;color:rgba(255,255,255,.5);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#saved-footer{padding:.7rem 1rem;border-top:1px solid rgba(255,255,255,.06);font-size:.72rem;color:rgba(255,255,255,.4)}
 
 /* ── Customer list pane ── */
 #list-pane{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.07);background:#081929}
@@ -171,6 +193,10 @@ select.fu-input{cursor:pointer}
 <div id="topbar">
   <h1>Crystal Images — Dashboard</h1>
   <a href="/admin/logout">Sign out</a>
+</div>
+<div id="cust-tabs" role="tablist">
+  <button class="cust-tab active" id="tab-inperson" role="tab" onclick="switchCustTab('inperson')">In-Person Customers</button>
+  <button class="cust-tab" id="tab-saved" role="tab" onclick="switchCustTab('saved')">Saved Carts</button>
 </div>
 <div id="layout">
 
@@ -367,6 +393,22 @@ select.fu-input{cursor:pointer}
   </div><!-- /detail-pane -->
 </div><!-- /layout -->
 
+<!-- ── Saved Carts: online visitors who saved their selection with their email ── -->
+<div id="saved-layout">
+  <div id="saved-list-pane">
+    <div id="saved-list-header">
+      <input type="text" id="saved-search" placeholder="Search name or email…" oninput="renderSavedList()" autocomplete="off" aria-label="Search saved carts">
+      <div id="saved-count" style="font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.45rem">Loading…</div>
+    </div>
+    <div id="saved-list"></div>
+    <div id="saved-footer">
+      Saved carts are kept until the customer orders, or until you clear them at season's end.
+      <div style="margin-top:.5rem"><button class="btn btn-danger btn-sm" onclick="clearAllSaved()">Clear all saved carts</button></div>
+    </div>
+  </div>
+  <div id="saved-detail"><div style="color:rgba(255,255,255,.35);margin-top:3rem;text-align:center">Select a saved cart</div></div>
+</div>
+
 <!-- Delete confirm modal -->
 <div id="preview-modal" class="modal-overlay" onclick="if(event.target===this)cancelSend()">
   <div class="modal-box" style="max-width:680px">
@@ -430,6 +472,87 @@ select.fu-input{cursor:pointer}
 <div id="toast"></div>
 
 <script>
+// ── Saved Carts tab ──
+let _savedCarts = [], _savedActive = '';
+function switchCustTab(which){
+  const saved = which === 'saved';
+  document.getElementById('layout').style.display = saved ? 'none' : 'flex';
+  document.getElementById('saved-layout').style.display = saved ? 'flex' : 'none';
+  document.getElementById('tab-inperson').classList.toggle('active', !saved);
+  document.getElementById('tab-saved').classList.toggle('active', saved);
+  if(saved) loadSavedCarts();
+}
+function scDate(iso){ try { return new Date(iso).toLocaleString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}); } catch(e) { return ''; } }
+function scCounts(r){
+  const parts = [];
+  if(r.photos) parts.push(`${r.photos} photo${r.photos === 1 ? '' : 's'}`);
+  if(r.poses) parts.push(`${r.poses} pose${r.poses === 1 ? '' : 's'}`);
+  if(r.prints) parts.push(`${r.prints} print${r.prints === 1 ? '' : 's'}`);
+  if(r.frames) parts.push(`${r.frames} frame${r.frames === 1 ? '' : 's'}`);
+  return parts.join(' · ') || 'empty';
+}
+async function loadSavedCarts(){
+  try {
+    const r = await fetch('/api/admin/saved-carts');
+    _savedCarts = (await r.json()).carts || [];
+  } catch(e) { _savedCarts = []; }
+  renderSavedList();
+}
+function renderSavedList(){
+  const q = (document.getElementById('saved-search').value || '').trim().toLowerCase();
+  const rows = _savedCarts.filter(r => !q || (r.first_name || '').toLowerCase().includes(q) || (r.email || '').includes(q));
+  document.getElementById('saved-count').textContent = `${rows.length} saved cart${rows.length === 1 ? '' : 's'}`;
+  document.getElementById('saved-list').innerHTML = rows.map(r => `
+    <div class="sc-row${r.id === _savedActive ? ' active' : ''}" onclick="openSavedCart('${r.id}')">
+      <div class="sc-name">${esc(r.first_name || '')} <span style="font-weight:400;color:rgba(255,255,255,.45)">${esc(r.email || '')}</span></div>
+      <div class="sc-meta">${esc(scCounts(r))} · updated ${esc(scDate(r.updated))}</div>
+    </div>`).join('') || '<div style="padding:1rem;color:rgba(255,255,255,.35);font-size:.8rem">No saved carts yet.</div>';
+}
+function scThumbs(paths, caption){
+  return `<div class="sc-grid">${paths.map(p => `<figure><img src="/api/admin/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">
+    <figcaption>${esc(caption ? caption(p) : p.split('/').pop())}</figcaption></figure>`).join('')}</div>`;
+}
+async function openSavedCart(id){
+  _savedActive = id; renderSavedList();
+  const box = document.getElementById('saved-detail');
+  box.innerHTML = '<div style="color:rgba(255,255,255,.4)">Loading…</div>';
+  const r = await fetch(`/api/admin/saved-carts/${id}`);
+  if(!r.ok){ box.innerHTML = '<div style="color:#f87171">Could not load this saved cart.</div>'; return; }
+  const d = await r.json();
+  let html = `<div style="display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+      <div style="margin-right:auto"><div style="font-size:1.1rem;font-weight:700">${esc(d.first_name)}</div>
+        <div style="color:rgba(255,255,255,.55);font-size:.85rem">${esc(d.email)}</div>
+        <div style="color:rgba(255,255,255,.4);font-size:.75rem;margin-top:.2rem">Saved ${esc(scDate(d.created))} · last changed ${esc(scDate(d.updated))} · ${esc(scCounts(d.summary || {}))}</div></div>
+      <button class="btn btn-danger btn-sm" onclick="deleteSavedCart('${d.id}')">Delete</button>
+    </div>`;
+  (d.folders || []).forEach(f => {
+    if(!f.photos.length && !f.poses.length && !f.prints.length) return;
+    html += `<div class="sc-folder">${esc(f.label)}</div>`;
+    if(f.photos.length) html += `<div class="sc-sub">Digital photos (${f.photos.length})</div>` + scThumbs(f.photos);
+    f.poses.forEach(p => { html += `<div class="sc-sub">${esc(p.label)} — ${p.whole ? 'whole pose' : 'single photos'} (${p.paths.length})</div>` + scThumbs(p.paths); });
+    if(f.prints.length){
+      html += `<div class="sc-sub">Prints (${f.prints.length})</div>` + scThumbs(f.prints.map(p => p.path),
+        path => { const p = f.prints.find(x => x.path === path); return p ? `${p.size}${p.frame && p.frame !== 'No Frame' ? ' + frame' : ''}${p.logo ? ' + logo' : ''}` : ''; });
+    }
+  });
+  if((d.frames || []).length) html += `<div class="sc-folder">Frames</div><div class="sc-sub">${d.frames.map(f => esc(`${f.size || ''} ${f.orientation || ''} ×${f.quantity || 1}`)).join(', ')}</div>`;
+  box.innerHTML = html;
+}
+async function deleteSavedCart(id){
+  if(!confirm('Delete this saved cart? The customer will no longer be able to load it.')) return;
+  const r = await fetch(`/api/admin/saved-carts/${id}`, {method:'DELETE'});
+  if(r.ok){ showToast('Saved cart deleted'); _savedActive = ''; document.getElementById('saved-detail').innerHTML = ''; loadSavedCarts(); }
+  else showToast('Could not delete', 'err');
+}
+async function clearAllSaved(){
+  const typed = prompt("This removes every saved cart (do it at season's end). Type CLEAR to confirm.");
+  if(typed !== 'CLEAR') return;
+  const r = await fetch('/api/admin/saved-carts/clear-all', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({confirm:'CLEAR'})});
+  const d = await r.json().catch(() => ({}));
+  if(r.ok){ showToast(`Cleared ${d.cleared} saved cart${d.cleared === 1 ? '' : 's'}`); _savedActive = ''; document.getElementById('saved-detail').innerHTML = ''; loadSavedCarts(); }
+  else showToast(d.error || 'Could not clear', 'err');
+}
+
 // This page lives inside Dashboard > Customers; opened on its own, go there instead.
 if (window.parent === window) location.replace('/admin/dashboard/customers');
 if (window.parent !== window) document.documentElement.classList.add('embedded');
