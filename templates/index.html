@@ -1807,7 +1807,26 @@ function restoreSelectedPhotos() {
   if (selectedPhotos.size > 0) updateCart();
 }
 
+// A reminder email's "View your photos" link (?saved=...): load that saved cart, then show the site
+async function openSavedFromLink(){
+  const t = new URLSearchParams(location.search).get('saved');
+  if(!t) return false;
+  try {
+    const r = await fetch('/api/saved-cart/link?t=' + encodeURIComponent(t));
+    const d = await r.json().catch(() => ({}));
+    if(r.ok){
+      localStorage.setItem(CART_KEY, JSON.stringify({...d.cart, ts: Date.now()}));
+      localStorage.setItem(SAVE_PROMPT_KEY, '1');
+      rememberIdentity({first_name: d.first_name, email: d.email});
+    } else alert(d.error || 'Those saved photos could not be loaded.');
+  } catch(e) {}
+  const u = new URL(location.href); u.searchParams.delete('saved');
+  location.replace(u.pathname + u.search);
+  return true;
+}
+
 async function init() {
+  if (await openSavedFromLink()) return;
   loadCart();
   loadShopPrices();
   // Pre-load combos so the cart bar shows the correct total even before entering a gallery

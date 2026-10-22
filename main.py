@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import re
+from urllib.parse import quote
 import hmac
 import hashlib
 import ipaddress
@@ -4040,7 +4041,8 @@ def _save_cart_record(email: str, first_name: str, cart: dict) -> dict:
     old = _load_saved_cart(cart_id) or {}
     now = datetime.now(timezone.utc).isoformat()
     record = {"id": cart_id, "email": email.strip().lower(), "first_name": first_name.strip()[:40],
-              "cart": cart, "summary": summary, "created": old.get("created") or now, "updated": now}
+              "cart": cart, "summary": summary, "created": old.get("created") or now, "updated": now,
+              "reminders": old.get("reminders") or []}
     s3.put_object(Bucket=R2_BUCKET, Key=_saved_cart_key(cart_id), Body=json.dumps(record).encode(),
                   ContentType="application/json")
     _remember_saved_cart(cart_id, {k: v for k, v in record.items() if k != "cart"})
@@ -4123,6 +4125,60 @@ def _send_invoice_email(to_email: str, first_name: str, pay_url: str, total: flo
     except Exception as e:
         print(f"Invoice email failed ({to_email}): {e}")
         return False
+
+
+def _saved_cart_link_token(cart_id: str) -> str:
+    """For the link in a reminder email: opens that saved cart without typing the email (the
+    link only ever goes to the customer's own inbox)."""
+    sig = hmac.new((os.getenv("UNSUBSCRIBE_SECRET") or ADMIN_PASSWORD or "").encode(),
+                   f"savedcart|{cart_id}".encode(), hashlib.sha256).hexdigest()[:24]
+    return f"{cart_id}.{sig}"
+
+
+def _saved_cart_from_link(token: str) -> str | None:
+    cart_id, _, sig = (token or "").partition(".")
+    if re.fullmatch(r"[0-9a-f]{32}", cart_id) and hmac.compare_digest(_saved_cart_link_token(cart_id), token or ""):
+        return cart_id
+    return None
+
+
+def _send_saved_cart_reminder(rec: dict) -> str:
+    """Email the customer about their saved photos (a marketing email: business address,
+    unsubscribe link and headers; never to someone who unsubscribed). Returns '' or a problem."""
+    email = rec.get("email", "")
+    if _opted_out(email):
+        return "This customer unsubscribed from marketing emails, so no reminder was sent"
+    if not RESEND_API_KEY:
+        return "Email isn't set up on this server"
+    summary = rec.get("summary") or {}
+    link = f"{SITE_URL}/?saved={_saved_cart_link_token(rec['id'])}"
+    thumbs = "".join(
+        f'<img src="{SITE_URL}/api/photo?path={quote(p)}&size=thumb&v=4" alt="" width="120" '
+        f'style="width:120px;height:80px;object-fit:cover;border-radius:6px;margin:0 6px 6px 0">'
+        for p in (summary.get("paths") or [])[:6])
+    n = summary.get("items", 0)
+    body = (f'<p style="margin:0 0 1rem">Hi {_html_escape(rec.get("first_name") or "there")},</p>'
+            f'<p style="margin:0 0 1rem">Your saved photos are still waiting for you ({n} item{"s" if n != 1 else ""}).</p>'
+            f'<div style="margin:0 0 1rem">{thumbs}</div>'
+            f'<p style="margin:0 0 1.2rem"><a href="{_html_escape(link)}" style="background:#1a73e8;color:#fff;'
+            f'padding:.6rem 1.3rem;border-radius:6px;font-weight:600;text-decoration:none;display:inline-block">View your photos</a></p>'
+            f'<p style="margin:0;font-size:.85rem;color:#666">Questions? Just reply to this email.</p>')
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [email], "subject": "Your saved photos are waiting",
+                                     "html": _wrap_email_html(body, marketing_to=email),
+                                     "headers": _list_unsubscribe_headers(email)}, timeout=10)
+        if not r.ok:
+            return "The email service refused the reminder"
+    except Exception as e:
+        print(f"Reminder failed ({email}): {e}")
+        return "Couldn't reach the email service"
+    rec["reminders"] = (rec.get("reminders") or []) + [datetime.now(timezone.utc).isoformat()]
+    s3.put_object(Bucket=R2_BUCKET, Key=_saved_cart_key(rec["id"]), Body=json.dumps(rec).encode(),
+                  ContentType="application/json")
+    _remember_saved_cart(rec["id"], {k: v for k, v in rec.items() if k != "cart"})
+    return ""
 
 
 def _saved_cart_list() -> list:

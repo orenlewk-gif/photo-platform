@@ -170,3 +170,35 @@ def test_invoice_custom_price_adds_a_price_adjustment(admin_client, client, main
     assert r.json()["total"] == 60.0 and r.json()["normal_total"] == 75.0 and r.json()["custom"]
     assert {"name": "Price adjustment", "total": "-15.00"} in sent[0]["fee_lines"]
     assert admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"custom_price": "abc"}).status_code == 400
+
+
+def test_reminder_email_and_its_link(admin_client, client, main_module, monkeypatch):
+    sent = []
+
+    class _Ok:
+        ok = True
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(main_module.http_requests, "post", lambda url, json=None, **kw: sent.append(json) or _Ok())
+    _save(client)
+    cid = main_module._saved_cart_id(EMAIL)
+    r = admin_client.post(f"/api/admin/saved-carts/{cid}/remind")
+    assert r.status_code == 200 and len(r.json()["reminders"]) == 1
+    mail = sent[0]
+    assert mail["to"] == ["sarah.smith@example.com"] and "List-Unsubscribe" in mail["headers"]
+    assert "/unsubscribe/" in mail["html"] and "View your photos" in mail["html"]
+    token = mail["html"].split("?saved=")[1].split('"')[0]
+    opened = client.get("/api/saved-cart/link", params={"t": token})
+    assert opened.status_code == 200 and opened.json()["first_name"] == "Sarah"
+    assert client.get("/api/saved-cart/link", params={"t": token[:-1] + "0"}).status_code == 404   # forged link
+    assert admin_client.get(f"/api/admin/saved-carts/{cid}").json()["reminders"]
+    _save(client)                                                            # re-saving keeps the history
+    assert admin_client.get(f"/api/admin/saved-carts/{cid}").json()["reminders"]
+    assert client.post(f"/api/admin/saved-carts/{cid}/remind").status_code == 401
+
+
+def test_no_reminder_to_someone_who_unsubscribed(admin_client, client, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(main_module, "_opted_out", lambda e: {"how": "link"})
+    _save(client)
+    r = admin_client.post(f"/api/admin/saved-carts/{main_module._saved_cart_id(EMAIL)}/remind")
+    assert r.status_code == 400 and "unsubscribed" in r.json()["error"]

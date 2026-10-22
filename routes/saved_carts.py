@@ -91,7 +91,7 @@ def _cart_detail(rec: dict) -> dict:
                                    for p in (fc.get("printCart") or []) if isinstance(p, dict)]})
     return {"id": rec["id"], "email": rec["email"], "first_name": rec.get("first_name", ""),
             "created": rec.get("created", ""), "updated": rec.get("updated", ""),
-            "summary": rec.get("summary", {}), "folders": folders,
+            "summary": rec.get("summary", {}), "folders": folders, "reminders": rec.get("reminders") or [],
             "frames": [f for f in (rec.get("cart", {}).get("frameCart") or []) if isinstance(f, dict)]}
 
 
@@ -180,3 +180,29 @@ def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
     sent = main._send_invoice_email(email, first, made["checkout_url"], float(made["total"]))
     return {"pay_url": made["checkout_url"], "total": made["total"], "emailed": sent,
             "normal_total": made.get("normal_total", made["total"]), "custom": custom is not None}
+
+
+@router.post("/api/admin/saved-carts/{cart_id}/remind")
+def admin_send_reminder(cart_id: str, request: Request):
+    """Studio: email this customer a reminder about their saved photos (sent by hand, not automatic)."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    rec = main._load_saved_cart(cart_id)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    problem = main._send_saved_cart_reminder(rec)
+    if problem:
+        return JSONResponse(status_code=400, content={"error": problem})
+    return {"sent": True, "reminders": rec["reminders"]}
+
+
+@router.get("/api/saved-cart/link")
+def load_cart_from_link(request: Request, t: str = ""):
+    """The 'View your photos' link in a reminder: opens that saved cart directly."""
+    if not main._saved_cart_load_limiter.is_allowed(_visitor(request)):
+        return JSONResponse(status_code=429, content={"error": "Too many tries — please wait a few minutes"})
+    cart_id = main._saved_cart_from_link(t)
+    rec = main._load_saved_cart(cart_id) if cart_id else None
+    if not rec or not (rec.get("summary") or {}).get("items"):
+        return JSONResponse(status_code=404, content={"error": "These saved photos aren't available anymore"})
+    return {"first_name": rec.get("first_name", ""), "email": rec["email"], "cart": rec["cart"]}
