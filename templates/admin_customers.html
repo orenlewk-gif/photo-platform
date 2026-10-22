@@ -549,6 +549,11 @@ async function openSavedCart(id){
         <input id="inv-state" class="fu-input" placeholder="State" style="width:70px">
         <input id="inv-postcode" class="fu-input" placeholder="ZIP" style="width:90px">
       </div>` : ''}
+      <div class="btn-row" style="gap:.4rem;margin-top:.5rem;align-items:center">
+        <label for="inv-custom_price" style="font-size:.75rem;color:rgba(255,255,255,.55)">Custom price $</label>
+        <input id="inv-custom_price" class="fu-input" type="number" min="0" step="0.01" placeholder="Leave blank for the normal price" style="width:230px">
+        <span style="font-size:.7rem;color:rgba(255,255,255,.4)">for the photos and prints; shipping is added, tax at payment</span>
+      </div>
       <div class="btn-row" style="margin-top:.6rem"><button class="btn btn-primary btn-sm" onclick="sendInvoice('${d.id}')">Create and email invoice</button>
         <span id="inv-status" style="font-size:.78rem;color:rgba(255,255,255,.6)"></span></div>
     </div>`;
@@ -571,12 +576,13 @@ async function sendInvoice(id){
   const st = document.getElementById('inv-status');
   st.textContent = 'Creating…';
   const body = {first_name: v('first'), last_name: v('last'), email: v('email'),
-                address_1: v('address_1'), city: v('city'), state: v('state'), postcode: v('postcode')};
+                address_1: v('address_1'), city: v('city'), state: v('state'), postcode: v('postcode'),
+                custom_price: v('custom_price')};
   const r = await fetch(`/api/admin/saved-carts/${id}/invoice`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const d = await r.json().catch(() => ({}));
   if(!r.ok){ st.textContent = d.error || 'Could not create the invoice'; st.style.color = '#f87171'; return; }
   st.style.color = '';
-  st.innerHTML = `Invoice for $${Number(d.total).toFixed(2)} ${d.emailed ? 'emailed' : 'created (email not sent)'} · <a href="${esc(d.pay_url)}" target="_blank" style="color:#F5C518">payment link</a>`;
+  st.innerHTML = `Invoice for $${Number(d.total).toFixed(2)}${d.custom ? ` (custom; normal price $${Number(d.normal_total).toFixed(2)})` : ''} ${d.emailed ? 'emailed' : 'created (email not sent)'} · <a href="${esc(d.pay_url)}" target="_blank" style="color:#F5C518">payment link</a>`;
 }
 async function deleteSavedCart(id){
   if(!confirm('Delete this saved cart? The customer will no longer be able to load it.')) return;

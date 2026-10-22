@@ -1453,11 +1453,23 @@ def _partner_print_discounts(request: Request, body: dict) -> dict:
     return out
 
 
-def _create_checkout(body: dict, partner_prints: dict | None = None):
+def _create_checkout(body: dict, partner_prints: dict | None = None, custom_items_total: float | None = None):
+    """custom_items_total (studio invoices only): the price for everything but shipping; the
+    difference from the normal price goes on the order as a 'Price adjustment' line."""
     try:
         priced = _price_order(body, partner_prints)
     except CheckoutError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
+    total = priced["summary"]["total"]
+    normal_total = total
+    if custom_items_total is not None:
+        shipping = float(priced["summary"]["shipping"] or 0)
+        adjustment = round(custom_items_total - (total - shipping), 2)
+        if adjustment:
+            priced["fee_lines"] = priced["fee_lines"] + [{"name": "Price adjustment", "total": f"{adjustment:.2f}"}]
+        priced["meta"] = priced["meta"] + [{"key": "_custom_price", "value": f"{custom_items_total:.2f}"},
+                                           {"key": "_normal_price", "value": f"{total - shipping:.2f}"}]
+        total = round(custom_items_total + shipping, 2)
     try:
         customer_email = body.get("email", "")
         billing_data = dict(body.get("billing") or {})
@@ -1477,7 +1489,7 @@ def _create_checkout(body: dict, partner_prints: dict | None = None):
         order = resp.json()
         pay_url = (f"https://bigskyphotos.com/checkout/order-pay/{order['id']}/"
                    f"?pay_for_order=true&key={order['order_key']}")
-        return {"checkout_url": pay_url, "total": priced["summary"]["total"]}
+        return {"checkout_url": pay_url, "total": total, "normal_total": normal_total}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 

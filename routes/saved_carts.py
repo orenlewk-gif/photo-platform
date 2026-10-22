@@ -165,8 +165,18 @@ def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
             return JSONResponse(status_code=400, content={"error": "Prints ship: enter the street, city, state and ZIP"})
         billing.update(addr, country="US")
         shipping.update(addr, country="US")
-    made = main._create_checkout({**order, "email": email, "billing": billing, "shipping": shipping})
+    custom = None
+    if str(body.get("custom_price") or "").strip():
+        try:
+            custom = round(float(body["custom_price"]), 2)
+        except (TypeError, ValueError):
+            return JSONResponse(status_code=400, content={"error": "The custom price must be a number"})
+        if not 0 <= custom <= 10000:
+            return JSONResponse(status_code=400, content={"error": "The custom price must be between $0 and $10,000"})
+    made = main._create_checkout({**order, "email": email, "billing": billing, "shipping": shipping},
+                                 custom_items_total=custom)
     if isinstance(made, JSONResponse):
         return made
     sent = main._send_invoice_email(email, first, made["checkout_url"], float(made["total"]))
-    return {"pay_url": made["checkout_url"], "total": made["total"], "emailed": sent}
+    return {"pay_url": made["checkout_url"], "total": made["total"], "emailed": sent,
+            "normal_total": made.get("normal_total", made["total"]), "custom": custom is not None}

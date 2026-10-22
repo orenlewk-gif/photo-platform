@@ -140,13 +140,33 @@ def test_invoice_from_a_saved_cart(admin_client, client, main_module, monkeypatc
     assert body["prints"][0]["path"] == "images/2026-12-05/ski/DSC_0.JPG"
     assert body["portrait_singles"][0]["path"] == "images/p/b.jpg"
     made, mailed = [], []
-    monkeypatch.setattr(main_module, "_create_checkout", lambda b: made.append(b) or {"checkout_url": "https://pay/x", "total": 61.0})
+    monkeypatch.setattr(main_module, "_create_checkout", lambda b, **kw: made.append(b) or {"checkout_url": "https://pay/x", "total": 61.0})
     monkeypatch.setattr(main_module, "_send_invoice_email", lambda *a: mailed.append(a) or True)
     r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"first_name": "Sarah", "last_name": "Smith"})
     assert r.status_code == 400 and "ZIP" in r.json()["error"]                 # prints need an address
     r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={
         "first_name": "Sarah", "last_name": "Smith", "address_1": "1 Lone Peak Dr", "city": "Big Sky", "state": "MT", "postcode": "59716"})
-    assert r.json() == {"pay_url": "https://pay/x", "total": 61.0, "emailed": True}
+    assert r.json()["pay_url"] == "https://pay/x" and r.json()["total"] == 61.0 and r.json()["emailed"]
     assert made[0]["email"] == "sarah.smith@example.com" and made[0]["shipping"]["city"] == "Big Sky"
     assert mailed[0][2] == "https://pay/x"
     assert client.post(f"/api/admin/saved-carts/{cid}/invoice", json={}).status_code == 401
+
+
+def test_invoice_custom_price_adds_a_price_adjustment(admin_client, client, main_module, monkeypatch):
+    sent = []
+    monkeypatch.setattr(main_module, "_price_order", lambda b, pp=None: {
+        "line_items": [{"name": "Digital Photos", "total": "75.00"}], "fee_lines": [], "coupon_lines": [], "meta": [],
+        "summary": {"total": 75.0, "shipping": 0}})
+
+    class _Resp:
+        status_code = 201
+        def json(self):
+            return {"id": 5, "order_key": "k"}
+    monkeypatch.setattr(main_module.http_requests, "post", lambda url, json=None, **kw: sent.append(json) or _Resp())
+    monkeypatch.setattr(main_module, "_send_invoice_email", lambda *a: True)
+    _save(client, cart=_cart(prints=0))
+    cid = main_module._saved_cart_id(EMAIL)
+    r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"custom_price": "60"})
+    assert r.json()["total"] == 60.0 and r.json()["normal_total"] == 75.0 and r.json()["custom"]
+    assert {"name": "Price adjustment", "total": "-15.00"} in sent[0]["fee_lines"]
+    assert admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"custom_price": "abc"}).status_code == 400
