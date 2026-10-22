@@ -206,3 +206,30 @@ def load_cart_from_link(request: Request, t: str = ""):
     if not rec or not (rec.get("summary") or {}).get("items"):
         return JSONResponse(status_code=404, content={"error": "These saved photos aren't available anymore"})
     return {"first_name": rec.get("first_name", ""), "email": rec["email"], "cart": rec["cart"]}
+
+
+@router.post("/api/admin/saved-carts/bulk")
+def admin_saved_carts_bulk(request: Request, body: dict = Body(...)):
+    """Studio: send reminders to, or delete, several saved carts at once."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    action = body.get("action")
+    ids = [i for i in dict.fromkeys(body.get("ids") or []) if isinstance(i, str)][:500]
+    if action not in ("remind", "delete") or not ids:
+        return JSONResponse(status_code=400, content={"error": "Pick some saved carts and an action"})
+    sent, skipped, deleted, missing = 0, [], 0, 0
+    for cid in ids:
+        rec = main._load_saved_cart(cid)
+        if not rec:
+            missing += 1
+            continue
+        if action == "delete":
+            main._delete_saved_cart(cid)
+            deleted += 1
+            continue
+        problem = main._send_saved_cart_reminder(rec)
+        if problem:
+            skipped.append({"email": rec.get("email", ""), "reason": problem})
+        else:
+            sent += 1
+    return {"sent": sent, "skipped": skipped, "deleted": deleted, "missing": missing}

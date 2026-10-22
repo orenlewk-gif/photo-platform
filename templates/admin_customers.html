@@ -404,10 +404,20 @@ select.fu-input{cursor:pointer}
           <option value="new">Date added: newest first</option>
           <option value="old">Date added: oldest first</option>
         </select>
+        <label style="margin-left:auto;display:flex;align-items:center;gap:.3rem;cursor:pointer">
+          <input type="checkbox" id="saved-check-all" onchange="savedCheckAll(this.checked)" style="accent-color:#F5C518"> Select all
+        </label>
       </div>
       <div id="saved-count" style="font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.45rem">Loading…</div>
     </div>
     <div id="saved-list"></div>
+    <div id="saved-bulk" style="display:none;padding:.6rem 1rem;border-top:1px solid rgba(255,255,255,.08);background:rgba(245,197,24,.06)">
+      <div style="font-size:.75rem;margin-bottom:.4rem"><span id="saved-bulk-count">0 selected</span></div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" onclick="savedBulk('remind')">Send reminders</button>
+        <button class="btn btn-danger btn-sm" onclick="savedBulk('delete')">Delete selected</button>
+      </div>
+    </div>
     <div id="saved-footer">
       Saved carts are kept until the customer orders, or until you clear them at season's end.
       <div style="margin-top:.5rem"><button class="btn btn-danger btn-sm" onclick="clearAllSaved()">Clear all saved carts</button></div>
@@ -480,7 +490,7 @@ select.fu-input{cursor:pointer}
 
 <script>
 // ── Saved Carts tab ──
-let _savedCarts = [], _savedActive = '';
+let _savedCarts = [], _savedActive = '', _savedChecked = new Set(), _savedShown = [];
 function switchCustTab(which){
   const saved = which === 'saved';
   document.getElementById('layout').style.display = saved ? 'none' : 'flex';
@@ -510,12 +520,54 @@ function renderSavedList(){
   const oldest = document.getElementById('saved-sort').value === 'old';
   const rows = _savedCarts.filter(r => !q || (r.first_name || '').toLowerCase().includes(q) || (r.email || '').includes(q))
     .sort((a, b) => oldest ? (a.created || '').localeCompare(b.created || '') : (b.created || '').localeCompare(a.created || ''));
+  _savedShown = rows.map(r => r.id);
   document.getElementById('saved-count').textContent = `${rows.length} saved cart${rows.length === 1 ? '' : 's'}`;
   document.getElementById('saved-list').innerHTML = rows.map(r => `
-    <div class="sc-row${r.id === _savedActive ? ' active' : ''}" onclick="openSavedCart('${r.id}')">
-      <div class="sc-name">${esc(r.first_name || '')}</div>
-      <div class="sc-meta">${esc(r.email || '')}</div>
+    <div class="sc-row${r.id === _savedActive ? ' active' : ''}" onclick="openSavedCart('${r.id}')" style="display:flex;gap:.6rem;align-items:center">
+      <input type="checkbox" ${_savedChecked.has(r.id) ? 'checked' : ''} onclick="event.stopPropagation();savedCheck('${r.id}',this.checked)"
+             aria-label="Select ${esc(r.first_name || r.email || '')}" style="accent-color:#F5C518;width:14px;height:14px;flex-shrink:0">
+      <div><div class="sc-name">${esc(r.first_name || '')}</div>
+      <div class="sc-meta">${esc(r.email || '')}</div></div>
     </div>`).join('') || '<div style="padding:1rem;color:rgba(255,255,255,.35);font-size:.8rem">No saved carts yet.</div>';
+  updateSavedBulk();
+}
+function savedCheck(id, on){ if(on) _savedChecked.add(id); else _savedChecked.delete(id); updateSavedBulk(); }
+function savedCheckAll(on){
+  // "Select all" covers what's showing (the search narrows it)
+  _savedShown.forEach(id => { if(on) _savedChecked.add(id); else _savedChecked.delete(id); });
+  renderSavedList();
+}
+function updateSavedBulk(){
+  const known = new Set(_savedCarts.map(r => r.id));
+  [..._savedChecked].forEach(id => { if(!known.has(id)) _savedChecked.delete(id); });
+  const n = _savedChecked.size;
+  document.getElementById('saved-bulk').style.display = n ? '' : 'none';
+  document.getElementById('saved-bulk-count').textContent = `${n} selected`;
+  const all = document.getElementById('saved-check-all');
+  if(all) all.checked = _savedShown.length > 0 && _savedShown.every(id => _savedChecked.has(id));
+}
+async function savedBulk(action){
+  const ids = [..._savedChecked], n = ids.length;
+  if(!n) return;
+  const ask = action === 'remind'
+    ? `Email a reminder to ${n} customer${n === 1 ? '' : 's'}? Anyone who unsubscribed is skipped.`
+    : `Delete ${n} saved cart${n === 1 ? '' : 's'}? Those customers will no longer be able to load them.`;
+  if(!confirm(ask)) return;
+  const r = await fetch('/api/admin/saved-carts/bulk', {method:'POST', headers:{'Content-Type':'application/json'},
+                                                       body: JSON.stringify({action, ids})});
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok){ showToast(d.error || 'Something went wrong', 'err'); return; }
+  if(action === 'remind'){
+    const sk = (d.skipped || []).length;
+    showToast(`${d.sent} reminder${d.sent === 1 ? '' : 's'} sent` + (sk ? `, ${sk} skipped` : ''));
+    if(sk) alert('Not sent:\n' + d.skipped.map(x => `${x.email}: ${x.reason}`).join('\n'));
+  } else {
+    showToast(`${d.deleted} saved cart${d.deleted === 1 ? '' : 's'} deleted`);
+    if(ids.includes(_savedActive)){ _savedActive = ''; document.getElementById('saved-detail').innerHTML = ''; }
+  }
+  _savedChecked.clear();
+  await loadSavedCarts();
+  if(_savedActive) openSavedCart(_savedActive);
 }
 function scThumbs(paths, caption){
   return `<div class="sc-grid">${paths.map(p => `<figure><img src="/api/admin/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">

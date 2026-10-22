@@ -202,3 +202,19 @@ def test_no_reminder_to_someone_who_unsubscribed(admin_client, client, main_modu
     _save(client)
     r = admin_client.post(f"/api/admin/saved-carts/{main_module._saved_cart_id(EMAIL)}/remind")
     assert r.status_code == 400 and "unsubscribed" in r.json()["error"]
+
+
+def test_bulk_reminders_and_delete(admin_client, client, main_module, monkeypatch):
+    class _Ok:
+        ok = True
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(main_module.http_requests, "post", lambda url, json=None, **kw: _Ok())
+    monkeypatch.setattr(main_module, "_opted_out", lambda e: {"how": "link"} if e.startswith("bo@") else None)
+    _save(client); _save(client, email="bo@example.com", first="Bo")
+    ids = [r["id"] for r in admin_client.get("/api/admin/saved-carts").json()["carts"]]
+    d = admin_client.post("/api/admin/saved-carts/bulk", json={"action": "remind", "ids": ids}).json()
+    assert d["sent"] == 1 and d["skipped"][0]["email"] == "bo@example.com"
+    d = admin_client.post("/api/admin/saved-carts/bulk", json={"action": "delete", "ids": ids}).json()
+    assert d["deleted"] == 2 and admin_client.get("/api/admin/saved-carts").json()["carts"] == []
+    assert admin_client.post("/api/admin/saved-carts/bulk", json={"action": "nope", "ids": ids}).status_code == 400
+    assert client.post("/api/admin/saved-carts/bulk", json={"action": "delete", "ids": ids}).status_code == 401
