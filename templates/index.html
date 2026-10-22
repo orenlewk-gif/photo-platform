@@ -1153,7 +1153,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
 <div id="save-prompt" class="save-prompt" role="dialog" aria-labelledby="save-prompt-title" aria-hidden="true">
   <div class="save-prompt-box">
     <div class="save-prompt-title" id="save-prompt-title">Save your photos for later?</div>
-    <div class="save-prompt-sub">We'll keep your selection so you can come back to it anytime, on any device. To get it back (or save changes), open the cart and enter your email.</div>
+    <div class="save-prompt-sub">We'll keep your selection so you can come back to it anytime, on any device. Changes save automatically while you're here; next time, open the cart and enter your email.</div>
     <div class="save-form">
       <label class="sr-only" for="sp-first">First name</label>
       <input id="sp-first" type="text" placeholder="First name" autocomplete="given-name" maxlength="40">
@@ -1650,10 +1650,14 @@ function saveCart() {
 }
 
 // ── Saved carts: the selection saved under the customer's first name + email ──
-// Saving stores the cart as it is right then (no automatic saving afterwards: to save changes
-// they enter their email again). On any device they load it from the cart by typing their email.
+// Once they've entered their email (saving or loading), changes save automatically for the rest
+// of this visit. Nothing is remembered across visits: the email lives only in this tab's session,
+// so next time they enter it again. On any device they load their photos from the cart by email.
+const SAVED_ID_KEY = 'ci_saved_cart_session';      // {first_name, email}, this tab's visit only
 const SAVE_PROMPT_KEY = 'ci_save_prompt_done';      // asked once per device
-let _savePromptShown = false;
+let _savePromptShown = false, _remoteSaveTimer = null;
+function savedIdentity(){ try { return JSON.parse(sessionStorage.getItem(SAVED_ID_KEY) || 'null'); } catch(e) { return null; } }
+function rememberIdentity(who){ try { sessionStorage.setItem(SAVED_ID_KEY, JSON.stringify(who)); } catch(e) {} }
 function cartItemCount(data){
   let n = (data.frameCart || []).reduce((s, f) => s + (f.quantity || 1), 0);
   Object.values(data.folderCarts || {}).forEach(fc => {
@@ -1662,6 +1666,12 @@ function cartItemCount(data){
   return n;
 }
 function afterCartSaved(data){
+  const who = savedIdentity();
+  if(who){                                        // they gave their email this visit: keep it saved
+    clearTimeout(_remoteSaveTimer);
+    _remoteSaveTimer = setTimeout(() => remoteSaveCart(who, data), 1500);
+    return;
+  }
   // First selection on this device: offer to save it (once; the cart always has the Save box)
   let asked = false; try { asked = !!localStorage.getItem(SAVE_PROMPT_KEY); } catch(e) {}
   if(!asked && !_savePromptShown && cartItemCount(data) > 0){
@@ -1691,8 +1701,8 @@ async function startSaving(first, email, msgEl){
   const problem = await remoteSaveCart(who, data);
   if(problem){ msgEl.textContent = problem; msgEl.className = 'save-msg err'; return false; }
   try { localStorage.setItem(SAVE_PROMPT_KEY, '1'); } catch(e) {}
-  msgEl.textContent = `Saved, ${first}. To save changes later, enter your email again and press Save.`;
-  msgEl.className = 'save-msg';
+  rememberIdentity(who);
+  renderSaveBoxes();
   return true;
 }
 function openSavePrompt(){
@@ -1714,8 +1724,12 @@ async function savePromptSubmit(){
   }
 }
 function renderSaveBoxes(){
+  const who = savedIdentity();
   document.querySelectorAll('[data-savebox]').forEach((box, i) => {
-    const saveHtml = `<div class="save-box-line">Save your selection and come back to it anytime, on any device.
+    const saveHtml = who
+      ? `<div class="save-box-line">Saved for <strong>${escHtml(who.first_name)}</strong>. Changes save automatically while you're here.
+           Next time, enter your email below to load them. <button class="save-link" onclick="forgetIdentity()">Not you?</button></div>`
+      : `<div class="save-box-line">Save your selection and come back to it anytime, on any device.
            Already saved? Saving again updates it.</div>
          <div class="save-form">
            <label class="sr-only" for="sb-first-${i}">First name</label>
@@ -1736,6 +1750,11 @@ function renderSaveBoxes(){
       <div class="save-msg" id="sl-msg-${i}" role="status"></div>`;
   });
 }
+function forgetIdentity(){
+  // Stops saving for this visit; their saved photos stay saved
+  try { sessionStorage.removeItem(SAVED_ID_KEY); } catch(e) {}
+  renderSaveBoxes();
+}
 async function loadSavedCart(email, msgEl){
   email = (email || '').trim();
   if(!email){ msgEl.textContent = 'Please enter your email.'; msgEl.className = 'save-msg err'; return; }
@@ -1749,6 +1768,7 @@ async function loadSavedCart(email, msgEl){
     if(!r.ok){ msgEl.textContent = d.error || 'Could not load'; msgEl.className = 'save-msg err'; return; }
     localStorage.setItem(CART_KEY, JSON.stringify({...d.cart, ts: Date.now()}));
     localStorage.setItem(SAVE_PROMPT_KEY, '1');
+    rememberIdentity({first_name: d.first_name, email: d.email});    // keep saving for this visit
     location.reload();                 // the gallery and cart pick it up from here
   } catch(e) { msgEl.textContent = 'Could not load — check your connection'; msgEl.className = 'save-msg err'; }
 }
@@ -3391,6 +3411,9 @@ function clearCart() {
   if (_poseData) updatePoseHeaders();
   updateHeaderCartBtn();
   try { localStorage.removeItem(CART_KEY); } catch(e) {}
+  // "Remove All" during a visit where they gave their email empties the saved copy too
+  const who = savedIdentity();
+  if(who){ clearTimeout(_remoteSaveTimer); remoteSaveCart(who, {ts: Date.now(), frameCart: [], folderCarts: {}}); }
 }
 
 // ── Pricing logic ──
