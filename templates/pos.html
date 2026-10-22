@@ -584,6 +584,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .confirm-title{font-size:1.4rem;font-weight:700;margin-bottom:.5rem}
 .confirm-sub{font-size:.85rem;color:var(--muted);line-height:1.5;margin-bottom:.5rem}
 .confirm-email{color:var(--accent);font-weight:500}
+.confirm-qr{margin:1rem auto 1.1rem;text-align:center}
+.confirm-qr img{width:220px;height:220px;background:#fff;border-radius:10px;padding:8px;display:block;margin:0 auto}
+.confirm-qr-text{font-size:.85rem;color:var(--muted);margin-top:.55rem;max-width:22rem;line-height:1.45}
 .confirm-new-btn{
   width:100%;max-width:320px;background:var(--accent);color:#0a1929;border:none;
   border-radius:var(--radius);padding:.9rem;font-size:1rem;font-weight:700;cursor:pointer;
@@ -1104,6 +1107,10 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <div class="confirm-check">&#10003;</div>
   <div class="confirm-title">Sale Complete</div>
   <div class="confirm-sub">Receipt sent to <span class="confirm-email" id="confirm-email"></span></div>
+  <div class="confirm-qr hidden" id="confirm-qr">
+    <img id="confirm-qr-img" alt="QR code for the customer's photos">
+    <div class="confirm-qr-text" id="confirm-qr-text">Scan with your phone camera to open your photos now</div>
+  </div>
   <button class="confirm-new-btn hidden" id="confirm-pkg-btn" onclick="pkgAfterSale()" style="margin-bottom:.6rem">Add Photos to This Package</button>
   <button class="confirm-new-btn" id="confirm-new-btn" onclick="newSale()">Start New Sale</button>
   <div class="confirm-sub hidden" id="confirm-elsewhere" style="margin-top:1rem;max-width:26rem;text-align:center">
@@ -4603,6 +4610,18 @@ async function completeCheckout(squareTxId){
 }
 
 function showConfirmation(data, inOtherBrowser){
+  // The customer's download page as a QR code: they scan it and save their photos right away
+  const qr = $('confirm-qr');
+  if(data && data.token){
+    $('confirm-qr-img').src = `/api/pos/download-qr?token=${encodeURIComponent(data.token)}`;
+    $('confirm-qr-text').textContent = data.unlimited
+      ? 'Scan with your phone camera to open your photo page. Photos are added here during your trip.'
+      : 'Scan with your phone camera to open your photos and save them now.';
+    qr.classList.remove('hidden');
+  } else {
+    $('confirm-qr-img').removeAttribute('src');
+    qr.classList.add('hidden');
+  }
   S._lastPkgToken = (data && data.unlimited && !inOtherBrowser) ? data.token : '';
   $('confirm-pkg-btn').classList.toggle('hidden', !S._lastPkgToken);
   $('confirm-email').textContent = S.customer.email || (S.pendingOrder && S.pendingOrder.email) || data.email || '';

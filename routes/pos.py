@@ -260,3 +260,21 @@ def pos_manifest():
             {"src": "/static/pos-icon-512.png", "sizes": "512x512", "type": "image/png"},
         ]
     })
+
+
+@router.get("/api/pos/download-qr")
+def pos_download_qr(request: Request, token: str = Query("")):
+    """Sale Complete screen: a QR code of the customer's download page, so they can scan it with
+    their phone and save their photos right away. Only for a POS that entered a PIN."""
+    import re
+    from io import BytesIO
+    import segno
+    from fastapi.responses import Response
+    if not main._pos_signed_in(request):
+        return JSONResponse(status_code=401, content={"error": "Enter a PIN first"})
+    if not re.fullmatch(r"[A-Za-z0-9]{16,64}", token or "") or not main._load_pkg(token):
+        return JSONResponse(status_code=404, content={"error": "Download link not found"})
+    buf = BytesIO()
+    segno.make(f"{main.SITE_URL}/package/{token}", error="m").save(buf, kind="svg", scale=8, border=2,
+                                                                  dark="#000000", light="#ffffff")
+    return Response(buf.getvalue(), media_type="image/svg+xml", headers={"Cache-Control": "private, max-age=3600"})
