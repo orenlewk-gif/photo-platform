@@ -532,7 +532,25 @@ async function openSavedCart(id){
       <div style="margin-right:auto"><div style="font-size:1.1rem;font-weight:700">${esc(d.first_name)}</div>
         <div style="color:rgba(255,255,255,.55);font-size:.85rem">${esc(d.email)}</div>
         <div style="color:rgba(255,255,255,.4);font-size:.75rem;margin-top:.2rem">Saved ${esc(scDate(d.created))} · last changed ${esc(scDate(d.updated))} · ${esc(scCounts(d.summary || {}))}</div></div>
-      <button class="btn btn-danger btn-sm" onclick="deleteSavedCart('${d.id}')">Delete</button>
+      <div class="btn-row"><button class="btn btn-primary btn-sm" onclick="toggleInvoiceForm()">Send invoice</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteSavedCart('${d.id}')">Delete</button></div>
+    </div>
+    <div id="inv-form" style="display:none;margin-top:.9rem;padding:.8rem;border:1px solid rgba(245,197,24,.3);border-radius:8px;background:rgba(245,197,24,.05)">
+      <div style="font-size:.78rem;color:rgba(255,255,255,.6);margin-bottom:.5rem">Emails ${esc(d.first_name)} a "Pay now" link to your normal checkout with this cart. When it's paid, their photos are delivered like any online order.</div>
+      <div class="btn-row" style="gap:.4rem">
+        <input id="inv-first" class="fu-input" placeholder="First name" value="${esc(d.first_name)}" style="flex:1;min-width:110px">
+        <input id="inv-last" class="fu-input" placeholder="Last name" style="flex:1;min-width:110px">
+        <input id="inv-email" class="fu-input" placeholder="Email" value="${esc(d.email)}" style="flex:2;min-width:180px">
+      </div>
+      ${((d.summary || {}).prints || (d.summary || {}).frames) ? `<div style="font-size:.75rem;color:rgba(255,255,255,.5);margin:.5rem 0 .3rem">Prints ship — shipping address:</div>
+      <div class="btn-row" style="gap:.4rem">
+        <input id="inv-address_1" class="fu-input" placeholder="Street" style="flex:2;min-width:180px">
+        <input id="inv-city" class="fu-input" placeholder="City" style="flex:1;min-width:100px">
+        <input id="inv-state" class="fu-input" placeholder="State" style="width:70px">
+        <input id="inv-postcode" class="fu-input" placeholder="ZIP" style="width:90px">
+      </div>` : ''}
+      <div class="btn-row" style="margin-top:.6rem"><button class="btn btn-primary btn-sm" onclick="sendInvoice('${d.id}')">Create and email invoice</button>
+        <span id="inv-status" style="font-size:.78rem;color:rgba(255,255,255,.6)"></span></div>
     </div>`;
   (d.folders || []).forEach(f => {
     if(!f.photos.length && !f.poses.length && !f.prints.length) return;
@@ -546,6 +564,19 @@ async function openSavedCart(id){
   });
   if((d.frames || []).length) html += `<div class="sc-folder">Frames</div><div class="sc-sub">${d.frames.map(f => esc(`${f.size || ''} ${f.orientation || ''} ×${f.quantity || 1}`)).join(', ')}</div>`;
   box.innerHTML = html;
+}
+function toggleInvoiceForm(){ const f = document.getElementById('inv-form'); f.style.display = f.style.display === 'none' ? '' : 'none'; }
+async function sendInvoice(id){
+  const v = k => (document.getElementById('inv-' + k) || {}).value || '';
+  const st = document.getElementById('inv-status');
+  st.textContent = 'Creating…';
+  const body = {first_name: v('first'), last_name: v('last'), email: v('email'),
+                address_1: v('address_1'), city: v('city'), state: v('state'), postcode: v('postcode')};
+  const r = await fetch(`/api/admin/saved-carts/${id}/invoice`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok){ st.textContent = d.error || 'Could not create the invoice'; st.style.color = '#f87171'; return; }
+  st.style.color = '';
+  st.innerHTML = `Invoice for $${Number(d.total).toFixed(2)} ${d.emailed ? 'emailed' : 'created (email not sent)'} · <a href="${esc(d.pay_url)}" target="_blank" style="color:#F5C518">payment link</a>`;
 }
 async function deleteSavedCart(id){
   if(!confirm('Delete this saved cart? The customer will no longer be able to load it.')) return;

@@ -4051,6 +4051,68 @@ def _clear_saved_cart_for(email: str) -> None:
             _delete_saved_cart(cart_id)
 
 
+def _saved_cart_order_body(rec: dict) -> dict:
+    """A saved gallery cart as the online checkout's order request (what checkout.html sends)."""
+    cart = rec.get("cart") or {}
+    albums, poses, singles, prints = [], [], [], []
+    first_loc = first_date = first_family = ""
+    for key, fc in (cart.get("folderCarts") or {}).items():
+        if not isinstance(fc, dict):
+            continue
+        parts = str(key).split("||")
+        date = parts[0] if parts else ""
+        location = fc.get("location") or (parts[1] if len(parts) > 1 else "")
+        family = parts[2] if len(parts) > 2 else ""
+        first_loc, first_date, first_family = first_loc or location, first_date or date, first_family or family
+        sel = [p for p in (fc.get("selectedPaths") or []) if isinstance(p, str)]
+        if sel:
+            photos = fc.get("selectedPhotos") or []
+            albums.append({"last_name": (photos[0].get("last_name") if photos and isinstance(photos[0], dict) else "") or location or "Photos",
+                           "location": location, "date": date, "count": len(sel),
+                           "filenames": [os.path.basename(p) for p in sel], "paths": sel})
+        pose_list = fc.get("poses") if isinstance(fc.get("poses"), list) else []
+        for color, state in (fc.get("poseState") or {}).items():
+            pose = next((p for p in pose_list if isinstance(p, dict) and p.get("color") == color), {})
+            pp = [p for p in (pose.get("paths") or []) if isinstance(p, str)]
+            if state == "pose":
+                poses.append({"pose_label": pose.get("label", ""), "color": color, "files": pose.get("files") or [],
+                              "paths": pp, "family": family, "date": date, "location": location})
+            elif isinstance(state, list):
+                singles += [{"path": pp[i], "pose_label": pose.get("label", ""), "color": color, "family": family}
+                            for i in state if isinstance(i, int) and 0 <= i < len(pp)]
+        for p in fc.get("printCart") or []:
+            if isinstance(p, dict):
+                prints.append({"filename": p.get("filename", ""), "size": p.get("size", ""), "size_idx": p.get("sizeIdx", 0),
+                               "orientation": p.get("orientation") or "landscape", "frame": p.get("frame", ""),
+                               "path": p.get("photoPath", ""), "location": location, "logo": bool(p.get("_logo"))})
+    return {"digital_albums": albums, "portrait_poses": poses, "portrait_singles": singles, "prints": prints,
+            "frames": [{"variation_id": f.get("variation_id"), "quantity": f.get("quantity") or 1}
+                       for f in (cart.get("frameCart") or []) if isinstance(f, dict)],
+            "digital_logo_paths": [p for p in (cart.get("digitalLogoPaths") or []) if isinstance(p, str)],
+            "location": first_loc, "date": first_date, "last_name": first_family}
+
+
+def _send_invoice_email(to_email: str, first_name: str, pay_url: str, total: float) -> bool:
+    if not RESEND_API_KEY:
+        return False
+    body = (f'<p style="margin:0 0 1rem">Hi {_html_escape(first_name or "there")},</p>'
+            f'<p style="margin:0 0 1rem">Here is your order from Crystal Images, ready to pay. Total: <strong>${total:.2f}</strong> '
+            f'(any tax is added at payment).</p>'
+            f'<p style="margin:0 0 1.2rem"><a href="{_html_escape(pay_url)}" style="background:#1a73e8;color:#fff;padding:.6rem 1.3rem;'
+            f'border-radius:6px;font-weight:600;text-decoration:none;display:inline-block">Pay now</a></p>'
+            f'<p style="margin:0;font-size:.85rem;color:#666">Once it is paid, your photos are emailed to you right away. '
+            f'Questions? Just reply to this email.</p>')
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [to_email], "subject": "Your photo order from Crystal Images",
+                                     "html": _wrap_email_html(body)}, timeout=10)
+        return r.ok
+    except Exception as e:
+        print(f"Invoice email failed ({to_email}): {e}")
+        return False
+
+
 def _saved_cart_list() -> list:
     """Every saved cart without its full contents (for the studio list), newest first."""
     with _saved_carts_guard:

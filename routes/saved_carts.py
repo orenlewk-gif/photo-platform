@@ -140,3 +140,33 @@ def admin_clear_saved_carts(request: Request, body: dict = Body(...)):
     for cid in ids:
         main._delete_saved_cart(cid)
     return {"cleared": len(ids)}
+
+
+@router.post("/api/admin/saved-carts/{cart_id}/invoice")
+def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
+    """Turn a saved cart into an online order and email the customer a 'Pay now' link to the
+    normal checkout. When they pay, WooCommerce's paid message delivers it like any online order."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    rec = main._load_saved_cart(cart_id)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    order = main._saved_cart_order_body(rec)
+    email = str(body.get("email") or rec["email"]).strip()
+    if not main._EMAIL_RE.match(email):
+        return JSONResponse(status_code=400, content={"error": "Enter a valid email"})
+    first = str(body.get("first_name") or rec.get("first_name") or "").strip()
+    last = str(body.get("last_name") or "").strip()
+    billing = {"first_name": first, "last_name": last, "email": email}
+    shipping = {"first_name": first, "last_name": last}
+    if order["prints"] or order["frames"]:
+        addr = {k: str(body.get(k) or "").strip() for k in ("address_1", "city", "state", "postcode")}
+        if not all(addr.values()):
+            return JSONResponse(status_code=400, content={"error": "Prints ship: enter the street, city, state and ZIP"})
+        billing.update(addr, country="US")
+        shipping.update(addr, country="US")
+    made = main._create_checkout({**order, "email": email, "billing": billing, "shipping": shipping})
+    if isinstance(made, JSONResponse):
+        return made
+    sent = main._send_invoice_email(email, first, made["checkout_url"], float(made["total"]))
+    return {"pay_url": made["checkout_url"], "total": made["total"], "emailed": sent}

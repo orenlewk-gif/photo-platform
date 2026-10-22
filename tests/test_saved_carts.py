@@ -128,3 +128,25 @@ def test_an_in_store_sale_empties_their_saved_cart(client, main_module):
                                                "items": [], "total": 0, "square_payment_id": "COMP"})
     assert r.status_code == 200
     assert client.post("/api/saved-cart/load", json={"email": EMAIL}).status_code == 404
+
+
+def test_invoice_from_a_saved_cart(admin_client, client, main_module, monkeypatch):
+    cart = _cart()
+    cart["folderCarts"] = {"2026-12-05||Big Sky Ski School": cart["folderCarts"]["k1"]}
+    _save(client, cart=cart)
+    cid = main_module._saved_cart_id(EMAIL)
+    body = main_module._saved_cart_order_body(main_module._load_saved_cart(cid))
+    assert body["digital_albums"][0]["count"] == 2 and body["digital_albums"][0]["date"] == "2026-12-05"
+    assert body["prints"][0]["path"] == "images/2026-12-05/ski/DSC_0.JPG"
+    assert body["portrait_singles"][0]["path"] == "images/p/b.jpg"
+    made, mailed = [], []
+    monkeypatch.setattr(main_module, "_create_checkout", lambda b: made.append(b) or {"checkout_url": "https://pay/x", "total": 61.0})
+    monkeypatch.setattr(main_module, "_send_invoice_email", lambda *a: mailed.append(a) or True)
+    r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"first_name": "Sarah", "last_name": "Smith"})
+    assert r.status_code == 400 and "ZIP" in r.json()["error"]                 # prints need an address
+    r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={
+        "first_name": "Sarah", "last_name": "Smith", "address_1": "1 Lone Peak Dr", "city": "Big Sky", "state": "MT", "postcode": "59716"})
+    assert r.json() == {"pay_url": "https://pay/x", "total": 61.0, "emailed": True}
+    assert made[0]["email"] == "sarah.smith@example.com" and made[0]["shipping"]["city"] == "Big Sky"
+    assert mailed[0][2] == "https://pay/x"
+    assert client.post(f"/api/admin/saved-carts/{cid}/invoice", json={}).status_code == 401
