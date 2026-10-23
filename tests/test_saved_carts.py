@@ -270,6 +270,8 @@ def test_reminder_email_and_its_link(admin_client, client, main_module, monkeypa
     mail = sent[0]
     assert mail["to"] == ["sarah.smith@example.com"] and "List-Unsubscribe" in mail["headers"]
     assert "/unsubscribe/" in mail["html"] and "View your photos" in mail["html"]
+    assert "<img" not in mail["html"] and "/api/photo" not in mail["html"]      # no photos in the email
+    assert "because you saved photos on photos.bigskyphotos.com" in mail["html"]
     token = mail["html"].split("?saved=")[1].split('"')[0]
     opened = client.get("/api/saved-cart/link", params={"t": token})
     assert opened.status_code == 200 and opened.json()["first_name"] == "Sarah"

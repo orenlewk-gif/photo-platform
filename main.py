@@ -13,7 +13,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import re
-from urllib.parse import quote
 import hmac
 import hashlib
 import ipaddress
@@ -3624,9 +3623,10 @@ def _review_button_html(review_url: str) -> str:
         f'Leave a Review</a></p>'
     )
 
-def _wrap_email_html(body_html: str, marketing_to: str = "") -> str:
+def _wrap_email_html(body_html: str, marketing_to: str = "", marketing_why: str = "") -> str:
     """The email shell. marketing_to = the recipient of a marketing email (follow-ups,
-    offers): adds the business address and an unsubscribe link, as the law requires."""
+    offers): adds the business address and an unsubscribe link, as the law requires.
+    marketing_why: why they get it, when it isn't that they bought photos."""
     return (
         '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">'
         '<div style="max-width:560px;margin:0 auto;padding:2rem 1rem">'
@@ -3635,7 +3635,7 @@ def _wrap_email_html(body_html: str, marketing_to: str = "") -> str:
         + body_html +
         '<hr style="border:none;border-top:1px solid #eee;margin:1.5rem 0 1rem">'
         '<p style="margin:0;font-size:.72rem;color:#aaa">Questions? <a href="mailto:info@bigskyphotos.com" style="color:#1a73e8">info@bigskyphotos.com</a></p>'
-        + (_marketing_footer_html(marketing_to) if marketing_to else '') +
+        + (_marketing_footer_html(marketing_to, marketing_why) if marketing_to else '') +
         '</div></div></body></html>'
     )
 
@@ -4239,14 +4239,9 @@ def _send_saved_cart_reminder(rec: dict) -> str:
         return "Email isn't set up on this server"
     summary = rec.get("summary") or {}
     link = f"{SITE_URL}/?saved={_saved_cart_link_token(rec['id'])}"
-    thumbs = "".join(
-        f'<img src="{SITE_URL}/api/photo?path={quote(p)}&size=thumb&v=4" alt="" width="120" '
-        f'style="width:120px;height:80px;object-fit:cover;border-radius:6px;margin:0 6px 6px 0">'
-        for p in (summary.get("paths") or [])[:6])
-    n = summary.get("items", 0)
+    n = summary.get("items", 0)                 # no photos in the email: they're seen on the site
     body = (f'<p style="margin:0 0 1rem">Hi {_html_escape(rec.get("first_name") or "there")},</p>'
             f'<p style="margin:0 0 1rem">Your saved photos are still waiting for you ({n} item{"s" if n != 1 else ""}).</p>'
-            f'<div style="margin:0 0 1rem">{thumbs}</div>'
             f'<p style="margin:0 0 1.2rem"><a href="{_html_escape(link)}" style="background:#1a73e8;color:#fff;'
             f'padding:.6rem 1.3rem;border-radius:6px;font-weight:600;text-decoration:none;display:inline-block">View your photos</a></p>'
             f'<p style="margin:0;font-size:.85rem;color:#666">Questions? Just reply to this email.</p>')
@@ -4254,7 +4249,8 @@ def _send_saved_cart_reminder(rec: dict) -> str:
         r = http_requests.post("https://api.resend.com/emails",
                                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                                json={"from": RESEND_FROM, "to": [email], "subject": "Your saved photos are waiting",
-                                     "html": _wrap_email_html(body, marketing_to=email),
+                                     "html": _wrap_email_html(body, marketing_to=email,
+                                                              marketing_why="you saved photos on photos.bigskyphotos.com"),
                                      "headers": _list_unsubscribe_headers(email)}, timeout=10)
         if not r.ok:
             return "The email service refused the reminder"
@@ -4638,11 +4634,11 @@ def _business_details() -> dict:
     return {**_SETTINGS_DEFAULTS["business"], **{k: v for k, v in saved.items() if v}}
 
 
-def _marketing_footer_html(email: str) -> str:
+def _marketing_footer_html(email: str, why: str = "") -> str:
     b = _business_details()
     where = ", ".join(x for x in (b.get("name"), b.get("address")) if x)
     return (f'<p style="margin:.75rem 0 0;font-size:.7rem;color:#aaa;line-height:1.5">{_html_escape(where)}<br>'
-            f'You\'re receiving this because you bought photos from us. '
+            f'You\'re receiving this because {_html_escape(why or "you bought photos from us")}. '
             f'<a href="{_unsubscribe_url(email)}" style="color:#888">Unsubscribe</a></p>')
 
 
