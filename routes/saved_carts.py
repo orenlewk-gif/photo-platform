@@ -116,7 +116,32 @@ def pos_saved_cart(request: Request, email: str = ""):
     rec = main._load_saved_cart(main._saved_cart_id(email))
     if not rec or not (rec.get("summary") or {}).get("items"):
         return JSONResponse(status_code=404, content={"error": "No saved cart"})
-    return _cart_detail(rec)
+    # The same person in the store's customer list, if they're in it (so the sale gets their
+    # phone and address too when the cart is opened from the Saved Online tab)
+    known = next((c for c in main._load_customers()
+                  if (c.get("email") or "").strip().lower() == rec["email"].lower()), None)
+    return {**_cart_detail(rec), "customer": known}
+
+
+@router.get("/api/pos/saved-carts")
+def pos_saved_carts(request: Request, q: str = ""):
+    """POS 'Saved Online' tab: customers who saved photos on the website, found by first name or
+    email (when a customer says they saved some), most recently changed first."""
+    if not main._pos_pin_photographer(request):
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    q = (q or "").strip().lower()
+    rows = []
+    for r in main._saved_cart_list():
+        s = r.get("summary") or {}
+        if not s.get("items"):
+            continue
+        if q and q not in f"{r.get('first_name', '')} {r.get('email', '')}".lower():
+            continue
+        rows.append({"first_name": r.get("first_name", ""), "email": r.get("email", ""), "updated": r.get("updated", ""),
+                     "summary": {k: s.get(k, 0) for k in ("photos", "poses", "prints", "frames")}})
+        if len(rows) >= 50:
+            break
+    return {"carts": rows}
 
 
 @router.delete("/api/admin/saved-carts/{cart_id}")
@@ -142,10 +167,40 @@ def admin_clear_saved_carts(request: Request, body: dict = Body(...)):
     return {"cleared": len(ids)}
 
 
+def _money(v, what):
+    try:
+        n = round(float(v), 2)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a number")
+    if not 0 <= n <= 10000:
+        raise ValueError(f"{what} must be between $0 and $10,000")
+    return n
+
+
+@router.get("/api/admin/saved-carts/{cart_id}/invoice-lines")
+def admin_invoice_lines(cart_id: str, request: Request):
+    """The invoice form: each item of the saved cart at its normal price (bundle savings
+    included), and the shipping, so the studio can change any price before sending."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    rec = main._load_saved_cart(cart_id)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    order = main._saved_cart_order_body(rec)
+    try:
+        priced = main._price_order(order)
+    except main.CheckoutError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    return {"lines": [{"name": ln["name"].strip(), "price": float(ln["total"])} for ln in priced["line_items"]],
+            "shipping": float(priced["summary"]["shipping"] or 0), "total": priced["summary"]["total"],
+            "ships": bool(order["prints"] or order["frames"])}
+
+
 @router.post("/api/admin/saved-carts/{cart_id}/invoice")
 def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
     """Turn a saved cart into an online order and email the customer a 'Pay now' link to the
-    normal checkout. When they pay, WooCommerce's paid message delivers it like any online order."""
+    normal checkout. Each item's price can be changed and items added; the checkout lists them
+    at those prices. When it's paid, WooCommerce's paid message delivers it like any online order."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     rec = main._load_saved_cart(cart_id)
@@ -165,21 +220,48 @@ def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
             return JSONResponse(status_code=400, content={"error": "Prints ship: enter the street, city, state and ZIP"})
         billing.update(addr, country="US")
         shipping.update(addr, country="US")
-    custom = None
-    if str(body.get("custom_price") or "").strip():
-        try:
-            custom = round(float(body["custom_price"]), 2)
-        except (TypeError, ValueError):
-            return JSONResponse(status_code=400, content={"error": "The custom price must be a number"})
-        if not 0 <= custom <= 10000:
-            return JSONResponse(status_code=400, content={"error": "The custom price must be between $0 and $10,000"})
+    try:
+        prices = [_money(p, "Each price") for p in body["prices"]] if isinstance(body.get("prices"), list) else None
+        extra = []
+        for x in body.get("extra") or []:
+            name = str((x or {}).get("name") or "").strip()[:120]
+            if not name:
+                raise ValueError("Each added item needs a description")
+            extra.append({"name": name, "price": _money(x.get("price"), f"The price of {name}")})
+        ship = _money(body["shipping"], "Shipping") if str(body.get("shipping", "")).strip() != "" else None
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
     made = main._create_checkout({**order, "email": email, "billing": billing, "shipping": shipping},
-                                 custom_items_total=custom)
+                                 line_prices=prices, extra_lines=extra, shipping_price=ship)
     if isinstance(made, JSONResponse):
         return made
     sent = main._send_invoice_email(email, first, made["checkout_url"], float(made["total"]))
+    main._save_invoice({"order_id": made["order_id"], "cart_id": cart_id, "first_name": first, "last_name": last,
+                        "email": email, "total": made["total"], "normal_total": made["normal_total"],
+                        "pay_url": made["checkout_url"], "emailed": sent,
+                        "created": main.datetime.now(main.timezone.utc).isoformat()})
     return {"pay_url": made["checkout_url"], "total": made["total"], "emailed": sent,
-            "normal_total": made.get("normal_total", made["total"]), "custom": custom is not None}
+            "normal_total": made["normal_total"], "order_id": made["order_id"]}
+
+
+@router.get("/api/admin/invoices")
+def admin_invoices(request: Request):
+    """Customers > Invoices: every invoice sent and whether it's been paid."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"invoices": main._load_invoices()}
+
+
+@router.post("/api/admin/invoices/{order_id}/cancel")
+def admin_cancel_invoice(order_id: str, request: Request):
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not order_id.isdigit():
+        return JSONResponse(status_code=404, content={"error": "Not found"})
+    problem = main._cancel_invoice(order_id)
+    if problem:
+        return JSONResponse(status_code=400, content={"error": problem})
+    return {"cancelled": True}
 
 
 @router.post("/api/admin/saved-carts/{cart_id}/remind")

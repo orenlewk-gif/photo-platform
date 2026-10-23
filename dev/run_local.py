@@ -159,9 +159,20 @@ class _FakeResp:
         pass
 
 
+FAKE_WC_ORDERS = {}                     # order id -> status (invoices, online orders)
+
+
 class FakeHTTP:
     """Stands in for `requests` inside main.py."""
     def get(self, url, **kw):
+        if url.endswith("/wc/v3/orders") and (kw.get("params") or {}).get("include"):
+            want = {int(i) for i in str(kw["params"]["include"]).split(",") if i}
+            return _FakeResp([{"id": i, "status": st} for i, st in FAKE_WC_ORDERS.items() if i in want])
+        if "/wc/v3/orders/" in url:
+            oid = int(url.rstrip("/").rsplit("/", 1)[-1])
+            if oid not in FAKE_WC_ORDERS:
+                return _FakeResp({}, status=404)
+            return _FakeResp({"id": oid, "status": FAKE_WC_ORDERS[oid]})
         if "squareup.com" in url and url.endswith("/locations"):
             return _FakeResp({"locations": [{"id": "LOCAL_LOC", "name": "Local Test Location"}]})
         if "squareup.com" in url and "/orders/" in url:
@@ -189,6 +200,11 @@ class FakeHTTP:
         return _FakeResp([])                       # orders, etc.: none locally
 
     def put(self, url, json=None, **kw):
+        if "/wc/v3/orders/" in url:
+            oid = int(url.rstrip("/").rsplit("/", 1)[-1])
+            FAKE_WC_ORDERS[oid] = (json or {}).get("status", FAKE_WC_ORDERS.get(oid))
+            print(f"[fake WooCommerce] order {oid} -> {FAKE_WC_ORDERS[oid]}")
+            return _FakeResp({"id": oid})
         vid = int(url.rstrip("/").split("/")[-1])
         if vid in FRAME_PRICES and json and "regular_price" in json:
             FRAME_PRICES[vid] = json["regular_price"]
@@ -217,7 +233,9 @@ class FakeHTTP:
                 print(f"    {f['name']}  ${f['total']}")
             if json.get("coupon_lines"):
                 print(f"    coupon: {json['coupon_lines']}")
-            return _FakeResp({"id": 9001, "order_key": "wc_order_local"}, status=201)
+            oid = 9001 + len(FAKE_WC_ORDERS)
+            FAKE_WC_ORDERS[oid] = "pending"
+            return _FakeResp({"id": oid, "order_key": "wc_order_local"}, status=201)
         if url.endswith("/notes"):
             print(f"[fake WooCommerce] customer note on {url.split('/orders/')[1].split('/')[0]} (download email)")
             return _FakeResp({"id": 1}, status=201)

@@ -18,3 +18,10 @@ def render_page(name: str, **values) -> str:
             raise KeyError(f"{name}: no value for __{m.group(1)}__")
         return str(values[key])
     return _MARKER.sub(fill, text)
+
+
+def site_header() -> str:
+    """The site header (logo and menu, the gallery's look): templates/site_header.html, for pages
+    outside the gallery (the partner page, the policy pages)."""
+    with open(os.path.join(TEMPLATE_DIR, "site_header.html"), encoding="utf-8") as f:
+        return f.read()

@@ -22,6 +22,19 @@ html.embedded #layout,html.embedded #saved-layout{height:calc(100vh - 40px)}
 .cust-tab{background:none;border:none;color:rgba(255,255,255,.5);font-size:.84rem;font-weight:600;padding:.55rem .9rem;cursor:pointer;border-bottom:2px solid transparent}
 .cust-tab.active{color:#F5C518;border-bottom-color:#F5C518}
 #saved-layout{display:none}
+#inv-layout{display:none;height:calc(100vh - 46px - 40px);overflow-y:auto;padding:1.2rem 1.4rem}
+html.embedded #inv-layout{height:calc(100vh - 40px)}
+.inv-table{width:100%;border-collapse:collapse;font-size:.82rem}
+.inv-table th{text-align:left;font-size:.7rem;font-weight:600;color:rgba(255,255,255,.45);text-transform:uppercase;letter-spacing:.05em;padding:.4rem .5rem;border-bottom:1px solid rgba(255,255,255,.1)}
+.inv-table td{padding:.55rem .5rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:middle}
+.inv-status{font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:10px;white-space:nowrap}
+.inv-status.wait{background:rgba(245,197,24,.14);color:#F5C518}
+.inv-status.paid{background:rgba(74,222,128,.14);color:#4ade80}
+.inv-status.off{background:rgba(255,255,255,.08);color:rgba(255,255,255,.5)}
+.inv-line{display:flex;align-items:center;gap:.5rem;padding:.3rem 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.8rem}
+.inv-line .nm{flex:1;min-width:0;color:rgba(255,255,255,.8)}
+.inv-line .was{font-size:.7rem;color:rgba(255,255,255,.35);white-space:nowrap}
+.inv-line input{width:90px}
 #saved-list-pane{width:300px;flex-shrink:0;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.07);background:#081929}
 #saved-list-header{padding:.85rem 1rem .7rem;border-bottom:1px solid rgba(255,255,255,.06)}
 #saved-search{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:7px;padding:.42rem .75rem;color:#e8eaf0;font-size:13px;outline:none}
@@ -197,6 +210,7 @@ select.fu-input{cursor:pointer}
 <div id="cust-tabs" role="tablist">
   <button class="cust-tab active" id="tab-inperson" role="tab" onclick="switchCustTab('inperson')">In-Person Customers</button>
   <button class="cust-tab" id="tab-saved" role="tab" onclick="switchCustTab('saved')">Saved Carts</button>
+  <button class="cust-tab" id="tab-invoices" role="tab" onclick="switchCustTab('invoices')">Invoices</button>
 </div>
 <div id="layout">
 
@@ -426,6 +440,18 @@ select.fu-input{cursor:pointer}
   <div id="saved-detail"><div style="color:rgba(255,255,255,.35);margin-top:3rem;text-align:center">Select a saved cart</div></div>
 </div>
 
+<!-- ── Invoices sent from saved carts, and whether they've been paid ── -->
+<div id="inv-layout">
+  <div class="btn-row" style="margin-bottom:.8rem">
+    <div style="font-size:1rem;font-weight:700;margin-right:auto">Invoices</div>
+    <label style="font-size:.78rem;color:rgba(255,255,255,.6);display:flex;align-items:center;gap:.35rem;cursor:pointer">
+      <input type="checkbox" id="inv-open-only" onchange="renderInvoices()" style="accent-color:#F5C518"> Waiting for payment only</label>
+    <button class="btn btn-ghost btn-sm" onclick="loadInvoices()">Refresh</button>
+  </div>
+  <div style="font-size:.75rem;color:rgba(255,255,255,.45);margin-bottom:.8rem">Invoices you sent from Saved Carts. Cancelling one stops its Pay now link working (a paid one can only be refunded in the shop).</div>
+  <div id="inv-list">Loading…</div>
+</div>
+
 <!-- Delete confirm modal -->
 <div id="preview-modal" class="modal-overlay" onclick="if(event.target===this)cancelSend()">
   <div class="modal-box" style="max-width:680px">
@@ -492,12 +518,50 @@ select.fu-input{cursor:pointer}
 // ── Saved Carts tab ──
 let _savedCarts = [], _savedActive = '', _savedChecked = new Set(), _savedShown = [];
 function switchCustTab(which){
-  const saved = which === 'saved';
-  document.getElementById('layout').style.display = saved ? 'none' : 'flex';
-  document.getElementById('saved-layout').style.display = saved ? 'flex' : 'none';
-  document.getElementById('tab-inperson').classList.toggle('active', !saved);
-  document.getElementById('tab-saved').classList.toggle('active', saved);
-  if(saved) loadSavedCarts();
+  document.getElementById('layout').style.display = which === 'inperson' ? 'flex' : 'none';
+  document.getElementById('saved-layout').style.display = which === 'saved' ? 'flex' : 'none';
+  document.getElementById('inv-layout').style.display = which === 'invoices' ? 'block' : 'none';
+  ['inperson', 'saved', 'invoices'].forEach(t => document.getElementById('tab-' + t).classList.toggle('active', t === which));
+  if(which === 'saved') loadSavedCarts();
+  if(which === 'invoices') loadInvoices();
+}
+
+// ── Invoices tab ──
+let _invoices = [];
+async function loadInvoices(){
+  document.getElementById('inv-list').textContent = 'Loading…';
+  try {
+    const r = await fetch('/api/admin/invoices');
+    _invoices = (await r.json()).invoices || [];
+  } catch(e) { _invoices = []; document.getElementById('inv-list').textContent = 'Could not load the invoices'; return; }
+  renderInvoices();
+}
+function renderInvoices(){
+  const openOnly = document.getElementById('inv-open-only').checked;
+  const list = _invoices.filter(i => !openOnly || i.wc_status === 'pending');
+  const box = document.getElementById('inv-list');
+  if(!list.length){ box.innerHTML = `<div style="color:rgba(255,255,255,.4);margin-top:1rem">${openOnly ? 'No invoices waiting for payment' : 'No invoices sent yet'}</div>`; return; }
+  const cls = st => st === 'pending' ? 'wait' : (st === 'processing' || st === 'completed') ? 'paid' : 'off';
+  box.innerHTML = `<table class="inv-table"><thead><tr><th>Sent</th><th>Customer</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>
+    ${list.map(i => `<tr>
+      <td>${esc(scDate(i.created))}</td>
+      <td><div style="font-weight:600">${esc(`${i.first_name || ''} ${i.last_name || ''}`.trim() || '—')}</div>
+        <div style="font-size:.72rem;color:rgba(255,255,255,.45)">${esc(i.email)} · order ${esc(String(i.order_id))}</div></td>
+      <td>$${Number(i.total).toFixed(2)}${Number(i.normal_total) !== Number(i.total) ? `<div style="font-size:.7rem;color:rgba(255,255,255,.4)">normally $${Number(i.normal_total).toFixed(2)}</div>` : ''}</td>
+      <td><span class="inv-status ${cls(i.wc_status)}">${esc(i.status)}</span></td>
+      <td style="text-align:right;white-space:nowrap">
+        <a href="${esc(i.pay_url)}" target="_blank" style="color:#F5C518;font-size:.75rem;margin-right:.6rem">Payment link</a>
+        ${['pending', 'failed', 'on-hold'].includes(i.wc_status) ? `<button class="btn btn-danger btn-sm" onclick="cancelInvoice('${esc(String(i.order_id))}')">Cancel</button>` : ''}
+      </td></tr>`).join('')}
+  </tbody></table>`;
+}
+async function cancelInvoice(id){
+  if(!confirm('Cancel this invoice? Its Pay now link will stop working.')) return;
+  const r = await fetch(`/api/admin/invoices/${id}/cancel`, {method: 'POST'});
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok){ showToast(d.error || 'Could not cancel', 'err'); return; }
+  showToast('Invoice cancelled');
+  loadInvoices();
 }
 function scDate(iso){ try { return new Date(iso).toLocaleString('en-US', {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}); } catch(e) { return ''; } }
 function scCounts(r){
@@ -603,11 +667,8 @@ async function openSavedCart(id){
         <input id="inv-state" class="fu-input" placeholder="State" style="width:70px">
         <input id="inv-postcode" class="fu-input" placeholder="ZIP" style="width:90px">
       </div>` : ''}
-      <div class="btn-row" style="gap:.4rem;margin-top:.5rem;align-items:center">
-        <label for="inv-custom_price" style="font-size:.75rem;color:rgba(255,255,255,.55)">Custom price $</label>
-        <input id="inv-custom_price" class="fu-input" type="number" min="0" step="0.01" placeholder="Leave blank for the normal price" style="width:230px">
-        <span style="font-size:.7rem;color:rgba(255,255,255,.4)">for the photos and prints; shipping is added, tax at payment</span>
-      </div>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.5);margin:.7rem 0 .2rem">Items: change any price (0 for free); the checkout shows each item at its price here. Tax is added at payment.</div>
+      <div id="inv-lines" style="font-size:.78rem;color:rgba(255,255,255,.45)">Loading prices…</div>
       <div class="btn-row" style="margin-top:.6rem"><button class="btn btn-primary btn-sm" onclick="sendInvoice('${d.id}')">Create and email invoice</button>
         <span id="inv-status" style="font-size:.78rem;color:rgba(255,255,255,.6)"></span></div>
     </div>`;
@@ -632,19 +693,79 @@ async function sendReminder(id){
   showToast('Reminder sent');
   document.getElementById('sc-reminders').textContent = 'Reminders sent: ' + d.reminders.map(scDate).join(', ');
 }
-function toggleInvoiceForm(){ const f = document.getElementById('inv-form'); f.style.display = f.style.display === 'none' ? '' : 'none'; }
+let _invForm = null;            // {cartId, lines, shipping, ships, extra: [{name, price}]}
+function toggleInvoiceForm(){
+  const f = document.getElementById('inv-form');
+  const opening = f.style.display === 'none';
+  f.style.display = opening ? '' : 'none';
+  if(opening) loadInvoiceLines(_savedActive);
+}
+async function loadInvoiceLines(cartId){
+  const box = document.getElementById('inv-lines');
+  box.textContent = 'Loading prices…';
+  const r = await fetch(`/api/admin/saved-carts/${cartId}/invoice-lines`);
+  const d = await r.json().catch(() => ({}));
+  if(!r.ok){ box.textContent = d.error || 'Could not price this cart'; return; }
+  _invForm = {cartId, lines: d.lines, shipping: d.shipping, ships: d.ships, extra: []};
+  renderInvoiceLines();
+}
+function renderInvoiceLines(){
+  const f = _invForm, box = document.getElementById('inv-lines');
+  const priceInput = (id, v) => `<input class="fu-input" id="${id}" type="number" min="0" step="0.01" value="${Number(v).toFixed(2)}" oninput="invTotal()">`;
+  box.innerHTML = f.lines.map((ln, i) => `<div class="inv-line"><span class="nm">${esc(ln.name)}</span>
+        <span class="was">$${ln.price.toFixed(2)}</span>${priceInput('inv-p-' + i, ln.price)}</div>`).join('')
+    + f.extra.map((x, i) => `<div class="inv-line"><span class="nm">${esc(x.name)} <span class="was">(added)</span></span>
+        ${priceInput('inv-x-' + i, x.price)}<button class="btn btn-ghost btn-sm" onclick="invRemoveExtra(${i})" aria-label="Remove">✕</button></div>`).join('')
+    + `<div class="inv-line"><input class="fu-input" id="inv-new-name" placeholder="Add an item, e.g. Photo retouching" style="flex:1">
+        <input class="fu-input" id="inv-new-price" type="number" min="0" step="0.01" placeholder="Price" style="width:90px">
+        <button class="btn btn-ghost btn-sm" onclick="invAddExtra()">Add item</button></div>`
+    + (f.ships || f.shipping ? `<div class="inv-line"><span class="nm">Shipping</span><span class="was">$${f.shipping.toFixed(2)}</span>${priceInput('inv-ship', f.shipping)}</div>` : '')
+    + `<div class="inv-line" style="border:none;font-weight:700;color:#fff"><span class="nm">Total</span><span id="inv-total"></span></div>`;
+  invTotal();
+}
+function invReadPrices(){
+  // Keep typed prices when the list is redrawn
+  const f = _invForm;
+  f.lines.forEach((ln, i) => { const el = document.getElementById('inv-p-' + i); if(el) ln._now = el.value; });
+  f.extra.forEach((x, i) => { const el = document.getElementById('inv-x-' + i); if(el) x.price = el.value; });
+}
+function invAddExtra(){
+  const name = document.getElementById('inv-new-name').value.trim(), price = document.getElementById('inv-new-price').value;
+  if(!name || price === '' || Number(price) < 0){ showToast('Enter a description and a price', 'err'); return; }
+  invReadPrices();
+  _invForm.extra.push({name, price: Number(price)});
+  renderInvoiceLines();
+  _invForm.lines.forEach((ln, i) => { if(ln._now !== undefined) document.getElementById('inv-p-' + i).value = ln._now; });
+  invTotal();
+}
+function invRemoveExtra(i){
+  invReadPrices();
+  _invForm.extra.splice(i, 1);
+  renderInvoiceLines();
+  _invForm.lines.forEach((ln, k) => { if(ln._now !== undefined) document.getElementById('inv-p-' + k).value = ln._now; });
+  invTotal();
+}
+function invTotal(){
+  let t = 0;
+  document.querySelectorAll('#inv-lines input[type=number]').forEach(el => { if(el.id !== 'inv-new-price') t += Number(el.value) || 0; });
+  const el = document.getElementById('inv-total');
+  if(el) el.textContent = '$' + t.toFixed(2);
+}
 async function sendInvoice(id){
   const v = k => (document.getElementById('inv-' + k) || {}).value || '';
   const st = document.getElementById('inv-status');
   st.textContent = 'Creating…';
+  if(!_invForm || _invForm.cartId !== id){ st.textContent = 'Prices are still loading'; return; }
   const body = {first_name: v('first'), last_name: v('last'), email: v('email'),
                 address_1: v('address_1'), city: v('city'), state: v('state'), postcode: v('postcode'),
-                custom_price: v('custom_price')};
+                prices: _invForm.lines.map((_, i) => v('p-' + i)),
+                extra: _invForm.extra.map((x, i) => ({name: x.name, price: v('x-' + i)}))};
+  if(document.getElementById('inv-ship')) body.shipping = v('ship');
   const r = await fetch(`/api/admin/saved-carts/${id}/invoice`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const d = await r.json().catch(() => ({}));
   if(!r.ok){ st.textContent = d.error || 'Could not create the invoice'; st.style.color = '#f87171'; return; }
   st.style.color = '';
-  st.innerHTML = `Invoice for $${Number(d.total).toFixed(2)}${d.custom ? ` (custom; normal price $${Number(d.normal_total).toFixed(2)})` : ''} ${d.emailed ? 'emailed' : 'created (email not sent)'} · <a href="${esc(d.pay_url)}" target="_blank" style="color:#F5C518">payment link</a>`;
+  st.innerHTML = `Invoice for $${Number(d.total).toFixed(2)}${Number(d.total) !== Number(d.normal_total) ? ` (normal price $${Number(d.normal_total).toFixed(2)})` : ''} ${d.emailed ? 'emailed' : 'created (email not sent)'} · <a href="${esc(d.pay_url)}" target="_blank" style="color:#F5C518">payment link</a> · listed under Invoices`;
 }
 async function deleteSavedCart(id){
   if(!confirm('Delete this saved cart? The customer will no longer be able to load it.')) return;

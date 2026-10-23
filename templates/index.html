@@ -988,6 +988,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
 .watermark { display:none !important; }
 </style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
+<script src="/static/email-links.js" defer></script>
 </head>
 <body>
 
@@ -1720,18 +1721,19 @@ function dismissSavePrompt(){
 async function savePromptSubmit(){
   const ok = await startSaving(document.getElementById('sp-first').value, document.getElementById('sp-email').value,
                                document.getElementById('sp-msg'));
-  if(ok){
-    document.getElementById('sp-msg').textContent = 'Saved. Load them anytime from the cart with your email.';
-    setTimeout(dismissSavePrompt, 2200);
-  }
+  if(ok) dismissSavePrompt();                     // saved: close right away (a problem stays on screen)
 }
 function renderSaveBoxes(){
   const who = savedIdentity();
   document.querySelectorAll('[data-savebox]').forEach((box, i) => {
-    const saveHtml = who
-      ? `<div class="save-box-line">Saved for <strong>${escHtml(who.first_name)}</strong>. Changes save automatically while you're here.
-           Next time, enter your email below to load them. <button class="save-link" onclick="forgetIdentity()">Not you?</button></div>`
-      : `<div class="save-box-line">Save your selection and come back to it anytime, on any device.
+    if(who){                                      // saved this visit: nothing more to enter
+      box.innerHTML = `<div class="save-box-title">Save your photos</div>
+        <div class="save-box-line">Saved for <strong>${escHtml(who.first_name)}</strong>. Changes save automatically while you're here.
+          Next time, open the cart and enter your email to load them.</div>
+        <div class="save-box-line" style="margin-top:.35rem">Not you? <button class="save-link" onclick="forgetIdentity()">Reset</button></div>`;
+      return;
+    }
+    const saveHtml = `<div class="save-box-line">Save your selection and come back to it anytime, on any device.
            Already saved? Saving again updates it.</div>
          <div class="save-form">
            <label class="sr-only" for="sb-first-${i}">First name</label>

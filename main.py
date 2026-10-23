@@ -1464,23 +1464,35 @@ def _partner_print_discounts(request: Request, body: dict) -> dict:
     return out
 
 
-def _create_checkout(body: dict, partner_prints: dict | None = None, custom_items_total: float | None = None):
-    """custom_items_total (studio invoices only): the price for everything but shipping; the
-    difference from the normal price goes on the order as a 'Price adjustment' line."""
+def _create_checkout(body: dict, partner_prints: dict | None = None, line_prices: list | None = None,
+                     extra_lines: list | None = None, shipping_price: float | None = None):
+    """Create the WooCommerce order. Studio invoices only: line_prices sets each line's price
+    (in the order the cart's lines are priced), extra_lines adds items the studio typed in
+    ([{"name", "price"}]) and shipping_price replaces the shipping. The checkout then lists
+    every item at its invoice price; the normal price is kept on the order for reference."""
     try:
         priced = _price_order(body, partner_prints)
     except CheckoutError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     total = priced["summary"]["total"]
     normal_total = total
-    if custom_items_total is not None:
-        shipping = float(priced["summary"]["shipping"] or 0)
-        adjustment = round(custom_items_total - (total - shipping), 2)
-        if adjustment:
-            priced["fee_lines"] = priced["fee_lines"] + [{"name": "Price adjustment", "total": f"{adjustment:.2f}"}]
-        priced["meta"] = priced["meta"] + [{"key": "_custom_price", "value": f"{custom_items_total:.2f}"},
-                                           {"key": "_normal_price", "value": f"{total - shipping:.2f}"}]
-        total = round(custom_items_total + shipping, 2)
+    edited = line_prices is not None or bool(extra_lines) or shipping_price is not None
+    if edited:
+        lines = priced["line_items"]
+        if line_prices is not None:
+            if len(line_prices) != len(lines):
+                return JSONResponse(status_code=400, content={"error": "The cart changed: reopen the invoice form"})
+            lines = [{**ln, "subtotal": f"{p:.2f}", "total": f"{p:.2f}"} for ln, p in zip(lines, line_prices)]
+        lines = lines + [{"product_id": WC_DIGITAL_PRODUCT_ID, "quantity": 1, "name": x["name"],
+                          "subtotal": f"{x['price']:.2f}", "total": f"{x['price']:.2f}"} for x in (extra_lines or [])]
+        shipping = float(priced["summary"]["shipping"] or 0) if shipping_price is None else shipping_price
+        priced["line_items"] = lines
+        priced["fee_lines"] = [f for f in priced["fee_lines"] if f.get("name") != "Shipping"] + \
+                              ([{"name": "Shipping", "total": f"{shipping:.2f}"}] if shipping else [])
+        priced["coupon_lines"] = []
+        total = round(sum(float(ln["total"]) for ln in lines) + shipping, 2)
+        if total != normal_total:
+            priced["meta"] = priced["meta"] + [{"key": "_normal_price", "value": f"{normal_total:.2f}"}]
     try:
         customer_email = body.get("email", "")
         billing_data = dict(body.get("billing") or {})
@@ -1500,7 +1512,7 @@ def _create_checkout(body: dict, partner_prints: dict | None = None, custom_item
         order = resp.json()
         pay_url = (f"https://bigskyphotos.com/checkout/order-pay/{order['id']}/"
                    f"?pay_for_order=true&key={order['order_key']}")
-        return {"checkout_url": pay_url, "total": total, "normal_total": normal_total}
+        return {"checkout_url": pay_url, "total": total, "normal_total": normal_total, "order_id": order["id"]}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
@@ -1590,16 +1602,19 @@ def _record_pos_sale_now(body: dict):
     # Multi-item cart support
     items = body.get("items", [])
 
-    # Collect photo_paths from action_photos items; fall back to legacy fields
+    # The photos this sale delivers: action photos and portrait poses; fall back to legacy fields.
+    # File names (what commission by file prefix reads) come from the action photos only, as before.
     photo_paths, filenames, location, photo_date = [], [], "", ""
     for item in items:
-        if item.get("category") == "action_photos":
-            photo_paths.extend(item.get("photo_paths", []))
-            filenames.extend(item.get("filenames", []))
+        if item.get("category") in ("action_photos", "portrait"):
+            photo_paths.extend(p for p in item.get("photo_paths", []) if isinstance(p, str) and p)
+            if item.get("category") == "action_photos":
+                filenames.extend(item.get("filenames", []))
             if not location:
                 location = item.get("location", "")
             if not photo_date:
                 photo_date = item.get("date", "")
+    photo_paths = list(dict.fromkeys(photo_paths))
     if not photo_paths:
         photo_paths  = body.get("photo_paths", [])
         filenames    = body.get("filenames", [])
@@ -4135,6 +4150,68 @@ def _send_invoice_email(to_email: str, first_name: str, pay_url: str, total: flo
     except Exception as e:
         print(f"Invoice email failed ({to_email}): {e}")
         return False
+
+
+# Invoices sent from saved carts: one small record each (invoices/<WooCommerce order id>.json);
+# whether it's been paid is read from WooCommerce when the list is opened.
+INVOICES_PREFIX = "invoices/"
+_INVOICE_STATUS = {"pending": "Waiting for payment", "processing": "Paid", "completed": "Paid",
+                   "cancelled": "Cancelled", "failed": "Payment failed", "on-hold": "On hold",
+                   "refunded": "Refunded"}
+
+
+def _save_invoice(rec: dict) -> None:
+    s3.put_object(Bucket=R2_BUCKET, Key=f"{INVOICES_PREFIX}{rec['order_id']}.json",
+                  Body=json.dumps(rec).encode(), ContentType="application/json")
+
+
+def _load_invoices() -> list:
+    """Every invoice sent, newest first, with its current status from WooCommerce."""
+    keys = []
+    for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=INVOICES_PREFIX):
+        keys += [o["Key"] for o in page.get("Contents", []) if o["Key"].endswith(".json")]
+
+    def read(k):
+        try:
+            return json.loads(s3.get_object(Bucket=R2_BUCKET, Key=k)["Body"].read())
+        except Exception:
+            return None
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        recs = [r for r in ex.map(read, keys) if isinstance(r, dict)]
+    status = {}
+    ids = [str(r["order_id"]) for r in recs]
+    for i in range(0, len(ids), 100):          # WooCommerce answers up to 100 orders per request
+        try:
+            resp = http_requests.get(f"{WC_BASE}/orders", params={"include": ",".join(ids[i:i + 100]), "per_page": 100},
+                                     auth=(WC_KEY, WC_SECRET), timeout=15)
+            if resp.ok:
+                status.update({str(o["id"]): o.get("status", "") for o in resp.json()})
+        except Exception as e:
+            print(f"Invoice statuses not read: {e}")
+    for r in recs:
+        st = status.get(str(r["order_id"]))
+        r["wc_status"] = st or ""
+        r["status"] = _INVOICE_STATUS.get(st, st.capitalize() if st else "Unknown (shop not reachable)")
+    return sorted(recs, key=lambda r: r.get("created", ""), reverse=True)
+
+
+def _cancel_invoice(order_id: str):
+    """Cancel an unpaid invoice's WooCommerce order so its Pay now link stops working.
+    Returns an error message, or '' when cancelled."""
+    try:
+        resp = http_requests.get(f"{WC_BASE}/orders/{order_id}", auth=(WC_KEY, WC_SECRET), timeout=15)
+        if not resp.ok:
+            return "The shop couldn't find this order"
+        st = resp.json().get("status", "")
+        if st in ("processing", "completed", "refunded"):
+            return "This invoice is already paid, so it can't be cancelled (refund it in the shop instead)"
+        if st == "cancelled":
+            return ""
+        resp = http_requests.put(f"{WC_BASE}/orders/{order_id}", json={"status": "cancelled"},
+                                 auth=(WC_KEY, WC_SECRET), timeout=15)
+        return "" if resp.ok else f"The shop refused: {resp.text[:200]}"
+    except Exception as e:
+        return f"The shop couldn't be reached: {e}"
 
 
 def _saved_cart_link_token(cart_id: str) -> str:

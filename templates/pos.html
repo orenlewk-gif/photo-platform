@@ -987,6 +987,18 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
           </div>
         </div>
 
+        <!-- Saved Online tab: carts customers saved on the website, found by name or email -->
+        <div id="tab-savedonline" class="tab-panel">
+          <div class="panel-pad">
+            <div class="section-title">Saved on the website</div>
+            <div class="ap-search-row">
+              <input type="text" id="so-search" class="ap-search-input" placeholder="First name or email..."
+                     autocomplete="off" autocorrect="off" autocapitalize="off" oninput="soSearchType(this.value)">
+            </div>
+            <div id="so-list"></div>
+          </div>
+        </div>
+
         <!-- Packages tab: open Unlimited packages, and adding photos to one -->
         <div id="tab-packages" class="tab-panel">
           <div class="panel-pad">
@@ -1107,6 +1119,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <!-- Bottom utility bar -->
   <div class="bottom-bar">
     <button class="bottom-btn" data-tab="packages" onclick="openCategory('packages','Packages')">Packages</button>
+    <button class="bottom-btn" data-tab="savedonline" onclick="openCategory('savedonline','Saved Online')">Saved Online</button>
     <button class="bottom-btn" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</button>
     <button class="bottom-btn" data-tab="customers" onclick="openCategory('customers','Customers')">Customers</button>
     <button class="bottom-btn" onclick="lockPOS()">Lock</button>
@@ -1468,6 +1481,7 @@ function switchTab(tab){
   if(tab === 'frames' && !S.frames) loadFrames();
   if(tab === 'unlimited') loadUnlimited();
   if(tab === 'packages' && !S.pkg) loadPackages($('pkg-search').value.trim());
+  if(tab === 'savedonline') loadSavedOnline($('so-search').value.trim());
   if(tab === 'recent') loadRecentSales();
   if(tab === 'shipping') renderShipping();
   if(tab === 'customers') custLoadAll();
@@ -1813,6 +1827,69 @@ async function posSavedPrint(fi, pi){
   _ptPhoto = {path: pr.path, filename: pr.path.split('/').pop()};
   openPSM(_ptPhoto);
   showToast(`Saved choice: ${pr.size}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}`);
+}
+
+// "Saved Online" tab: look up a saved cart when a customer says they saved photos on the website
+let _soTimer = null;
+function soSearchType(v){
+  clearTimeout(_soTimer);
+  _soTimer = setTimeout(() => loadSavedOnline(v.trim()), 250);
+}
+async function loadSavedOnline(q){
+  const box = $('so-list');
+  if(!box.children.length) box.innerHTML = '<div class="ap-loading">Loading...</div>';
+  try {
+    const r = await fetch('/api/pos/saved-carts?q=' + encodeURIComponent(q || ''), {headers: posPinHeaders()});
+    const d = await r.json();
+    if(!r.ok) throw new Error(d.error || 'Could not load saved carts');
+    if($('so-search').value.trim() !== (q || '')) return;          // a newer search is on its way
+    const list = d.carts || [];
+    if(!list.length){ box.innerHTML = `<div class="ap-loading">${q ? 'No saved carts match' : 'No saved carts yet'}</div>`; return; }
+    box.innerHTML = list.map((c, i) => `
+      <div class="pkg-card" data-so="${i}">
+        <div class="pkg-card-top">
+          <div class="pkg-name">${escHtml(c.first_name || 'No name')}</div>
+          <div class="pkg-count">${escHtml(savedCartCounts(c.summary || {}))}</div>
+        </div>
+        <div class="pkg-meta">${escHtml(c.email)}${c.updated ? ' · saved ' + escHtml(new Date(c.updated).toLocaleDateString('en-US', {month:'short', day:'numeric'})) : ''}</div>
+      </div>`).join('');
+    box.querySelectorAll('[data-so]').forEach(el => el.addEventListener('click', () => openSavedOnline(list[+el.dataset.so])));
+  } catch(e){
+    box.innerHTML = `<div class="ap-loading">${escHtml(e.message)}</div>`;
+  }
+}
+async function openSavedOnline(c){
+  try {
+    const r = await fetch('/api/pos/saved-cart?email=' + encodeURIComponent(c.email), {headers: posPinHeaders()});
+    if(!r.ok){ showToast('That saved cart is no longer there'); loadSavedOnline($('so-search').value.trim()); return; }
+    S.savedCart = await r.json();
+  } catch(e){ showToast('Could not load the saved cart'); return; }
+  // No customer on the sale yet: this is them. Someone already in the customer list is filled
+  // in; someone new gets an "Add as customer" button (the sale needs their phone too).
+  const empty = !S.customer.email && !S.customer.phone && !S.customer.first && !S.customer.last;
+  const k = S.savedCart.customer;
+  if(empty && k){
+    S.customer = {first: k.first || '', last: k.last || '', email: k.email || '', phone: k.phone || '',
+                  street: k.street || '', city: k.city || '', state: k.state || '', zip: k.zip || ''};
+    _scEmail = (k.email || '').trim().toLowerCase();
+    renderCart();
+    updateCartCustomerBar();
+  }
+  renderSavedCartBanner();
+  openSavedCartModal();
+  if(empty && !k){
+    $('sc-modal-body').insertAdjacentHTML('afterbegin', `<div class="sc-modal-row" style="margin-bottom:.6rem">
+      <span class="sc-modal-sub">${escHtml(S.savedCart.first_name || 'They')} ${S.savedCart.first_name ? 'is' : 'are'} not in your customers yet.</span>
+      <button class="ap-add-btn" onclick="soAddCustomer()">Add as customer</button></div>`);
+  }
+}
+function soAddCustomer(){
+  // The customer form, already filled in with what they saved on the website
+  const d = S.savedCart || {};
+  closeSavedCartModal();
+  S.customer = {...S.customer, first: d.first_name || '', email: d.email || ''};
+  _scEmail = (d.email || '').trim().toLowerCase();
+  openCustomerModal();
 }
 
 // ─── Customer bar inline search ───────────────────────────────────────────────

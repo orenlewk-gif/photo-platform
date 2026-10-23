@@ -7,7 +7,7 @@ from fastapi.responses import HTMLResponse
 from html import escape as _html_escape
 
 import main
-from core.pages import render_page
+from core.pages import render_page, site_header
 
 router = APIRouter()
 POLICIES_UPDATED = "October 19, 2026"
@@ -25,7 +25,7 @@ def _policy(name: str, title: str) -> HTMLResponse:
     body = render_page(name, updated=POLICIES_UPDATED, **_business())
     if "[[CONFIRM" in body:          # never show a policy with an unanswered question
         return HTMLResponse("<h1>Coming soon</h1>", status_code=404)
-    head = render_page("_legal_head.html", title=title)
+    head = render_page("_legal_head.html", title=title, site_header=site_header())
     foot = render_page("_legal_foot.html", **_business())
     return HTMLResponse(head + body + foot)
 

@@ -265,13 +265,13 @@ def pos_manifest():
 @router.get("/api/pos/download-qr")
 def pos_download_qr(request: Request, token: str = Query("")):
     """Sale Complete screen: a QR code of the customer's download page, so they can scan it with
-    their phone and save their photos right away. Only for a POS that entered a PIN."""
+    their phone and save their photos right away. No POS sign-in is needed: Square often finishes
+    the sale in Safari, which doesn't share the POS app's sign-in, and the picture only shows a
+    link whoever asks already has (the token is the link)."""
     import re
     from io import BytesIO
     import segno
     from fastapi.responses import Response
-    if not main._pos_signed_in(request):
-        return JSONResponse(status_code=401, content={"error": "Enter a PIN first"})
     if not re.fullmatch(r"[A-Za-z0-9]{16,64}", token or "") or not main._load_pkg(token):
         return JSONResponse(status_code=404, content={"error": "Download link not found"})
     buf = BytesIO()

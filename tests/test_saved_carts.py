@@ -119,6 +119,21 @@ def test_pos_finds_the_saved_cart_by_email(client, main_module):
                       headers={"X-POS-PIN": "4821"}).status_code == 404
 
 
+def test_pos_saved_online_search_by_name_or_email(client, main_module):
+    import json as _json
+    S3.put_object(Bucket="test-bucket", Key="meta/photographers.json",
+                  Body=_json.dumps([{"id": "p1", "name": "Test Photog", "pin": "4821"}]).encode())
+    main_module._pin_fail_limiter._calls.clear()
+    _save(client)
+    _save(client, email="tom@example.com", first="Tom")
+    pin = {"X-POS-PIN": "4821"}
+    assert client.get("/api/pos/saved-carts", params={"q": "sarah"}).status_code == 401
+    names = lambda q: [c["first_name"] for c in client.get("/api/pos/saved-carts", params={"q": q}, headers=pin).json()["carts"]]
+    assert names("SARAH") == ["Sarah"] and names("tom@ex") == ["Tom"] and sorted(names("")) == ["Sarah", "Tom"]
+    c = client.get("/api/pos/saved-carts", params={"q": "sarah"}, headers=pin).json()["carts"][0]
+    assert c["email"] == "sarah.smith@example.com" and c["summary"] == {"photos": 3, "poses": 0, "prints": 1, "frames": 0}   # a single pose photo counts as a photo
+
+
 def test_an_in_store_sale_empties_their_saved_cart(client, main_module):
     import json as _json
     S3.put_object(Bucket="test-bucket", Key="meta/photographers.json",
@@ -140,7 +155,8 @@ def test_invoice_from_a_saved_cart(admin_client, client, main_module, monkeypatc
     assert body["prints"][0]["path"] == "images/2026-12-05/ski/DSC_0.JPG"
     assert body["portrait_singles"][0]["path"] == "images/p/b.jpg"
     made, mailed = [], []
-    monkeypatch.setattr(main_module, "_create_checkout", lambda b, **kw: made.append(b) or {"checkout_url": "https://pay/x", "total": 61.0})
+    monkeypatch.setattr(main_module, "_create_checkout", lambda b, **kw: made.append(b) or {
+        "checkout_url": "https://pay/x", "total": 61.0, "normal_total": 61.0, "order_id": 77})
     monkeypatch.setattr(main_module, "_send_invoice_email", lambda *a: mailed.append(a) or True)
     r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"first_name": "Sarah", "last_name": "Smith"})
     assert r.status_code == 400 and "ZIP" in r.json()["error"]                 # prints need an address
@@ -152,24 +168,92 @@ def test_invoice_from_a_saved_cart(admin_client, client, main_module, monkeypatc
     assert client.post(f"/api/admin/saved-carts/{cid}/invoice", json={}).status_code == 401
 
 
-def test_invoice_custom_price_adds_a_price_adjustment(admin_client, client, main_module, monkeypatch):
-    sent = []
-    monkeypatch.setattr(main_module, "_price_order", lambda b, pp=None: {
-        "line_items": [{"name": "Digital Photos", "total": "75.00"}], "fee_lines": [], "coupon_lines": [], "meta": [],
-        "summary": {"total": 75.0, "shipping": 0}})
+class _WC:
+    """A fake WooCommerce: orders created, read and cancelled."""
+    def __init__(self, main_module, monkeypatch):
+        self.orders, self.sent = {}, []
+        wc = self
 
-    class _Resp:
-        status_code = 201
-        def json(self):
-            return {"id": 5, "order_key": "k"}
-    monkeypatch.setattr(main_module.http_requests, "post", lambda url, json=None, **kw: sent.append(json) or _Resp())
+        class Resp:
+            def __init__(self, code, data):
+                self.status_code, self._data, self.text = code, data, ""
+                self.ok = code < 400
+            def json(self):
+                return self._data
+
+        def post(url, json=None, **kw):
+            wc.sent.append(json)
+            oid = 100 + len(wc.orders)
+            wc.orders[oid] = "pending"
+            return Resp(201, {"id": oid, "order_key": "k"})
+
+        def get(url, params=None, **kw):
+            if url.endswith("/orders"):
+                return Resp(200, [{"id": i, "status": st} for i, st in wc.orders.items()])
+            return Resp(200, {"status": wc.orders[int(url.rsplit("/", 1)[1])]})
+
+        def put(url, json=None, **kw):
+            wc.orders[int(url.rsplit("/", 1)[1])] = json["status"]
+            return Resp(200, {})
+        monkeypatch.setattr(main_module.http_requests, "post", post)
+        monkeypatch.setattr(main_module.http_requests, "get", get)
+        monkeypatch.setattr(main_module.http_requests, "put", put)
+
+
+def _priced(monkeypatch, main_module):
+    monkeypatch.setattr(main_module, "_price_order", lambda b, pp=None: {
+        "line_items": [{"product_id": 1152, "name": "Digital Photos — Ski", "total": "50.00", "subtotal": "50.00"},
+                       {"product_id": 1156, "name": "8x10 Print — DSC_0.JPG", "total": "25.00", "subtotal": "25.00"}],
+        "fee_lines": [{"name": "Shipping", "total": "8.00"}], "coupon_lines": [], "meta": [],
+        "summary": {"total": 83.0, "shipping": 8.0}})
     monkeypatch.setattr(main_module, "_send_invoice_email", lambda *a: True)
-    _save(client, cart=_cart(prints=0))
+
+
+ADDR = {"address_1": "1 Lone Peak Dr", "city": "Big Sky", "state": "MT", "postcode": "59716"}
+
+
+def test_invoice_is_itemized_with_editable_prices_and_added_items(admin_client, client, main_module, monkeypatch):
+    for o in S3.list_objects_v2(Bucket="test-bucket", Prefix="invoices/").get("Contents", []):
+        S3.delete_object(Bucket="test-bucket", Key=o["Key"])
+    _priced(monkeypatch, main_module)
+    wc = _WC(main_module, monkeypatch)
+    _save(client)
     cid = main_module._saved_cart_id(EMAIL)
-    r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"custom_price": "60"})
-    assert r.json()["total"] == 60.0 and r.json()["normal_total"] == 75.0 and r.json()["custom"]
-    assert {"name": "Price adjustment", "total": "-15.00"} in sent[0]["fee_lines"]
-    assert admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"custom_price": "abc"}).status_code == 400
+    form = admin_client.get(f"/api/admin/saved-carts/{cid}/invoice-lines").json()
+    assert form["lines"] == [{"name": "Digital Photos — Ski", "price": 50.0}, {"name": "8x10 Print — DSC_0.JPG", "price": 25.0}]
+    assert form["shipping"] == 8.0 and form["ships"]
+    r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={
+        **ADDR, "prices": [40, 0], "extra": [{"name": "Photo retouching", "price": "15"}], "shipping": "5"})
+    assert r.status_code == 200 and r.json()["total"] == 60.0 and r.json()["normal_total"] == 83.0
+    order = wc.sent[0]
+    # every item at its invoice price, the added item, the new shipping, and no adjustment line
+    assert [(ln["name"], ln["total"]) for ln in order["line_items"]] == [
+        ("Digital Photos — Ski", "40.00"), ("8x10 Print — DSC_0.JPG", "0.00"), ("Photo retouching", "15.00")]
+    assert order["fee_lines"] == [{"name": "Shipping", "total": "5.00"}]
+    assert {"key": "_normal_price", "value": "83.00"} in order["meta_data"]
+    bad = lambda body: admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={**ADDR, **body})
+    assert bad({"prices": [40]}).status_code == 400                       # the cart changed since the form opened
+    assert bad({"prices": ["abc", 1]}).status_code == 400
+    assert bad({"extra": [{"name": "", "price": 5}]}).status_code == 400
+    # the Invoices list shows it with its status, and an unpaid one can be cancelled
+    inv = admin_client.get("/api/admin/invoices").json()["invoices"]
+    assert [(i["first_name"], i["total"], i["status"]) for i in inv] == [("Sarah", 60.0, "Waiting for payment")]
+    oid = inv[0]["order_id"]
+    assert client.post(f"/api/admin/invoices/{oid}/cancel").status_code == 401
+    assert admin_client.post(f"/api/admin/invoices/{oid}/cancel").json() == {"cancelled": True}
+    assert admin_client.get("/api/admin/invoices").json()["invoices"][0]["status"] == "Cancelled"
+    wc.orders[oid] = "processing"                                         # paid: can't be cancelled
+    assert admin_client.post(f"/api/admin/invoices/{oid}/cancel").status_code == 400
+
+
+def test_invoice_at_normal_prices_sends_the_cart_unchanged(admin_client, client, main_module, monkeypatch):
+    _priced(monkeypatch, main_module)
+    wc = _WC(main_module, monkeypatch)
+    _save(client)
+    r = admin_client.post(f"/api/admin/saved-carts/{main_module._saved_cart_id(EMAIL)}/invoice", json=ADDR)
+    assert r.json()["total"] == 83.0
+    assert [ln["total"] for ln in wc.sent[0]["line_items"]] == ["50.00", "25.00"]
+    assert not any(m["key"] == "_normal_price" for m in wc.sent[0]["meta_data"])
 
 
 def test_reminder_email_and_its_link(admin_client, client, main_module, monkeypatch):
