@@ -4204,7 +4204,7 @@ def _saved_cart_list() -> list:
 # action photos uploaded with that label are flagged item["partner"] = <partner id>.
 PARTNERS_KEY = "meta/partners.json"
 _PARTNER_FIELDS = {                 # every partner has these (older saved partners get the defaults)
-    "slug": "",                     # page address: /partner/<slug>
+    "slug": "",                     # page address: /<slug> (e.g. /eaglemount)
     "password": "",                 # shared password; the page stays closed while it's empty
     "welcome": "",                  # line at the top of the page
     "value_per_photo": 25,          # in-kind donation value of each photo downloaded
@@ -4831,3 +4831,7 @@ app.include_router(_routes_partners.router)
 
 from routes import saved_carts as _routes_saved_carts  # noqa: E402
 app.include_router(_routes_saved_carts.router)
+
+# Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
+# every other page has to be registered before them
+app.include_router(_routes_partners.page_router)

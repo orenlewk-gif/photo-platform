@@ -2,26 +2,26 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>__PARTNER__ Photos — Crystal Images</title>
+<link href="/static/fonts/fonts.css" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d1f2d;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh}
-header{padding:1.1rem 1rem .9rem;max-width:1400px;margin:0 auto}
-.brand{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.45)}
-h1{color:#F2C94C;font-size:1.3rem;margin:.2rem 0 .35rem}
+body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:100vh}
+header{padding:1.4rem 1rem .9rem;max-width:1400px;margin:0 auto}
+h1{color:#F5C518;font-size:1.3rem;margin:.2rem 0 .35rem}
 .welcome{font-size:.9rem;color:rgba(255,255,255,.75);line-height:1.5}
-.code{margin-top:.8rem;background:rgba(242,201,76,.1);border:1px solid rgba(242,201,76,.35);border-radius:8px;
+.code{margin-top:.8rem;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.35);border-radius:8px;
   padding:.65rem .85rem;font-size:.86rem;line-height:1.5}
-.code b{color:#F2C94C;letter-spacing:.04em}
-.bar{position:sticky;top:0;z-index:20;background:rgba(13,31,45,.96);backdrop-filter:blur(6px);
+.code b{color:#F5C518;letter-spacing:.04em}
+.bar{position:sticky;top:0;z-index:20;background:inherit;
   border-bottom:1px solid rgba(255,255,255,.08)}
 .bar-in{max-width:1400px;margin:0 auto;padding:.6rem 1rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
 .count{font-size:.85rem;color:rgba(255,255,255,.7);margin-right:auto}
-.btn{background:#F2C94C;color:#0d1f2d;border:none;border-radius:7px;padding:.5rem .95rem;font-weight:700;
+.btn{background:#F5C518;color:#0c2336;border:none;border-radius:7px;padding:.5rem .95rem;font-weight:700;
   font-size:.84rem;cursor:pointer;white-space:nowrap}
 .btn.alt{background:rgba(255,255,255,.1);color:#fff}
 .btn:disabled{opacity:.45;cursor:default}
 .range{display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:rgba(255,255,255,.75);cursor:pointer;user-select:none}
-.range input{accent-color:#F2C94C;width:16px;height:16px}
+.range input{accent-color:#F5C518;width:16px;height:16px}
 main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
 .day{margin-top:1.3rem}
 .day-head{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem}
@@ -31,25 +31,25 @@ main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
 .ph{position:relative;aspect-ratio:3/2;border-radius:6px;overflow:hidden;background:#111;cursor:pointer;
   -webkit-tap-highlight-color:transparent;border:2px solid transparent}
 .ph img{width:100%;height:100%;object-fit:cover;display:block}
-.ph.sel{border-color:#F2C94C}
+.ph.sel{border-color:#F5C518}
 .ph.sel img{opacity:.75}
 .chk{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;
   background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700}
-.ph.sel .chk{background:#F2C94C;border-color:#F2C94C;color:#0d1f2d}
+.ph.sel .chk{background:#F5C518;border-color:#F5C518;color:#0c2336}
 .zoom{position:absolute;bottom:6px;right:6px;border:none;border-radius:5px;background:rgba(0,0,0,.6);color:#fff;
   font-size:.7rem;font-weight:700;padding:3px 8px;cursor:pointer}
 .empty{text-align:center;color:rgba(255,255,255,.6);padding:3rem 1rem;font-size:.92rem;line-height:1.6}
-#lb{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:50;display:none;flex-direction:column;
+#lb{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:100000;display:none;flex-direction:column;
   align-items:center;justify-content:center}
 #lb.open{display:flex}
 #lb img{max-width:94vw;max-height:80vh;object-fit:contain;border-radius:4px}
 #lb-bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem}
 #lb-nav{display:flex;gap:.6rem;margin-top:.8rem}
-#pm{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:60;display:none;align-items:flex-start;justify-content:center;
+#pm{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100001;display:none;align-items:flex-start;justify-content:center;
   overflow-y:auto;padding:2rem 1rem}
 #pm.open{display:flex}
 .pm-box{background:#12283a;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:100%;max-width:640px;padding:1.1rem 1.1rem 1rem}
-.pm-title{font-size:1.1rem;font-weight:700;color:#F2C94C}
+.pm-title{font-size:1.1rem;font-weight:700;color:#F5C518}
 .pm-sub{font-size:.8rem;color:rgba(255,255,255,.6);margin:.25rem 0 .9rem;line-height:1.5}
 .pm-row{display:flex;align-items:center;gap:.65rem;padding:.55rem 0;border-top:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
 .pm-row img{width:64px;height:44px;object-fit:cover;border-radius:4px;background:#111}
@@ -64,10 +64,12 @@ main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
 .pm-total{margin-right:auto;font-weight:700}
 .save-hint{width:100%;font-size:.8rem;color:rgba(255,255,255,.7)}
 .foot{text-align:center;font-size:.75rem;color:rgba(255,255,255,.35);padding:1rem}
-</style></head>
+</style>
+<link rel="stylesheet" href="/static/theme-frontend.css">
+</head>
 <body>
+__SITE_HEADER__
 <header>
-  <div class="brand">Crystal Images</div>
   <h1>__PARTNER__ Photos</h1>
   <div class="welcome">__WELCOME__</div>
   <div class="code" id="code" style="display:none"></div>

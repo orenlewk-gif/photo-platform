@@ -2,26 +2,29 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>__PARTNER__ Photos — Crystal Images</title>
+<link href="/static/fonts/fonts.css" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0d1f2d;color:#fff;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;
-  display:flex;align-items:center;justify-content:center;padding:1.5rem}
+body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:100vh}
+.wrap{display:flex;justify-content:center;padding:3rem 1.5rem}
 .card{width:100%;max-width:380px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);
   border-radius:12px;padding:1.75rem 1.5rem;text-align:center}
-.brand{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.45);margin-bottom:.4rem}
-h1{color:#F2C94C;font-size:1.35rem;margin-bottom:.4rem}
+h1{color:#F5C518;font-size:1.35rem;margin-bottom:.4rem}
 p{font-size:.88rem;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:1.1rem}
 label{display:block;text-align:left;font-size:.78rem;color:rgba(255,255,255,.6);margin-bottom:.35rem}
 input{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);border-radius:8px;
   color:#fff;font-size:1rem;padding:.7rem .8rem;outline:none}
-input:focus{border-color:#F2C94C}
-button{width:100%;margin-top:.9rem;background:#F2C94C;color:#0d1f2d;border:none;border-radius:8px;
+input:focus{border-color:#F5C518}
+.card button{width:100%;margin-top:.9rem;background:#F5C518;color:#0c2336;border:none;border-radius:8px;
   font-weight:700;font-size:.95rem;padding:.75rem;cursor:pointer}
 .err{color:#ff8a80;font-size:.85rem;margin-top:.8rem;min-height:1.1em}
-</style></head>
+</style>
+<link rel="stylesheet" href="/static/theme-frontend.css">
+</head>
 <body>
-<form class="card" method="post" action="/partner/__SLUG__/login">
-  <div class="brand">Crystal Images</div>
+__SITE_HEADER__
+<div class="wrap">
+<form class="card" method="post" action="/__SLUG__">
   <h1>__PARTNER__ Photos</h1>
   <p>Enter the password you were given to see and download your photos.</p>
   <label for="pw">Password</label>
@@ -29,4 +32,5 @@ button{width:100%;margin-top:.9rem;background:#F2C94C;color:#0d1f2d;border:none;
   <button type="submit">Open Photos</button>
   <div class="err" role="alert">__ERROR__</div>
 </form>
+</div>
 </body></html>

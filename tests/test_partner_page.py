@@ -81,8 +81,8 @@ def pos(main_module):
 @pytest.fixture()
 def member(main_module):
     c = TestClient(main_module.app)
-    r = c.post("/partner/eaglemount/login", data={"password": PW}, follow_redirects=False)
-    assert r.status_code == 303
+    r = c.post("/eaglemount", data={"password": PW}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/eaglemount"
     return c
 
 
@@ -117,23 +117,38 @@ def test_they_cant_be_bought_online(main_module):
 # ── The password page ─────────────────────────────────────────────────────────
 
 def test_page_needs_the_password(client, main_module):
-    page = client.get("/partner/eaglemount")
+    page = client.get("/eaglemount")
     assert page.status_code == 200 and 'type="password"' in page.text and "noindex" in page.text
+    assert 'action="/eaglemount"' in page.text and 'class="custom-header"' in page.text     # the site header
     assert client.get("/api/partner/eaglemount/photos").status_code == 401
-    bad = client.post("/partner/eaglemount/login", data={"password": "nope"})
+    bad = client.post("/eaglemount", data={"password": "nope"})
     assert bad.status_code == 401 and "isn't right" in bad.text
-    assert client.get("/eaglemount", follow_redirects=False).headers["location"] == "/partner/eaglemount"
+    # the old /partner/ address (and any capitalization) goes to the short one
+    assert client.get("/partner/eaglemount", follow_redirects=False).headers["location"] == "/eaglemount"
+    assert client.get("/partner/EagleMount", follow_redirects=False).headers["location"] == "/eaglemount"
+    assert client.get("/EagleMount").status_code == 200
+
+
+def test_short_address_leaves_every_other_address_alone(client, main_module):
+    # anything that isn't a partner keeps the normal not-found answer
+    for path in ("/nothing-here", "/x.php", "/partner/nothing-here"):
+        assert client.get(path).status_code == 404
+    assert client.get("/nothing-here").json() == {"detail": "Not Found"}
+    assert client.post("/nothing-here", data={"password": "x"}).status_code == 404
+    # real pages registered before the partner page still answer at their own address
+    assert client.get("/privacy").status_code == 200
+    assert client.get("/healthz").status_code == 200
 
 
 def test_page_is_closed_until_a_password_is_set(client, main_module):
     _partners(password="")
     main_module._partners_doc.cache["data"] = None
-    assert client.get("/partner/eaglemount").status_code == 404
-    assert client.post("/partner/eaglemount/login", data={"password": ""}).status_code == 404
+    assert client.get("/eaglemount").status_code == 404
+    assert client.post("/eaglemount", data={"password": ""}).status_code == 404
 
 
 def test_signed_in_member_sees_their_photos_by_day(member):
-    page = member.get("/partner/eaglemount")
+    page = member.get("/eaglemount")
     assert page.status_code == 200 and "Welcome!" in page.text and "Download all from this day" in page.text
     d = member.get("/api/partner/eaglemount/photos").json()
     assert [day["date"] for day in d["days"]] == ["2026-12-07", DAY2, DAY1]          # newest first
@@ -148,8 +163,8 @@ def test_changing_the_password_signs_everyone_out(member, main_module):
 
 def test_too_many_wrong_passwords_lock_out(client, main_module):
     for _ in range(main_module._pin_fail_limiter.max_calls):
-        client.post("/partner/eaglemount/login", data={"password": "nope"})
-    assert client.post("/partner/eaglemount/login", data={"password": PW}).status_code == 429
+        client.post("/eaglemount", data={"password": "nope"})
+    assert client.post("/eaglemount", data={"password": PW}).status_code == 429
 
 
 # ── Downloads and the donation log ────────────────────────────────────────────
@@ -218,7 +233,7 @@ def test_owner_edits_partner_settings(admin_client, client, member, main_module)
     r = admin_client.post("/api/admin/partner-settings", json={"partners": [p]})
     assert r.status_code == 200 and r.json()["partners"][0]["family_code"] == "EAGLEMOUNT25"
     main_module._partners_doc.cache["data"] = None
-    assert "Hi Eagle Mount!" in member.get("/partner/eaglemount").text
+    assert "Hi Eagle Mount!" in member.get("/eaglemount").text
     assert member.get("/api/partner/eaglemount/photos").json()["family_code_message"] == "Families: EAGLEMOUNT25 saves 25%"
     assert client.get("/api/admin/partner-settings").status_code == 401
 

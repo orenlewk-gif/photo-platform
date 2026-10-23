@@ -780,7 +780,7 @@ async function loadPartners() {
     <div class="settings-section">
       <div class="section-title">${esc(p.name)}</div>
       <div class="section-desc">Their participants download their photos free on
-        <a href="/partner/${escAttr(p.slug)}" target="_blank" style="color:#F5C518">${esc(_siteUrl)}/partner/${esc(p.slug)}</a>.
+        <a href="/${escAttr(p.slug)}" target="_blank" style="color:#F5C518">${esc(_siteUrl)}/${esc(p.slug)}</a>.
         Photographers mark those photos while culling with the color label below; they never show in the public gallery.</div>
       <div class="field-row"><label class="field-label" for="pt-name-${i}">Name</label>
         <input class="field-input" id="pt-name-${i}" value="${escAttr(p.name)}"></div>

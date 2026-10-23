@@ -1,0 +1,89 @@
+<style>
+/* The site header (same look as the gallery's; the theme color comes from /static/theme-frontend.css) */
+.custom-header { position:relative; width:100%; height:120px; background:rgba(4,50,73,0.95); display:flex; align-items:center; justify-content:space-between; padding:0 40px; box-sizing:border-box; font-family:'Inter',Arial,sans-serif; z-index:9999; }
+.header-inner { width:100%; display:flex; align-items:center; justify-content:space-between; }
+.logo img { height:65px; width:auto; }
+.nav-center { position:absolute; left:50%; transform:translateX(-50%); white-space:nowrap; }
+.nav-center ul { list-style:none; margin:0; padding:0; display:flex; align-items:center; }
+.nav-center li { position:relative; margin:0 10px; z-index:10000; }
+.nav-center a { color:#ffffff; text-decoration:none; font-size:14px; letter-spacing:0.3px; padding:8px 4px; }
+.nav-center a:hover { opacity:0.7; }
+.nav-title { color:#ffffff; font-size:14px; letter-spacing:0.3px; padding:8px 4px; cursor:default; }
+.submenu { display:none; position:absolute; top:100%; left:0; background:#ffffff; min-width:180px; box-shadow:0 10px 25px rgba(0,0,0,0.2); z-index:10001; }
+.submenu a { display:block; padding:10px; color:#333; font-size:14px; }
+.submenu a:hover { background:#f5f5f5; }
+.nav-center li:hover .submenu { display:block; }
+.dropdown { position:relative; }
+.dropdown button { background:transparent; border:1px solid #ffffff; color:#ffffff; padding:6px 12px; font-size:13px; cursor:pointer; font-family:'Inter',Arial,sans-serif; }
+.dropdown-content { display:none; position:absolute; right:0; background:#ffffff; min-width:200px; box-shadow:0 10px 25px rgba(0,0,0,0.2); z-index:10001; }
+.dropdown-content a { display:block; padding:10px; color:#333; text-decoration:none; font-size:14px; }
+.dropdown-content a:hover { background:#f5f5f5; }
+.dropdown:hover .dropdown-content { display:block; }
+@media(max-width:900px){ .nav-center { display:none; } }
+</style>
+<div class="custom-header">
+  <div class="header-inner">
+    <div class="logo">
+      <img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="Crystal Images Logo">
+    </div>
+    <div class="nav-center">
+      <ul>
+        <li><a href="https://bigskyphotos.com/">Home</a></li>
+        <li><a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a></li>
+        <li>
+          <a href="/">Find Your Photos</a>
+          <div class="submenu">
+            <a href="/">Summer 2026</a>
+            <a href="https://crystalimages.zenfoliosite.com/big-sky-resort-winter-2025-2026" target="_blank" rel="noopener">Winter 25–26</a>
+          </div>
+        </li>
+        <li>
+          <span class="nav-title">Services</span>
+          <div class="submenu">
+            <a href="https://bigskyphotos.com/action-photos/">Action Photos</a>
+            <a href="https://bigskyphotos.com/on-mountain-portraits/">On Mountain Portraits</a>
+            <a href="https://bigskyphotos.com/base-area-sessions/">Base Area Sessions</a>
+            <a href="https://bigskyphotos.com/proposals/">Proposals</a>
+            <a href="https://bigskyphotos.com/family-portraits/">Family Portrait Sessions</a>
+            <a href="https://bigskyphotos.com/events/">Events</a>
+          </div>
+        </li>
+        <li>
+          <span class="nav-title">Shop</span>
+          <div class="submenu">
+            <a href="/">Big Sky Resort Photos</a>
+            <a href="/?view=frames">Frames</a>
+          </div>
+        </li>
+        <li>
+          <a href="https://bigskyphotos.com/About-us/">About Us</a>
+          <div class="submenu">
+            <a href="https://bigskyphotos.com/frequently-asked-questions/">FAQ</a>
+          </div>
+        </li>
+      </ul>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="dropdown">
+        <button>Menu ▾</button>
+        <div class="dropdown-content">
+          <a href="https://bigskyphotos.com/">Home</a>
+          <a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a>
+          <a href="/">Find Your Photos</a>
+          <a href="/">— Summer 2026</a>
+          <a href="https://crystalimages.zenfoliosite.com/big-sky-resort-winter-2025-2026" target="_blank" rel="noopener">— Winter 25–26</a>
+          <a href="https://bigskyphotos.com/action-photos/">— Action Photos</a>
+          <a href="https://bigskyphotos.com/on-mountain-portraits/">— On Mountain Portraits</a>
+          <a href="https://bigskyphotos.com/base-area-sessions/">— Base Area Sessions</a>
+          <a href="https://bigskyphotos.com/proposals/">— Proposals</a>
+          <a href="https://bigskyphotos.com/family-portraits/">— Family Portrait Sessions</a>
+          <a href="https://bigskyphotos.com/events/">— Events</a>
+          <a href="/">Shop — Big Sky Resort Photos</a>
+          <a href="/?view=frames">Shop — Frames</a>
+          <a href="https://bigskyphotos.com/About-us/">About Us</a>
+          <a href="https://bigskyphotos.com/frequently-asked-questions/">— FAQ</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

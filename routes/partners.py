@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from html import escape
 from io import BytesIO
 
-from fastapi import APIRouter, Body, Form, Query, Request
+from fastapi import APIRouter, Body, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from PIL import Image
 
@@ -27,29 +27,52 @@ def _closed():
     return HTMLResponse(main._pkg_error("This page isn't available.", 404), status_code=404)
 
 
+def _site_header() -> str:
+    with open("templates/site_header.html", encoding="utf-8") as f:
+        return f.read()
+
+
 def _page_head(p: dict) -> dict:
-    return {"partner": escape(p["name"]), "slug": escape(p["slug"]), "welcome": escape(p.get("welcome") or "")}
+    return {"partner": escape(p["name"]), "slug": escape(p["slug"]), "welcome": escape(p.get("welcome") or ""),
+            "site_header": _site_header()}
 
 
-@router.get("/eaglemount", include_in_schema=False)
-def eaglemount_short_link():
-    return RedirectResponse("/partner/eaglemount")
-
-
-@router.get("/partner/{slug}", response_class=HTMLResponse)
-def partner_page(slug: str, request: Request):
+@router.get("/partner/{slug}", include_in_schema=False)
+def old_partner_address(slug: str):
+    """The page used to live at /partner/<slug>; old links and bookmarks go to the short address."""
     p = main._partner_by_slug(slug)
-    if not p or not p.get("password"):
+    if not p:
+        return _closed()
+    return RedirectResponse(f"/{p['slug']}", status_code=301)
+
+
+# The page itself lives at the short address photos.bigskyphotos.com/<slug> (e.g. /eaglemount).
+# These catch-all routes are on their own router, included after every other one in main.py, so
+# they never take an address from another page; anything that isn't a partner gets the normal 404.
+page_router = APIRouter()
+
+
+def _partner_or_404(slug: str):
+    p = main._partner_by_slug(slug)
+    if not p:
+        raise HTTPException(status_code=404)
+    return p
+
+
+@page_router.get("/{slug}", response_class=HTMLResponse, include_in_schema=False)
+def partner_page(slug: str, request: Request):
+    p = _partner_or_404(slug)
+    if not p.get("password"):
         return _closed()
     if not main._partner_signed_in(request, p):
         return HTMLResponse(render_page("partner_login.html", **_page_head(p), error=""))
     return HTMLResponse(render_page("partner.html", **_page_head(p)))
 
 
-@router.post("/partner/{slug}/login", response_class=HTMLResponse)
+@page_router.post("/{slug}", response_class=HTMLResponse, include_in_schema=False)
 def partner_login(slug: str, request: Request, password: str = Form("")):
-    p = main._partner_by_slug(slug)
-    if not p or not p.get("password"):
+    p = _partner_or_404(slug)
+    if not p.get("password"):
         return _closed()
     if main._pin_locked_out(request):
         return HTMLResponse(render_page("partner_login.html", **_page_head(p),
@@ -59,7 +82,7 @@ def partner_login(slug: str, request: Request, password: str = Form("")):
         return HTMLResponse(render_page("partner_login.html", **_page_head(p),
                                         error="That password isn't right."), status_code=401)
     token, max_age = main._partner_token(p)
-    r = RedirectResponse(f"/partner/{p['slug']}", status_code=303)
+    r = RedirectResponse(f"/{p['slug']}", status_code=303)
     r.set_cookie(main._partner_cookie_name(p), token, max_age=max_age, httponly=True, samesite="lax")
     return r
 
