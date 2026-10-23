@@ -123,10 +123,8 @@ def test_page_needs_the_password(client, main_module):
     assert client.get("/api/partner/eaglemount/photos").status_code == 401
     bad = client.post("/eaglemount", data={"password": "nope"})
     assert bad.status_code == 401 and "isn't right" in bad.text
-    # the old /partner/ address (and any capitalization) goes to the short one
-    assert client.get("/partner/eaglemount", follow_redirects=False).headers["location"] == "/eaglemount"
-    assert client.get("/partner/EagleMount", follow_redirects=False).headers["location"] == "/eaglemount"
-    assert client.get("/EagleMount").status_code == 200
+    assert client.get("/EagleMount").status_code == 200                      # any capitalization
+    assert client.get("/partner/eaglemount").status_code == 404              # the old address is gone
 
 
 def test_short_address_leaves_every_other_address_alone(client, main_module):

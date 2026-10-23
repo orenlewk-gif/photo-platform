@@ -37,15 +37,6 @@ def _page_head(p: dict) -> dict:
             "site_header": _site_header()}
 
 
-@router.get("/partner/{slug}", include_in_schema=False)
-def old_partner_address(slug: str):
-    """The page used to live at /partner/<slug>; old links and bookmarks go to the short address."""
-    p = main._partner_by_slug(slug)
-    if not p:
-        return _closed()
-    return RedirectResponse(f"/{p['slug']}", status_code=301)
-
-
 # The page itself lives at the short address photos.bigskyphotos.com/<slug> (e.g. /eaglemount).
 # These catch-all routes are on their own router, included after every other one in main.py, so
 # they never take an address from another page; anything that isn't a partner gets the normal 404.
