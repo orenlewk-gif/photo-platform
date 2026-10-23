@@ -90,7 +90,7 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
 
 @router.post("/api/admin/set-photos-partner")
 def admin_set_photos_partner(request: Request, body: dict = Body(...)):
-    """Indexing page: mark photos as a partner's (Eagle Mount), or take the mark off (partner "").
+    """Studio: mark photos as a partner's (Eagle Mount), or take the mark off (partner "").
     For photos missed at upload. Marked photos leave the public gallery and appear on the
     partner's page; unmarked ones go back to the gallery. Portraits are never partner photos."""
     if not main._admin_authed(request):
@@ -114,9 +114,10 @@ def admin_set_photos_partner(request: Request, body: dict = Body(...)):
             item.pop("partner", None)
         changed.append(item)
     if changed:
-        main._save_photo_list()
+        main._photo_list_changed()          # the gallery and the partner page change right away
+        main._save_photo_list_soon()        # the whole list is saved in the background
         if partner:
-            threading.Thread(target=main._fill_taken_times, args=(changed,), daemon=True).start()
+            threading.Thread(target=main._prepare_partner_photos, args=(changed,), daemon=True).start()
     return {"updated": len(changed), "skipped_portraits": skipped, "paths": [i["path"] for i in changed]}
 
 
@@ -486,11 +487,12 @@ async def admin_upload_index(request: Request):
                               Body=json.dumps(merged).encode(), ContentType="application/json")
             except Exception:
                 pass
-    # Partner photos are shown in the order they were taken: read those times now, in the background
+    # Partner photos: capture times (their page shows them in the order taken) and the large
+    # version for the page's enlarged view, made now in the background
     keyset = set(keys)
     marked = [i for i in main.data if i.get("partner") and i["path"] in keyset]
     if marked:
-        threading.Thread(target=main._fill_taken_times, args=(marked,), daemon=True).start()
+        threading.Thread(target=main._prepare_partner_photos, args=(marked,), daemon=True).start()
     # Thumbnails for every uploaded photo (drafts too — the studio shows them)
     thumbs_job = main._queue_new_photo_thumbs(keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder,
@@ -1129,6 +1131,7 @@ def api_admin_folder_photos(
             "path":     item["path"],
             "filename": os.path.basename(item["path"]),
             "is_draft": bool(item.get("draft")),
+            "partner":  item.get("partner", ""),
             "url":      f"/api/admin/photo?path={_quote(item['path'])}&size=medium",
         })
     photos.sort(key=lambda x: natural_sort_key(x["path"]))
@@ -1442,5 +1445,30 @@ def admin_partners(request: Request):
     """Partner programs and the color label photographers use to mark their photos."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    # Only what the upload page needs (never the page password)
-    return {"partners": [{k: p.get(k) for k in ("id", "name", "label")} for p in main._load_partners()]}
+    # Only what the studio needs (never the page password), with how many photos each has
+    counts = {}
+    for item in main.data:
+        if item.get("partner"):
+            counts[item["partner"]] = counts.get(item["partner"], 0) + 1
+    return {"partners": [{**{k: p.get(k) for k in ("id", "name", "label", "slug")}, "count": counts.get(p["id"], 0)}
+                         for p in main._load_partners()]}
+
+
+@router.get("/api/admin/partner-photos")
+def admin_partner_photos(request: Request, partner: str = Query("")):
+    """Studio: the partner's folder in the sidebar — every photo marked for them (drafts too),
+    by day, newest day first, in the order taken."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if partner not in main._partner_ids():
+        return JSONResponse(status_code=404, content={"error": "Unknown partner"})
+    by_day = {}
+    for item in main.data:
+        if item.get("partner") == partner:
+            by_day.setdefault(item["date"], []).append(item)
+    days = [{"date": d, "photos": [{"path": i["path"], "filename": os.path.basename(i["path"]),
+                                    "location": i.get("location", ""), "folder": i.get("group") or i.get("last_name") or "",
+                                    "is_draft": bool(i.get("draft"))}
+                                   for i in sorted(items, key=main._taken_order)]}
+            for d, items in sorted(by_day.items(), reverse=True)]
+    return {"days": days, "total": sum(len(d["photos"]) for d in days)}

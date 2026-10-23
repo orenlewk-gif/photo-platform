@@ -118,17 +118,17 @@ def partner_thumb(slug: str, request: Request, path: str = Query("")):
 
 @router.get("/partner/{slug}/view")
 def partner_view(slug: str, request: Request, path: str = Query("")):
-    """The enlarged view: 1800 px, no watermark."""
+    """The enlarged view: 1800 px, no watermark. Served from its stored copy (made when the
+    photo was marked or uploaded); the first view of an older photo makes it."""
     p = _signed_in_partner(slug, request)
     if not p or not main._partner_photo(p, path):
         return JSONResponse(status_code=404, content={"error": "Not found"})
-    obj = main.s3.get_object(Bucket=main.R2_BUCKET, Key=to_r2_key(path))
-    img = fix_orientation(Image.open(obj["Body"]).convert("RGB"))
-    img.thumbnail((1800, 1800), Image.LANCZOS)
-    buf = BytesIO()
-    img.save(buf, format="JPEG", quality=90, optimize=True)
-    buf.seek(0)
-    return StreamingResponse(buf, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+    key = to_r2_key(path)
+    link = main._stored_thumb_link(key, "large")
+    if link:
+        return main._thumb_redirect(link)
+    data = main._make_thumbs(key, ["large"])["large"]
+    return StreamingResponse(BytesIO(data), media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/partner/{slug}/file")

@@ -1,12 +1,15 @@
 """Partner programs (Eagle Mount): marked photos stay out of the public gallery but on the POS,
 and participants download them free on a password-protected page; downloads are logged."""
 import json
+import time
 from io import BytesIO
 
 import boto3
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+
+from core.text import to_r2_key
 
 S3 = boto3.client("s3", region_name="us-east-1")
 DAY1, DAY2 = "2026-12-05", "2026-12-06"
@@ -147,7 +150,7 @@ def test_page_is_closed_until_a_password_is_set(client, main_module):
 
 def test_signed_in_member_sees_their_photos_by_day(member):
     page = member.get("/eaglemount")
-    assert page.status_code == 200 and "Welcome!" in page.text and "Download all from this day" in page.text
+    assert page.status_code == 200 and "Welcome!" in page.text and "Select a range" in page.text and "Order prints" in page.text
     d = member.get("/api/partner/eaglemount/photos").json()
     assert [day["date"] for day in d["days"]] == ["2026-12-07", DAY2, DAY1]          # newest first
     assert [p["filename"] for p in d["days"][2]["photos"]] == ["DSC_0003.JPG", "DSC_0002.JPG"]   # by time taken
@@ -202,11 +205,20 @@ def test_download_a_selection_skips_anything_not_theirs(member):
 
 
 def test_member_thumbnails_and_enlarged_view_are_unwatermarked(member, main_module, monkeypatch):
-    marked = []
-    monkeypatch.setattr(main_module, "apply_watermark", lambda img, s="medium": marked.append(s) or img)
+    # Which stored versions the page asks for (watching the watermark itself picked up thumbnail
+    # work other tests left running in the background)
+    asked = []
+    real_make, real_demand = main_module._make_thumbs, main_module._thumb_on_demand
+    monkeypatch.setattr(main_module, "_make_thumbs", lambda key, variants, *a: asked.append(tuple(variants)) or real_make(key, variants, *a))
+    monkeypatch.setattr(main_module, "_thumb_on_demand", lambda key, v: asked.append(v) or real_demand(key, v))
     assert member.get("/partner/eaglemount/thumb", params={"path": PHOTOS[1]["path"]}).status_code == 200
     v = member.get("/partner/eaglemount/view", params={"path": PHOTOS[1]["path"]})
-    assert v.status_code == 200 and v.headers["content-type"] == "image/jpeg" and marked == []
+    assert v.status_code == 200 and v.headers["content-type"] == "image/jpeg"
+    assert "pos" in asked and ("large",) in asked
+    assert not main_module._THUMB_VARIANTS["pos"][3] and not main_module._THUMB_VARIANTS["large"][3]   # no watermark
+    # the large version was stored, so the next view goes straight to it
+    again = member.get("/partner/eaglemount/view", params={"path": PHOTOS[1]["path"]}, follow_redirects=False)
+    assert again.status_code == 302 and "nowm-large" in again.headers["location"]
 
 
 def test_capture_times_are_read_once_and_remembered(member, main_module, monkeypatch):
@@ -284,6 +296,51 @@ def test_marking_needs_login_a_real_partner_and_skips_portraits(admin_client, cl
     live_photos(PHOTOS + [portrait])
     r = admin_client.post("/api/admin/set-photos-partner", json={"paths": [portrait["path"]], "partner": "eagle-mount"})
     assert r.json() == {"updated": 0, "skipped_portraits": 1, "paths": []} and "partner" not in portrait
+
+
+def test_marking_answers_at_once_and_saves_in_the_background(admin_client, client, member, main_module, monkeypatch):
+    # The whole photo list isn't saved while the studio waits: the save is queued, and the
+    # gallery and the partner page change right away
+    queued = []
+    monkeypatch.setattr(main_module, "_save_photo_list_soon", lambda: queued.append(1))
+    monkeypatch.setattr(main_module, "_save_photo_list", lambda: pytest.fail("saved while the studio waited"))
+    monkeypatch.setattr(main_module, "_prepare_partner_photos", lambda items: None)
+    r = admin_client.post("/api/admin/set-photos-partner", json={"paths": [PHOTOS[0]["path"]], "partner": "eagle-mount"})
+    assert r.status_code == 200 and r.json()["updated"] == 1 and queued == [1]
+    assert client.get("/api/browse", params={"date": DAY1, "location": "Big Sky Ski School"}).json()["photos"] == []
+    day = next(d for d in member.get("/api/partner/eaglemount/photos").json()["days"] if d["date"] == DAY1)
+    assert "DSC_0001.JPG" in [p["filename"] for p in day["photos"]]
+
+
+def test_marked_photos_get_their_large_version_made_ahead(main_module):
+    main_module._prepare_partner_photos([PHOTOS[2]])
+    for _ in range(50):                                        # made in the background
+        if main_module._stored_thumb_link(to_r2_key(PHOTOS[2]["path"]), "large"):
+            break
+        time.sleep(0.05)
+    assert main_module._stored_thumb_link(to_r2_key(PHOTOS[2]["path"]), "large")
+    assert PHOTOS[2]["taken"] == "2026:12:05 09:15:00"
+
+
+def test_studio_partner_folder_lists_every_marked_photo_by_day(admin_client, client, main_module):
+    assert client.get("/api/admin/partner-photos", params={"partner": "eagle-mount"}).status_code == 401
+    assert admin_client.get("/api/admin/partner-photos", params={"partner": "nope"}).status_code == 404
+    PHOTOS[3]["draft"] = True                                  # drafts are in the studio's folder too
+    try:
+        d = admin_client.get("/api/admin/partner-photos", params={"partner": "eagle-mount"}).json()
+    finally:
+        PHOTOS[3].pop("draft")
+    assert d["total"] == 4 and [x["date"] for x in d["days"]] == ["2026-12-07", DAY2, DAY1]
+    assert [p["filename"] for p in d["days"][1]["photos"]] == ["DSC_0010.JPG"] and d["days"][1]["photos"][0]["is_draft"]
+    assert admin_client.get("/api/admin/partners").json()["partners"][0]["count"] == 4
+    folder = admin_client.get("/api/admin/folder/photos", params={"date": DAY1, "location": "Big Sky Ski School"}).json()
+    assert {p["filename"]: p["partner"] for p in folder["photos"]} == {"DSC_0001.JPG": "", "DSC_0002.JPG": "eagle-mount",
+                                                                       "DSC_0003.JPG": "eagle-mount"}
+
+
+def test_site_header_links_to_the_partner_page(client):
+    assert 'href="/eaglemount"' in client.get("/").text
+    assert 'href="/eaglemount"' in client.get("/eaglemount").text
 
 
 # ── Prints at the partner discount ────────────────────────────────────────────

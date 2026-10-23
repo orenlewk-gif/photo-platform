@@ -4,115 +4,243 @@
 <title>__PARTNER__ Photos — Crystal Images</title>
 <link href="/static/fonts/fonts.css" rel="stylesheet">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#0c2336;color:#fff;font-family:'DM Sans',sans-serif;min-height:100vh}
-header{padding:1.4rem 1rem .9rem;max-width:1400px;margin:0 auto}
-h1{color:#F5C518;font-size:1.3rem;margin:.2rem 0 .35rem}
-.welcome{font-size:.9rem;color:rgba(255,255,255,.75);line-height:1.5}
-.code{margin-top:.8rem;background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.35);border-radius:8px;
-  padding:.65rem .85rem;font-size:.86rem;line-height:1.5}
-.code b{color:#F5C518;letter-spacing:.04em}
-.bar{position:sticky;top:0;z-index:20;background:inherit;
-  border-bottom:1px solid rgba(255,255,255,.08)}
-.bar-in{max-width:1400px;margin:0 auto;padding:.6rem 1rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
-.count{font-size:.85rem;color:rgba(255,255,255,.7);margin-right:auto}
-.btn{background:#F5C518;color:#0c2336;border:none;border-radius:7px;padding:.5rem .95rem;font-weight:700;
-  font-size:.84rem;cursor:pointer;white-space:nowrap}
-.btn.alt{background:rgba(255,255,255,.1);color:#fff}
-.btn:disabled{opacity:.45;cursor:default}
-.range{display:flex;align-items:center;gap:.4rem;font-size:.82rem;color:rgba(255,255,255,.75);cursor:pointer;user-select:none}
-.range input{accent-color:#F5C518;width:16px;height:16px}
-main{max-width:1400px;margin:0 auto;padding:.4rem 1rem 3rem}
-.day{margin-top:1.3rem}
-.day-head{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem}
-.day-title{font-size:1.02rem;font-weight:700}
-.day-count{font-size:.8rem;color:rgba(255,255,255,.5);margin-right:auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px}
-.ph{position:relative;aspect-ratio:3/2;border-radius:6px;overflow:hidden;background:#111;cursor:pointer;
-  -webkit-tap-highlight-color:transparent;border:2px solid transparent}
-.ph img{width:100%;height:100%;object-fit:cover;display:block}
-.ph.sel{border-color:#F5C518}
-.ph.sel img{opacity:.75}
-.chk{position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;border:2px solid #fff;
-  background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700}
-.ph.sel .chk{background:#F5C518;border-color:#F5C518;color:#0c2336}
-.zoom{position:absolute;bottom:6px;right:6px;border:none;border-radius:5px;background:rgba(0,0,0,.6);color:#fff;
-  font-size:.7rem;font-weight:700;padding:3px 8px;cursor:pointer}
-.empty{text-align:center;color:rgba(255,255,255,.6);padding:3rem 1rem;font-size:.92rem;line-height:1.6}
-#lb{position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:100000;display:none;flex-direction:column;
-  align-items:center;justify-content:center}
-#lb.open{display:flex}
-#lb img{max-width:94vw;max-height:80vh;object-fit:contain;border-radius:4px}
-#lb-bar{position:absolute;top:0;left:0;right:0;display:flex;justify-content:flex-end;gap:.6rem;padding:.8rem 1rem}
-#lb-nav{display:flex;gap:.6rem;margin-top:.8rem}
-#pm{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100001;display:none;align-items:flex-start;justify-content:center;
-  overflow-y:auto;padding:2rem 1rem}
-#pm.open{display:flex}
-.pm-box{background:#12283a;border:1px solid rgba(255,255,255,.12);border-radius:12px;width:100%;max-width:640px;padding:1.1rem 1.1rem 1rem}
-.pm-title{font-size:1.1rem;font-weight:700;color:#F5C518}
-.pm-sub{font-size:.8rem;color:rgba(255,255,255,.6);margin:.25rem 0 .9rem;line-height:1.5}
-.pm-row{display:flex;align-items:center;gap:.65rem;padding:.55rem 0;border-top:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
-.pm-row img{width:64px;height:44px;object-fit:cover;border-radius:4px;background:#111}
-.pm-name{font-size:.8rem;color:rgba(255,255,255,.75);flex:1;min-width:110px}
-.pm-row select{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:6px;padding:.4rem .5rem;font-size:.82rem}
-.pm-row select option{background:#12283a}
-.pm-logo{font-size:.75rem;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:.3rem}
-.pm-cart{margin-top:.8rem;border-top:1px solid rgba(255,255,255,.12);padding-top:.7rem;font-size:.82rem}
-.pm-item{display:flex;justify-content:space-between;gap:.5rem;padding:.2rem 0;color:rgba(255,255,255,.8)}
-.pm-item button{background:none;border:none;color:#ff8a80;cursor:pointer;font-size:.78rem}
-.pm-foot{display:flex;align-items:center;gap:.6rem;margin-top:.8rem;flex-wrap:wrap}
-.pm-total{margin-right:auto;font-weight:700}
-.save-hint{width:100%;font-size:.8rem;color:rgba(255,255,255,.7)}
-.foot{text-align:center;font-size:.75rem;color:rgba(255,255,255,.35);padding:1rem}
+/* The gallery's look (templates/index.html): same container, day cards, photo cards and enlarged view */
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+body { background:#0c2336; font-family:'DM Sans', sans-serif; color:#fff; min-height:100vh; }
+.container { max-width:1400px; margin:0 auto; padding:2rem 1rem 4rem; }
+@media(max-width:640px){ .container { padding:1rem .5rem 4rem; } }
+button { font-family:inherit; }
+
+.intro { margin-bottom:1.6rem; }
+.intro h1 { color:#F5C518; font-size:1.5rem; font-weight:700; margin-bottom:.35rem; }
+.welcome { font-size:.95rem; color:rgba(255,255,255,.75); line-height:1.55; }
+.code { margin-top:.9rem; padding:.8rem 1rem; border:1px solid rgba(245,197,24,.3); border-radius:10px;
+  background:rgba(245,197,24,.06); font-size:.9rem; line-height:1.5; color:rgba(255,255,255,.85); }
+.code b { color:#F5C518; letter-spacing:.04em; }
+
+.breadcrumb { display:none; align-items:center; gap:8px; margin-bottom:1.5rem; font-size:.85rem; color:rgba(255,255,255,.72); flex-wrap:wrap; }
+.breadcrumb.show { display:flex; }
+.crumb { cursor:pointer; color:#F5C518; text-decoration:underline; text-underline-offset:3px; background:none; border:none; font-size:inherit; padding:0; }
+.sep { color:rgba(255,255,255,.6); }
+.current { color:rgba(255,255,255,.75); }
+.msg { text-align:center; color:rgba(255,255,255,.55); padding:2.5rem 0; font-size:.95rem; line-height:1.6; }
+
+/* Day cards (the gallery's first page) */
+.grid { display:grid; grid-template-columns:repeat(3,1fr); gap:2rem; }
+@media(max-width:900px){ .grid{ grid-template-columns:repeat(2,1fr); } }
+@media(max-width:560px){ .grid{ grid-template-columns:1fr; } }
+.grid-card { cursor:pointer; transition:transform .2s; }
+.grid-card:hover { transform:translateY(-3px); }
+.grid-card:hover .collage-inner { border-color:rgba(242,201,76,.5); }
+.collage-inner { border:2px solid rgba(255,255,255,.08); border-radius:6px; overflow:hidden; margin-bottom:.75rem; transition:border-color .2s; }
+.collage-2x2 { display:grid; grid-template-columns:1fr 1fr; gap:2px; background:#0a1e2e; }
+.collage-2x2 img { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#0a1e2e; }
+.collage-single img { width:100%; aspect-ratio:3/2; object-fit:cover; display:block; background:#0a1e2e; }
+.collage-placeholder { width:100%; aspect-ratio:1/1; background:#0a1e2e; }
+.card-title { font-size:1rem; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#fff; margin-bottom:.25rem; text-align:center; text-decoration:underline; text-underline-offset:3px; }
+.card-sub { font-size:.8rem; color:rgba(255,255,255,.72); text-align:center; }
+
+/* One day */
+.gallery-header { display:flex; align-items:center; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
+.gallery-title { font-size:1.1rem; font-weight:600; }
+.results-count { background:rgba(242,201,76,.15); border:1px solid rgba(242,201,76,.3); color:#F5C518; font-size:.8rem; font-weight:600; padding:3px 12px; border-radius:20px; }
+.dl-box { display:flex; align-items:center; gap:.8rem 1rem; flex-wrap:wrap; margin-bottom:1.2rem;
+  background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:.8rem 1rem; }
+.dl-text { flex:1; min-width:220px; font-size:.86rem; color:rgba(255,255,255,.72); line-height:1.5; }
+.dl-actions { display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; }
+.text-btn { background:none; border:none; color:#F5C518; font-size:.84rem; cursor:pointer; text-decoration:underline; text-underline-offset:3px; padding:0; }
+.btn-main { background:#F5C518; color:#0c2336; font-weight:700; font-size:.92rem; border:none; border-radius:8px;
+  padding:.62rem 1.3rem; cursor:pointer; white-space:nowrap; transition:background .2s; }
+.btn-main:hover { background:#ffd700; }
+.btn-main:disabled { opacity:.5; cursor:default; }
+.btn-ghost { background:transparent; border:1px solid rgba(255,255,255,.25); color:rgba(255,255,255,.8);
+  font-size:.88rem; font-weight:500; border-radius:8px; padding:.55rem 1.1rem; cursor:pointer; white-space:nowrap; }
+.btn-ghost:hover { border-color:rgba(255,255,255,.5); color:#fff; }
+@media(max-width:640px){ .dl-actions { width:100%; } .dl-actions .btn-main { flex:1; } }
+
+/* Photo cards (the gallery's) */
+.gallery { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+@media(max-width:640px){ .gallery { gap:4px; } }
+.thumb-card { background:rgba(255,255,255,.04); border:2px solid rgba(255,255,255,.08); border-radius:4px; overflow:hidden;
+  cursor:pointer; transition:transform .2s, border-color .2s, box-shadow .2s; position:relative; }
+.thumb-card:hover { transform:translateY(-4px); border-color:rgba(242,201,76,.45); box-shadow:0 14px 36px rgba(0,0,0,.55); }
+.thumb-card img { width:100%; height:100%; object-fit:cover; display:block; background:#0a1e2e; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.thumb-card.portrait { grid-row:span 2; }
+.thumb-card.selected { border-color:#F5C518; box-shadow:0 0 0 1px rgba(242,201,76,.4), 0 8px 24px rgba(0,0,0,.5); }
+.card-btn-row { position:absolute; bottom:8px; left:8px; z-index:5; display:flex; opacity:0; transition:opacity .15s; }
+.card-acts { position:absolute; bottom:8px; right:8px; z-index:5; display:flex; gap:5px; opacity:0; transition:opacity .15s; }
+.thumb-card:hover .card-btn-row, .thumb-card:hover .card-acts,
+.thumb-card.selected .card-btn-row, .thumb-card.selected .card-acts { opacity:1; }
+.select-check { width:26px; height:26px; border-radius:50%; background:rgba(0,0,0,.55); border:2px solid rgba(255,255,255,.55);
+  display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:bold; color:#fff; cursor:pointer; padding:0; line-height:1; }
+.thumb-card.selected .select-check { background:#F5C518; border-color:#F5C518; color:#0c2336; }
+.card-btn { background:#F5C518; color:#0c2336; border:none; border-radius:6px; padding:.3rem .7rem; font-size:.75rem; font-weight:700;
+  cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:4px; }
+.card-btn.alt { background:rgba(0,0,0,.6); color:#fff; border:1px solid rgba(255,255,255,.35); }
+.card-btn svg { flex-shrink:0; }
+.select-check:focus-visible, .card-btn:focus-visible { outline:3px solid #fff; outline-offset:2px; }
+@media(hover:none) and (pointer:coarse) {
+  /* Phones and tablets: always shown, as small round buttons */
+  .card-btn-row, .card-acts { opacity:1; bottom:6px; }
+  .card-btn-row { left:6px; } .card-acts { right:6px; }
+  .card-btn { padding:0; width:28px; height:28px; border-radius:50%; justify-content:center; }
+  .card-btn .lbl { display:none; }
+}
+.range-on .thumb-card { cursor:crosshair; }
+
+/* Enlarged view (the gallery's) */
+.lb-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.95); z-index:99999; align-items:center; justify-content:center; flex-direction:column; }
+.lb-overlay.open { display:flex; }
+.lb-inner { position:relative; display:flex; flex-direction:column; align-items:center; width:92vw; max-width:1080px; }
+.lb-img-wrap { position:relative; width:100%; display:flex; align-items:center; justify-content:center; min-height:30vh; }
+#lb-photo { max-width:100%; max-height:74vh; object-fit:contain; border-radius:8px; box-shadow:0 0 80px rgba(0,0,0,.9); display:block; user-select:none; }
+.lb-arrow { position:absolute; top:50%; transform:translateY(-50%); background:rgba(242,201,76,.92); color:#0c2336; border:none; border-radius:50%;
+  width:50px; height:50px; font-size:22px; font-weight:bold; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:10; }
+.lb-arrow:hover { background:#F5C518; }
+.lb-arrow.left { left:-64px; } .lb-arrow.right { right:-64px; }
+@media(max-width:820px){ .lb-arrow.left{ left:6px; } .lb-arrow.right{ right:6px; } }
+.lb-close { position:fixed; top:max(16px, env(safe-area-inset-top, 0px) + 8px); right:20px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2);
+  color:#fff; border-radius:50%; width:42px; height:42px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; z-index:100001; }
+.lb-close:hover { background:rgba(255,255,255,.22); }
+@media(hover:none) and (pointer:coarse) {
+  .lb-close { width:52px; height:52px; font-size:22px; top:max(20px, env(safe-area-inset-top, 0px) + 12px); right:16px; background:rgba(0,0,0,.5); border-color:rgba(255,255,255,.4); }
+}
+.lb-btn-row { display:flex; gap:.6rem; justify-content:center; margin-top:14px; flex-wrap:wrap; }
+.lb-select-btn { background:transparent; border:1px solid rgba(242,201,76,.5); color:#F5C518; font-weight:600; font-size:.85rem;
+  border-radius:8px; padding:.5rem 1.4rem; cursor:pointer; }
+.lb-select-btn:hover { background:rgba(242,201,76,.12); }
+.lb-select-btn.selected-btn { background:#F5C518; color:#0c2336; border-color:#F5C518; }
+.lb-shop-btn { background:#F5C518; color:#0c2336; font-weight:700; font-size:.85rem; border:none; border-radius:8px; padding:.5rem 1.4rem; cursor:pointer; }
+.lb-shop-btn:hover { background:#e6b800; }
+.lb-filename { color:rgba(255,255,255,.35); font-size:.74rem; margin-top:10px; }
+.lb-counter { margin-top:6px; color:rgba(255,255,255,.28); font-size:.74rem; letter-spacing:1px; }
+
+/* Print list bar (the gallery's cart bar) */
+.cart-bar { display:none; position:fixed; bottom:0; left:0; right:0; z-index:9998; background:#0c2336; border-top:2px solid rgba(242,201,76,.4);
+  padding:.9rem 2rem; align-items:center; gap:1rem; flex-wrap:wrap; }
+.cart-bar.show { display:flex; }
+.cart-count-text { font-weight:600; font-size:.95rem; }
+.cart-note { flex:1; font-size:.78rem; color:rgba(255,255,255,.55); min-width:160px; }
+.cart-actions { display:flex; gap:.6rem; margin-left:auto; }
+@media(max-width:640px){ .cart-bar { padding:.75rem 1rem; } .cart-note { display:none; } }
+
+/* Panels: prints, the prints question, Save to Photos */
+.modal { position:fixed; inset:0; background:rgba(0,0,0,.75); z-index:100005; display:none; align-items:flex-start; justify-content:center;
+  overflow-y:auto; padding:2rem 1rem; }
+.modal.open { display:flex; }
+.modal.bottom { align-items:flex-end; padding-bottom:6rem; }
+.box { background:#12283a; border:1px solid rgba(245,197,24,.3); border-radius:14px; width:100%; max-width:640px; padding:1.1rem 1.1rem 1rem; }
+.box.small { max-width:440px; }
+.box-title { color:#F5C518; font-weight:700; font-size:1.08rem; }
+.box-sub { color:rgba(255,255,255,.7); font-size:.85rem; line-height:1.5; margin-top:.3rem; }
+.box-foot { display:flex; align-items:center; justify-content:flex-end; gap:.6rem; margin-top:.9rem; flex-wrap:wrap; }
+.pm-row { display:flex; align-items:center; gap:.65rem; padding:.55rem 0; border-top:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
+.pm-rows { margin-top:.8rem; }
+.pm-row img { width:64px; height:44px; object-fit:cover; border-radius:4px; background:#0a1e2e; }
+.pm-name { font-size:.8rem; color:rgba(255,255,255,.75); flex:1; min-width:110px; }
+.pm-row select { background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:.4rem .5rem; font-size:.82rem; font-family:inherit; }
+.pm-row select option { background:#12283a; }
+.pm-logo { font-size:.75rem; color:rgba(255,255,255,.7); display:flex; align-items:center; gap:.3rem; }
+.pm-add { background:#F5C518; color:#0c2336; border:none; border-radius:6px; padding:.4rem .9rem; font-weight:700; font-size:.8rem; cursor:pointer; }
+.pm-cart { margin-top:.8rem; border-top:1px solid rgba(255,255,255,.12); padding-top:.7rem; font-size:.82rem; }
+.pm-item { display:flex; justify-content:space-between; gap:.5rem; padding:.2rem 0; color:rgba(255,255,255,.8); }
+.pm-item button { background:none; border:none; color:#ff8a80; cursor:pointer; font-size:.78rem; }
+.pm-total { margin-right:auto; font-weight:700; }
+.save-status { font-size:.85rem; color:rgba(255,255,255,.75); margin-top:.6rem; line-height:1.5; min-height:1.3em; }
+.save-prints { margin-top:.8rem; padding-top:.7rem; border-top:1px solid rgba(255,255,255,.1); font-size:.84rem; color:rgba(255,255,255,.75); }
+.foot { text-align:center; font-size:.75rem; color:rgba(255,255,255,.4); padding:1rem 1rem 2rem; }
+img { -webkit-touch-callout:none; }
 </style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
 </head>
 <body>
 __SITE_HEADER__
-<header>
-  <h1>__PARTNER__ Photos</h1>
-  <div class="welcome">__WELCOME__</div>
-  <div class="code" id="code" style="display:none"></div>
-</header>
-<div class="bar"><div class="bar-in">
-  <span class="count" id="count">Tap photos to select them</span>
-  <label class="range" title="Tap the first photo, then the last, to select everything in between">
-    <input type="checkbox" id="range" onchange="rangeChanged()"> <span id="range-hint">Range select</span>
-  </label>
-  <button class="btn alt" id="clear" onclick="clearSel()" disabled>Clear</button>
-  <button class="btn" id="save-sel" onclick="saveSelected()" disabled style="display:none">Save to Photos</button>
-  <button class="btn alt" id="pr-sel" onclick="openPrints()" disabled style="display:none">Order prints</button>
-  <button class="btn alt" id="pr-cart" onclick="openPrints(true)" style="display:none"></button>
-  <button class="btn" id="dl-sel" onclick="downloadSelected()" disabled>Download selected</button>
-  <div id="save-hint" class="save-hint" style="display:none"></div>
-</div></div>
-<main id="days"><div class="empty">Loading photos...</div></main>
+<div class="container" id="main">
+  <div class="intro">
+    <h1>__PARTNER__ Photos</h1>
+    <div class="welcome">__WELCOME__</div>
+    <div class="code" id="code" style="display:none"></div>
+  </div>
+  <nav class="breadcrumb" id="crumbs" aria-label="Breadcrumb"></nav>
+  <div id="view-days"><div class="msg">Loading photos...</div></div>
+  <div id="view-day" style="display:none">
+    <div class="gallery-header">
+      <span class="gallery-title" id="day-title"></span>
+      <span class="results-count" id="day-count"></span>
+    </div>
+    <div class="dl-box">
+      <div class="dl-text" id="dl-text"></div>
+      <div class="dl-actions">
+        <button class="text-btn" id="dl-range" onclick="toggleRange()">Select a range</button>
+        <button class="text-btn" id="dl-clear" onclick="clearSel()" style="display:none">Clear</button>
+        <button class="btn-main" id="dl-main" onclick="bulkAction()"></button>
+      </div>
+    </div>
+    <div class="gallery" id="gallery"></div>
+  </div>
+</div>
 <div class="foot">Photos are for personal use. Questions? info@bigskyphotos.com</div>
 
-<div id="lb" onclick="if(event.target.id==='lb')closeLb()">
-  <div id="lb-bar">
-    <button class="btn" id="lb-save" style="display:none" onclick="saveOne()">Save to Photos</button>
-    <a class="btn" id="lb-dl" href="#">Download this photo</a>
-    <button class="btn alt" id="lb-print" style="display:none" onclick="openPrints(false, [photos[lbIdx].path])">Order prints</button>
-    <button class="btn alt" onclick="closeLb()">Close</button>
-  </div>
-  <img id="lb-img" alt="Enlarged photo">
-  <div id="lb-nav">
-    <button class="btn alt" onclick="lbStep(-1)">Previous</button>
-    <button class="btn alt" onclick="lbStep(1)">Next</button>
+<div class="cart-bar" id="cart-bar">
+  <span class="cart-count-text" id="cart-text"></span>
+  <span class="cart-note" id="cart-note"></span>
+  <div class="cart-actions">
+    <button class="btn-ghost" onclick="openPrints([])">Review prints</button>
+    <button class="btn-main" onclick="printCheckout()">Checkout</button>
   </div>
 </div>
 
-<div id="pm" onclick="if(event.target.id==='pm')closePrints()">
-  <div class="pm-box">
-    <div class="pm-title">Order prints</div>
-    <div class="pm-sub" id="pm-sub"></div>
-    <div id="pm-rows"></div>
+<div class="lb-overlay" id="lb" onclick="if(event.target === this) closeLb()">
+  <button class="lb-close" onclick="closeLb()" aria-label="Close">✕</button>
+  <div class="lb-inner">
+    <div class="lb-img-wrap">
+      <button class="lb-arrow left" onclick="lbStep(-1)" aria-label="Previous photo">&#8592;</button>
+      <img id="lb-photo" src="" alt="">
+      <button class="lb-arrow right" onclick="lbStep(1)" aria-label="Next photo">&#8594;</button>
+    </div>
+    <div class="lb-btn-row">
+      <button class="lb-select-btn" id="lb-select" onclick="lbToggleSelect()"></button>
+      <button class="lb-shop-btn" id="lb-get" onclick="getOne(photos[lbIdx].path)"></button>
+      <button class="lb-select-btn" id="lb-print" style="display:none" onclick="openPrints([photos[lbIdx].path])">Order prints</button>
+    </div>
+    <div class="lb-filename" id="lb-fn"></div>
+    <div class="lb-counter" id="lb-ct"></div>
+  </div>
+</div>
+
+<div class="modal" id="pm" onclick="if(event.target === this) closePrints()">
+  <div class="box">
+    <div class="box-title">Order prints</div>
+    <div class="box-sub" id="pm-sub"></div>
+    <div class="pm-rows" id="pm-rows"></div>
     <div class="pm-cart" id="pm-cart"></div>
-    <div class="pm-foot">
+    <div class="box-foot">
       <span class="pm-total" id="pm-total"></span>
-      <button class="btn alt" onclick="closePrints()">Keep browsing</button>
-      <button class="btn" id="pm-checkout" onclick="printCheckout()">Checkout</button>
+      <button class="btn-ghost" onclick="closePrints()">Keep browsing</button>
+      <button class="btn-main" id="pm-checkout" onclick="printCheckout()">Checkout</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal bottom" id="ask" onclick="if(event.target === this) noPrints()">
+  <div class="box small">
+    <div class="box-title">Would you like prints?</div>
+    <div class="box-sub" id="ask-sub"></div>
+    <div class="box-foot">
+      <button class="btn-ghost" onclick="noPrints()">No thanks</button>
+      <button class="btn-main" onclick="choosePrints()">Choose prints</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal bottom" id="saver">
+  <div class="box small">
+    <div class="box-title">Save to Photos</div>
+    <div class="save-status" id="saver-status"></div>
+    <div class="save-prints" id="saver-prints" style="display:none"></div>
+    <div class="box-foot">
+      <button class="btn-ghost" onclick="closeSaver()">Close</button>
+      <button class="btn-main" id="saver-btn" onclick="saverTap()"></button>
     </div>
   </div>
 </div>
@@ -123,17 +251,38 @@ __SITE_HEADER__
 
 <script>
 const SLUG = '__SLUG__';
-let photos = [];                 // every photo in page order: {path, filename, date}
-const selected = new Set();      // paths
-let anchor = null;               // index of the last photo tapped (for shift-click / range select)
+let days = [];                   // [{date, photos:[{path, filename}]}], newest day first
+let day = null;                  // the day that's open
+let photos = [];                 // that day's photos, in the order taken
+const selected = new Set();      // paths picked on the open day
+let anchor = null;               // index of the last photo picked (for a range)
+let rangeMode = false;           // "Select a range": the next two taps pick everything in between
+const orient = {};               // path -> 'portrait' once its thumbnail has loaded
 
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function prettyDate(iso){
+// Phones and tablets save into the Photos app (the share sheet's "Save Images"); a plain
+// download lands in Files, where many people never find it.
+const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const SAVE_OK = IS_MOBILE && (() => {
+  try {
+    const f = new File([new Blob(['x'], {type: 'image/jpeg'})], 't.jpg', {type: 'image/jpeg'});
+    return !!(navigator.canShare && navigator.canShare({files: [f]}));
+  } catch(e) { return false; }
+})();
+const ICON_DL = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>';
+const ICON_PRINT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>';
+
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function plural(n, w){ return `${n} ${w}${n === 1 ? '' : 's'}`; }
+function prettyDate(iso, weekday){
   const [y,m,d] = iso.split('-').map(Number);
-  return new Date(y, m-1, d).toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+  return new Date(y, m-1, d).toLocaleDateString('en-US', weekday
+    ? {weekday:'long', month:'long', day:'numeric', year:'numeric'} : {month:'long', day:'numeric', year:'numeric'});
 }
 function thumb(path){ return `/partner/${SLUG}/thumb?path=${encodeURIComponent(path)}`; }
+function large(path){ return `/partner/${SLUG}/view?path=${encodeURIComponent(path)}`; }
 
+// ── Loading and moving between pages (?day=YYYY-MM-DD, so Back works like the gallery) ──
 async function load(){
   const r = await fetch(`/api/partner/${SLUG}/photos`);
   if(r.status === 401){ location.reload(); return; }
@@ -144,123 +293,304 @@ async function load(){
     c.style.display = '';
   }
   PRINT_PCT = Number(d.print_pct) || 0;
-  if(PRINT_PCT > 0){
-    document.getElementById('pr-sel').style.display = '';
-    document.getElementById('lb-print').style.display = '';
-    renderPrintCartButton();
-  }
-  photos = [];
-  const box = document.getElementById('days');
-  if(!d.days.length){
-    box.innerHTML = '<div class="empty">No photos yet. They will show up here after your next day on the mountain.</div>';
-    return;
-  }
-  box.innerHTML = d.days.map(day => {
-    const start = photos.length;
-    day.photos.forEach(p => photos.push({...p, date: day.date}));
-    const tiles = day.photos.map((p, k) => {
-      const i = start + k;
-      return `<div class="ph" id="ph${i}" onclick="tap(event,${i})">
-        <img src="${thumb(p.path)}" loading="lazy" decoding="async" alt="${esc(p.filename)}">
-        <div class="chk">&#10003;</div>
-        <button class="zoom" onclick="event.stopPropagation();openLb(${i})">View</button>
-      </div>`;
-    }).join('');
-    const n = day.photos.length;
-    return `<section class="day">
-      <div class="day-head">
-        <span class="day-title">${esc(prettyDate(day.date))}</span>
-        <span class="day-count">${n} photo${n === 1 ? '' : 's'}</span>
-        <button class="btn alt" onclick="selectDay('${day.date}')">Select this day</button>
-        ${SAVE_OK ? `<button class="btn" onclick="saveDay('${day.date}')">Save this day to Photos</button>` : ''}
-        <button class="btn${SAVE_OK ? ' alt' : ''}" onclick="downloadDay('${day.date}')">Download all from this day</button>
-      </div>
-      <div class="grid">${tiles}</div>
-    </section>`;
-  }).join('');
+  days = d.days;
+  renderCartBar();
+  route();
+}
+function go(date){
+  history.pushState({}, '', date ? `?day=${date}` : location.pathname);
+  route();
+  window.scrollTo(0, 0);
+}
+window.addEventListener('popstate', route);
+function route(){
+  const want = new URLSearchParams(location.search).get('day');
+  const found = days.find(x => x.date === want);
+  if(found) showDay(found); else showDays();
+}
+function setCrumbs(current){
+  const el = document.getElementById('crumbs');
+  el.classList.toggle('show', !!current);
+  el.innerHTML = current ? `<button class="crumb" onclick="go('')">All Days</button><span class="sep" aria-hidden="true">›</span><span class="current">${esc(current)}</span>` : '';
 }
 
+function showDays(){
+  day = null; closeLb();
+  document.getElementById('view-day').style.display = 'none';
+  const el = document.getElementById('view-days');
+  el.style.display = '';
+  setCrumbs('');
+  if(!days.length){
+    el.innerHTML = '<div class="msg">No photos yet. They will show up here after your next day on the mountain.</div>';
+    return;
+  }
+  el.innerHTML = `<div class="grid">${days.map(d => {
+    const ph = d.photos;
+    const collage = ph.length >= 4
+      ? `<div class="collage-2x2">${ph.slice(0, 4).map(p => `<img src="${thumb(p.path)}" alt="" loading="lazy">`).join('')}</div>`
+      : `<div class="collage-single"><img src="${thumb(ph[0].path)}" alt="" loading="lazy"></div>`;
+    return `<div class="grid-card" role="link" tabindex="0" onclick="go('${d.date}')" onkeydown="if(event.key==='Enter')go('${d.date}')">
+      <div class="collage-inner">${collage}</div>
+      <div class="card-title">${esc(prettyDate(d.date, true))}</div>
+      <div class="card-sub">${plural(ph.length, 'photo')}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function showDay(d){
+  closeLb();
+  if(day !== d){ selected.clear(); anchor = null; rangeMode = false; }
+  day = d; photos = d.photos;
+  document.getElementById('view-days').style.display = 'none';
+  document.getElementById('view-day').style.display = '';
+  setCrumbs(prettyDate(d.date, true));
+  document.getElementById('day-title').textContent = prettyDate(d.date, true);
+  document.getElementById('day-count').textContent = plural(photos.length, 'photo');
+  const g = document.getElementById('gallery');
+  g.innerHTML = photos.map((p, i) => `
+    <div class="thumb-card${selected.has(p.path) ? ' selected' : ''}" id="card${i}" onclick="cardTap(event, ${i})">
+      <img src="${thumb(p.path)}" alt="${esc(p.filename)}" loading="lazy" decoding="async" onload="thumbLoaded(this, ${i})">
+      <div class="card-btn-row">
+        <button type="button" class="select-check" onclick="event.stopPropagation(); pick(event, ${i})"
+          aria-label="Select photo ${esc(p.filename)}" aria-pressed="${selected.has(p.path)}">✓</button>
+      </div>
+      <div class="card-acts">
+        ${PRINT_PCT > 0 ? `<button type="button" class="card-btn alt" onclick="event.stopPropagation(); openPrints([photos[${i}].path])"
+          aria-label="Order prints of ${esc(p.filename)}">${ICON_PRINT}<span class="lbl">Prints</span></button>` : ''}
+        <button type="button" class="card-btn" onclick="event.stopPropagation(); getOne(photos[${i}].path)"
+          aria-label="${SAVE_OK ? 'Save' : 'Download'} ${esc(p.filename)}">${ICON_DL}<span class="lbl">${SAVE_OK ? 'Save' : 'Download'}</span></button>
+      </div>
+    </div>`).join('');
+  layout();
+  updateBox();
+}
+function thumbLoaded(img, i){
+  if(img.naturalHeight > img.naturalWidth){
+    orient[photos[i] && photos[i].path] = 'portrait';
+    document.getElementById('card' + i)?.classList.add('portrait');
+  }
+}
+function layout(){
+  // The gallery's grid: 4 across (2 on phones), rows 2:3 of a column, portraits two rows tall
+  const g = document.getElementById('gallery');
+  const mobile = window.innerWidth <= 640;
+  const cols = mobile ? 2 : 4, gap = mobile ? 4 : 10;
+  g.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  const w = g.offsetWidth || (mobile ? 360 : 960);
+  g.style.gridAutoRows = Math.round(((w - (cols - 1) * gap) / cols) * 2 / 3) + 'px';
+}
+let _rt;
+window.addEventListener('resize', () => { clearTimeout(_rt); _rt = setTimeout(() => { if(day) layout(); }, 150); });
+
+// ── Picking photos ──
 function setSel(i, on){
   const p = photos[i];
   if(on) selected.add(p.path); else selected.delete(p.path);
-  document.getElementById('ph' + i).classList.toggle('sel', on);
+  const c = document.getElementById('card' + i);
+  if(c){ c.classList.toggle('selected', on); c.querySelector('.select-check').setAttribute('aria-pressed', on); }
 }
-
-function tap(e, i){
-  const range = e.shiftKey || document.getElementById('range').checked;
-  if(range && anchor !== null && anchor !== i){
+function pick(e, i){
+  if((e.shiftKey || rangeMode) && anchor !== null && anchor !== i){
     const [a, b] = [Math.min(anchor, i), Math.max(anchor, i)];
     for(let k = a; k <= b; k++) setSel(k, true);
     anchor = null;
-    document.getElementById('range-hint').textContent = 'Range select';
+    if(rangeMode) toggleRange(false);
+  } else if(rangeMode){                          // the first photo of a range is always picked
+    setSel(i, true);
+    anchor = i;
   } else {
     setSel(i, !selected.has(photos[i].path));
     anchor = i;
-    if(document.getElementById('range').checked) document.getElementById('range-hint').textContent = 'Now tap the last photo';
   }
-  updateBar();
+  updateBox();
 }
-
-function rangeChanged(){
-  anchor = null;
-  document.getElementById('range-hint').textContent =
-    document.getElementById('range').checked ? 'Tap the first photo' : 'Range select';
+function cardTap(e, i){
+  if(rangeMode || e.shiftKey){ pick(e, i); return; }
+  openLb(i);
 }
-
-function selectDay(date){
-  photos.forEach((p, i) => { if(p.date === date) setSel(i, true); });
-  updateBar();
+function toggleRange(on){
+  rangeMode = typeof on === 'boolean' ? on : !rangeMode;
+  anchor = rangeMode ? null : anchor;
+  document.getElementById('gallery').classList.toggle('range-on', rangeMode);
+  updateBox();
 }
-
 function clearSel(){
   photos.forEach((p, i) => { if(selected.has(p.path)) setSel(i, false); });
-  anchor = null;
-  if(saveJob){ saveJob = null; document.getElementById('save-sel').textContent = 'Save to Photos'; saveHint(''); }
-  updateBar();
+  anchor = null; toggleRange(false);
+}
+function updateBox(){
+  const n = selected.size, total = photos.length;
+  const verb = SAVE_OK ? 'Save' : 'Download';
+  document.getElementById('dl-main').textContent = n
+    ? (SAVE_OK ? `Save ${n} selected to Photos` : `Download ${n} selected`)
+    : (SAVE_OK ? `Save all ${total} to Photos` : `Download all ${total} photos`);
+  document.getElementById('dl-clear').style.display = n ? '' : 'none';
+  document.getElementById('dl-range').textContent = rangeMode ? 'Cancel range' : 'Select a range';
+  document.getElementById('dl-text').textContent = rangeMode
+    ? (anchor === null ? 'Range: tap the first photo.' : 'Range: now tap the last photo.')
+    : n ? `${plural(n, 'photo')} selected. Tap ✓ on more, or ${verb.toLowerCase()} them now.`
+        : `Free to ${SAVE_OK ? 'save' : 'download'}: tap ✓ on photos to pick some, or ${SAVE_OK ? 'save' : 'get'} the whole day.`;
 }
 
-function updateBar(){
-  const n = selected.size;
-  document.getElementById('count').textContent = n ? `${n} photo${n === 1 ? '' : 's'} selected` : 'Tap photos to select them';
-  document.getElementById('dl-sel').disabled = !n;
-  document.getElementById('clear').disabled = !n;
-  document.getElementById('dl-sel').textContent = n === 1 ? 'Download photo' : 'Download selected';
-  document.getElementById('save-sel').disabled = !n;
-  document.getElementById('pr-sel').disabled = !n;
+// ── Downloading (computers) and saving to Photos (phones and tablets) ──
+function chosenPaths(){
+  const picked = photos.filter(p => selected.has(p.path)).map(p => p.path);
+  return picked.length ? picked : photos.map(p => p.path);
 }
-
-function downloadSelected(){
-  const paths = photos.filter(p => selected.has(p.path)).map(p => p.path);
+function bulkAction(){
+  const paths = chosenPaths();
   if(!paths.length) return;
-  if(paths.length === 1){ location.href = `/partner/${SLUG}/file?path=${encodeURIComponent(paths[0])}`; return; }
-  document.getElementById('zip-paths').value = JSON.stringify(paths);
-  document.getElementById('zip-date').value = '';
-  document.getElementById('zipform').submit();
+  if(SAVE_OK){ startSaver(paths); return; }
+  if(paths.length === 1){ location.href = `/partner/${SLUG}/file?path=${encodeURIComponent(paths[0])}`; }
+  else {
+    const whole = !selected.size;
+    document.getElementById('zip-paths').value = whole ? '[]' : JSON.stringify(paths);
+    document.getElementById('zip-date').value = whole ? day.date : '';
+    document.getElementById('zipform').submit();
+  }
+  askPrints(paths);
+}
+function getOne(path){
+  if(SAVE_OK){ startSaver([path]); return; }
+  location.href = `/partner/${SLUG}/file?path=${encodeURIComponent(path)}`;
 }
 
-function downloadDay(date){
-  document.getElementById('zip-paths').value = '[]';
-  document.getElementById('zip-date').value = date;
-  document.getElementById('zipform').submit();
+// Sharing has to start from a tap, so photos are fetched first (10 at a time), then the
+// "Save" tap opens the share sheet right away.
+const BATCH = 10;
+let job = null;                  // {paths, next, ready, busy}
+async function fetchFiles(paths){
+  const r = await fetch(`/partner/${SLUG}/links`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                  body: JSON.stringify({paths})});
+  if(!r.ok) throw new Error('Could not get the photos');
+  const links = (await r.json()).files;
+  const out = new Array(links.length);
+  let i = 0, done = 0;
+  async function worker(){
+    while(i < links.length){
+      const k = i++;
+      const res = await fetch(links[k].url);
+      if(!res.ok) throw new Error('Could not load ' + links[k].name);
+      out[k] = new File([await res.blob()], links[k].name, {type: 'image/jpeg'});
+      saverStatus(`Getting your photos ready: ${++done} of ${links.length}...`);
+    }
+  }
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  return out;
 }
+function saverStatus(t){ document.getElementById('saver-status').textContent = t; }
+function saverButton(label, enabled){
+  const b = document.getElementById('saver-btn');
+  b.textContent = label; b.disabled = !enabled; b.style.display = label ? '' : 'none';
+}
+async function startSaver(paths){
+  closeLb();
+  job = {paths, next: 0, ready: null, busy: false};
+  document.getElementById('saver-prints').style.display = 'none';
+  document.getElementById('saver').classList.add('open');
+  await prepareBatch();
+}
+async function prepareBatch(){
+  if(!job) return;
+  const total = job.paths.length, batch = job.paths.slice(job.next, job.next + BATCH);
+  job.busy = true; saverButton('Getting ready...', false);
+  saverStatus(total > BATCH ? `Photos ${job.next + 1}–${job.next + batch.length} of ${total}: getting them ready...` : 'Getting your photos ready...');
+  try {
+    job.ready = await fetchFiles(batch);
+    saverStatus(total > BATCH
+      ? `Photos ${job.next + 1}–${job.next + batch.length} of ${total} are ready. Tap Save, then choose "Save Images".`
+      : `Ready. Tap Save, then choose "Save Image${batch.length === 1 ? '' : 's'}".`);
+    saverButton(batch.length === 1 ? 'Save photo' : `Save ${batch.length} photos`, true);
+  } catch(e) {
+    saverStatus(e.message + '. Please try again.'); saverButton('Try again', true); job.ready = null;
+  } finally { if(job) job.busy = false; }
+}
+async function saverTap(){
+  if(!job || job.busy) return;
+  if(!job.ready){ await prepareBatch(); return; }
+  try {
+    await navigator.share({files: job.ready});
+  } catch(e) {
+    if(e.name !== 'AbortError') saverStatus("Saving didn't work here. Please try again.");
+    return;
+  }
+  job.next += job.ready.length; job.ready = null;
+  const left = job.paths.length - job.next;
+  if(left > 0){
+    await prepareBatch();                        // the next ones get ready on their own: one tap per batch
+  } else {
+    saverStatus(job.paths.length === 1 ? 'Saved. It is in your Photos app.' : `All ${job.paths.length} saved. They are in your Photos app.`);
+    saverButton('', false);
+    const paths = job.paths; job = null;
+    if(PRINT_PCT > 0){
+      const box = document.getElementById('saver-prints');
+      box.innerHTML = `Would you like prints of ${paths.length === 1 ? 'this photo' : 'any of these'}? ${PRINT_PCT}% off, shipped to you.
+        <div class="box-foot" style="justify-content:flex-start"><button class="btn-main" id="saver-choose">Choose prints</button></div>`;
+      box.style.display = '';
+      document.getElementById('saver-choose').onclick = () => { closeSaver(); openPrints(paths); };
+    }
+  }
+}
+function closeSaver(){ job = null; document.getElementById('saver').classList.remove('open'); }
 
-let lbIdx = 0;
+// After a download on a computer: offer prints of those photos (once per visit after "No thanks")
+let askPaths = [];
+function askPrints(paths){
+  if(PRINT_PCT <= 0) return;
+  try { if(sessionStorage.getItem('ci_partner_no_prints')) return; } catch(e) {}
+  askPaths = paths;
+  document.getElementById('ask-sub').textContent = `Your download has started. Would you like prints of ${paths.length === 1 ? 'this photo' : 'any of these photos'}? `
+    + `${PRINT_PCT}% off prints, shipped to you.`;
+  setTimeout(() => document.getElementById('ask').classList.add('open'), 600);
+}
+function noPrints(){
+  document.getElementById('ask').classList.remove('open');
+  try { sessionStorage.setItem('ci_partner_no_prints', '1'); } catch(e) {}
+}
+function choosePrints(){ document.getElementById('ask').classList.remove('open'); openPrints(askPaths); }
+
+// ── Enlarged view ──
+let lbIdx = 0, _lbWant = '';
 function openLb(i){
   lbIdx = i;
   const p = photos[i];
-  document.getElementById('lb-img').src = `/partner/${SLUG}/view?path=${encodeURIComponent(p.path)}`;
-  document.getElementById('lb-dl').href = `/partner/${SLUG}/file?path=${encodeURIComponent(p.path)}`;
-  const sb = document.getElementById('lb-save'); sb.textContent = 'Save to Photos'; sb.dataset.ready = ''; sb._file = null;
+  const img = document.getElementById('lb-photo');
+  img.src = thumb(p.path);                       // the small one shows at once (already loaded)
+  img.alt = p.filename;
+  _lbWant = p.path;
+  const big = new Image();
+  big.onload = () => { if(_lbWant === p.path) img.src = big.src; };
+  big.src = large(p.path);
+  [i + 1, i - 1].forEach(k => { const q = photos[(k + photos.length) % photos.length]; if(q) new Image().src = large(q.path); });
+  document.getElementById('lb-get').textContent = SAVE_OK ? 'Save to Photos' : 'Download';
+  document.getElementById('lb-print').style.display = PRINT_PCT > 0 ? '' : 'none';
+  lbSelectLabel();
+  document.getElementById('lb-fn').textContent = p.filename;
+  document.getElementById('lb-ct').textContent = `${i + 1} / ${photos.length}`;
   document.getElementById('lb').classList.add('open');
 }
+function lbSelectLabel(){
+  const on = selected.has(photos[lbIdx].path);
+  const b = document.getElementById('lb-select');
+  b.textContent = on ? '✓ Selected' : '+ Add to Selection';
+  b.classList.toggle('selected-btn', on);
+}
+function lbToggleSelect(){ setSel(lbIdx, !selected.has(photos[lbIdx].path)); anchor = lbIdx; lbSelectLabel(); updateBox(); }
 function lbStep(d){ if(photos.length) openLb((lbIdx + d + photos.length) % photos.length); }
-function closeLb(){ document.getElementById('lb').classList.remove('open'); document.getElementById('lb-img').src = ''; }
+function closeLb(){ document.getElementById('lb').classList.remove('open'); _lbWant = ''; }
 document.addEventListener('keydown', e => {
   if(!document.getElementById('lb').classList.contains('open')) return;
   if(e.key === 'Escape') closeLb();
   if(e.key === 'ArrowRight') lbStep(1);
   if(e.key === 'ArrowLeft') lbStep(-1);
 });
+let _tx = null;
+document.getElementById('lb').addEventListener('touchstart', e => { _tx = e.touches[0].clientX; }, {passive: true});
+document.getElementById('lb').addEventListener('touchend', e => {
+  if(_tx === null) return;
+  const dx = e.changedTouches[0].clientX - _tx; _tx = null;
+  if(Math.abs(dx) > 50) lbStep(dx < 0 ? 1 : -1);
+}, {passive: true});
 
 // ── Prints, at the partner's discount, through the store's normal checkout ──
 // Prices here are what the checkout will show; the server works them out again (the discount
@@ -273,11 +603,16 @@ const CART_KEY = `ci_partner_prints_${SLUG}`;
 let printCart = (() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e) { return []; } })();
 function money(n){ return '$' + Number(n).toFixed(2); }
 function salePrice(si){ return Math.round(PRINT_SIZES[si].price * (1 - PRINT_PCT / 100) * 100) / 100; }
-function storeCart(){ try { localStorage.setItem(CART_KEY, JSON.stringify(printCart)); } catch(e) {} renderPrintCartButton(); }
-function renderPrintCartButton(){
-  const b = document.getElementById('pr-cart');
-  b.style.display = printCart.length ? '' : 'none';
-  b.textContent = `Prints (${printCart.length})`;
+function storeCart(){ try { localStorage.setItem(CART_KEY, JSON.stringify(printCart)); } catch(e) {} renderCartBar(); }
+function renderCartBar(){
+  const bar = document.getElementById('cart-bar');
+  const on = printCart.length > 0 && PRINT_PCT > 0;
+  bar.classList.toggle('show', on);
+  document.getElementById('main').style.paddingBottom = on ? '7rem' : '';
+  if(!on) return;
+  const total = printCart.reduce((a, it) => a + it.price, 0);
+  document.getElementById('cart-text').textContent = `${plural(printCart.length, 'print')} · ${money(total)}`;
+  document.getElementById('cart-note').textContent = `${PRINT_PCT}% off prints. Shipping is added at checkout.`;
 }
 async function loadPrintPrices(){
   if(PRINT_SIZES.length) return;
@@ -286,26 +621,30 @@ async function loadPrintPrices(){
   if(typeof sp.logo_fee === 'number') LOGO_FEE = sp.logo_fee;
   FRAME_PRICES = (sp.frame_prices || []).map(f => (f && f.landscape != null) ? Number(f.landscape) : null);
 }
-async function openPrints(cartOnly, paths){
+function photoByPath(path){
+  for(const d of days){ const p = d.photos.find(x => x.path === path); if(p) return p; }
+  return null;
+}
+async function openPrints(paths){
   try { await loadPrintPrices(); } catch(e) { alert('Print prices could not be loaded. Please try again.'); return; }
-  pmPaths = cartOnly ? [] : (paths || photos.filter(p => selected.has(p.path)).map(p => p.path));
+  closeLb();
+  pmPaths = paths || [];
   document.getElementById('pm-sub').textContent = `${PRINT_PCT}% off prints of your photos (frames are regular price).`
     + ` Prints are shipped to you; shipping is added at checkout (free on ${FREE_SHIP} or more unframed prints).`;
   const opts = PRINT_SIZES.map((s, i) => `<option value="${i}">${esc(s.label)} — ${money(salePrice(i))} (was ${money(s.price)})</option>`).join('');
   document.getElementById('pm-rows').innerHTML = pmPaths.map((path, k) => {
-    const p = photos.find(x => x.path === path);
+    const p = photoByPath(path);
     return `<div class="pm-row">
-      <img src="${thumb(path)}" alt="">
+      <img src="${thumb(path)}" alt="" loading="lazy">
       <span class="pm-name">${esc(p ? p.filename : '')}</span>
       <select id="pm-size-${k}" aria-label="Print size">${opts}</select>
       <select id="pm-frame-${k}" aria-label="Frame"></select>
       <label class="pm-logo"><input type="checkbox" id="pm-logo-${k}"> Big Sky Resort logo (+${money(LOGO_FEE)})</label>
-      <button class="btn" onclick="addPrint(${k})">Add</button>
+      <button class="pm-add" onclick="addPrint(${k})">Add</button>
     </div>`;
   }).join('');
   pmPaths.forEach((_, k) => {
-    const size = document.getElementById(`pm-size-${k}`);
-    size.addEventListener('change', () => fillFrames(k));
+    document.getElementById(`pm-size-${k}`).addEventListener('change', () => fillFrames(k));
     fillFrames(k);
   });
   renderPrintCart();
@@ -321,15 +660,9 @@ function fillFrames(k){
     + (fp ? `<option value="frame">${esc(FRAME_NAME)} (+${money(fp)})</option>` : '');
   sel.value = (was === 'frame' && fp) ? 'frame' : '';
 }
-function photoOrientation(path){
-  // From the thumbnail on the page (frames come in landscape and portrait)
-  const i = photos.findIndex(p => p.path === path);
-  const img = i >= 0 ? document.querySelector(`#ph${i} img`) : null;
-  return img && img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
-}
 function closePrints(){ document.getElementById('pm').classList.remove('open'); }
 function addPrint(k){
-  const path = pmPaths[k], p = photos.find(x => x.path === path);
+  const path = pmPaths[k], p = photoByPath(path);
   const si = Number(document.getElementById(`pm-size-${k}`).value);
   const logo = document.getElementById(`pm-logo-${k}`).checked;
   if(printCart.some(it => it.photoPath === path && it.sizeIdx === si)){
@@ -339,7 +672,7 @@ function addPrint(k){
   const framePrice = framed ? FRAME_PRICES[si] : 0;
   printCart.push({photoPath: path, filename: p ? p.filename : path.split('/').pop(), sizeIdx: si,
                   size: PRINT_SIZES[si].label, price: salePrice(si) + (logo ? LOGO_FEE : 0) + framePrice,
-                  frame: framed ? FRAME_NAME : 'No Frame', framePrice, orientation: photoOrientation(path),
+                  frame: framed ? FRAME_NAME : 'No Frame', framePrice, orientation: orient[path] || 'landscape',
                   _logo: logo, _logoPrice: logo ? LOGO_FEE : 0, location: ''});
   storeCart(); renderPrintCart();
 }
@@ -350,7 +683,7 @@ function renderPrintCart(){
   else box.innerHTML = printCart.map((it, i) => `<div class="pm-item"><span>${esc(it.size)} print — ${esc(it.filename)}${it._logo ? ' + logo' : ''}${it.frame && it.frame !== 'No Frame' ? ' + frame' : ''}</span>
       <span>${money(it.price)} <button onclick="removePrint(${i})" aria-label="Remove">Remove</button></span></div>`).join('');
   const total = printCart.reduce((a, it) => a + it.price, 0);
-  document.getElementById('pm-total').textContent = printCart.length ? `${printCart.length} print${printCart.length === 1 ? '' : 's'} · ${money(total)}` : '';
+  document.getElementById('pm-total').textContent = printCart.length ? `${plural(printCart.length, 'print')} · ${money(total)}` : '';
   document.getElementById('pm-checkout').disabled = !printCart.length;
 }
 function printCheckout(){
@@ -359,106 +692,6 @@ function printCheckout(){
     folderCarts: {}, printCart, frameCart: [], returnUrl: location.href, timestamp: Date.now(),
   }));
   location.href = '/checkout';          // the checkout empties this print list once the order goes through
-}
-
-// ── Save to Photos (phones and tablets) ──
-// A normal download lands in the Files app, where many people never find it. The share
-// sheet's "Save Images" puts photos straight into Photos. Sharing has to start from a tap,
-// so photos are fetched first (10 at a time), then a second tap opens the share sheet.
-const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
-  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const SAVE_OK = IS_MOBILE && (() => {
-  try {
-    const f = new File([new Blob(['x'], {type: 'image/jpeg'})], 't.jpg', {type: 'image/jpeg'});
-    return !!(navigator.canShare && navigator.canShare({files: [f]}));
-  } catch(e) { return false; }
-})();
-const BATCH = 10;
-let saveJob = null;      // {paths, next, ready, busy}
-
-function saveHint(text){
-  const h = document.getElementById('save-hint');
-  h.textContent = text || ''; h.style.display = text ? '' : 'none';
-}
-async function fetchFiles(paths){
-  const r = await fetch(`/partner/${SLUG}/links`, {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                                  body: JSON.stringify({paths})});
-  if(!r.ok) throw new Error('Could not get the photos');
-  const links = (await r.json()).files;
-  const out = new Array(links.length);
-  let i = 0;
-  async function worker(){
-    while(i < links.length){
-      const k = i++;
-      const res = await fetch(links[k].url);
-      if(!res.ok) throw new Error('Could not load ' + links[k].name);
-      out[k] = new File([await res.blob()], links[k].name, {type: 'image/jpeg'});
-      saveHint(`Preparing ${out.filter(Boolean).length} of ${links.length}...`);
-    }
-  }
-  await Promise.all([worker(), worker(), worker(), worker()]);
-  return out;
-}
-async function startSave(paths){
-  if(!paths.length) return;
-  saveJob = {paths, next: 0, ready: null, busy: false};
-  await saveStep();
-}
-async function saveStep(){
-  const job = saveJob;
-  if(!job || job.busy) return;
-  const btn = document.getElementById('save-sel');
-  if(job.ready){                                   // second tap: open the share sheet
-    const files = job.ready;
-    try {
-      await navigator.share({files});
-      job.ready = null; job.next += files.length;
-      const left = job.paths.length - job.next;
-      if(left > 0){ btn.textContent = `Save next ${Math.min(BATCH, left)}`; btn.disabled = false;
-                    saveHint(`${job.next} of ${job.paths.length} saved. Tap "Save next" for the rest.`); }
-      else { saveHint('All saved. They are in your Photos app.'); saveJob = null; btn.textContent = 'Save to Photos';
-             btn.disabled = !selected.size; }
-    } catch(e) {
-      if(e.name !== 'AbortError') saveHint("Saving didn't work here. Use Download instead.");
-    }
-    return;
-  }
-  job.busy = true; btn.disabled = true;            // first tap: fetch the next batch
-  try {
-    job.ready = await fetchFiles(job.paths.slice(job.next, job.next + BATCH));
-    btn.textContent = `Tap to save ${job.ready.length} photo${job.ready.length === 1 ? '' : 's'}`;
-    saveHint('Then choose "Save Images" (or "Save Image").');
-  } catch(e) {
-    saveHint(e.message + '. Please try again.'); saveJob = null; btn.textContent = 'Save to Photos';
-  } finally { job.busy = false; btn.disabled = false; }
-}
-function saveSelected(){
-  if(saveJob){ saveStep(); return; }
-  startSave(photos.filter(p => selected.has(p.path)).map(p => p.path));
-}
-function saveDay(date){
-  saveJob = null;
-  document.getElementById('save-sel').style.display = '';
-  startSave(photos.filter(p => p.date === date).map(p => p.path));
-  window.scrollTo({top: 0, behavior: 'smooth'});
-}
-async function saveOne(){
-  const b = document.getElementById('lb-save');
-  const p = photos[lbIdx];
-  if(b.dataset.ready === p.path && b._file){
-    try { await navigator.share({files: [b._file]}); b.textContent = 'Saved'; } catch(e) {}
-    return;
-  }
-  b.disabled = true; b.textContent = 'Preparing...';
-  try {
-    const [f] = await fetchFiles([p.path]);
-    b._file = f; b.dataset.ready = p.path; b.textContent = 'Tap to save';
-  } catch(e) { b.textContent = 'Save to Photos'; }
-  b.disabled = false;
-}
-if(SAVE_OK){
-  document.getElementById('save-sel').style.display = '';
-  document.getElementById('lb-save').style.display = '';
 }
 
 load();

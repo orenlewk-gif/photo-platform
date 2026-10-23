@@ -31,6 +31,7 @@ import boto3
 import requests as http_requests
 from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientation,
                          grid_thumb_r2_key as _grid_thumb_r2_key, nowm_thumb_r2_key as _nowm_thumb_r2_key,
+                         nowm_large_r2_key as _nowm_large_r2_key,
                          thumb_r2_key as _thumb_r2_key)
 from core.checkout import (CATEGORIES, CheckoutError, activity_groups, bundle_for_cart, check_coupon,
                            coupon_item_discount, coupon_scope, parse_int, shipping_for)
@@ -772,6 +773,12 @@ def _photo_list_saved(params=None, **_):
 s3.meta.events.register("before-parameter-build.s3.PutObject", _photo_list_saved)
 
 
+def _photo_list_changed() -> None:
+    """Photo records were changed in memory (and their save is on its way): folder lists are
+    rebuilt on their next use instead of waiting for the save."""
+    _index_state["version"] += 1
+
+
 def _folder_index() -> dict:
     """The current folder index, rebuilt if the photo list changed."""
     now = _time.monotonic()
@@ -845,6 +852,8 @@ def _pricing_for(location: str = None, date: str = None, family: str = None) -> 
 #   admin  — 450px, no watermark: studio, download pages (admin_thumbs/)
 #   public — 700px JPEG, watermarked: the gallery version before WebP (thumbs/v2/).
 #            No longer made; photos that already have one keep using it.
+#   large  — 1800px, no watermark: the enlarged view on a partner's free page (thumbs/nowm-large/).
+#            Made only for partner photos, when they're marked or uploaded (else on first view).
 # They're made in the background when photos are uploaded or go live, and on
 # demand (as a fallback) the first time one is requested.
 _THUMB_VARIANTS = {
@@ -853,6 +862,7 @@ _THUMB_VARIANTS = {
     "pos":    (_nowm_thumb_r2_key,   700, 80, False, "public, max-age=31536000", "JPEG"),
     "admin":  (_admin_thumb_r2_key,  450, 72, False, "private, max-age=86400",   "JPEG"),
     "public": (_thumb_r2_key,        700, 80, True,  "public, max-age=31536000", "JPEG"),
+    "large":  (_nowm_large_r2_key,  1800, 86, False, "private, max-age=86400",   "JPEG"),
 }
 _NEW_PHOTO_VARIANTS = ["grid", "pos", "admin"]
 _THUMB_MEDIA_TYPES = {"WEBP": "image/webp", "JPEG": "image/jpeg"}
@@ -4400,6 +4410,17 @@ def _fill_taken_times(items: list) -> None:
         for item, taken in zip(todo, ex.map(lambda i: _photo_taken(i["path"]), todo)):
             item["taken"] = taken
     _save_photo_list_soon()
+
+
+def _prepare_partner_photos(items: list) -> None:
+    """Background work for photos that just became a partner's: their capture times (the page
+    shows them in the order taken) and the large no-watermark version its enlarged view uses,
+    made ahead so it opens right away."""
+    _fill_taken_times(items)
+    for item in items:
+        key = to_r2_key(item["path"])
+        if not _stored_thumb_link(key, "large"):
+            _thumb_pool.submit(_make_thumbs_quietly, key, ["large"])
 
 
 def _taken_order(item: dict) -> tuple:

@@ -35,3 +35,9 @@ def grid_thumb_r2_key(r2_key: str) -> str:
 def admin_thumb_r2_key(r2_key: str) -> str:
     """maps images/foo/bar.jpg → admin_thumbs/foo/bar.jpg (studio / package thumbnails)"""
     return _under("admin_thumbs/", r2_key)
+
+
+def nowm_large_r2_key(r2_key: str) -> str:
+    """maps images/foo/bar.jpg → thumbs/nowm-large/foo/bar.jpg (1800px, no watermark: the enlarged
+    view on a partner's free page)"""
+    return _under("thumbs/nowm-large/", r2_key)

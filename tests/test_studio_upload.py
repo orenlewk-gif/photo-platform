@@ -112,7 +112,7 @@ def test_portrait_colors_are_poses_never_partners(admin_client, main_module):
 
 def test_partner_settings_default_to_eagle_mount_orange(admin_client, client):
     assert admin_client.get("/api/admin/partners").json()["partners"][0] == {
-        "id": "eagle-mount", "name": "Eagle Mount", "label": "Orange"}
+        "id": "eagle-mount", "name": "Eagle Mount", "label": "Orange", "slug": "eaglemount", "count": 0}
     assert client.get("/api/admin/partners").status_code == 401
 
 

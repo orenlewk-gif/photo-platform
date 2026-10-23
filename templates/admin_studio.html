@@ -68,6 +68,35 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
   border-radius:3px;flex-shrink:0;cursor:pointer;line-height:1.6;user-select:none}
 .tree-date:hover .tree-del-btn,.tree-loc:hover .tree-del-btn,.tree-sub:hover .tree-del-btn{display:inline-block}
 .tree-del-btn:hover{background:rgba(239,68,68,.18);color:#ef4444}
+/* Partner folders (Eagle Mount), above the dates */
+#partner-tree:empty{display:none}
+#partner-tree{padding:.35rem 0 .3rem;border-bottom:1px solid rgba(255,255,255,.06)}
+.tree-partner{padding:.42rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.42rem;margin:0 .3rem;border-radius:5px;
+  font-size:.82rem;font-weight:600;color:#ed8936;user-select:none}
+.tree-partner:hover{background:rgba(237,137,54,.08)}
+.tree-partner.active{background:rgba(237,137,54,.15)}
+.tree-partner .sub-count{margin-left:auto;font-size:.68rem;font-weight:400;color:rgba(237,137,54,.65)}
+.partner-tag{position:absolute;top:5px;left:26px;background:rgba(237,137,54,.92);color:#1a1000;font-size:.6rem;
+  font-weight:700;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
+.sel-partner-btn{background:#ed8936;border:none;color:#1a1000;border-radius:6px;padding:.28rem .8rem;font-size:.76rem;
+  cursor:pointer;font-weight:700}
+.sel-partner-btn:hover{background:#f6a05a}
+.sel-partner-off{background:transparent;border:1px solid rgba(237,137,54,.6);color:#ed8936;border-radius:6px;
+  padding:.28rem .7rem;font-size:.76rem;cursor:pointer}
+.sel-partner-off:hover{background:rgba(237,137,54,.12)}
+#partner-view{display:none;flex:1;flex-direction:column;overflow:hidden}
+#partner-header{background:#0a1e2e;border-bottom:1px solid rgba(255,255,255,.07);padding:.85rem 1.25rem;flex-shrink:0}
+#partner-title{font-size:1.15rem;font-weight:700;color:#ed8936}
+#partner-sub{font-size:.78rem;color:rgba(255,255,255,.5);margin-top:.3rem;line-height:1.5}
+#partner-sub a{color:#F5C518}
+.pv-controls{padding:.5rem 1.25rem;border-bottom:1px solid rgba(255,255,255,.05);display:flex;align-items:center;gap:.85rem;flex-shrink:0;min-height:2.4rem}
+#partner-scroll{flex:1;overflow-y:auto;padding:.9rem 1.25rem 2rem}
+.pv-day{margin-bottom:1.4rem}
+.pv-day-title{font-size:.86rem;font-weight:700;color:rgba(255,255,255,.8);margin-bottom:.5rem}
+.pv-day-title span{font-weight:400;color:rgba(255,255,255,.4);margin-left:.4rem}
+.pv-grid{display:grid;gap:4px}
+.pv-where{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.6);color:rgba(255,255,255,.75);font-size:.62rem;
+  padding:2px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 
 /* ── Main area ── */
 #main{flex:1;overflow:hidden;min-width:0;display:flex;flex-direction:column}
@@ -352,6 +381,7 @@ input[type=file]{display:none}
       <a onclick="openLinksView()" class="nav-link" id="nav-links" style="cursor:pointer">Links</a>
       <a onclick="openSettingsView()" class="nav-link" id="nav-settings" style="cursor:pointer">Settings</a>
     </div>
+    <div id="partner-tree"></div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
       <a onclick="openTrashView()" class="nav-link" id="nav-trash" style="cursor:pointer">Trash</a>
@@ -518,6 +548,7 @@ input[type=file]{display:none}
           </div>
           <button class="sel-clear" onclick="clearSelection()">Unselect All</button>
           <button class="sel-link-btn" onclick="openCreateLinkModal()">Create Link</button>
+          <span id="sel-partner-btns" style="display:inline-flex;gap:.45rem"></span>
         </div>
         <button id="select-all-btn" onclick="selectAll()" style="display:none;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.28rem .7rem;font-size:.76rem;cursor:pointer">Select All</button>
         <div class="col-slider-wrap" style="margin-left:auto">
@@ -530,6 +561,23 @@ input[type=file]{display:none}
       <div id="photo-grid-scroll">
         <div id="photo-grid"></div>
       </div>
+    </div>
+
+    <!-- A partner's folder (Eagle Mount): every photo marked for them, by day -->
+    <div id="partner-view">
+      <div id="partner-header">
+        <div id="partner-title"></div>
+        <div id="partner-sub"></div>
+      </div>
+      <div class="pv-controls">
+        <div id="pv-selection-bar" style="display:none;align-items:center;gap:.55rem;flex:1">
+          <span id="pv-selection-count" style="font-size:.8rem;color:rgba(255,255,255,.55)"></span>
+          <button class="sel-clear" onclick="pvClear()">Unselect All</button>
+          <button class="sel-partner-off" id="pv-remove-btn" onclick="pvRemove()"></button>
+        </div>
+        <span id="pv-hint" style="font-size:.76rem;color:rgba(255,255,255,.35)">Click photos to select them (shift-click for a range)</span>
+      </div>
+      <div id="partner-scroll"><div class="loading-text">Loading…</div></div>
     </div>
 
     <!-- Pricing view (inline iframe) -->
@@ -866,10 +914,139 @@ async function setFolderItemList(date, location, folder, itemList) {
 
 // ── Sidebar ──
 async function loadSidebar() {
-  const res = await fetch('/api/admin/folders');
+  const [res] = await Promise.all([fetch('/api/admin/folders'), loadPartners()]);
   const d = await res.json();
   allFolders = d.folders || [];
+  renderPartnerTree();
   renderTree();
+}
+
+// ── Partner folders (Eagle Mount) ──
+// Photos marked for a partner are hidden from the public gallery and shown free on the
+// partner's page. Their folder sits above the dates; marking happens in any folder's
+// selection bar (Mark as Eagle Mount / Remove from Eagle Mount).
+let currentPartner = null;          // id of the partner folder that's open
+let pvDays = [], pvPhotos = [];     // that folder's photos, by day and in page order
+let pvSel = new Set(), pvLast = null;
+
+function renderPartnerTree() {
+  document.getElementById('partner-tree').innerHTML = PARTNERS.map(pt => `
+    <div class="tree-partner ${currentPartner === pt.id ? 'active' : ''}" onclick="openPartnerFolder('${escAttr(pt.id)}')">
+      ${esc(pt.name)}<span class="sub-count">${pt.count || 0}</span>
+    </div>`).join('');
+}
+function partnerName(id) {
+  const pt = PARTNERS.find(x => x.id === id);
+  return pt ? pt.name : id;
+}
+
+async function openPartnerFolder(pid) {
+  currentFolder = null; currentLocation = null;
+  setView('partner');
+  currentPartner = pid;
+  renderPartnerTree(); renderTree();
+  const pt = PARTNERS.find(x => x.id === pid) || {name: pid};
+  document.getElementById('partner-title').textContent = pt.name;
+  document.getElementById('partner-sub').innerHTML = `Hidden from the public gallery; shown free on
+    <a href="/${escAttr(pt.slug || '')}" target="_blank">their page</a>. To add photos, open a folder, select them and click
+    <b>Mark as ${esc(pt.name)}</b>.`;
+  pvSel = new Set(); pvLast = null; pvUpdateBar();
+  document.getElementById('partner-scroll').innerHTML = '<div class="loading-text">Loading photos…</div>';
+  const r = await fetch('/api/admin/partner-photos?partner=' + encodeURIComponent(pid));
+  if (currentPartner !== pid) return;
+  if (!r.ok) { document.getElementById('partner-scroll').innerHTML = '<div class="loading-text">Could not load the photos</div>'; return; }
+  pvDays = (await r.json()).days || [];
+  renderPartnerPhotos();
+}
+
+function renderPartnerPhotos() {
+  pvPhotos = [];
+  const box = document.getElementById('partner-scroll');
+  if (!pvDays.length) {
+    box.innerHTML = '<div class="loading-text">No photos marked yet</div>';
+    return;
+  }
+  box.innerHTML = pvDays.map(day => {
+    const cells = day.photos.map(p => {
+      const i = pvPhotos.push(p) - 1;
+      const where = [p.location, p.folder].filter(Boolean).join(' / ');
+      return `<div class="photo-cell ${p.is_draft ? 'is-draft' : ''} ${pvSel.has(p.path) ? 'selected' : ''}" data-pv="${i}"
+        onclick="pvClick(event,${i})">
+        <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" loading="lazy" alt="${escAttr(p.filename)}">
+        <div class="overlay">
+          <button class="enlarge-icon" onclick="event.stopPropagation();showLightbox(pvPhotos[${i}])" title="View full size">⛶</button>
+        </div>
+        <div class="check-badge">✓</div>
+        <div class="draft-ribbon">DRAFT</div>
+        <div class="pv-where" title="${escAttr(where + ' · ' + p.filename)}">${esc(where)} · ${esc(p.filename)}</div>
+      </div>`;
+    }).join('');
+    return `<div class="pv-day">
+      <div class="pv-day-title">${esc(day.date)}<span>${day.photos.length} photo${day.photos.length !== 1 ? 's' : ''}</span></div>
+      <div class="pv-grid" style="grid-template-columns:repeat(${colCount},1fr)">${cells}</div>
+    </div>`;
+  }).join('');
+}
+
+function pvClick(event, i) {
+  const p = pvPhotos[i];
+  if (event.shiftKey && pvLast !== null) {
+    const [lo, hi] = [Math.min(pvLast, i), Math.max(pvLast, i)];
+    for (let k = lo; k <= hi; k++) pvSel.add(pvPhotos[k].path);
+  } else {
+    if (pvSel.has(p.path)) pvSel.delete(p.path); else pvSel.add(p.path);
+    pvLast = i;
+  }
+  document.querySelectorAll('#partner-scroll .photo-cell').forEach(c =>
+    c.classList.toggle('selected', pvSel.has(pvPhotos[+c.dataset.pv].path)));
+  pvUpdateBar();
+}
+function pvClear() {
+  pvSel.clear(); pvLast = null;
+  document.querySelectorAll('#partner-scroll .photo-cell.selected').forEach(c => c.classList.remove('selected'));
+  pvUpdateBar();
+}
+function pvUpdateBar() {
+  const n = pvSel.size;
+  document.getElementById('pv-selection-bar').style.display = n ? 'flex' : 'none';
+  document.getElementById('pv-hint').style.display = n ? 'none' : '';
+  document.getElementById('pv-selection-count').textContent = `${n} selected`;
+  document.getElementById('pv-remove-btn').textContent = `Remove from ${partnerName(currentPartner)}`;
+}
+async function pvRemove() {
+  const paths = [...pvSel];
+  if (!paths.length) return;
+  const d = await setPhotosPartner(paths, '');
+  if (!d) return;
+  const gone = new Set(d.paths || []);
+  pvDays = pvDays.map(day => ({...day, photos: day.photos.filter(p => !gone.has(p.path))})).filter(day => day.photos.length);
+  pvSel = new Set([...pvSel].filter(p => !gone.has(p)));
+  renderPartnerPhotos(); pvUpdateBar();
+}
+
+async function setPhotosPartner(paths, partnerId) {
+  // Mark photos as a partner's (partnerId) or take the mark off (''). Returns the server's answer.
+  try {
+    const r = await fetch('/api/admin/set-photos-partner', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                                           body: JSON.stringify({paths, partner: partnerId})});
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Saving failed');
+    const n = d.updated;
+    const msg = partnerId
+      ? `${n} photo${n !== 1 ? 's' : ''} marked as ${partnerName(partnerId)} (hidden from the public gallery)`
+      : `${n} photo${n !== 1 ? 's' : ''} back in the public gallery`;
+    showToast(msg + (d.skipped_portraits ? ` · ${d.skipped_portraits} portrait${d.skipped_portraits !== 1 ? 's' : ''} skipped` : ''));
+    loadPartners().then(renderPartnerTree);
+    return d;
+  } catch (e) { showToast(e.message, 'err'); return null; }
+}
+
+async function markSelected(partnerId) {
+  const d = await setPhotosPartner([...selectedPaths], partnerId);
+  if (!d) return;
+  const changed = new Set(d.paths || []);
+  folderPhotos.forEach(p => { if (changed.has(p.path)) p.partner = partnerId; });
+  renderPhotoGrid();
 }
 
 function renderTree() {
@@ -1306,6 +1483,7 @@ function renderPhotoGrid() {
         <button class="trash-icon" onclick="event.stopPropagation();trashPhoto('${pa}')" title="Trash">🗑</button>
       </div>
       <div class="check-badge">✓</div>
+      ${p.partner ? `<div class="partner-tag">${esc(partnerName(p.partner))}</div>` : ''}
       <div class="draft-ribbon">DRAFT</div>
       <div class="photo-filename">${label}</div>
     </div>`;
@@ -1320,8 +1498,9 @@ function setColCount(v) {
 }
 
 // ── View switcher ──
-const _ALL_VIEWS = ['upload','date','location','folder','pricing','admin','orders','links','settings','activities','customers','trash'];
+const _ALL_VIEWS = ['upload','date','location','folder','partner','pricing','admin','orders','links','settings','activities','customers','trash'];
 function setView(view) {
+  if (view !== 'partner' && currentPartner) { currentPartner = null; renderPartnerTree(); }
   _ALL_VIEWS.forEach(v => {
     const el = document.getElementById(v + '-view');
     if (el) el.style.display = 'none';
@@ -1448,6 +1627,14 @@ function updateSelectionUI() {
   const n = selectedPaths.size;
   const bar = document.getElementById('selection-bar');
   bar.style.display = n > 0 ? 'flex' : 'none';
+  // Mark / Remove for each partner (portrait photos are never partner photos)
+  const portrait = currentFolder && PORTRAIT_LOCS.has((currentFolder.location || '').trim().toLowerCase());
+  const selHere = folderPhotos.filter(p => selectedPaths.has(p.path));
+  document.getElementById('sel-partner-btns').innerHTML = n && !portrait ? PARTNERS.map(pt => {
+    const marked = selHere.filter(p => p.partner === pt.id).length;
+    return (marked < n ? `<button class="sel-partner-btn" onclick="markSelected('${escAttr(pt.id)}')">Mark as ${esc(pt.name)}</button>` : '')
+         + (marked ? `<button class="sel-partner-off" onclick="markSelected('')">Remove from ${esc(pt.name)}</button>` : '');
+  }).join('') : '';
   if (n > 0) {
     const inCurrent = folderPhotos.filter(p => selectedPaths.has(p.path)).length;
     const other = n - inCurrent;
@@ -1737,7 +1924,9 @@ async function updatePricingPreview() {
 // ── Lightbox ──
 function openLightbox(idx) {
   const p = folderPhotos[idx];
-  if (!p) return;
+  if (p) showLightbox(p);
+}
+function showLightbox(p) {
   const lb = document.getElementById('admin-lightbox');
   const img = document.getElementById('lb-img');
   document.getElementById('lb-caption').textContent = p.filename;
