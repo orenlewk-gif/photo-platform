@@ -134,18 +134,61 @@ button { font-family:inherit; }
 .box-title { color:#F5C518; font-weight:700; font-size:1.08rem; }
 .box-sub { color:rgba(255,255,255,.7); font-size:.85rem; line-height:1.5; margin-top:.3rem; }
 .box-foot { display:flex; align-items:center; justify-content:flex-end; gap:.6rem; margin-top:.9rem; flex-wrap:wrap; }
-.pm-row { display:flex; align-items:center; gap:.65rem; padding:.55rem 0; border-top:1px solid rgba(255,255,255,.08); flex-wrap:wrap; }
-.pm-rows { margin-top:.8rem; }
-.pm-row img { width:64px; height:44px; object-fit:cover; border-radius:4px; background:#0a1e2e; }
-.pm-name { font-size:.8rem; color:rgba(255,255,255,.75); flex:1; min-width:110px; }
-.pm-row select { background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.18); border-radius:6px; padding:.4rem .5rem; font-size:.82rem; font-family:inherit; }
-.pm-row select option { background:#12283a; }
-.pm-logo { font-size:.75rem; color:rgba(255,255,255,.7); display:flex; align-items:center; gap:.3rem; }
-.pm-add { background:#F5C518; color:#0c2336; border:none; border-radius:6px; padding:.4rem .9rem; font-weight:700; font-size:.8rem; cursor:pointer; }
-.pm-cart { margin-top:.8rem; border-top:1px solid rgba(255,255,255,.12); padding-top:.7rem; font-size:.82rem; }
-.pm-item { display:flex; justify-content:space-between; gap:.5rem; padding:.2rem 0; color:rgba(255,255,255,.8); }
-.pm-item button { background:none; border:none; color:#ff8a80; cursor:pointer; font-size:.78rem; }
+/* Prints: the gallery's shop panel (templates/index.html .qs-*), with a quantity for each print */
+.qs-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:100006; align-items:center; justify-content:center; padding:1rem; }
+.qs-overlay.open { display:flex; }
+.qs-modal { background:#0e2a3a; border:1px solid rgba(255,255,255,.1); border-radius:16px; max-width:700px; width:100%; max-height:88vh; overflow:hidden; box-shadow:0 28px 80px rgba(0,0,0,.75); display:flex; position:relative; }
+.qs-photo-panel { width:44%; flex-shrink:0; display:flex; flex-direction:column; background:#060f18; position:relative; }
+.qs-modal.cart-only .qs-photo-panel { display:none; }
+.qs-photo { display:block; width:100%; flex:1; object-fit:cover; min-height:180px; }
+.qs-photo-meta { padding:.55rem .85rem; background:rgba(0,0,0,.5); border-top:1px solid rgba(255,255,255,.06); display:flex; align-items:center; gap:.5rem; }
+.qs-filename { font-size:.68rem; color:rgba(255,255,255,.45); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pm-nav { background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.2); color:#fff; border-radius:6px; padding:.15rem .55rem; cursor:pointer; font-size:.8rem; }
+.qs-body { flex:1; overflow-y:auto; padding:1rem 1.25rem 1.1rem; }
+.qs-close { background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18); color:#fff; border-radius:50%; width:28px; height:28px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; position:absolute; top:.75rem; right:.75rem; z-index:10; }
+.qs-section { margin-bottom:1rem; }
+.qs-section-label { font-size:.62rem; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:rgba(255,255,255,.4); margin-bottom:.55rem; }
+.qs-row { display:flex; align-items:center; justify-content:space-between; padding:.45rem 0; border-bottom:1px solid rgba(255,255,255,.05); gap:.5rem; }
+.qs-row-label { font-size:.86rem; flex:1; }
+.qs-row-prices { display:flex; align-items:center; gap:.4rem; flex-shrink:0; }
+.qs-price { font-weight:700; color:#F5C518; font-size:.9rem; }
+.qs-price-was { text-decoration:line-through; color:rgba(255,255,255,.35); font-size:.75rem; }
+.qs-add-btn { background:#F5C518; color:#0c2336; font-weight:700; font-size:.75rem; border:none; border-radius:5px; padding:.3rem .8rem; cursor:pointer; }
+.qs-add-btn:hover { background:#ffd700; }
+.qs-logo-row { display:flex; align-items:center; gap:.6rem; padding:.55rem 0 .2rem; cursor:pointer; user-select:none; }
+.qs-logo-row span { font-size:.82rem; color:rgba(255,255,255,.75); flex:1; }
+.qs-logo-accent { color:#F5C518; font-weight:600; }
+.qs-logo-toggle-track { width:34px; height:19px; border-radius:10px; background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.2); position:relative; flex-shrink:0; }
+.qs-logo-toggle-track.on { background:#F5C518; border-color:#F5C518; }
+.qs-logo-toggle-track::after { content:''; position:absolute; top:2px; left:2px; width:13px; height:13px; border-radius:50%; background:#fff; transition:transform .2s; }
+.qs-logo-toggle-track.on::after { transform:translateX(15px); background:#0c2336; }
+.print-discount-banner { background:rgba(245,197,24,.1); border:1px solid rgba(245,197,24,.3); border-radius:6px; padding:.45rem .75rem; margin-bottom:.5rem; font-size:.78rem; color:#F5C518; }
+.pm-ship { font-size:.75rem; color:#4ade80; margin:0 0 .4rem; }
+.pm-frame-ask { text-align:center; padding:.3rem 0 .5rem; }
+.pm-frame-ask img { width:100%; max-height:170px; object-fit:contain; border-radius:8px; background:#060f18; margin-bottom:.6rem; }
+.pm-frame-q { font-weight:700; font-size:.95rem; }
+.pm-frame-sub { font-size:.78rem; color:rgba(255,255,255,.6); margin:.25rem 0 .7rem; line-height:1.45; }
+.pm-frame-btns { display:flex; gap:.5rem; justify-content:center; }
+.pm-line { display:flex; align-items:center; gap:.6rem; padding:.4rem 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:.82rem; }
+.pm-line img { width:54px; height:38px; object-fit:cover; border-radius:4px; background:#0a1e2e; }
+.pm-line-txt { flex:1; min-width:0; }
+.pm-line-fn { font-size:.7rem; color:rgba(255,255,255,.45); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pm-qty { display:flex; align-items:center; gap:6px; }
+.pm-qty button { background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.2); border-radius:5px; width:26px; height:26px; font-size:1rem; cursor:pointer; padding:0; line-height:1; }
+.pm-qty span { min-width:18px; text-align:center; font-weight:600; }
+.pm-line-price { min-width:58px; text-align:right; font-weight:600; }
+.pm-empty { font-size:.8rem; color:rgba(255,255,255,.45); padding:.3rem 0; }
+.pm-foot { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top:.4rem; padding-top:.7rem; border-top:1px solid rgba(255,255,255,.1); }
 .pm-total { margin-right:auto; font-weight:700; }
+.toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#F5C518; color:#0c2336; font-weight:700; padding:.6rem 1.4rem; border-radius:8px; z-index:100010; font-size:.9rem; pointer-events:none; }
+@media(max-width:560px){
+  .qs-modal { flex-direction:column; max-height:92vh; overflow-y:auto; }
+  .qs-photo-panel { width:100%; }
+  .qs-photo { max-height:42vw; }
+  .qs-body { overflow:visible; }
+  .pm-total { flex-basis:100%; }
+  .pm-foot .btn-ghost, .pm-foot .btn-main { flex:1; }
+}
 .save-status { font-size:.85rem; color:rgba(255,255,255,.75); margin-top:.6rem; line-height:1.5; min-height:1.3em; }
 .save-prints { margin-top:.8rem; padding-top:.7rem; border-top:1px solid rgba(255,255,255,.1); font-size:.84rem; color:rgba(255,255,255,.75); }
 .foot { text-align:center; font-size:.75rem; color:rgba(255,255,255,.4); padding:1rem 1rem 2rem; }
@@ -208,17 +251,18 @@ __SITE_HEADER__
   </div>
 </div>
 
-<div class="modal" id="pm" onclick="if(event.target === this) closePrints()">
-  <div class="box">
-    <div class="box-title">Order prints</div>
-    <div class="box-sub" id="pm-sub"></div>
-    <div class="pm-rows" id="pm-rows"></div>
-    <div class="pm-cart" id="pm-cart"></div>
-    <div class="box-foot">
-      <span class="pm-total" id="pm-total"></span>
-      <button class="btn-ghost" onclick="closePrints()">Keep browsing</button>
-      <button class="btn-main" id="pm-checkout" onclick="printCheckout()">Checkout</button>
+<div class="qs-overlay" id="pm" onclick="if(event.target === this) closePrints()">
+  <div class="qs-modal" id="pm-modal">
+    <button class="qs-close" onclick="closePrints()" aria-label="Close">✕</button>
+    <div class="qs-photo-panel">
+      <img class="qs-photo" id="pm-photo" src="" alt="">
+      <div class="qs-photo-meta">
+        <button class="pm-nav" id="pm-prev" onclick="pmStep(-1)" aria-label="Previous photo">‹</button>
+        <span class="qs-filename" id="pm-fn"></span>
+        <button class="pm-nav" id="pm-next" onclick="pmStep(1)" aria-label="Next photo">›</button>
+      </div>
     </div>
+    <div class="qs-body" id="pm-body"></div>
   </div>
 </div>
 
@@ -593,16 +637,27 @@ document.getElementById('lb').addEventListener('touchend', e => {
 }, {passive: true});
 
 // ── Prints, at the partner's discount, through the store's normal checkout ──
-// Prices here are what the checkout will show; the server works them out again (the discount
-// only applies while this browser is signed in to this page). Prints ship to the customer.
-let PRINT_PCT = 0, PRINT_SIZES = [], LOGO_FEE = 2, FREE_SHIP = 3, pmPaths = [];
+// The gallery's shop panel (photo, sizes, logo, the frame question) with a quantity for each
+// print. Prices here are what the checkout will show; the server works them out again (the
+// discount only applies while this browser is signed in to this page). Prints ship.
+let PRINT_PCT = 0, PRINT_SIZES = [], LOGO_FEE = 2, FREE_SHIP = 3;
 // The store's frame, at its regular price (only the print gets the partner discount)
 const FRAME_NAME = 'Rustic Big Sky Picture Frame';
+const FRAME_PICS = ['/frames/frame_5x7_landscape_5.jpg', '/frames/frame_8x10_landscape_1.jpg',
+                    '/frames/frame_10x13_landscape_1.jpg', '/frames/frame_16x20_landscape_1.jpg'];
 let FRAME_PRICES = [];
 const CART_KEY = `ci_partner_prints_${SLUG}`;
+const MAX_QTY = 20;
+// One line per photo + size + frame + logo, with how many: {photoPath, filename, sizeIdx, size,
+// price (one print, logo and frame included), frame, framePrice, orientation, _logo, _logoPrice, qty}
 let printCart = (() => { try { return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); } catch(e) { return []; } })();
+printCart.forEach(it => { it.qty = Math.min(MAX_QTY, Math.max(1, parseInt(it.qty) || 1)); });
+let pm = {paths: [], at: 0, logo: false, frameFor: null};   // photos being shopped, the one showing, logo switch, a size waiting on the frame question
+
 function money(n){ return '$' + Number(n).toFixed(2); }
 function salePrice(si){ return Math.round(PRINT_SIZES[si].price * (1 - PRINT_PCT / 100) * 100) / 100; }
+function cartCount(){ return printCart.reduce((a, it) => a + it.qty, 0); }
+function cartTotal(){ return printCart.reduce((a, it) => a + it.price * it.qty, 0); }
 function storeCart(){ try { localStorage.setItem(CART_KEY, JSON.stringify(printCart)); } catch(e) {} renderCartBar(); }
 function renderCartBar(){
   const bar = document.getElementById('cart-bar');
@@ -610,8 +665,7 @@ function renderCartBar(){
   bar.classList.toggle('show', on);
   document.getElementById('main').style.paddingBottom = on ? '7rem' : '';
   if(!on) return;
-  const total = printCart.reduce((a, it) => a + it.price, 0);
-  document.getElementById('cart-text').textContent = `${plural(printCart.length, 'print')} · ${money(total)}`;
+  document.getElementById('cart-text').textContent = `${plural(cartCount(), 'print')} · ${money(cartTotal())}`;
   document.getElementById('cart-note').textContent = `${PRINT_PCT}% off prints. Shipping is added at checkout.`;
 }
 async function loadPrintPrices(){
@@ -625,71 +679,118 @@ function photoByPath(path){
   for(const d of days){ const p = d.photos.find(x => x.path === path); if(p) return p; }
   return null;
 }
+function showToast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
 async function openPrints(paths){
   try { await loadPrintPrices(); } catch(e) { alert('Print prices could not be loaded. Please try again.'); return; }
   closeLb();
-  pmPaths = paths || [];
-  document.getElementById('pm-sub').textContent = `${PRINT_PCT}% off prints of your photos (frames are regular price).`
-    + ` Prints are shipped to you; shipping is added at checkout (free on ${FREE_SHIP} or more unframed prints).`;
-  const opts = PRINT_SIZES.map((s, i) => `<option value="${i}">${esc(s.label)} — ${money(salePrice(i))} (was ${money(s.price)})</option>`).join('');
-  document.getElementById('pm-rows').innerHTML = pmPaths.map((path, k) => {
-    const p = photoByPath(path);
-    return `<div class="pm-row">
-      <img src="${thumb(path)}" alt="" loading="lazy">
-      <span class="pm-name">${esc(p ? p.filename : '')}</span>
-      <select id="pm-size-${k}" aria-label="Print size">${opts}</select>
-      <select id="pm-frame-${k}" aria-label="Frame"></select>
-      <label class="pm-logo"><input type="checkbox" id="pm-logo-${k}"> Big Sky Resort logo (+${money(LOGO_FEE)})</label>
-      <button class="pm-add" onclick="addPrint(${k})">Add</button>
-    </div>`;
-  }).join('');
-  pmPaths.forEach((_, k) => {
-    document.getElementById(`pm-size-${k}`).addEventListener('change', () => fillFrames(k));
-    fillFrames(k);
-  });
-  renderPrintCart();
+  pm = {paths: paths || [], at: 0, logo: false, frameFor: null};
+  renderPm();
   document.getElementById('pm').classList.add('open');
 }
-function fillFrames(k){
-  // Frame price follows the print size
-  const si = Number(document.getElementById(`pm-size-${k}`).value);
-  const fp = FRAME_PRICES[si];
-  const sel = document.getElementById(`pm-frame-${k}`);
-  const was = sel.value;
-  sel.innerHTML = '<option value="">No frame</option>'
-    + (fp ? `<option value="frame">${esc(FRAME_NAME)} (+${money(fp)})</option>` : '');
-  sel.value = (was === 'frame' && fp) ? 'frame' : '';
-}
 function closePrints(){ document.getElementById('pm').classList.remove('open'); }
-function addPrint(k){
-  const path = pmPaths[k], p = photoByPath(path);
-  const si = Number(document.getElementById(`pm-size-${k}`).value);
-  const logo = document.getElementById(`pm-logo-${k}`).checked;
-  if(printCart.some(it => it.photoPath === path && it.sizeIdx === si)){
-    alert('That print is already in your order.'); return;
-  }
-  const framed = document.getElementById(`pm-frame-${k}`).value === 'frame' && FRAME_PRICES[si];
-  const framePrice = framed ? FRAME_PRICES[si] : 0;
-  printCart.push({photoPath: path, filename: p ? p.filename : path.split('/').pop(), sizeIdx: si,
-                  size: PRINT_SIZES[si].label, price: salePrice(si) + (logo ? LOGO_FEE : 0) + framePrice,
-                  frame: framed ? FRAME_NAME : 'No Frame', framePrice, orientation: orient[path] || 'landscape',
-                  _logo: logo, _logoPrice: logo ? LOGO_FEE : 0, location: ''});
-  storeCart(); renderPrintCart();
+function pmStep(d){
+  if(pm.paths.length < 2) return;
+  pm.at = (pm.at + d + pm.paths.length) % pm.paths.length;
+  pm.frameFor = null;
+  renderPm();
 }
-function removePrint(i){ printCart.splice(i, 1); storeCart(); renderPrintCart(); }
-function renderPrintCart(){
-  const box = document.getElementById('pm-cart');
-  if(!printCart.length){ box.innerHTML = '<span style="color:rgba(255,255,255,.5)">No prints added yet.</span>'; }
-  else box.innerHTML = printCart.map((it, i) => `<div class="pm-item"><span>${esc(it.size)} print — ${esc(it.filename)}${it._logo ? ' + logo' : ''}${it.frame && it.frame !== 'No Frame' ? ' + frame' : ''}</span>
-      <span>${money(it.price)} <button onclick="removePrint(${i})" aria-label="Remove">Remove</button></span></div>`).join('');
-  const total = printCart.reduce((a, it) => a + it.price, 0);
-  document.getElementById('pm-total').textContent = printCart.length ? `${plural(printCart.length, 'print')} · ${money(total)}` : '';
-  document.getElementById('pm-checkout').disabled = !printCart.length;
+function pmLogo(){ pm.logo = !pm.logo; renderPm(); }
+
+function renderPm(){
+  const path = pm.paths[pm.at];
+  document.getElementById('pm-modal').classList.toggle('cart-only', !path);
+  if(path){
+    const img = document.getElementById('pm-photo');
+    img.src = thumb(path);
+    const big = new Image();
+    big.onload = () => { if(pm.paths[pm.at] === path) img.src = big.src; };
+    big.src = large(path);
+    const p = photoByPath(path);
+    document.getElementById('pm-fn').textContent = (p ? p.filename : '') + (pm.paths.length > 1 ? ` · ${pm.at + 1} of ${pm.paths.length}` : '');
+    document.getElementById('pm-prev').style.display = document.getElementById('pm-next').style.display = pm.paths.length > 1 ? '' : 'none';
+  }
+  let html = '';
+  if(path){
+    const unframed = printCart.filter(it => !it.frame || it.frame === 'No Frame').reduce((a, it) => a + it.qty, 0);
+    const need = FREE_SHIP - unframed;
+    html += `<div class="qs-section"><div class="qs-section-label">Prints</div>
+      <div class="print-discount-banner"><strong>${PRINT_PCT}% off prints</strong> of your photos. Frames are regular price.</div>
+      <div class="pm-ship">${need > 0 ? `Add ${need} more unframed print${need === 1 ? '' : 's'} for free shipping` : 'Free shipping included on your prints!'}</div>`;
+    if(pm.frameFor !== null){
+      const si = pm.frameFor;
+      html += `<div class="pm-frame-ask">
+        <img src="${FRAME_PICS[si] || FRAME_PICS[0]}" alt="${esc(FRAME_NAME)}">
+        <div class="pm-frame-q">Add a frame to your ${esc(PRINT_SIZES[si].label)} print?</div>
+        <div class="pm-frame-sub">${esc(FRAME_NAME)}, ${money(FRAME_PRICES[si])} (regular price). It comes in the right orientation for your photo.</div>
+        <div class="pm-frame-btns"><button class="btn-ghost" onclick="pmAdd(${si}, false)">No thanks</button>
+          <button class="btn-main" onclick="pmAdd(${si}, true)">Yes, add frame</button></div></div>`;
+    } else {
+      const lf = pm.logo ? LOGO_FEE : 0;
+      html += PRINT_SIZES.map((s, si) => `<div class="qs-row"><span class="qs-row-label">${esc(s.label)} Print</span>
+        <div class="qs-row-prices"><span class="qs-price-was">${money(s.price + lf)}</span>
+          <span class="qs-price">${money(salePrice(si) + lf)}</span>
+          <button class="qs-add-btn" onclick="pmChoose(${si})">Add</button></div></div>`).join('')
+        + `<div class="qs-logo-row" onclick="pmLogo()" role="switch" aria-checked="${pm.logo}">
+          <div class="qs-logo-toggle-track${pm.logo ? ' on' : ''}"></div>
+          <span>${pm.logo ? 'Big Sky Resort logo on prints' : 'Add the Big Sky Resort logo'} <span class="qs-logo-accent">+${money(LOGO_FEE)} each</span></span></div>`;
+    }
+    html += '</div>';
+  }
+  // The print order: this photo's prints, or everything (from the print list button)
+  const lines = printCart.map((it, i) => ({it, i})).filter(x => !path || x.it.photoPath === path);
+  html += `<div class="qs-section"><div class="qs-section-label">${path ? 'This photo in your print order' : 'Your print order'}</div>`
+    + (lines.length ? lines.map(({it, i}) => `<div class="pm-line">
+        ${path ? '' : `<img src="${thumb(it.photoPath)}" alt="">`}
+        <div class="pm-line-txt"><div>${esc(it.size)} print${it.frame && it.frame !== 'No Frame' ? ' + frame' : ''}${it._logo ? ' + logo' : ''}</div>
+          ${path ? '' : `<div class="pm-line-fn">${esc(it.filename)}</div>`}</div>
+        <div class="pm-qty"><button onclick="pmQty(${i}, -1)" aria-label="One fewer">−</button><span>${it.qty}</span>
+          <button onclick="pmQty(${i}, 1)" aria-label="One more">+</button></div>
+        <span class="pm-line-price">${money(it.price * it.qty)}</span></div>`).join('')
+      : `<div class="pm-empty">${path ? 'No prints of this photo yet.' : 'No prints added yet.'}</div>`)
+    + '</div>';
+  html += `<div class="pm-foot"><span class="pm-total">${cartCount() ? `${plural(cartCount(), 'print')} · ${money(cartTotal())}` : ''}</span>
+    <button class="btn-ghost" onclick="closePrints()">Keep browsing</button>
+    <button class="btn-main" onclick="printCheckout()"${cartCount() ? '' : ' disabled'}>Checkout</button></div>`;
+  document.getElementById('pm-body').innerHTML = html;
+}
+function pmChoose(si){
+  // Like the gallery: a size with a frame available asks about the frame first
+  if(FRAME_PRICES[si]){ pm.frameFor = si; renderPm(); }
+  else pmAdd(si, false);
+}
+function pmAdd(si, framed){
+  const path = pm.paths[pm.at], p = photoByPath(path);
+  framed = framed && !!FRAME_PRICES[si];
+  const frame = framed ? FRAME_NAME : 'No Frame', framePrice = framed ? FRAME_PRICES[si] : 0, logo = pm.logo;
+  const same = printCart.find(it => it.photoPath === path && it.sizeIdx === si && it.frame === frame && !!it._logo === logo);
+  if(same) same.qty = Math.min(MAX_QTY, same.qty + 1);
+  else printCart.push({photoPath: path, filename: p ? p.filename : path.split('/').pop(), sizeIdx: si,
+                       size: PRINT_SIZES[si].label, price: salePrice(si) + (logo ? LOGO_FEE : 0) + framePrice,
+                       frame, framePrice, orientation: orient[path] || 'landscape',
+                       _logo: logo, _logoPrice: logo ? LOGO_FEE : 0, location: '', qty: 1});
+  pm.frameFor = null;
+  storeCart(); renderPm();
+  showToast(`${PRINT_SIZES[si].label} print added`);
+}
+function pmQty(i, d){
+  const it = printCart[i];
+  if(!it) return;
+  it.qty = Math.min(MAX_QTY, it.qty + d);
+  if(it.qty <= 0) printCart.splice(i, 1);
+  storeCart(); renderPm();
 }
 function printCheckout(){
   if(!printCart.length) return;
+  // The checkout takes one entry per print, so a line with a quantity goes in that many times
+  const prints = printCart.flatMap(it => { const {qty, ...one} = it; return Array.from({length: qty}, () => ({...one})); });
   localStorage.setItem('ci_checkout_cart', JSON.stringify({
-    folderCarts: {}, printCart, frameCart: [], returnUrl: location.href, timestamp: Date.now(),
+    folderCarts: {}, printCart: prints, frameCart: [], returnUrl: location.href, timestamp: Date.now(),
   }));
   location.href = '/checkout';          // the checkout empties this print list once the order goes through
 }
