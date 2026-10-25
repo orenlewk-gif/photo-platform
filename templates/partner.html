@@ -333,7 +333,11 @@ async function load(){
   const d = await r.json();
   if(d.family_code_message){
     const c = document.getElementById('code');
-    c.innerHTML = esc(d.family_code_message).split(esc(d.family_code)).join(`<b>${esc(d.family_code)}</b>`);
+    // the code in bold; {gallery} (and an older message's site address) as a link to the gallery
+    c.innerHTML = esc(d.family_code_message).split(esc(d.family_code)).join(`<b>${esc(d.family_code)}</b>`)
+      .split('{gallery}').join('<a href="/" style="color:#F5C518">our photo gallery</a>')
+      .split('online at photos.bigskyphotos.com').join('online in photos.bigskyphotos.com')
+      .split('photos.bigskyphotos.com').join('<a href="/" style="color:#F5C518">our photo gallery</a>');
     c.style.display = '';
   }
   PRINT_PCT = Number(d.print_pct) || 0;

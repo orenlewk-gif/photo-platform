@@ -4297,7 +4297,7 @@ _PARTNER_FIELDS = {                 # every partner has these (older saved partn
     "family_code_message": "",      # the box's wording; blank = the standard wording below
 }
 FAMILY_CODE_MESSAGE_DEFAULT = ("Family and friends: use code {code} for {pct}% off photos and prints, "
-                               "online at photos.bigskyphotos.com and in our store.")
+                               "online in {gallery} and in our store.")
 _PARTNER_DEFAULTS = [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange", "slug": "eaglemount",
                       "welcome": "Welcome! Your photos are free to download. Thank you for skiing with Eagle Mount."}]
 _partners_doc = JsonDoc(s3, R2_BUCKET, PARTNERS_KEY, ttl=30, indent=2,
@@ -4315,7 +4315,8 @@ def _save_partners(partners: list) -> None:
 
 
 def _family_code_message(partner: dict) -> str:
-    """The family code box text ('' when there's no code). {code} and {pct} are filled in."""
+    """The family code box text ('' when there's no code). {code} and {pct} are filled in;
+    {gallery} is left for the page, which shows it as a link to the gallery."""
     code = (partner.get("family_code") or "").strip()
     if not code:
         return ""

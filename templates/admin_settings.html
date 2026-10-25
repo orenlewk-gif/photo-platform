@@ -799,7 +799,7 @@ async function loadPartners() {
         <input class="field-input" id="pt-codepct-${i}" type="number" min="0" max="100" value="${p.family_code_pct}" style="max-width:120px"></div>
       <div class="field-row"><label class="field-label" for="pt-msg-${i}">Family code message</label>
         <textarea class="field-input" id="pt-msg-${i}" rows="3" placeholder="${escAttr(_partnerDefaultMsg)}">${esc(p.family_code_message || '')}</textarea>
-        <div class="field-hint">Leave blank for the standard wording. Write {code} for the code and {pct} for the percent.</div></div>
+        <div class="field-hint">Leave blank for the standard wording. Write {code} for the code, {pct} for the percent and {gallery} for a link to the photo gallery.</div></div>
       <div class="field-row"><label class="field-label" for="pt-printpct-${i}">Prints of their photos: % off</label>
         <input class="field-input" id="pt-printpct-${i}" type="number" min="0" max="100" value="${p.print_discount_pct}" style="max-width:120px"></div>
       <div class="field-row"><label class="field-label" for="pt-value-${i}">Donation value per photo downloaded ($)</label>

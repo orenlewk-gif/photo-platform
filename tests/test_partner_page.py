@@ -261,7 +261,7 @@ def test_bad_partner_settings_are_refused(admin_client, change, msg):
 def test_standard_family_code_wording(main_module):
     msg = main_module._family_code_message({"family_code": "EAGLEMOUNT25", "family_code_pct": 25})
     assert msg == ("Family and friends: use code EAGLEMOUNT25 for 25% off photos and prints, "
-                   "online at photos.bigskyphotos.com and in our store.")
+                   "online in {gallery} and in our store.")   # {gallery}: a link on the page
     assert main_module._family_code_message({"family_code": ""}) == ""
 
 
