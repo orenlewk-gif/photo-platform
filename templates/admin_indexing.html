@@ -323,7 +323,7 @@ function updateSelInfo() {
 }
 
 // ── Edit panel ────────────────────────────────────────────────────────────────
-function showPanel() {
+function showPanel(pasted) {
   const sel = [..._selected];
   if (!sel.length) { hidePanel(); return; }
   const panel = document.getElementById('cf-panel');
@@ -340,7 +340,11 @@ function showPanel() {
   const sLabeled = selPhotos.filter(p => p.sport);
   const sCommon = sLabeled.length && sLabeled.every(p => p.sport === sLabeled[0].sport) ? sLabeled[0].sport : null;
 
-  const state = {jacket:[...jCommon], pants:[...pCommon], sport:sCommon, instructor:null};
+  // touched: the rows changed in this panel. Apply only changes those rows, so colors a photo
+  // has that the others in the selection don't are never erased, and unlabeled photos never
+  // pick up the pre-filled colors by accident.
+  const state = pasted || {jacket:[...jCommon], pants:[...pCommon], sport:sCommon, instructor:null,
+                           touched:{jacket:false, pants:false, sport:false}};
   window._panelState = state;
 
   const colorRow = (label, key) => {
@@ -389,6 +393,7 @@ function toggleColor(key, color, el) {
   const idx = state[key].indexOf(color);
   const on  = idx < 0;
   if (on) state[key].push(color); else state[key].splice(idx,1);
+  state.touched[key] = true;
   el.classList.toggle('on', on);
 }
 
@@ -397,6 +402,7 @@ function toggleSport(sport, el) {
   if (!state) return;
   const on = state.sport !== sport;
   state.sport = on ? sport : null;
+  state.touched.sport = true;
   document.querySelectorAll('#cf-panel .cf-pill').forEach(p => {
     if (p.textContent.trim() === 'ski' || p.textContent.trim() === 'snowboard') {
       p.classList.toggle('on', p.textContent.trim() === state.sport);
@@ -416,7 +422,8 @@ function pasteCopy() {
   state.jacket = [..._clipboard.jacket];
   state.pants  = [..._clipboard.pants];
   state.sport  = _clipboard.sport;
-  showPanel(); // re-render with pasted values
+  state.touched = {jacket:true, pants:true, sport:true};   // pasting changes every row
+  showPanel(state); // re-render with pasted values
 }
 
 async function applyEdit() {
@@ -426,10 +433,12 @@ async function applyEdit() {
   statusEl.textContent = 'Saving…';
   const sel = [..._selected];
 
+  // Only the rows changed here; an emptied row clears that label on every selected photo
   const body = {paths: sel};
-  if (state.jacket.length) body.jacket_colors = state.jacket;
-  if (state.pants.length)  body.pants_colors  = state.pants;
-  if (state.sport)         body.sport         = state.sport;
+  if (state.touched.jacket) body.jacket_colors = [...state.jacket];
+  if (state.touched.pants)  body.pants_colors  = [...state.pants];
+  if (state.touched.sport)  body.sport         = state.sport;
+  if (Object.keys(body).length === 1) { statusEl.textContent = 'Nothing changed'; return; }
 
   try {
     const r = await fetch('/api/admin/set-photos-colors-bulk', {
@@ -441,9 +450,9 @@ async function applyEdit() {
       sel.forEach(path => {
         const p = _photos.find(x => x.path === path);
         if (p) {
-          if (state.jacket.length) p.jacket = state.jacket;
-          if (state.pants.length)  p.pants  = state.pants;
-          if (state.sport)         p.sport  = state.sport;
+          if (state.touched.jacket) p.jacket = [...state.jacket];
+          if (state.touched.pants)  p.pants  = [...state.pants];
+          if (state.touched.sport)  p.sport  = state.sport;
         }
       });
     }
