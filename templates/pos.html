@@ -1843,7 +1843,10 @@ async function posAddSavedPhotos(fi, quiet){
   renderApSelCount();
   const before = new Set(S.cart.map(i => i.id));
   apAddToCart();
-  S.cart.filter(i => !before.has(i.id)).forEach(i => { i._savedKey = scKey('photos:' + fi); });
+  // (the photos may have joined a line already in the sale for that folder)
+  S.cart.filter(i => !before.has(i.id) || (i.category === 'action_photos' && !i._savedKey
+                     && want.some(p => (i.photo_paths || []).includes(p))))
+        .forEach(i => { i._savedKey = scKey('photos:' + fi); });
   const missing = f.photos.length - want.length;
   if(!quiet) showToast(`${want.length} saved photo${want.length === 1 ? '' : 's'} added` + (missing ? ` (${missing} no longer on the site)` : ''));
   openSavedCartModal();
@@ -2508,11 +2511,16 @@ async function apSelectFamily(idx){
   $('ap-photo-grid').innerHTML = '<div class="ap-loading">Loading photos...</div>';
   $('ap-add-bar').classList.remove('hidden');
   renderApSelCount();
+  S.ap.pricing = null;
   try {
     const params = new URLSearchParams({ date: f.date || '', location: f.location || '', family: f.last_name || f.folder || f.name || '' });
+    // The folder's own prices (its location, day and family), exactly as the website prices it
+    const pricingReq = fetch(`/api/pricing?${params}`).then(r => r.json()).catch(() => null);
     const res = await fetch(`/api/browse?${params}&dims=0`);   // dims=0: no photo sizes needed, so the list comes back immediately
     const data = await res.json();
     S.ap.photos = (data.photos || []);
+    const pricing = await pricingReq;
+    if(S.ap.family === f && pricing && (pricing.tiers || []).length) S.ap.pricing = pricing;
     renderApPhotos();
   } catch(e){
     $('ap-photo-grid').innerHTML = '<div class="ap-loading">Failed to load photos</div>';
@@ -2602,17 +2610,58 @@ function renderApSelCount(){
   $('ap-add-btn').textContent = 'Add to Cart';
   let label = n === 0 ? 'Tap photos to select' : `${n} selected`;
   if(n > 0){
-    const ap = S.actionPricing || {per_photo:25, all_photos:115};
-    const per = ap.per_photo || 25, all = ap.all_photos || 115;
     // Staff only: just the count and the price (no sales wording). Partner photos are free.
-    const paid = S.ap.photos.filter(p => !p.partner && S.ap.selected.has(p.path || '')).length;
-    const free = n - paid;
-    const paidTotal = S.ap.photos.filter(p => !p.partner).length;
-    const price = paid && paid === paidTotal ? all : Math.min(paid * per, all);
-    label = `${n} selected — ${fmt(price)}${free ? ` (${free} free)` : ''}`;
+    const paidPaths = S.ap.photos.filter(p => !p.partner && S.ap.selected.has(p.path || '')).map(p => p.path || '');
+    const free = n - paidPaths.length;
+    const line = apFolderLine();
+    if(line){
+      // More from a folder already in the sale: the folder is priced once, all together
+      const all = new Set([...(line.photo_paths || []), ...paidPaths]);
+      label = `${n} selected — folder total ${fmt(apFolderPrice(all.size))}${free ? ` (${free} free)` : ''}`;
+    } else {
+      label = `${n} selected — ${fmt(apFolderPrice(paidPaths.length))}${free ? ` (${free} free)` : ''}`;
+    }
   }
   $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;
+}
+
+// Action photo prices: the website's rule (the same as its gallery and checkout) with the
+// folder's own price list. In the shop staff may sell more than the website's "up to" limit,
+// at the largest package price.
+function posTierPrice(count, tiers){
+  if(!tiers || !tiers.length || count <= 0) return 0;
+  const num = t => t.count === 'all' ? Infinity : Number(t.count);
+  const allTier = tiers.find(t => t.count === 'all');
+  const maxTiers = tiers.filter(t => t.max).sort((a, b) => num(a) - num(b));
+  const single = tiers.find(t => Number(t.count) === 1);
+  const unit = single ? Number(single.price) : 25;
+  let best = count * unit;
+  tiers.filter(t => !t.max && typeof t.count === 'number' && t.count > 1 && t.count <= count)
+       .sort((a, b) => b.count - a.count)
+       .forEach(t => { best = Math.min(best, Math.floor(count / t.count) * t.price + (count % t.count) * unit); });
+  if(maxTiers.length){
+    const cap = maxTiers.find(t => count <= num(t)) || maxTiers[maxTiers.length - 1];
+    if(Number(cap.price) < best) best = Number(cap.price);
+  } else if(allTier && best > Number(allTier.price)){
+    best = Number(allTier.price);
+  }
+  return Math.round(best * 100) / 100;
+}
+function apFolderPrice(count){
+  const ap = S.actionPricing || {per_photo: 25, all_photos: 115};
+  const tiers = (S.ap.pricing && S.ap.pricing.tiers) ||
+    [{count: 1, price: ap.per_photo || 25}, {count: 'all', price: ap.all_photos || 115, max: true}];
+  return posTierPrice(count, tiers);
+}
+function apFolderKey(f){
+  return [f.date || '', f.location || '', (f.last_name || f.folder || f.name || '').toLowerCase()].join('|');
+}
+// The sale's line for the open folder's photos (not one with a price typed in by hand)
+function apFolderLine(free){
+  const key = apFolderKey(S.ap.family || {});
+  return S.cart.find(i => i.category === 'action_photos' && i._folderKey === key && !!i._partnerFree === !!free
+                          && i._customPrice == null);
 }
 
 function apAddToCart(){
@@ -2629,41 +2678,57 @@ function apAddToCart(){
   // left out of the photo count and of the file names commission is credited by
   const selectedPhotos = chosen.filter(p => !p.partner);
   const partnerPhotos = chosen.filter(p => p.partner);
-  const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || ''));
-  const totalPhotos = S.ap.photos.filter(p => !p.partner).length;
-  const selectedCount = selectedPhotos.length;
-  const ap = S.actionPricing || {per_photo:25, all_photos:115};
-  const perPhoto  = ap.per_photo  || 25;
-  const allPhotos = ap.all_photos || 115;
-  const isAll = selectedCount === totalPhotos && totalPhotos > 0;
-  const basePrice = isAll ? allPhotos : Math.min(selectedCount * perPhoto, allPhotos);
-  const priceDetail = isAll ? `All ${selectedCount} photos · ${fmt(allPhotos)} package`
-    : basePrice === allPhotos ? `${selectedCount} photos · ${fmt(allPhotos)} (capped)`
-    : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · ${fmt(perPhoto)} each`;
-  const detail = [priceDetail, f.date || '', f.location || ''].filter(Boolean).join(' · ');
-  if(selectedCount){
-    cartAdd({
-      category: 'action_photos',
-      label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
-      detail,
-      price: basePrice, qty: 1, subtotal: basePrice,
-      photo_paths: selectedPhotos.map(p => p.path || ''),
-      filenames, date: f.date || '', location: f.location || '',
-      _logoPaths: [], _baseActionPrice: basePrice,
-    });
+  const folderKey = apFolderKey(f);
+  const fname = p => p.filename || (p.path || '').split('/').pop() || '';
+  if(selectedPhotos.length){
+    // A folder is priced once: more photos from a folder already in the sale join its line
+    // (a photo already there isn't charged again)
+    const line = apFolderLine(false);
+    const paths = [...new Set([...(line ? line.photo_paths : []), ...selectedPhotos.map(p => p.path || '')])];
+    const byPath = new Map(S.ap.photos.map(p => [p.path || '', p]));
+    const n = paths.length;
+    const basePrice = apFolderPrice(n);
+    const detail = [`${n} photo${n !== 1 ? 's' : ''} · ${fmt(basePrice)}`, f.date || '', f.location || ''].filter(Boolean).join(' · ');
+    const fields = {
+      detail, photo_paths: paths,
+      filenames: paths.map(p => byPath.has(p) ? fname(byPath.get(p)) : p.split('/').pop()),
+      _baseActionPrice: basePrice,
+    };
+    if(line){
+      Object.assign(line, fields);
+      line.price = basePrice + (line._logoPaths || []).length * LOGO_FEE;
+      line.subtotal = line.price * (line.qty || 1);
+      renderCart();
+      showToast(`${line.label}: now ${n} photos`);
+    } else {
+      cartAdd({
+        category: 'action_photos',
+        label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
+        price: basePrice, qty: 1, subtotal: basePrice,
+        date: f.date || '', location: f.location || '',
+        _logoPaths: [], _folderKey: folderKey, ...fields,
+      });
+    }
   }
   if(partnerPhotos.length){
     const pname = partnerPhotos[0].partner_name || 'Partner';
-    const n = partnerPhotos.length;
-    cartAdd({
-      category: 'action_photos',
-      label: `${pname} Photos — free`,
-      detail: [`${n} photo${n !== 1 ? 's' : ''} · free (${pname})`, f.date || '', f.location || ''].filter(Boolean).join(' · '),
-      price: 0, qty: 1, subtotal: 0,
-      photo_paths: partnerPhotos.map(p => p.path || ''),
-      filenames: [], date: f.date || '', location: f.location || '',
-      _logoPaths: [], _baseActionPrice: 0, _partnerFree: true,
-    });
+    const line = apFolderLine(true);
+    const paths = [...new Set([...(line ? line.photo_paths : []), ...partnerPhotos.map(p => p.path || '')])];
+    const n = paths.length;
+    const detail = [`${n} photo${n !== 1 ? 's' : ''} · free (${pname})`, f.date || '', f.location || ''].filter(Boolean).join(' · ');
+    if(line){
+      Object.assign(line, {detail, photo_paths: paths});
+      renderCart();
+    } else {
+      cartAdd({
+        category: 'action_photos',
+        label: `${pname} Photos — free`,
+        detail, price: 0, qty: 1, subtotal: 0,
+        photo_paths: paths,
+        filenames: [], date: f.date || '', location: f.location || '',
+        _logoPaths: [], _baseActionPrice: 0, _partnerFree: true, _folderKey: folderKey,
+      });
+    }
   }
   S.ap.selected.clear();
   S.ap.photos.forEach((_,i) => {
