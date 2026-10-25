@@ -389,6 +389,21 @@ button.select-check { padding:0; font-family:inherit; line-height:1; appearance:
   .qs-photo-panel { width:100%; border-radius:16px 16px 0 0; max-height:42vw; }
   .qs-photo { max-height:42vw; }
 }
+/* Quick Shop: the frame question, this photo's order (with quantities) and the total (same as the Eagle Mount shop) */
+.qs-frame-ask { text-align:center; padding:.3rem 0 .5rem; }
+.qs-frame-ask img { width:100%; max-height:170px; object-fit:contain; border-radius:8px; background:#060f18; margin-bottom:.6rem; }
+@media(max-height:520px){ .qs-frame-ask img { max-height:80px; } }
+.qs-frame-q { font-weight:700; font-size:.95rem; }
+.qs-frame-sub { font-size:.78rem; color:rgba(255,255,255,.6); margin:.25rem 0 .7rem; line-height:1.45; }
+.qs-frame-btns { display:flex; gap:.5rem; justify-content:center; }
+.qs-line { display:flex; align-items:center; gap:.6rem; padding:.4rem 0; border-bottom:1px solid rgba(255,255,255,.05); font-size:.82rem; }
+.qs-line-txt { flex:1; min-width:0; }
+.qs-line-price { min-width:58px; text-align:right; font-weight:600; }
+.qs-line-rm { background:none; border:none; color:rgba(255,255,255,.45); cursor:pointer; font-size:.75rem; text-decoration:underline; padding:0; font-family:inherit; }
+.qs-empty { font-size:.8rem; color:rgba(255,255,255,.45); padding:.3rem 0; }
+.qs-foot { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; margin-top:.4rem; padding-top:.7rem; border-top:1px solid rgba(255,255,255,.1); }
+.qs-foot .qs-total { flex-basis:100%; font-weight:700; }
+.qs-foot .btn-ghost, .qs-foot .btn-checkout { flex:1; text-align:center; }
 .print-discount-banner { background:rgba(245,197,24,0.1); border:1px solid rgba(245,197,24,0.3); border-radius:6px; padding:0.45rem 0.75rem; margin-bottom:0.6rem; font-size:0.78rem; color:#F5C518; }
 
 /* ── Frame selector ── */
@@ -862,6 +877,8 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .frame-qty-controls { display:flex; align-items:center; gap:6px; }
 .frame-qty-btn { background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:5px; width:26px; height:26px; font-size:1rem; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; transition:background 0.15s; line-height:1; font-family:inherit; }
 .frame-qty-btn:hover { background:rgba(255,255,255,0.2); }
+.cv-qty { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.cv-qty span { min-width:16px; text-align:center; font-weight:600; font-size:.88rem; }
 .cartview-frame-row { display:flex; align-items:center; padding:0.55rem 0; border-bottom:1px solid rgba(255,255,255,0.06); font-size:0.88rem; gap:0.75rem; }
 .cartview-frame-row:last-child { border-bottom:none; }
 
@@ -1354,6 +1371,8 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
         <div id="qs-prints"></div>
         <div id="qs-logo-section"></div>
       </div>
+      <div class="qs-section" id="qs-order"></div>
+      <div class="qs-foot" id="qs-foot"></div>
     </div>
   </div>
 </div>
@@ -2982,6 +3001,9 @@ function renderPoseCartView() {
     html += `<div style="font-size:.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.35);padding:.5rem 0 .25rem">Prints</div>`;
   }
   printCart.forEach((p, pi) => {
+    const copies = printGroup(printCart, pi);
+    if (copies[0] !== pi) return;                  // one row per print; copies are its quantity
+    const n = copies.length;
     const photo = allPhotos[p.photoIdx];
     html += `<div style="border-bottom:1px solid rgba(255,255,255,.07);padding:.65rem 0;">
       <div class="cartview-print-row" style="border-bottom:none;padding:0 0 .4rem 0;">
@@ -2989,8 +3011,9 @@ function renderPoseCartView() {
           <div class="cv-size">${escHtml(photo?.filename || p.filename || '')}</div>
           <div class="cv-frame">${p.size} Print${p.frame && p.frame !== 'No Frame' ? ' · ' + p.frame : ''}</div>
         </div>
-        <span class="cartview-print-price">$${(p.price + p.framePrice).toFixed(2)}</span>
-        <button class="cartview-rm-btn" onclick="printCart.splice(${pi},1);renderPoseCartView();updatePoseCart()">Remove</button>
+        ${printQtyHtml(n, `changePrintQty(${pi},-1)`, `changePrintQty(${pi},1)`)}
+        <span class="cartview-print-price">$${((p.price + p.framePrice) * n).toFixed(2)}</span>
+        <button class="cartview-rm-btn" onclick="removePrintGroup(${pi})">Remove</button>
       </div>
       <div class="cv-logo-row">
         ${p._logo
@@ -3996,6 +4019,9 @@ function renderCartView() {
       if (isCurrent) {
         html += `<div style="margin-top:0.75rem;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);">Prints</div>`;
         folderPrints.forEach((p, idx) => {
+          const copies = printGroup(folderPrints, idx);
+          if (copies[0] !== idx) return;               // one row per print; copies are its quantity
+          const n = copies.length;
           html += `
           <div style="border-bottom:1px solid rgba(255,255,255,0.07);padding:0.65rem 0;">
             <div class="cartview-print-row" style="border-bottom:none;padding:0 0 0.4rem 0;">
@@ -4006,8 +4032,9 @@ function renderCartView() {
                   ${buildSizeOptions(p.sizeIdx, p.photoIdx)}
                 </select>
               </div>
-              <span class="cartview-print-price">$${p.price.toFixed(2)}</span>
-              <button class="cartview-rm-btn" onclick="removePrintFromCart(${idx})">Remove</button>
+              ${printQtyHtml(n, `changePrintQty(${idx},-1)`, `changePrintQty(${idx},1)`)}
+              <span class="cartview-print-price">$${(p.price * n).toFixed(2)}</span>
+              <button class="cartview-rm-btn" onclick="removePrintGroup(${idx})">Remove</button>
             </div>
             <div style="display:flex;align-items:center;gap:0.75rem;padding-top:0.35rem;">
               <div style="font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);white-space:nowrap;">Frame</div>
@@ -4016,7 +4043,7 @@ function renderCartView() {
                 ${buildFrameOptions(p.frame, p.sizeIdx)}
               </select>
               <span class="cartview-print-price" style="font-size:0.88rem;min-width:36px;text-align:right;">
-                ${p.framePrice > 0 ? '$' + p.framePrice : '—'}
+                ${p.framePrice > 0 ? '$' + (p.framePrice * n) : '—'}
               </span>
             </div>
             <div class="cv-logo-row">
@@ -4031,14 +4058,18 @@ function renderCartView() {
         // Other folders: simplified view with remove button + logo toggle
         html += `<div style="margin-top:0.75rem;font-size:0.72rem;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,0.35);">Prints</div>`;
         folderPrints.forEach((p, pidx) => {
+          const copies = printGroup(folderPrints, pidx);
+          if (copies[0] !== pidx) return;
+          const n = copies.length;
           html += `<div style="border-bottom:1px solid rgba(255,255,255,0.07);padding:0.5rem 0;">
             <div class="cartview-print-row" style="border-bottom:none;padding:0;">
               <div class="cartview-print-info">
                 <div class="cv-size">${p.size} Print</div>
                 <div class="cv-frame">${p.filename}${p.frame && p.frame !== 'No Frame' ? ' + Frame' : ''}</div>
               </div>
-              <span class="cartview-print-price">$${(p.price + p.framePrice).toFixed(2)}</span>
-              <button class="cartview-rm-btn" onclick="removeFolderPrint('${escQ(key)}',${pidx})">Remove</button>
+              ${printQtyHtml(n, `changeFolderPrintQty('${escQ(key)}',${pidx},-1)`, `changeFolderPrintQty('${escQ(key)}',${pidx},1)`)}
+              <span class="cartview-print-price">$${((p.price + p.framePrice) * n).toFixed(2)}</span>
+              <button class="cartview-rm-btn" onclick="removeFolderPrintGroup('${escQ(key)}',${pidx})">Remove</button>
             </div>
             <div class="cv-logo-row">
               ${p._logo
@@ -4136,6 +4167,67 @@ function removeFolderFromCart(key) {
   saveCart();
 }
 
+// ── Print quantities ──
+// A print's quantity is how many identical entries the cart holds (same photo, size, frame and
+// logo). The checkout, saved carts, invoices and the POS all count entries, so each copy is one
+// more print. The cart shows one row per print with − n +, and edits apply to every copy.
+function printKey(p) { return [p.photoPath || p.photoIdx, p.sizeIdx, p.frame || 'No Frame', !!p._logo].join('|'); }
+function printGroup(list, idx) {
+  const k = printKey(list[idx]);
+  return list.reduce((a, p, i) => { if (printKey(p) === k) a.push(i); return a; }, []);
+}
+function printQtyHtml(n, minus, plus) {
+  return `<span class="cv-qty"><button class="frame-qty-btn" onclick="${minus}" aria-label="One fewer">−</button>`
+    + `<span>${n}</span><button class="frame-qty-btn" onclick="${plus}" aria-label="One more">+</button></span>`;
+}
+function _changeListPrintQty(list, idx, d) {
+  const g = printGroup(list, idx);
+  if (d > 0) { if (g.length < 20) list.splice(g[g.length - 1] + 1, 0, { ...list[idx] }); }
+  else list.splice(g[g.length - 1], 1);
+}
+function _afterPrintEdit() {
+  if (document.getElementById('cartview-overlay').classList.contains('open')) renderCartView();
+  else if (document.getElementById('pose-cartview-overlay').classList.contains('open')) renderPoseCartView();
+  if (_poseData) updatePoseCart(); else updateCart();
+  if (document.getElementById('qs-overlay').classList.contains('open')) refreshQuickShop();
+}
+function changePrintQty(idx, d) {            // the open folder's prints
+  if (!printCart[idx]) return;
+  _changeListPrintQty(printCart, idx, d);
+  _afterPrintEdit();
+}
+function removePrintGroup(idx) {
+  if (!printCart[idx]) return;
+  printGroup(printCart, idx).reverse().forEach(i => printCart.splice(i, 1));
+  _afterPrintEdit();
+  if (selectedPhotos.size === 0 && printCart.length === 0 && document.getElementById('cartview-overlay').classList.contains('open')) closeCartView();
+}
+function changeFolderPrintQty(key, idx, d) {  // a print saved in another folder
+  const fc = folderCarts[key];
+  if (!fc || !fc.printCart?.[idx]) return;
+  _changeListPrintQty(fc.printCart, idx, d);
+  if (!fc.selectedPaths?.length && !fc.printCart.length) delete folderCarts[key];
+  renderCartView();
+  updateCart();
+}
+function removeFolderPrintGroup(key, idx) {
+  const fc = folderCarts[key];
+  if (!fc || !fc.printCart?.[idx]) return;
+  printGroup(fc.printCart, idx).reverse().forEach(i => fc.printCart.splice(i, 1));
+  if (!fc.selectedPaths?.length && !fc.printCart.length) delete folderCarts[key];
+  renderCartView();
+  updateCart();
+}
+let _printGroupEdit = false;                 // applying one edit to every copy of a print
+function _eachCopy(list, idx, fn) {
+  if (_printGroupEdit) return false;
+  const g = printGroup(list, idx);
+  if (g.length < 2) return false;
+  _printGroupEdit = true;
+  try { g.forEach(fn); } finally { _printGroupEdit = false; }
+  return true;
+}
+
 function removePrintFromCart(idx) {
   printCart.splice(idx, 1);
   updateCart();
@@ -4147,6 +4239,7 @@ function removePrintFromCart(idx) {
 function togglePrintLogo(idx) {
   const p = printCart[idx];
   if (!p) return;
+  if (_eachCopy(printCart, idx, i => togglePrintLogo(i))) return;
   p._logo = !p._logo;
   p._logoPrice = p._logo ? LOGO_FEE : 0;
   const base = PRINT_SIZES[p.sizeIdx].price;
@@ -4172,6 +4265,7 @@ function removeFolderPrint(key, idx) {
 function toggleFolderPrintLogo(key, idx) {
   const p = folderCarts[key]?.printCart?.[idx];
   if (!p) return;
+  if (_eachCopy(folderCarts[key].printCart, idx, i => toggleFolderPrintLogo(key, i))) return;
   p._logo = !p._logo;
   p._logoPrice = p._logo ? LOGO_FEE : 0;
   p.price = p._logo ? p.price + LOGO_FEE : p.price - LOGO_FEE;
@@ -4180,6 +4274,7 @@ function toggleFolderPrintLogo(key, idx) {
 }
 
 function changePrintSize(idx, newSizeIdx) {
+  if (_eachCopy(printCart, idx, i => changePrintSize(i, newSizeIdx))) return;
   newSizeIdx = parseInt(newSizeIdx);
   const basePrice   = PRINT_SIZES[newSizeIdx].price;
   const photoSelected = selectedPhotos.has(printCart[idx].photoIdx);
@@ -4196,6 +4291,7 @@ function changePrintSize(idx, newSizeIdx) {
 }
 
 function changePrintFrame(idx, newFrameIdx) {
+  if (_eachCopy(printCart, idx, i => changePrintFrame(i, newFrameIdx))) return;
   newFrameIdx = parseInt(newFrameIdx);
   const frame = FRAME_OPTIONS[newFrameIdx];
   printCart[idx].frame      = frame.label;
@@ -5179,6 +5275,17 @@ let frameModalGalleryIdx = 0;
 function _renderQsPrints(photoIdx, hasDigitals) {
   const printsEl = document.getElementById('qs-prints');
   if (!printsEl) return;
+  if (_qsFrameFor !== null) {
+    const { si, base } = _qsFrameFor;
+    const pic = (FRAME_MODAL_GALLERY[si] || FRAME_MODAL_GALLERY[0])[0];
+    printsEl.innerHTML = `<div class="qs-frame-ask">
+      <img src="${pic}" alt="Rustic Big Sky Picture Frame">
+      <div class="qs-frame-q">Add a frame to your ${escHtml(PRINT_SIZES[si].label)} print?</div>
+      <div class="qs-frame-sub">Rustic Big Sky Picture Frame, $${FRAME_PRICES[si]}. It comes in the right orientation for your photo.</div>
+      <div class="qs-frame-btns"><button class="btn-ghost" onclick="qsAddPrint(${si}, ${base}, false)">No thanks</button>
+        <button class="btn-checkout" onclick="qsAddPrint(${si}, ${base}, true)">Yes, add frame</button></div></div>`;
+    return;
+  }
   printsEl.innerHTML = PRINT_SIZES.map((s, si) => {
     const basePrice = hasDigitals ? s.price / 2 : s.price;
     const total     = basePrice + (_qsLogo ? LOGO_FEE : 0);
@@ -5188,7 +5295,7 @@ function _renderQsPrints(photoIdx, hasDigitals) {
       <div class="qs-row-prices">
         ${wasHtml}
         <span class="qs-price">$${total.toFixed(2)}</span>
-        <button class="qs-add-btn" onclick="addPrint(${photoIdx}, ${si}, ${basePrice})">Add</button>
+        <button class="qs-add-btn" onclick="qsChoosePrint(${si}, ${basePrice})">Add</button>
       </div>
     </div>`;
   }).join('');
@@ -5242,10 +5349,12 @@ function togglePhotoLogo(path) {
 }
 
 let _qsCurrentPhotoIdx = 0;
+let _qsFrameFor = null;      // a print size waiting on the frame question: {si, base}
 
-function openQuickShop(i) {
+function openQuickShop(i, keep) {
+  // keep: redraw the open panel (after a change) without resetting the logo switch or frame question
   _qsCurrentPhotoIdx = i;
-  _qsLogo = false;
+  if (!keep) { _qsLogo = false; _qsFrameFor = null; }
   const photo       = allPhotos[i];
   // Half-price prints if photo selected as digital, or if its pose has been purchased
   let hasDigitals = selectedPhotos.has(i);
@@ -5361,13 +5470,74 @@ function openQuickShop(i) {
   const logoSection = document.getElementById('qs-logo-section');
   if (logoSection) {
     logoSection.style.display = showLogo ? '' : 'none';
-    logoSection.innerHTML = showLogo ? `<div class="qs-logo-row" onclick="toggleQsLogo()">
-      <div id="qs-logo-track" class="qs-logo-toggle-track"></div>
-      <span id="qs-logo-label">Add the Big Sky Resort logo <span class="qs-logo-accent">+$${LOGO_FEE} each</span></span>
+    logoSection.innerHTML = showLogo && _qsFrameFor === null ? `<div class="qs-logo-row" onclick="toggleQsLogo()">
+      <div id="qs-logo-track" class="qs-logo-toggle-track${_qsLogo ? ' on' : ''}"></div>
+      <span id="qs-logo-label">${_qsLogo ? 'Big Sky Resort logo on prints' : 'Add the Big Sky Resort logo'} <span class="qs-logo-accent">+$${LOGO_FEE} each</span></span>
     </div>` : '';
   }
 
+  _renderQsOrder(i);
   document.getElementById('qs-overlay').classList.add('open');
+}
+
+function refreshQuickShop() {
+  if (allPhotos[_qsCurrentPhotoIdx]) openQuickShop(_qsCurrentPhotoIdx, true);
+}
+
+function qsChoosePrint(si, base) {
+  // Like the Eagle Mount shop: a size with a frame available asks about the frame first
+  if (FRAME_PRICES[si]) { _qsFrameFor = { si, base }; refreshQuickShop(); }
+  else qsAddPrint(si, base, false);
+}
+
+function qsAddPrint(si, base, framed) {
+  const i = _qsCurrentPhotoIdx, photo = allPhotos[i];
+  if (!photo) return;
+  const img = document.getElementById('qs-photo');
+  const orientation = img && img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape';
+  const frame = framed && FRAME_PRICES[si] ? FRAME_OPTIONS[1] : FRAME_OPTIONS[0];
+  const framePrice = frame.priceKey === 0 ? 0 : FRAME_PRICES[si];
+  printCart.push({
+    photoIdx: i, photoPath: photo.path, sizeIdx: si, filename: photo.filename, size: PRINT_SIZES[si].label,
+    price: base + (_qsLogo ? LOGO_FEE : 0), frame: frame.label, framePrice, orientation,
+    _logo: _qsLogo, _logoPrice: _qsLogo ? LOGO_FEE : 0,
+  });
+  _qsFrameFor = null;
+  _afterPrintEdit();
+  showToast(`${PRINT_SIZES[si].label} print added!`);
+}
+
+function _renderQsOrder(i) {
+  // This photo's digital file and prints in the order (prints with − n +), then the cart total
+  const photo = allPhotos[i];
+  const box = document.getElementById('qs-order'), foot = document.getElementById('qs-foot');
+  if (!photo || !box) return;
+  let html = '<div class="qs-section-label">This photo in your order</div>';
+  let any = false;
+  if (!_poseData && selectedPhotos.has(i)) {
+    any = true;
+    html += `<div class="qs-line"><span class="qs-line-txt">Digital photo</span>
+      <button class="qs-line-rm" onclick="deSelectPhotoByPath('${escQ(photo.path)}');refreshQuickShop()">Remove</button></div>`;
+  }
+  printCart.forEach((p, idx) => {
+    if (p.photoPath !== photo.path) return;
+    const copies = printGroup(printCart, idx);
+    if (copies[0] !== idx) return;
+    const n = copies.length;
+    any = true;
+    html += `<div class="qs-line"><span class="qs-line-txt">${escHtml(p.size)} print${p.frame && p.frame !== 'No Frame' ? ' + frame' : ''}${p._logo ? ' + logo' : ''}</span>
+      ${printQtyHtml(n, `changePrintQty(${idx},-1)`, `changePrintQty(${idx},1)`)}
+      <span class="qs-line-price">$${((p.price + p.framePrice) * n).toFixed(2)}</span></div>`;
+  });
+  if (!any) html += '<div class="qs-empty">Nothing from this photo yet.</div>';
+  box.innerHTML = html;
+  const total = (document.getElementById('cart-price-text') || {}).textContent || '';
+  const hasCart = selectedPhotos.size > 0 || printCart.length > 0 || frameCart.length > 0
+    || Object.values(folderCarts).some(fc => (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0)
+    || (_poseState && Object.keys(_poseState).length > 0);
+  foot.innerHTML = `${hasCart && total ? `<span class="qs-total">Cart total: ${escHtml(total)}</span>` : ''}
+    <button class="btn-ghost" onclick="closeQuickShop()">Keep browsing</button>
+    ${hasCart ? `<button class="btn-checkout" onclick="closeQuickShop();openCheckout()">Checkout →</button>` : ''}`;
 }
 
 function closeQuickShop() {
