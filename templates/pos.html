@@ -934,6 +934,14 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div id="tab-prints" class="tab-panel">
           <div class="panel-pad">
             <div class="section-title">Prints</div>
+            <!-- Find a portrait session by last name, or pick a date and location -->
+            <div class="ap-search-row">
+              <input type="text" id="pt-search-input" class="ap-search-input"
+                     placeholder="Last name..." autocomplete="off" autocorrect="off"
+                     oninput="ptSearchType(this.value)"
+                     onkeydown="if(event.key==='Enter')ptSearch()">
+              <button class="ap-search-btn" onclick="ptSearch()">Search</button>
+            </div>
             <!-- Step 1: Select session date -->
             <div class="ap-filter-row">
               <select id="pt-date-select" class="ap-select" onchange="ptDateChanged()">
@@ -1721,11 +1729,14 @@ function updateCartCustomerBar(){
 // Customers can save their selection on the website with their email. When staff pick a
 // customer here, their saved cart shows above the cart: action photos go into the sale in one
 // tap (priced like any selection), portraits open their session, prints open the print sizes.
-let _scEmail = '';
+let _scEmail = '', _scAskedAt = 0;
 async function checkSavedCart(email){
   email = (email || '').trim().toLowerCase();
-  if(email === _scEmail) return;
+  // Same customer with a cart already found: nothing to do. A customer found without one is
+  // asked again after a little while (they may have saved on the website since being looked up).
+  if(email === _scEmail && (S.savedCart || !email || Date.now() - _scAskedAt < 20000)) return;
   _scEmail = email;
+  _scAskedAt = Date.now();
   S.savedCart = null;
   renderSavedCartBanner();
   if(!email) return;
@@ -3232,7 +3243,51 @@ function pkgAfterSale(){
 }
 
 // ─── Prints date/location context ────────────────────────────────────────────
-const _pt = { date: '', location: '' };
+const _pt = { date: '', location: '', search: '' };   // search: the last name searched (Back returns to its results)
+
+// Last name search (like the Portraits tile): sessions by last name, then their photos
+let _ptSearchTimer = null;
+function ptSearchType(val){
+  clearTimeout(_ptSearchTimer);
+  if(!val.trim()){ _pt.search = ''; if(!_pt.location) $('pt-results').innerHTML = ''; return; }
+  _ptSearchTimer = setTimeout(() => ptSearch(), 300);
+}
+async function ptSearch(){
+  const q = $('pt-search-input').value.trim();
+  if(!q){ showToast('Enter a last name to search'); return; }
+  _pt.search = q; _pt.date = ''; _pt.location = '';
+  $('pt-date-select').value = ''; $('pt-loc-row').style.display = 'none';
+  ptClearPhoto();
+  const resultsEl = $('pt-results');
+  resultsEl.innerHTML = '<div class="ap-loading">Searching...</div>';
+  try {
+    const res = await fetch(`/api/last-name-search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    if($('pt-search-input').value.trim() !== q) return;          // a newer search is on its way
+    const sessions = data.results || data || [];
+    if(!sessions.length){ resultsEl.innerHTML = '<div class="ap-loading">No results found</div>'; return; }
+    resultsEl.innerHTML = sessions.map((f, i) => {
+      const previews = (f.previews || []).slice(0,4).map(p =>
+        `<img class="ap-result-thumb" src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">`
+      ).join('');
+      return `<div class="ap-result-item" data-ptsi="${i}" style="flex-direction:column;align-items:flex-start">
+        <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+          <div>
+            <div class="ap-result-name">${escHtml(f.last_name || f.name || '')}</div>
+            <div class="ap-result-meta">${escHtml(f.date || '')} &middot; ${escHtml(f.location || '')}</div>
+          </div>
+          <span class="ap-result-arrow">&#8250;</span>
+        </div>
+        ${previews ? `<div class="ap-result-previews">${previews}</div>` : ''}
+      </div>`;
+    }).join('');
+    resultsEl.querySelectorAll('[data-ptsi]').forEach(el => {
+      el.onclick = () => ptSelectFamily(sessions[parseInt(el.dataset.ptsi)]);
+    });
+  } catch(e){
+    resultsEl.innerHTML = '<div class="ap-loading">Search failed</div>';
+  }
+}
 let _ptPhoto = { path: '', filename: '', session: null };
 
 async function loadPtDates(){
@@ -3254,7 +3309,8 @@ async function loadPtDates(){
 
 function ptDateChanged(){
   const date = $('pt-date-select').value;
-  _pt.date = date; _pt.location = '';
+  _pt.date = date; _pt.location = ''; _pt.search = '';
+  $('pt-search-input').value = '';
   ptClearPhoto();
   const locRow = $('pt-loc-row'), locSel = $('pt-loc-select');
   const resultsEl = $('pt-results');
@@ -3353,7 +3409,8 @@ function ptBackToFamilies(){
   _ptPhoto = { path: '', filename: '' };
   const photosView = $('pt-photos-view'); if(photosView) photosView.classList.add('hidden');
   const grid = $('pt-photo-grid'); if(grid) grid.innerHTML = '';
-  if(_pt.date && _pt.location) ptLocChanged();
+  if(_pt.search) ptSearch();
+  else if(_pt.date && _pt.location) ptLocChanged();
 }
 
 function ptClearPhoto(){
@@ -3383,8 +3440,11 @@ const _psm = { photo: null, sizes: new Set(), half: false, logo: false, ship: fa
 // What a print costs here: Unlimited package photos get the package's discount, otherwise half price if switched on
 function psmFactor(){ return _psm.pkgPct ? 1 - _psm.pkgPct / 100 : (_psm.half ? 0.5 : 1); }
 
-function openPSM(photo, halfDefault, pkgPct, pkgLabel, noCoupon){
-  if(!S.printSizes || !S.printSizes.length) return;
+async function openPSM(photo, halfDefault, pkgPct, pkgLabel, noCoupon){
+  // Print buttons outside the Prints tile (a cart item's photos, packages, saved carts) can be
+  // the first to need the print prices this session, so load them here when they're missing
+  if(!S.printSizes || !S.printSizes.length) await loadPrintSizes();
+  if(!S.printSizes || !S.printSizes.length){ showToast('Print prices could not be loaded. Try again.'); return; }
   _psm.photo = photo;
   _psm.sizes.clear();
   _psm.half = !!halfDefault;
@@ -3939,7 +3999,7 @@ function renderItemModal(){
     if(im.category === 'portrait' && im.photo_paths && im.photo_paths.length){
       const logoPaths = new Set(im._logoPaths || []);
       const logoCount = logoPaths.size;
-      body += `<div class="im-row" style="margin-bottom:.4rem"><span class="im-row-label">Photos — tap to add/remove logo · Long press to print at 50% off</span></div>`;
+      body += `<div class="im-row" style="margin-bottom:.4rem"><span class="im-row-label">Photos — tap to add/remove logo · tap PRINT for 50% off prints</span></div>`;
       body += `<div id="portrait-photo-thumbs" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:.4rem;margin-bottom:.4rem">`;
       body += im.photo_paths.map((path, i) => {
         const hasLogo = logoPaths.has(path);

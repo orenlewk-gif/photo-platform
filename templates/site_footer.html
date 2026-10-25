@@ -1,0 +1,29 @@
+<!-- Site footer for pages outside the gallery (the partner page): business details (Settings >
+     Business details) and policies. The gallery and checkout have their own copy with the watermark line. -->
+<footer class="site-footer" role="contentinfo">
+  <p><strong id="sf-name">Crystal Images</strong> · <span id="sf-where">Big Sky, Montana</span>
+     · <a id="sf-phone" href="tel:4064046680">(406) 404-6680</a>
+     · <a id="sf-email" href="mailto:info@bigskyphotos.com">info@bigskyphotos.com</a></p>
+  <p><a href="/privacy">Privacy Policy</a> · <a href="/terms">Terms &amp; Photo License</a> · <a href="/refunds">Refund Policy</a>
+     · <a href="/photo-removal">Request a photo removal</a></p>
+  <p>All photos © <span id="sf-year"></span> Crystal Images. Downloads are released for personal use.</p>
+</footer>
+<style>
+.site-footer{max-width:1100px;margin:3rem auto 0;padding:1.5rem 1rem 6rem;border-top:1px solid rgba(255,255,255,.15);
+  text-align:center;font-size:.85rem;line-height:1.7;color:rgba(255,255,255,.75)}
+.site-footer a{color:#F5C518}
+.site-footer a:focus-visible{outline:3px solid #fff;outline-offset:2px}
+</style>
+<script>
+(function () {
+  document.getElementById('sf-year').textContent = new Date().getFullYear();
+  fetch('/api/site-info').then(r => r.ok ? r.json() : null).then(b => {
+    if (!b) return;
+    if (b.name) document.getElementById('sf-name').textContent = b.name;
+    if (b.address) document.getElementById('sf-where').textContent = b.address;
+    if (b.phone) { const a = document.getElementById('sf-phone'); a.textContent = b.phone; a.href = 'tel:' + b.phone.replace(/[^\d+]/g, ''); }
+    if (b.email) { const a = document.getElementById('sf-email'); a.textContent = b.email; a.href = 'mailto:' + b.email; }
+  }).catch(() => {});
+})();
+</script>
+<script src="/static/email-links.js" defer></script>

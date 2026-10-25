@@ -593,19 +593,24 @@ function getAllDigital() {
 }
 
 function getAllPrints() {
-  const prints = [];
-  const fc = cartData.folderCarts || {};
-  Object.values(fc).forEach(f => {
-    if (f.printCart) prints.push(...f.printCart.map(p => ({ ...p, location: p.location || f.location || '' })));
+  // The gallery sends the open folder's prints twice (inside folderCarts and again as printCart),
+  // so each print is counted by how many copies one list has: the larger of the two counts.
+  // Several copies of the same print (a quantity) stay several.
+  const keyOf = p => [p.path || p.photoPath || p.filename, p.size, p.frame || 'No Frame', !!p._logo].join('|');
+  const inFolders = [], onTop = [];
+  Object.values(cartData.folderCarts || {}).forEach(f => {
+    if (f.printCart) inFolders.push(...f.printCart.map(p => ({ ...p, location: p.location || f.location || '' })));
   });
-  if (cartData.printCart) prints.push(...cartData.printCart.map(p => ({ ...p, location: p.location || cartData.location || '' })));
-  // Deduplicate by filename+size
-  const seen = new Set();
-  return prints.filter(p => {
-    const key = p.filename + p.size;
-    if (seen.has(key)) return false;
-    seen.add(key); return true;
+  if (cartData.printCart) onTop.push(...cartData.printCart.map(p => ({ ...p, location: p.location || cartData.location || '' })));
+  const folderCount = new Map();
+  inFolders.forEach(p => folderCount.set(keyOf(p), (folderCount.get(keyOf(p)) || 0) + 1));
+  const prints = [...inFolders], topCount = new Map();
+  onTop.forEach(p => {
+    const n = (topCount.get(keyOf(p)) || 0) + 1;
+    topCount.set(keyOf(p), n);
+    if (n > (folderCount.get(keyOf(p)) || 0)) prints.push(p);
   });
+  return prints;
 }
 
 // ── Thumbnails ───────────────────────────────────────────────────────────────

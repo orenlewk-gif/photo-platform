@@ -10,7 +10,7 @@ import main
 from core.pages import render_page, site_header
 
 router = APIRouter()
-POLICIES_UPDATED = "October 19, 2026"
+POLICIES_UPDATED = "October 24, 2026"
 
 
 def _business() -> dict:

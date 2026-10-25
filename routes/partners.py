@@ -17,7 +17,7 @@ from PIL import Image
 
 import main
 from core.images import fix_orientation
-from core.pages import render_page, site_header
+from core.pages import render_page, site_footer, site_header
 from core.text import natural_sort_key, to_r2_key
 
 router = APIRouter()
@@ -29,7 +29,7 @@ def _closed():
 
 def _page_head(p: dict) -> dict:
     return {"partner": escape(p["name"]), "slug": escape(p["slug"]), "welcome": escape(p.get("welcome") or ""),
-            "site_header": site_header()}
+            "site_header": site_header(), "site_footer": site_footer()}
 
 
 # The page itself lives at the short address photos.bigskyphotos.com/<slug> (e.g. /eaglemount).

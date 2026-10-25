@@ -25,3 +25,9 @@ def site_header() -> str:
     outside the gallery (the partner page, the policy pages)."""
     with open(os.path.join(TEMPLATE_DIR, "site_header.html"), encoding="utf-8") as f:
         return f.read()
+
+
+def site_footer() -> str:
+    """The site footer (business details and policy links, the gallery's): templates/site_footer.html."""
+    with open(os.path.join(TEMPLATE_DIR, "site_footer.html"), encoding="utf-8") as f:
+        return f.read()
