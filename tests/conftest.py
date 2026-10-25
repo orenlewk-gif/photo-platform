@@ -59,6 +59,15 @@ def no_outbound_http(monkeypatch):
         monkeypatch.setattr(requests, name, _blocked)
 
 
+@pytest.fixture(autouse=True)
+def pos_devices_preapproved(request, monkeypatch):
+    """Most tests act as a POS that's already approved; tests/test_pos_devices.py turns the
+    new-device codes on."""
+    if "main_module" in request.fixturenames or "client" in request.fixturenames:
+        import main
+        monkeypatch.setattr(main, "POS_DEVICE_CODES_ON", False)
+
+
 @pytest.fixture(scope="session")
 def main_module():
     import main

@@ -374,6 +374,13 @@ html.embedded #layout{height:100vh}
       <button class="btn-save" onclick="signOutEverywhere()" style="background:#b91c1c">Sign out all devices</button>
     </div>
 
+    <!-- POS DEVICES -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Security — POS devices</div>
+      <div class="section-desc">Devices approved to use the POS. The first time a device signs in to the POS, you're emailed a code to approve it; after that it only needs a PIN. Remove a device if it's lost or replaced: it will need a new code. (Clocking in and out only needs a PIN.)</div>
+      <div id="sec-pos-devices" style="font-size:.85rem;line-height:1.7">Loading…</div>
+    </div>
+
     <!-- SQUARE -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Square (POS payments)</div>
@@ -1662,6 +1669,26 @@ async function signOutEverywhere() {
   if (r.ok) { (window.top || window).location.href = '/admin'; } else { alert('Could not sign out all devices'); }
 }
 loadDevices();
+
+async function loadPosDevices() {
+  const el = document.getElementById('sec-pos-devices');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/pos-devices')).json();
+    const rows = (d.devices || []).map(v => `<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <span>${_secEsc(v.describe || 'Device')}<span style="color:rgba(255,255,255,.45)"> · approved ${_secDate(v.approved)}${v.by ? ' when ' + _secEsc(v.by) + ' signed in' : ''} · ${_secEsc(v.ip)}</span></span>
+      <button onclick="removePosDevice('${_secEsc(v.id)}')" style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.15rem .6rem;font-size:.78rem;cursor:pointer">Remove</button></div>`).join('');
+    el.innerHTML = (rows || '<div style="color:rgba(255,255,255,.45)">No approved POS devices yet.</div>')
+      + (d.codes_on ? '' : '<div style="color:#f59e0b;margin-top:.4rem">New-device codes are turned OFF on the server (POS_DEVICE_CODES=off).</div>');
+  } catch (e) { el.textContent = 'Could not load POS devices'; }
+}
+async function removePosDevice(id) {
+  if (!confirm('Remove this POS device? It will need a new emailed code before it can use the POS again.')) return;
+  const r = await fetch('/api/admin/pos-devices/' + encodeURIComponent(id), {method: 'DELETE'});
+  if (!r.ok) alert('Could not remove the device');
+  loadPosDevices();
+}
+loadPosDevices();
 
 async function testSquare() {
   const btn = document.getElementById('btn-square-test');

@@ -25,7 +25,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .screen.hidden{display:none}
 
 /* ── Auth Screens (passcode / pin) ── */
-#s-passcode,#s-pin{
+#s-passcode,#s-pin,#s-device{
   align-items:center;justify-content:center;background:var(--bg);padding:2rem 1.5rem;
   padding-top:max(env(safe-area-inset-top,0px),2rem);
 }
@@ -767,6 +767,20 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <p id="pc-error" class="pc-error"></p>
 </div>
 
+<!-- ─── NEW DEVICE SCREEN (the first time this device signs in) ─── -->
+<div id="s-device" class="screen hidden">
+  <div class="auth-logo">
+    <div class="auth-logo-mark">CRYSTAL IMAGES<span> POS</span></div>
+    <div class="auth-logo-sub">New Device</div>
+  </div>
+  <p class="pc-label" id="dev-label" style="max-width:360px;line-height:1.5">This device is new to the POS. We emailed a code to the owner. Enter it to approve this device (only needed once).</p>
+  <input type="text" id="dev-input" class="pc-text-input" placeholder="6-digit code" inputmode="numeric"
+         maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')submitDeviceCode()">
+  <button class="pc-btn" id="dev-btn" onclick="submitDeviceCode()">Approve this device</button>
+  <p id="dev-error" class="pc-error"></p>
+  <button class="pc-btn" style="background:transparent;color:var(--muted);margin-top:.4rem" onclick="cancelDeviceCode()">Back</button>
+</div>
+
 <!-- ─── PIN SCREEN ─── -->
 <div id="s-pin" class="screen hidden">
   <div class="auth-logo">
@@ -1353,7 +1367,7 @@ function setLoading(on){
 
 // ─── Screen management ───────────────────────────────────────────────────────
 function showScreen(id){
-  ['s-passcode','s-pin','s-main','s-confirm'].forEach(s => {
+  ['s-passcode','s-device','s-pin','s-main','s-confirm'].forEach(s => {
     const el = $(s);
     if(el) el.classList.toggle('hidden', s !== id);
   });
@@ -1420,31 +1434,79 @@ async function submitPin(){
   try {
     const res = await fetch('/api/photographer/auth', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({pin})
+      body: JSON.stringify({pin, pos: true})
     });
     const data = await res.json();
     const photog = data.photographer || data;
     if(res.ok && photog.name){
-      S.photographer = { name: photog.name, id: photog.id, pin };
-      S._savedPin = pin;
-      try { localStorage.setItem('ci_pos_pin', pin); } catch(e){}
+      posSignedIn(photog, pin);
+    } else if(res.status === 403 && data.device_approval){
+      // First time on this device: the owner gets a code to approve it
+      _deviceChallenge = {challenge: data.challenge, pin};
       _pinBuf = '';
       updatePinDots();
-      $('pos-photog-name').textContent = photog.name;
-      showScreen('s-main');
-      initMainPOS();
-      checkSaleFinishedElsewhere();   // the app may have reloaded while staff were in Square
+      $('dev-label').textContent = `This device is new to the POS. We emailed a code to ${data.email || 'the owner'}. ` +
+        'Enter it to approve this device (only needed once).';
+      $('dev-input').value = '';
+      $('dev-error').textContent = '';
+      showScreen('s-device');
+      setTimeout(() => $('dev-input').focus(), 50);
     } else {
-      pinError();
+      pinError(res.status === 429 || res.status === 503 ? data.error : '');
     }
   } catch(e){
     pinError();
   }
 }
 
-function pinError(){
+function posSignedIn(photog, pin){
+  S.photographer = { name: photog.name, id: photog.id, pin };
+  S._savedPin = pin;
+  try { localStorage.setItem('ci_pos_pin', pin); } catch(e){}
+  _pinBuf = '';
+  updatePinDots();
+  $('pos-photog-name').textContent = photog.name;
+  showScreen('s-main');
+  initMainPOS();
+  checkSaleFinishedElsewhere();   // the app may have reloaded while staff were in Square
+}
+
+let _deviceChallenge = null;
+async function submitDeviceCode(){
+  const code = $('dev-input').value.replace(/\D/g, '');
+  if(code.length !== 6){ $('dev-error').textContent = 'Enter the 6-digit code from the email'; return; }
+  if(!_deviceChallenge){ cancelDeviceCode(); return; }
+  $('dev-btn').disabled = true;
+  try {
+    const res = await fetch('/api/pos/device-verify', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({challenge: _deviceChallenge.challenge, code})
+    });
+    const data = await res.json();
+    if(res.ok && data.photographer){
+      const pin = _deviceChallenge.pin;
+      _deviceChallenge = null;
+      posSignedIn(data.photographer, pin);
+    } else if(data.restart){
+      cancelDeviceCode();
+      $('pin-error').textContent = data.error;
+    } else {
+      $('dev-error').textContent = data.error || 'Incorrect code';
+    }
+  } catch(e){
+    $('dev-error').textContent = 'No connection — try again';
+  }
+  $('dev-btn').disabled = false;
+}
+
+function cancelDeviceCode(){
+  _deviceChallenge = null;
+  showScreen('s-pin');
+}
+
+function pinError(msg){
   for(let i=0;i<4;i++){ const el=$('pd'+i); if(el) el.classList.add('error'); }
-  $('pin-error').textContent = 'Invalid PIN';
+  $('pin-error').textContent = msg || 'Invalid PIN';
   setTimeout(()=>{ _pinBuf=''; updatePinDots(); $('pin-error').textContent=''; }, 900);
 }
 

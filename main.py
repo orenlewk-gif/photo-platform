@@ -1006,9 +1006,84 @@ def _pos_token(expires: int) -> str:
     return f"{expires}.{sig}"
 
 
+# ── POS devices ──────────────────────────────────────────────────────────────
+# The first time a device signs in to the POS (a PIN on the POS page), the owner is emailed a
+# 6-digit code; once it's entered, that device is approved (for two years, or until removed in
+# Settings > Security) and only needs a PIN. Everything the POS does checks the device as well
+# as the PIN. Clocking in and out only needs a PIN. Kept in meta/admin_auth.json ("pos_devices"),
+# hashes only. POS_DEVICE_CODES=off on Railway is the safety valve (e.g. if email is down).
+POS_DEVICE_COOKIE   = "ci_pos_device"
+POS_DEVICE_DAYS     = 730
+POS_DEVICE_CODES_ON = os.getenv("POS_DEVICE_CODES", "on").strip().lower() != "off"
+_pos_challenges: dict = {}        # challenge id -> pending code (in memory, 10 minutes)
+
+
+def _pos_device_approved(request: Request) -> bool:
+    """This device may use the POS: approved with an emailed code, or signed in to the studio."""
+    if not POS_DEVICE_CODES_ON:
+        return True
+    token = request.cookies.get(POS_DEVICE_COOKIE, "")
+    if token:
+        dev = _load_admin_auth()["pos_devices"].get(_token_hash(token))
+        if dev and dev.get("expires", "") > _now_iso():
+            return True
+    return _admin_authed(request)
+
+
+def _approve_pos_device(info: dict, photographer: dict) -> str:
+    """Remember a newly approved POS device. Returns the token for its cookie."""
+    token = secrets.token_urlsafe(32)
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["pos_devices"][_token_hash(token)] = {
+            "approved": _now_iso(), "describe": info.get("device", ""), "ip": info.get("ip", ""),
+            "by": photographer.get("name", ""), "last_used": _now_iso(),
+            "expires": (datetime.now(timezone.utc) + timedelta(days=POS_DEVICE_DAYS)).isoformat()}
+        _save_admin_auth(d)
+    return token
+
+
+def _send_pos_device_code_email(code: str, info: dict, photographer: dict) -> bool:
+    if not RESEND_API_KEY:
+        print(f"[POS device code] {code} (RESEND_API_KEY not set, so it wasn't emailed)")
+        return False
+    try:
+        from zoneinfo import ZoneInfo
+        when = datetime.now(ZoneInfo("America/Denver")).strftime("%b %d, %Y at %I:%M %p").replace(" 0", " ")
+    except Exception:
+        when = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
+    who = _html_escape(photographer.get("name", ""))
+    body_html = (
+        f'<p><strong>{who}</strong> signed in to the POS on a <strong>new device</strong>:</p>'
+        f'<p style="margin:0 0 1rem;color:#555">{_html_escape(info.get("device", ""))} &middot; '
+        f'internet address {_html_escape(info.get("ip", ""))} &middot; {when} (Mountain)</p>'
+        f'<p>The code to approve it:</p>'
+        f'<p style="font-size:2rem;font-weight:700;letter-spacing:.3rem;margin:.5rem 0 1rem">{code}</p>'
+        f'<p style="color:#555">It works for {LOGIN_CODE_MINUTES} minutes. After that, this device stays approved '
+        f'until you remove it in Settings &gt; Security.</p>'
+        f'<p style="color:#b91c1c"><strong>If this isn\'t one of the shop\'s devices,</strong> don\'t share the code, '
+        f'and change {who}\'s PIN in Photographers.</p>')
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [OWNER_EMAIL],
+                                     "subject": f"POS new device code: {code}",
+                                     "html": _wrap_email_html(body_html),
+                                     "text": f"POS new device code: {code} ({photographer.get('name', '')} on "
+                                             f"{info.get('device', '')}, {info.get('ip', '')}, {when}). If this isn't "
+                                             f"one of the shop's devices, change that PIN."},
+                               timeout=10)
+        if not r.ok:
+            print(f"POS device code email failed: {r.text}")
+        return r.ok
+    except Exception as e:
+        print(f"POS device code email failed: {e}")
+        return False
+
+
 def _pos_signed_in(request: Request) -> bool:
     token = request.cookies.get(POS_COOKIE, "")
-    if not ADMIN_PASSWORD or not token:
+    if not ADMIN_PASSWORD or not token or not _pos_device_approved(request):
         return False
     try:
         expires = int(token.split(".", 1)[0])
@@ -2557,6 +2632,7 @@ def _load_admin_auth() -> dict:
                 d = {}
             d.setdefault("sessions", {})
             d.setdefault("devices", {})
+            d.setdefault("pos_devices", {})
             _admin_auth_cache["data"] = d
         return _admin_auth_cache["data"]
 
@@ -2566,6 +2642,7 @@ def _save_admin_auth(d: dict):
     now = _now_iso()
     d["sessions"] = {k: v for k, v in d["sessions"].items() if v.get("expires", "") > now}
     d["devices"] = {k: v for k, v in d["devices"].items() if v.get("expires", "") > now}
+    d["pos_devices"] = {k: v for k, v in d.get("pos_devices", {}).items() if v.get("expires", "") > now}
     s3.put_object(Bucket=R2_BUCKET, Key=ADMIN_AUTH_KEY, Body=json.dumps(d, indent=1).encode(),
                   ContentType="application/json")
     _admin_auth_cache["data"] = d
@@ -3165,7 +3242,10 @@ def _pin_refusal(request: Request):
 
 
 def _pos_pin_photographer(request: Request):
-    """Photographer for the X-POS-PIN header, or None (also None while locked out)."""
+    """Photographer for the X-POS-PIN header on an approved POS device, or None (also None
+    while locked out)."""
+    if not _pos_device_approved(request):
+        return None
     return _pin_photographer(request, request.headers.get("X-POS-PIN", ""))
 
 

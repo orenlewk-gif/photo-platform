@@ -40,7 +40,7 @@ PUBLIC = {
     ("POST", "/api/pos-unlock"),
     # Signed or secret-link addresses: the link, payment or WooCommerce signature is the key
     ("POST", "/webhook"), ("GET", "/api/saved-cart/link"), ("GET", "/api/pos/download-qr"),
-    ("POST", "/api/pos/square-complete"), ("POST", "/api/pos/square-pending"),
+    ("POST", "/api/pos/square-complete"), ("POST", "/api/pos/square-pending"), ("POST", "/api/pos/device-verify"),
     ("GET", "/download/{token}"), ("GET", "/download/{token}/all"), ("GET", "/download/{token}/{idx}"),
     ("GET", "/package/{token}"), ("GET", "/package/{token}/all"), ("GET", "/package/{token}/links"),
     ("GET", "/package/{token}/file/{idx}"), ("GET", "/package/{token}/medium/{idx}"),

@@ -111,6 +111,34 @@ def admin_devices(request: Request):
             "codes_on": main.ADMIN_LOGIN_CODES_ON, "email": main._masked_email(main.OWNER_EMAIL)}
 
 
+@router.get("/api/admin/pos-devices")
+def admin_pos_devices(request: Request):
+    """Devices approved for the POS, for Settings > Security."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    now = main._now_iso()
+    devices = [{"id": k[:16], "describe": v.get("describe", ""), "approved": v.get("approved", ""),
+                "by": v.get("by", ""), "ip": v.get("ip", "")}
+               for k, v in main._load_admin_auth()["pos_devices"].items() if v.get("expires", "") > now]
+    return {"devices": sorted(devices, key=lambda x: x["approved"], reverse=True),
+            "codes_on": main.POS_DEVICE_CODES_ON}
+
+
+@router.delete("/api/admin/pos-devices/{device_id}")
+def admin_remove_pos_device(device_id: str, request: Request):
+    """Forget a POS device: it needs a new emailed code before it can use the POS again."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    d = main._load_admin_auth()
+    with main._admin_auth_lock:
+        keys = [k for k in d["pos_devices"] if k[:16] == device_id]
+        if len(keys) != 1:
+            return JSONResponse(status_code=404, content={"error": "Not found"})
+        d["pos_devices"].pop(keys[0])
+        main._save_admin_auth(d)
+    return {"ok": True}
+
+
 @router.post("/api/admin/sign-out-everywhere")
 def admin_sign_out_everywhere(request: Request):
     """End every studio session and forget every approved device (each needs a code again)."""

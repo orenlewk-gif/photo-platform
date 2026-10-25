@@ -1,4 +1,6 @@
 """Routes: pos. Moved from main.py unchanged; shared helpers still live in main.py."""
+import hmac
+import secrets
 import time as _time
 from datetime import datetime
 from datetime import timezone
@@ -59,6 +61,8 @@ async def pos_checkout(request: Request):
     """Record a completed in-person (Square) sale and deliver the download link."""
     try:
         body = await request.json()
+        if not main._pos_device_approved(request):
+            return JSONResponse(status_code=401, content={"error": "This device isn't approved for the POS"})
         if not main._pin_photographer(request, body.get("pin", "")):
             return main._pin_refusal(request)
         return await run_in_threadpool(main._record_pos_sale, body)
@@ -185,6 +189,8 @@ def api_pos_customers(request: Request, q: str = Query("")):
 def api_pos_resend(request: Request, body: dict = Body(...)):
     """Recent Sales: send the customer their receipt again (the same single email
     they got at checkout, with the download button when photos were bought)."""
+    if not main._pos_device_approved(request):
+        return JSONResponse(status_code=401, content={"error": "This device isn't approved for the POS"})
     if not main._pin_photographer(request, body.get("pin", "")):
         return main._pin_refusal(request)
     order = main._find_pos_order(str(body.get("order_id") or ""), str(body.get("date") or ""),
@@ -200,15 +206,65 @@ def photographer_auth(request: Request, body: dict = Body(...)):
     p = main._pin_photographer(request, body.get("pin", ""))
     if not p:
         return main._pin_refusal(request)
+    device_ok = main._pos_device_approved(request)
+    if body.get("pos") and not device_ok:
+        # The POS on a new device: the owner gets a code to approve it
+        challenge = secrets.token_urlsafe(16)
+        code = f"{secrets.randbelow(10 ** 6):06d}"
+        now = _time.time()
+        for k in [k for k, v in main._pos_challenges.items() if v["expires"] < now]:
+            main._pos_challenges.pop(k, None)
+        info = main._request_info(request)
+        main._pos_challenges[challenge] = {"code": main._token_hash(code), "expires": now + main.LOGIN_CODE_MINUTES * 60,
+                                           "tries": 0, "photographer_id": p["id"], "info": info}
+        if not main._send_pos_device_code_email(code, info, p):
+            main._pos_challenges.pop(challenge, None)
+            return JSONResponse(status_code=503, content={"error": "Couldn't email the code for this new device — "
+                                                                   "try again in a minute"})
+        return JSONResponse(status_code=403, content={"device_approval": True, "challenge": challenge,
+                                                      "email": main._masked_email(main.OWNER_EMAIL)})
+    return _photographer_signed_in(p, device_ok)
+
+
+def _photographer_signed_in(p: dict, device_ok: bool, device_token: str = ""):
     records = main._load_clock_records()
     active = next((r for r in reversed(records)
                    if r["photographer_id"] == p["id"] and not r.get("clock_out")), None)
     resp = JSONResponse({"photographer": {k: v for k, v in p.items() if k != "pin"},
                          "clocked_in": active is not None, "active_record": active})
-    # Lets this device load staff (no-watermark) thumbnails; renewed each time a PIN is entered
-    expires = int(_time.time()) + main.POS_COOKIE_SECONDS
-    resp.set_cookie(main.POS_COOKIE, main._pos_token(expires), httponly=True, samesite="lax", max_age=main.POS_COOKIE_SECONDS)
+    if device_token:
+        resp.set_cookie(main.POS_DEVICE_COOKIE, device_token, httponly=True, samesite="lax",
+                        max_age=main.POS_DEVICE_DAYS * 86400)
+    if device_ok:
+        # Lets this device load staff (no-watermark) thumbnails; renewed each time a PIN is entered
+        expires = int(_time.time()) + main.POS_COOKIE_SECONDS
+        resp.set_cookie(main.POS_COOKIE, main._pos_token(expires), httponly=True, samesite="lax",
+                        max_age=main.POS_COOKIE_SECONDS)
     return resp
+
+
+@router.post("/api/pos/device-verify")
+def pos_device_verify(request: Request, body: dict = Body(...)):
+    """The code emailed for a new POS device: approves the device and signs the photographer in."""
+    challenge = str(body.get("challenge") or "")
+    code = str(body.get("code") or "").strip()
+    pending = main._pos_challenges.get(challenge)
+    if not pending or pending["expires"] < _time.time():
+        main._pos_challenges.pop(challenge, None)
+        return JSONResponse(status_code=401, content={"error": "That code has expired — enter your PIN again",
+                                                      "restart": True})
+    pending["tries"] += 1
+    if not hmac.compare_digest(main._token_hash(code), pending["code"]):
+        if pending["tries"] >= main.LOGIN_CODE_TRIES:
+            main._pos_challenges.pop(challenge, None)
+            return JSONResponse(status_code=401, content={"error": "Too many wrong codes — enter your PIN again",
+                                                          "restart": True})
+        return JSONResponse(status_code=401, content={"error": "Incorrect code"})
+    main._pos_challenges.pop(challenge, None)
+    p = next((x for x in main._load_photographers() if x.get("id") == pending["photographer_id"]), None)
+    if not p:
+        return JSONResponse(status_code=401, content={"error": "Enter your PIN again", "restart": True})
+    return _photographer_signed_in(p, True, main._approve_pos_device(pending["info"], p))
 
 
 @router.post("/api/clock/in")
