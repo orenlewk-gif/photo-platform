@@ -1540,10 +1540,19 @@ function cartSubRemove(itemId, type, idx){
   renderCart();
 }
 
+// What a code covers, the same groups as online: "digital" = action photos, portrait poses and
+// Unlimited packages; "prints"; "frames"; "all" = everything
+function couponCovers(item){
+  const at = (S.coupon && S.coupon.applies_to) || 'all';
+  if(at === 'digital' || at === 'portraits') return ['action_photos', 'portrait', 'unlimited_package'].includes(item.category);
+  if(at === 'prints' || at === 'frames') return item.category === at;
+  return true;
+}
+
 function cartDiscount(){
   if(!S.coupon) return 0;
   // Partner prints (Eagle Mount) already have their discount and never combine with a code
-  const sub = S.cart.reduce((a,i) => a + (i._noCoupon ? 0 : i.subtotal), 0);
+  const sub = S.cart.reduce((a,i) => a + (i._noCoupon || !couponCovers(i) ? 0 : i.subtotal), 0);
   const c = S.coupon;
   if(c.type === 'percent') return Math.min(sub, sub * (c.amount / 100));
   if(c.type === 'fixed')   return Math.min(sub, c.amount);
@@ -1767,17 +1776,27 @@ function scThumbsHtml(paths){
     `<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`).join('')}</div>`
     + (paths.length > 24 ? `<div class="sc-modal-sub">+${paths.length - 24} more</div>` : '');
 }
+// The window stays open while things are added (each part shows "Added"), so staff can add
+// the photos, then each print, or everything at once with "Add all to sale".
+let _scAdded = new Set();                 // 'photos:<folder>' and 'print:<folder>:<print>' added this time
 function openSavedCartModal(){
   const d = S.savedCart;
   if(!d) return;
+  if(_scAdded._for !== d.email){ _scAdded = new Set(); _scAdded._for = d.email; }
   $('sc-modal-title').textContent = `${d.first_name || 'Customer'}'s saved cart`;
-  let html = `<div class="sc-modal-sub">Saved on the website by ${escHtml(d.email)}.</div>`;
+  const addBtn = (key, onclick, label) => _scAdded.has(key)
+    ? `<button class="ap-add-btn" disabled style="opacity:.55">Added ✓</button>`
+    : `<button class="ap-add-btn" onclick="${onclick}">${label}</button>`;
+  const canAdd = (d.folders || []).some((f, fi) => (f.photos.length && !_scAdded.has('photos:' + fi))
+    || f.prints.some((_, pi) => !_scAdded.has(`print:${fi}:${pi}`)));
+  let html = `<div class="sc-modal-row" style="margin-bottom:.4rem"><span class="sc-modal-sub">Saved on the website by ${escHtml(d.email)}.</span>
+    ${canAdd ? `<button class="ap-add-btn" onclick="posAddAllSaved()">Add all to sale</button>` : ''}</div>`;
   (d.folders || []).forEach((f, fi) => {
     if(!f.photos.length && !f.poses.length && !f.prints.length) return;
     html += `<div class="sc-modal-folder">${escHtml(f.label)}</div>`;
     if(f.photos.length){
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.photos.length} digital photo${f.photos.length === 1 ? '' : 's'}</span>
-        <button class="ap-add-btn" onclick="posAddSavedPhotos(${fi})">Add to sale</button></div>` + scThumbsHtml(f.photos);
+        ${addBtn('photos:' + fi, `posAddSavedPhotos(${fi})`, 'Add to sale')}</div>` + scThumbsHtml(f.photos);
     }
     if(f.poses.length){
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.poses.map(p => escHtml(`${p.label}: ${p.whole ? 'whole pose' : p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's')}`)).join(' · ')}</span>
@@ -1786,39 +1805,100 @@ function openSavedCartModal(){
     }
     f.prints.forEach((pr, pi) => {
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${escHtml(pr.size)} print of ${escHtml(pr.path.split('/').pop())}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}</span>
-        <button class="ap-add-btn" onclick="posSavedPrint(${fi},${pi})">Print sizes</button></div>`;
+        <span style="display:flex;gap:.4rem;align-items:center">
+          ${_scAdded.has(`print:${fi}:${pi}`) ? '' : `<button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="posSavedPrint(${fi},${pi})">Other size</button>`}
+          ${addBtn(`print:${fi}:${pi}`, `posAddSavedPrint(${fi},${pi})`, 'Add to sale')}</span></div>`;
     });
   });
+  if((d.folders || []).some(f => f.poses.length)) html += `<div class="sc-modal-sub" style="margin-top:.6rem">Portrait poses: open the session to add them (pose pricing applies there).</div>`;
   $('sc-modal-body').innerHTML = html;
   $('sc-modal').classList.remove('hidden');
 }
 function closeSavedCartModal(){ $('sc-modal').classList.add('hidden'); }
-async function posAddSavedPhotos(fi){
+async function posAddSavedPhotos(fi, quiet){
+  // Picks the saved photos in their folder on the Action Photos tab and adds them, like staff would
   const f = S.savedCart.folders[fi];
-  closeSavedCartModal();
   openCategory('action-photos', 'Action Photos');
   await loadApDates();
   const dateSel = $('ap-date-select');
-  if(![...dateSel.options].some(o => o.value === f.date)){ showToast('That day is no longer on the POS'); return; }
+  if(![...dateSel.options].some(o => o.value === f.date)){ showToast('That day is no longer on the POS'); return false; }
   dateSel.value = f.date; apDateChanged();
   const locSel = $('ap-loc-select');
-  if(![...locSel.options].some(o => o.value === f.location)){ showToast('That location is no longer on the POS'); return; }
+  if(![...locSel.options].some(o => o.value === f.location)){ showToast('That location is no longer on the POS'); return false; }
   locSel.value = f.location;
   await apLocChanged();
   const fam = (f.family || '').toLowerCase();
   let idx = S.ap.families.findIndex(x => (x.name || '').toLowerCase() === fam);
   if(idx < 0 && S.ap.families.length === 1) idx = 0;
-  if(idx < 0){ showToast('That folder is no longer on the POS'); return; }
+  if(idx < 0){ showToast('That folder is no longer on the POS'); return false; }
   await apSelectFamily(idx);
   const here = new Set(S.ap.photos.map(p => p.path));
   const want = f.photos.filter(p => here.has(p));
-  if(!want.length){ showToast('Those photos are no longer on the POS'); return; }
+  if(!want.length){ showToast('Those photos are no longer on the POS'); return false; }
   S.ap.selected = new Set(want);
   S.ap.photos.forEach((p, i) => { const el = $('apph-' + i); if(el) el.classList.toggle('selected', S.ap.selected.has(p.path)); });
   renderApSelCount();
   apAddToCart();
+  _scAdded.add('photos:' + fi);
   const missing = f.photos.length - want.length;
-  showToast(`${want.length} saved photo${want.length === 1 ? '' : 's'} added` + (missing ? ` (${missing} no longer on the site)` : ''));
+  if(!quiet) showToast(`${want.length} saved photo${want.length === 1 ? '' : 's'} added` + (missing ? ` (${missing} no longer on the site)` : ''));
+  openSavedCartModal();
+  return true;
+}
+async function posAddSavedPrint(fi, pi, quiet){
+  // The print at the size, frame and logo the customer saved. Half price when that photo's digital
+  // file is in the sale; a partner photo (Eagle Mount) gets the partner's discount and no code on top.
+  const pr = S.savedCart.folders[fi].prints[pi];
+  if(!S.printSizes || !S.printSizes.length) await loadPrintSizes();
+  const s = (S.printSizes || [])[pr.size_idx];
+  if(!s){ showToast('That print size is no longer offered'); return false; }
+  const digitalInSale = S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(pr.path));
+  const pct = pr.partner_pct || 0;
+  const factor = pct ? 1 - pct / 100 : (digitalInSale ? 0.5 : 1);
+  const logoPrice = pr.logo ? LOGO_FEE : 0;
+  const price = Math.round(s.price * factor * 100) / 100 + logoPrice;
+  const fn = pr.path.split('/').pop();
+  cartAdd({
+    category: 'prints', label: `${s.label} Print`,
+    detail: [fn, pct ? `${pct}% off (${pr.partner_name})` : (digitalInSale ? '50% off' : ''), 'saved online'].filter(Boolean).join(' · '),
+    price, qty: 1, subtotal: price,
+    _ship: false, _half: !pct && digitalInSale, _pkgPct: pct, _noCoupon: !!pct, _partnerPrint: !!pct,
+    _logo: !!pr.logo, _logoPrice: logoPrice, _size_idx: s.size_idx !== undefined ? s.size_idx : pr.size_idx,
+    photo_paths: [pr.path],
+  });
+  let note = '';
+  if(pr.frame && pr.frame !== 'No Frame'){
+    if(!S.frames) { try { S.frames = (await (await fetch('/api/frames')).json()).frames || []; } catch(e) { S.frames = []; } }
+    const SIZE_KEYS = ['5x7', '8x10', '10x13', '16x20'];
+    const fr = (S.frames || []).find(x => x.size === SIZE_KEYS[pr.size_idx]);
+    const opt = fr && (pr.orientation === 'portrait' ? fr.portrait : fr.landscape);
+    if(opt){
+      const orient = pr.orientation === 'portrait' ? 'Portrait' : 'Landscape';
+      const fp = parseFloat(opt.price || 0);
+      cartAdd({category: 'frames', label: `${fr.size} Frame`, detail: orient, price: fp, qty: 1, subtotal: fp, _ship: false, _size_idx: pr.size_idx});
+    } else note = ' (add the frame from Frames)';
+  }
+  renderCart();
+  _scAdded.add(`print:${fi}:${pi}`);
+  if(!quiet) showToast(`${s.label} print added${note}`);
+  openSavedCartModal();
+  return true;
+}
+async function posAddAllSaved(){
+  // Photos first, so prints of those photos get the half price
+  const d = S.savedCart;
+  let n = 0;
+  for(let fi = 0; fi < (d.folders || []).length; fi++){
+    const f = d.folders[fi];
+    if(f.photos.length && !_scAdded.has('photos:' + fi) && await posAddSavedPhotos(fi, true)) n += f.photos.length;
+  }
+  for(let fi = 0; fi < (d.folders || []).length; fi++){
+    for(let pi = 0; pi < d.folders[fi].prints.length; pi++){
+      if(!_scAdded.has(`print:${fi}:${pi}`) && await posAddSavedPrint(fi, pi, true)) n++;
+    }
+  }
+  showToast(n ? `Added to the sale` : 'Nothing new to add');
+  openSavedCartModal();
 }
 async function posOpenSavedPortrait(fi){
   const f = S.savedCart.folders[fi];
@@ -1832,11 +1912,12 @@ async function posOpenSavedPortrait(fi){
   showToast('Saved: ' + f.poses.map(p => `${p.label} ${p.whole ? '(whole)' : '(' + p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's') + ')'}`).join(', '));
 }
 async function posSavedPrint(fi, pi){
+  // "Other size": the print sizes window for that photo
   const pr = S.savedCart.folders[fi].prints[pi];
   closeSavedCartModal();
-  if(!S.printSizes) await loadPrintSizes();
   _ptPhoto = {path: pr.path, filename: pr.path.split('/').pop()};
-  openPSM(_ptPhoto);
+  if(pr.partner_pct) openPSM(_ptPhoto, false, pr.partner_pct, pr.partner_name, true);
+  else openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(pr.path)));
   showToast(`Saved choice: ${pr.size}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}`);
 }
 
@@ -2514,8 +2595,12 @@ function renderApSelCount(){
   if(n > 0){
     const ap = S.actionPricing || {per_photo:25, all_photos:115};
     const per = ap.per_photo || 25, all = ap.all_photos || 115;
-    // Staff only: just the count and the price (no sales wording)
-    label = `${n} selected — ${fmt(Math.min(n * per, all))}`;
+    // Staff only: just the count and the price (no sales wording). Partner photos are free.
+    const paid = S.ap.photos.filter(p => !p.partner && S.ap.selected.has(p.path || '')).length;
+    const free = n - paid;
+    const paidTotal = S.ap.photos.filter(p => !p.partner).length;
+    const price = paid && paid === paidTotal ? all : Math.min(paid * per, all);
+    label = `${n} selected — ${fmt(price)}${free ? ` (${free} free)` : ''}`;
   }
   $('ap-sel-count').textContent = label;
   $('ap-add-btn').disabled = n === 0;
@@ -2530,10 +2615,14 @@ function apAddToCart(){
   }
   const f = S.ap.family;
   const selectedKeys = [...S.ap.selected];
-  const selectedPhotos = S.ap.photos.filter(p => selectedKeys.includes(p.path || ''));
+  const chosen = S.ap.photos.filter(p => selectedKeys.includes(p.path || ''));
+  // Partner photos (Eagle Mount) are free digital files, as on their own page: their own $0 line,
+  // left out of the photo count and of the file names commission is credited by
+  const selectedPhotos = chosen.filter(p => !p.partner);
+  const partnerPhotos = chosen.filter(p => p.partner);
   const filenames = selectedPhotos.map(p => (p.filename || (p.path || '').split('/').pop() || ''));
-  const totalPhotos = S.ap.photos.length;
-  const selectedCount = selectedKeys.length;
+  const totalPhotos = S.ap.photos.filter(p => !p.partner).length;
+  const selectedCount = selectedPhotos.length;
   const ap = S.actionPricing || {per_photo:25, all_photos:115};
   const perPhoto  = ap.per_photo  || 25;
   const allPhotos = ap.all_photos || 115;
@@ -2543,15 +2632,30 @@ function apAddToCart(){
     : basePrice === allPhotos ? `${selectedCount} photos · ${fmt(allPhotos)} (capped)`
     : `${selectedCount} photo${selectedCount !== 1 ? 's' : ''} · ${fmt(perPhoto)} each`;
   const detail = [priceDetail, f.date || '', f.location || ''].filter(Boolean).join(' · ');
-  cartAdd({
-    category: 'action_photos',
-    label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
-    detail,
-    price: basePrice, qty: 1, subtotal: basePrice,
-    photo_paths: selectedPhotos.map(p => p.path || ''),
-    filenames, date: f.date || '', location: f.location || '',
-    _logoPaths: [], _baseActionPrice: basePrice,
-  });
+  if(selectedCount){
+    cartAdd({
+      category: 'action_photos',
+      label: `Action Photos — ${f.last_name || f.folder || f.name || ''}`,
+      detail,
+      price: basePrice, qty: 1, subtotal: basePrice,
+      photo_paths: selectedPhotos.map(p => p.path || ''),
+      filenames, date: f.date || '', location: f.location || '',
+      _logoPaths: [], _baseActionPrice: basePrice,
+    });
+  }
+  if(partnerPhotos.length){
+    const pname = partnerPhotos[0].partner_name || 'Partner';
+    const n = partnerPhotos.length;
+    cartAdd({
+      category: 'action_photos',
+      label: `${pname} Photos — free`,
+      detail: [`${n} photo${n !== 1 ? 's' : ''} · free (${pname})`, f.date || '', f.location || ''].filter(Boolean).join(' · '),
+      price: 0, qty: 1, subtotal: 0,
+      photo_paths: partnerPhotos.map(p => p.path || ''),
+      filenames: [], date: f.date || '', location: f.location || '',
+      _logoPaths: [], _baseActionPrice: 0, _partnerFree: true,
+    });
+  }
   S.ap.selected.clear();
   S.ap.photos.forEach((_,i) => {
     const el = $('apph-' + i);
@@ -3610,6 +3714,7 @@ function psmAddToCart(){
       _half: _psm.half && !_psm.pkgPct,
       _pkgPct: _psm.pkgPct || 0,
       _noCoupon: _psm.noCoupon || false,
+      _partnerPrint: !!(_psm.pkgPct && _psm.pkgLabel !== 'Unlimited package'),   // a partner photo's discount (their report)
       _logo: _psm.logo,
       _logoPrice: logoPrice || 0,
       _size_idx: s.size_idx !== undefined ? s.size_idx : idx,
@@ -3933,6 +4038,12 @@ function renderItemModal(){
     body += _imShipToggle(im.ship);
     // Custom print size: show price input if it's a custom size
     if(im._customSize){
+      // The size the print is made at (the price is typed in below)
+      const sizeOpts = (S.printSizes || []).map((s, i) =>
+        `<option value="${i}"${i === (im._size_idx || 0) ? ' selected' : ''}>${escHtml(s.label)}</option>`).join('');
+      body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Size</span></div>
+      <select id="im-custom-size" class="field-input" onchange="S._im._size_idx = parseInt(this.value)" style="margin-bottom:.65rem">
+        ${sizeOpts}</select>`;
       body += `<div class="im-row" style="margin-bottom:.3rem"><span class="im-row-label">Custom Price</span></div>
       <input type="number" id="im-custom-price-input" class="field-input" min="0" step="0.01"
         placeholder="Enter print price" value="${im.customPrice != null ? im.customPrice : ''}"
@@ -4339,7 +4450,9 @@ function itemModalAddToCart(){
     const logoExtra = im._logo ? 2 * qty : 0;
     price = price + logoExtra / qty; // embed in per-unit so subtotal is right
     const ptCtx = [im._photoName || (im._photoPath||'').split('/').pop() || '', _pt.date, _pt.location].filter(Boolean).join(' · ');
-    detail = [im._half ? '50% off' : '', im.ship ? 'Ship' : '', im._logo ? '+$2/print logo' : '', ptCtx].filter(Boolean).join(' · ');
+    detail = [im._customSize ? 'Custom price' : (im._half ? '50% off' : ''), im.ship ? 'Ship' : '', im._logo ? '+$2/print logo' : '', ptCtx].filter(Boolean).join(' · ');
+    const sz = (S.printSizes || [])[im._size_idx || 0];
+    if(im._customSize && sz) im.label = `${sz.label} Print`;
   } else {
     price = im.price;
     if(im.ship) detail = 'Ship';

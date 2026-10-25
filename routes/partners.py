@@ -256,6 +256,7 @@ def partner_report(request: Request, partner: str = Query(""), date_from: str = 
         return err
     rep = main._partner_report(p, date_from, date_to)
     rep.pop("rows")
+    rep.pop("print_rows")
     return rep
 
 
@@ -278,6 +279,16 @@ def partner_report_csv(request: Request, partner: str = Query(""), date_from: st
     w.writerow(["Total photos", rep["photos"]])
     w.writerow(["Value per photo", f"${rep['value_per_photo']:.2f}"])
     w.writerow(["Total donated value", f"${rep['total_value']:.2f}"])
+    w.writerow([])
+    w.writerow(["Prints of their photos sold at the partner discount"])
+    w.writerow(["Date", "Where", "File", "Size", "Regular price", "Paid"])
+    for r in rep["print_rows"]:
+        w.writerow([r["date"], "In store" if r["source"] == "pos" else "Online", r["file"], r["size"],
+                    f"${r['full']:.2f}", f"${r['price']:.2f}"])
+    pr = rep["prints"]
+    w.writerow(["Total prints", pr["count"]])
+    w.writerow(["Paid", f"${pr['paid']:.2f}"])
+    w.writerow(["Discount given", f"${pr['discount']:.2f}"])
     name = re.sub(r"[^A-Za-z0-9]+", "-", rep["partner"]).strip("-").lower() or "partner"
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{name}-donated-photos.csv"'})

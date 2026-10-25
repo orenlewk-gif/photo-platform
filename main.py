@@ -1342,6 +1342,11 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
             meta.append({"key": "Price", "value": "50% off (digital photo also purchased)"})
         if partner_pct:
             meta.append({"key": "Price", "value": f"{partner_pct:g}% off ({partner_name} photo)"})
+            # hidden (leading _): lets the paid order record this print in the partner's report
+            meta.append({"key": "_partner_print", "value": json.dumps({
+                "partner": (_folder_index()["all_by_path"].get(p.get("path") or "") or {}).get("partner", ""),
+                "path": p.get("path") or "", "size": size_label, "full": float(sizes[size_idx].get("price", 0)),
+                "logo": logo_fee if logo else 0})})
         if logo:
             meta.append({"key": "Logo", "value": "Big Sky Resort logo"})
         frame = p.get("frame") if p.get("frame") not in ("", None, "No Frame") else None
@@ -1735,6 +1740,11 @@ def _record_pos_sale_now(body: dict):
         fee_check = threading.Timer(30, _refresh_square_fee, args=(order_record,))
         fee_check.daemon = True
         fee_check.start()
+
+    try:                                     # partner photos (Eagle Mount): their donation report
+        _log_partner_pos_sale(items, photo_paths, order_id)
+    except Exception as e:
+        print(f"Partner sale not logged ({order_id}): {e}")
 
     try:                                     # an in-store order: their online saved cart is done
         _clear_saved_cart_for(customer_email)
@@ -2327,6 +2337,10 @@ def _handle_paid_wc_order(order: dict):
         _clear_saved_cart_for((order.get("billing") or {}).get("email", ""))
     except Exception as e:
         print(f"Saved cart not cleared for order {order.get('id')}: {e}")
+    try:                                     # prints of partner photos: the partner's report
+        _log_partner_online_prints(order)
+    except Exception as e:
+        print(f"Partner prints not logged for order {order.get('id')}: {e}")
     with _sale_locks.hold(f"wc:{order.get('id')}"):
         if _order_has_valid_link(order.get("id")):
             return Response(status_code=200)
@@ -4296,7 +4310,7 @@ _PARTNER_FIELDS = {                 # every partner has these (older saved partn
     "family_code_pct": 25,
     "family_code_message": "",      # the box's wording; blank = the standard wording below
 }
-FAMILY_CODE_MESSAGE_DEFAULT = ("Family and friends: use code {code} for {pct}% off photos and prints, "
+FAMILY_CODE_MESSAGE_DEFAULT = ("Family and friends: use code {code} for {pct}% off digital photos, "
                                "online in {gallery} and in our store.")
 _PARTNER_DEFAULTS = [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange", "slug": "eaglemount",
                       "welcome": "Welcome! Your photos are free to download. Thank you for skiing with Eagle Mount."}]
@@ -4395,7 +4409,7 @@ def _sync_family_code(partner: dict, old_code: str = "") -> str:
                 c = {"id": str(uuid.uuid4())[:8], "code": code,
                      "created": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                      "description": desc, "source": "partner", "partner_id": partner["id"],
-                     "type": "percent", "amount": pct, "free_shipping": False, "applies_to": "all",
+                     "type": "percent", "amount": pct, "free_shipping": False, "applies_to": "digital",
                      "min_order": 0.0, "min_qty": 0, "usage_limit": None, "usage_limit_per_user": None,
                      "expires": None, "start_date": None, "active": True,
                      "usage_count": 0, "total_saved": 0.0, "uses": []}
@@ -4403,8 +4417,9 @@ def _sync_family_code(partner: dict, old_code: str = "") -> str:
                 touched.append(c)
                 note = f"Code {code} was added to Discounts ({pct:g}% off)."
             elif c.get("partner_id") == partner["id"]:
-                if c.get("amount") != pct or not c.get("active", True) or c.get("type") != "percent":
-                    c.update(type="percent", amount=pct, active=True)
+                if c.get("amount") != pct or not c.get("active", True) or c.get("type") != "percent" \
+                        or c.get("applies_to") != "digital":
+                    c.update(type="percent", amount=pct, active=True, applies_to="digital")   # digital photos only
                     touched.append(c)
             else:
                 note = (f"A code named {code} already exists in Discounts, so its own settings there are used "
@@ -4539,6 +4554,7 @@ def _partner_report(partner: dict, date_from: str = "", date_to: str = "") -> di
     with _partner_log_lock:
         log = _load_partner_log(partner["id"])
         photos = dict(log.get("photos") or {})
+        sold = list(log.get("prints") or [])
     value = float(partner.get("value_per_photo") or 0)
     rows = []
     for path, rec in photos.items():
@@ -4554,11 +4570,27 @@ def _partner_report(partner: dict, date_from: str = "", date_to: str = "") -> di
     by_day: dict = {}
     for r in rows:
         by_day[r["first_download"]] = by_day.get(r["first_download"], 0) + 1
+    prints = []
+    for rec in sold:
+        try:
+            day = datetime.fromisoformat(rec["date"]).astimezone(_MOUNTAIN).date().isoformat()
+        except Exception:
+            continue
+        if (date_from and day < date_from) or (date_to and day > date_to):
+            continue
+        prints.append({"date": day, "source": rec.get("source", ""), "file": os.path.basename(rec.get("path", "")),
+                       "size": rec.get("size", ""), "price": float(rec.get("price") or 0), "full": float(rec.get("full") or 0)})
+    prints.sort(key=lambda r: (r["date"], r["file"]))
+    paid = round(sum(r["price"] for r in prints), 2)
+    regular = round(sum(r["full"] for r in prints), 2)
     return {"partner": partner["name"], "date_from": date_from, "date_to": date_to,
             "value_per_photo": value, "photos": len(rows), "total_value": round(len(rows) * value, 2),
             "downloads": sum(r["downloads"] for r in rows),
             "by_day": [{"date": d, "photos": n, "value": round(n * value, 2)} for d, n in sorted(by_day.items())],
-            "rows": rows}
+            "rows": rows,
+            # prints of their photos sold at the partner discount (online and in the store)
+            "prints": {"count": len(prints), "paid": paid, "regular": regular, "discount": round(regular - paid, 2)},
+            "print_rows": prints}
 
 
 def _log_partner_downloads(partner: dict, items: list, how: str) -> None:
@@ -4578,6 +4610,80 @@ def _log_partner_downloads(partner: dict, items: list, how: str) -> None:
                           Body=json.dumps(log).encode(), ContentType="application/json")
     except Exception as e:
         print(f"Partner download log not saved ({partner['id']}): {e}")
+
+
+def _log_partner_prints(pid: str, prints: list, order_key: str) -> None:
+    """Prints of a partner's photos sold at the partner discount, for their report: one entry
+    per print ({source, path, size, price, full}). An order is recorded once (the shop can
+    report a paid order more than once)."""
+    if not prints:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        with _partner_log_lock:
+            log = _load_partner_log(pid)
+            sold = log.setdefault("prints", [])
+            if any(x.get("order") == order_key for x in sold):
+                return
+            sold += [{"order": order_key, "date": now, **p} for p in prints]
+            s3.put_object(Bucket=R2_BUCKET, Key=_partner_log_key(pid),
+                          Body=json.dumps(log).encode(), ContentType="application/json")
+    except Exception as e:
+        print(f"Partner print sales not saved ({pid}, {order_key}): {e}")
+
+
+def _log_partner_pos_sale(items: list, photo_paths: list, order_id: str) -> None:
+    """A POS sale: partner photos given as free digital files count in the donation report, and
+    prints of partner photos sold at the partner discount are recorded."""
+    idx = _folder_index()["all_by_path"]
+    partners = {p["id"]: p for p in _load_partners()}
+    given = {}
+    for path in photo_paths:
+        item = idx.get(path)
+        pid = (item or {}).get("partner")
+        if pid in partners:
+            given.setdefault(pid, []).append(item)
+    for pid, photos in given.items():
+        _log_partner_downloads(partners[pid], photos, "pos")
+    sizes = _load_print_pricing().get("sizes", list(_DEFAULT_PRINT_SIZES))
+    sold = {}
+    for it in items:
+        if it.get("category") != "prints" or not it.get("_partnerPrint"):
+            continue
+        path = (it.get("photo_paths") or [""])[0]
+        pid = (idx.get(path) or {}).get("partner")
+        if pid not in partners:
+            continue
+        si = int(it.get("_size_idx") or 0)
+        full = float(sizes[si].get("price", 0)) if 0 <= si < len(sizes) else 0.0
+        one = {"source": "pos", "path": path, "size": it.get("label", ""), "full": full,
+               "price": round(float(it.get("price") or 0) - float(it.get("_logoPrice") or 0), 2)}
+        sold.setdefault(pid, []).extend(dict(one) for _ in range(max(1, int(it.get("qty") or 1))))
+    for pid, prints in sold.items():
+        _log_partner_prints(pid, prints, f"pos:{order_id}")
+
+
+def _log_partner_online_prints(order: dict) -> None:
+    """A paid online order: its prints of partner photos (marked _partner_print when priced)."""
+    known = {p["id"] for p in _load_partners()}
+    sold = {}
+    for li in order.get("line_items") or []:
+        meta = {m.get("key"): m.get("value") for m in li.get("meta_data") or []}
+        raw = meta.get("_partner_print")
+        if not raw:
+            continue
+        try:
+            info = json.loads(raw) if isinstance(raw, str) else dict(raw)
+        except (ValueError, TypeError):
+            continue
+        if info.get("partner") not in known:
+            continue
+        price = round(float(li.get("total") or 0) / max(1, int(li.get("quantity") or 1)) - float(info.get("logo") or 0), 2)
+        sold.setdefault(info["partner"], []).append({"source": "online", "path": info.get("path", ""),
+                                                     "size": info.get("size", ""), "price": price,
+                                                     "full": float(info.get("full") or 0)})
+    for pid, prints in sold.items():
+        _log_partner_prints(pid, prints, f"wc:{order.get('id')}")
 
 
 # ── Marketing email opt-outs ──────────────────────────────────────────────────

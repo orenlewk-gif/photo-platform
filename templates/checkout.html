@@ -488,8 +488,8 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
     </div>
 
     <p class="co-consent">By continuing you agree to our <a href="/terms" target="_blank" rel="noopener">Terms of Sale &amp; Photo License</a>
-      and <a href="/refunds" target="_blank" rel="noopener">Refund Policy</a>. We'll email your receipt and download link, and
-      occasionally a follow-up or offer — you can unsubscribe anytime. See our <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
+      and <a href="/refunds" target="_blank" rel="noopener">Refund Policy</a>. We'll email your receipt<span id="co-consent-dl"> and download link</span>.
+      See our <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</p>
     <button class="co-submit" id="co-submit-btn" disabled onclick="placeOrder()">
       Continue to Payment →
     </button>
@@ -567,6 +567,10 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('bill-address-fields').style.display = 'block';
     document.getElementById('bill-title').textContent = 'Billing Address';
   }
+
+  // No digital photos in the order (prints or frames only): the email is just the receipt
+  const hasDigital = getAllDigital().length > 0 || !!(cartData.portrait_poses?.length || cartData.portrait_singles?.length);
+  document.getElementById('co-consent-dl').style.display = hasDigital ? '' : 'none';
 
   // Open summary on desktop
   document.getElementById('summary-inner').classList.add('open');

@@ -260,7 +260,7 @@ def test_bad_partner_settings_are_refused(admin_client, change, msg):
 
 def test_standard_family_code_wording(main_module):
     msg = main_module._family_code_message({"family_code": "EAGLEMOUNT25", "family_code_pct": 25})
-    assert msg == ("Family and friends: use code EAGLEMOUNT25 for 25% off photos and prints, "
+    assert msg == ("Family and friends: use code EAGLEMOUNT25 for 25% off digital photos, "
                    "online in {gallery} and in our store.")   # {gallery}: a link on the page
     assert main_module._family_code_message({"family_code": ""}) == ""
 
@@ -397,7 +397,7 @@ def test_family_code_is_added_to_discounts_and_works(admin_client, client, main_
     assert "added to Discounts" in r.json()["notes"][0]
     [c] = _codes()
     assert (c["code"], c["type"], c["amount"], c["applies_to"], c["active"], c["partner_id"]) == \
-        ("EAGLEMOUNT25", "percent", 25, "all", True, "eagle-mount")
+        ("EAGLEMOUNT25", "percent", 25, "digital", True, "eagle-mount")   # digital photos only
     v = client.get("/api/validate-coupon", params={"code": "eaglemount25"}).json()
     assert v["valid"] and v["amount"] == 25                                   # online and POS both use this
 
@@ -459,23 +459,30 @@ def test_studio_login_sees_the_gallery_like_the_public(admin_client):
     assert _names(browse["photos"]) == ["DSC_0001.JPG"]
 
 
-def test_partner_prints_never_combine_with_a_code(member, main_module, no_codes, admin_client):
-    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+def _whole_order_code(code="SAVE25", pct=25):
+    """A regular code made in Discounts that covers the whole order."""
+    S3.put_object(Bucket="test-bucket", Key="meta/discount_codes.json", Body=json.dumps([
+        {"id": "w1", "code": code, "type": "percent", "amount": pct, "applies_to": "all", "active": True,
+         "min_order": 0, "min_qty": 0, "usage_limit": None, "usage_limit_per_user": None, "expires": None,
+         "start_date": None, "usage_count": 0, "uses": []}]).encode())
+
+
+def test_partner_prints_never_combine_with_a_code(member, main_module, no_codes):
+    _whole_order_code()
     full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
-    q = member.post("/api/checkout/quote", json={"coupon_code": "EAGLEMOUNT25", "prints": [
+    q = member.post("/api/checkout/quote", json={"coupon_code": "SAVE25", "prints": [
         {"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg"}]}).json()
     assert q["subtotal"] == round(full * 0.6, 2) and q["coupon"] is None and "can't be combined" in q["coupon_note"]
     # with a regular print in the same cart, the code takes 25% off only that one
-    q = member.post("/api/checkout/quote", json={"coupon_code": "EAGLEMOUNT25", "prints": [
+    q = member.post("/api/checkout/quote", json={"coupon_code": "SAVE25", "prints": [
         {"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg"},
         {"path": PHOTOS[0]["path"], "size_idx": 1, "filename": "b.jpg"}]}).json()
     assert q["coupon"]["discount"] == round(full * 0.25, 2)
     assert q["total"] == round(full * 0.6 + full - full * 0.25 + q["shipping"], 2)
 
 
-def test_framed_partner_print_frame_is_full_price_and_takes_the_code(member, main_module, no_codes, admin_client,
-                                                                      monkeypatch):
-    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+def test_framed_partner_print_frame_is_full_price_and_takes_a_code(member, main_module, no_codes, monkeypatch):
+    _whole_order_code()
     vid = main_module.FRAME_VARIATION_MAP[(1, "landscape")]
     monkeypatch.setattr(main_module, "_frame_variations", lambda: {vid: {"price": 45.0, "stock_status": "instock"}})
     full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
@@ -483,5 +490,53 @@ def test_framed_partner_print_frame_is_full_price_and_takes_the_code(member, mai
                         "frame": "Rustic Big Sky Picture Frame", "orientation": "landscape"}]}
     q = member.post("/api/checkout/quote", json=cart).json()
     assert q["subtotal"] == round(full * 0.6 + 45.0, 2)                    # 40% off the print, frame full price
-    q = member.post("/api/checkout/quote", json={**cart, "coupon_code": "EAGLEMOUNT25"}).json()
+    q = member.post("/api/checkout/quote", json={**cart, "coupon_code": "SAVE25"}).json()
     assert q["coupon"]["discount"] == round(45.0 * 0.25, 2)                 # the code only touches the frame
+
+
+def test_family_code_is_digital_photos_only(admin_client, client, main_module, no_codes):
+    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
+    q = client.post("/api/checkout/quote", json={"coupon_code": "EAGLEMOUNT25", "prints": [
+        {"path": PHOTOS[0]["path"], "size_idx": 1, "filename": "b.jpg"}]}).json()
+    assert q["subtotal"] == full and not (q["coupon"] or {}).get("discount")   # prints: no family discount
+    # a code saved before this change (whole order) is switched to digital photos on the next save
+    codes = _codes()
+    codes[0]["applies_to"] = "all"
+    S3.put_object(Bucket="test-bucket", Key="meta/discount_codes.json", Body=json.dumps(codes).encode())
+    _save_code(admin_client, main_module, "EAGLEMOUNT25")
+    assert _codes()[0]["applies_to"] == "digital"
+
+
+def test_pos_sale_counts_free_partner_photos_and_partner_prints(pos, admin_client, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "_send_pos_receipt_email", lambda **kw: None)
+    monkeypatch.setattr(main_module, "_upsert_customer_from_pos", lambda c: None)
+    sizes = main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)
+    full = float(sizes[1]["price"])
+    r = pos.post("/api/pos-checkout", json={"pin": "4821", "email": "fam@example.com", "name": "Fam", "square_payment_id": "COMP",
+        "total": round(full * 0.6, 2), "items": [
+            {"category": "action_photos", "label": "Eagle Mount Photos — free", "price": 0, "qty": 1, "subtotal": 0,
+             "photo_paths": [PHOTOS[1]["path"]], "filenames": [], "_partnerFree": True},
+            {"category": "prints", "label": '8×10" Print', "price": round(full * 0.6, 2), "qty": 2, "subtotal": round(full * 1.2, 2),
+             "_pkgPct": 40, "_partnerPrint": True, "_size_idx": 1, "photo_paths": [PHOTOS[2]["path"]]},
+            {"category": "prints", "label": '8×10" Print', "price": 30, "qty": 1, "subtotal": 30,     # a package print: not theirs
+             "_pkgPct": 60, "_partnerPrint": False, "_size_idx": 1, "photo_paths": [PHOTOS[3]["path"]]}]})
+    assert r.status_code == 200 and r.json()["token"]
+    d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount"}).json()
+    assert d["photos"] == 1                                                    # the free digital file counts
+    assert d["prints"] == {"count": 2, "paid": round(full * 1.2, 2), "regular": full * 2,
+                           "discount": round(full * 2 - full * 1.2, 2)}
+    csv = admin_client.get("/admin/partner-report.csv", params={"partner": "eagle-mount"}).text
+    assert "Prints of their photos sold at the partner discount" in csv and "In store" in csv
+
+
+def test_online_partner_prints_are_recorded_once(admin_client, main_module, member):
+    priced = main_module._price_order({"prints": [{"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg"}]},
+                                      {PHOTOS[1]["path"]: (40, "Eagle Mount")})
+    line = priced["line_items"][0]
+    assert any(m["key"] == "_partner_print" for m in line["meta_data"])
+    order = {"id": 501, "line_items": [line]}
+    main_module._log_partner_online_prints(order)
+    main_module._log_partner_online_prints(order)                           # the shop's second "paid" message
+    d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount"}).json()
+    assert d["prints"]["count"] == 1 and d["prints"]["paid"] == float(line["total"])

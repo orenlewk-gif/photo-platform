@@ -830,7 +830,9 @@ async function partnerReport(i) {
   out.innerHTML = `<b>${d.photos} photo${d.photos === 1 ? '' : 's'} downloaded · ${money(d.total_value)} donated</b>
     <span style="color:rgba(255,255,255,.45)">(${money(d.value_per_photo)} each; ${d.downloads} downloads in all)</span>`
     + (d.by_day.length ? '<div style="margin-top:.4rem">' + d.by_day.map(x =>
-        `<div>${esc(x.date)}: ${x.photos} photo${x.photos === 1 ? '' : 's'} · ${money(x.value)}</div>`).join('') + '</div>' : '');
+        `<div>${esc(x.date)}: ${x.photos} photo${x.photos === 1 ? '' : 's'} · ${money(x.value)}</div>`).join('') + '</div>' : '')
+    + (d.prints ? `<div style="margin-top:.6rem"><b>${d.prints.count} print${d.prints.count === 1 ? '' : 's'} of their photos sold at their discount</b>
+        <span style="color:rgba(255,255,255,.45)">(${money(d.prints.paid)} paid; ${money(d.prints.discount)} discount given)</span></div>` : '');
 }
 function partnerReportCsv(i) {
   window.location.href = '/admin/partner-report.csv?' + partnerReportQuery(i);

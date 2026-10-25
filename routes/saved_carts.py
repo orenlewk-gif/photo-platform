@@ -64,6 +64,16 @@ def admin_saved_carts(request: Request):
     return {"carts": rows}
 
 
+def _partner_print_info(path: str) -> dict:
+    """A print of a partner photo (Eagle Mount) gets that partner's print discount on the POS."""
+    item = main._folder_index()["all_by_path"].get(path or "")
+    pid = (item or {}).get("partner")
+    p = next((x for x in main._load_partners() if x["id"] == pid), None) if pid else None
+    if not p or not float(p.get("print_discount_pct") or 0):
+        return {}
+    return {"partner_pct": float(p["print_discount_pct"]), "partner_name": p["name"]}
+
+
 def _cart_detail(rec: dict) -> dict:
     """A saved cart laid out for the studio and the POS: per folder its date, location and
     family (from the gallery's folder key), selected photos, poses and prints."""
@@ -87,7 +97,9 @@ def _cart_detail(rec: dict) -> dict:
                         "photos": [p for p in (fc.get("selectedPaths") or []) if isinstance(p, str)],
                         "poses": poses,
                         "prints": [{"path": p.get("photoPath", ""), "size": p.get("size", ""), "size_idx": p.get("sizeIdx", 0),
-                                    "frame": p.get("frame", ""), "logo": bool(p.get("_logo"))}
+                                    "frame": p.get("frame", ""), "logo": bool(p.get("_logo")),
+                                    "orientation": p.get("orientation") or "landscape",
+                                    **_partner_print_info(p.get("photoPath", ""))}
                                    for p in (fc.get("printCart") or []) if isinstance(p, dict)]})
     return {"id": rec["id"], "email": rec["email"], "first_name": rec.get("first_name", ""),
             "created": rec.get("created", ""), "updated": rec.get("updated", ""),
