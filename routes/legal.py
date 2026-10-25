@@ -2,8 +2,8 @@
 site footer shows (from Settings > Business details)."""
 import re
 
-from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Body, Request
+from fastapi.responses import HTMLResponse, JSONResponse
 from html import escape as _html_escape
 
 import main
@@ -51,3 +51,50 @@ def site_info():
     b = main._business_details()
     return {"name": b.get("name", ""), "address": b.get("address", ""), "phone": b.get("phone", ""),
             "email": b.get("email", "")}
+
+
+@router.get("/photo-removal", response_class=HTMLResponse)
+def photo_removal_page():
+    return _policy("photo_removal.html", "Request a Photo Removal")
+
+
+_removal_limiter = main._RateLimiter(max_calls=5, window=3600)     # per visitor
+
+
+@router.post("/api/photo-removal")
+def photo_removal_request(request: Request, body: dict = Body(...)):
+    """The photo removal form: emails the request to the business address, with the visitor's
+    email as the reply-to address so answering it reaches them."""
+    if str(body.get("website") or "").strip():           # the hidden field only robots fill in
+        return {"sent": True}
+    if not _removal_limiter.is_allowed(main._client_ip(request)):
+        return JSONResponse(status_code=429, content={"error": "Too many requests. Please email us instead."})
+    f = {k: str(body.get(k) or "").strip()[:n] for k, n in
+         (("name", 80), ("email", 120), ("date", 40), ("location", 80), ("photos", 300), ("message", 2000))}
+    if not main._EMAIL_RE.match(f["email"]):
+        return JSONResponse(status_code=400, content={"error": "Please enter your email."})
+    if not f["photos"] and not f["message"]:
+        return JSONResponse(status_code=400, content={"error": "Please tell us which photo, or describe it."})
+    to = main._business_details().get("email") or main.OWNER_EMAIL
+    rows = "".join(f'<tr><td style="padding:3px 10px 3px 0;color:#666">{label}</td><td>{_html_escape(f[k]) or "—"}</td></tr>'
+                   for label, k in (("Name", "name"), ("Email", "email"), ("Photo date", "date"),
+                                    ("Location", "location"), ("Photo number(s)", "photos")))
+    html = main._wrap_email_html(
+        '<p style="margin:0 0 .8rem"><strong>Photo removal request</strong> from the website.</p>'
+        f'<table style="font-size:.9rem;border-collapse:collapse">{rows}</table>'
+        + (f'<p style="margin:.8rem 0 0;white-space:pre-wrap">{_html_escape(f["message"])}</p>' if f["message"] else "")
+        + '<p style="margin:.8rem 0 0;font-size:.8rem;color:#666">Reply to this email to answer them.</p>')
+    if not main.RESEND_API_KEY:
+        return JSONResponse(status_code=503, content={"error": "The form isn't working right now. Please email us instead."})
+    try:
+        r = main.http_requests.post("https://api.resend.com/emails",
+                                    headers={"Authorization": f"Bearer {main.RESEND_API_KEY}", "Content-Type": "application/json"},
+                                    json={"from": main.RESEND_FROM, "to": [to], "reply_to": f["email"],
+                                          "subject": f"Photo removal request — {f['photos'] or f['name'] or f['email']}"[:150],
+                                          "html": html}, timeout=10)
+        if not r.ok:
+            raise RuntimeError(r.text[:200])
+    except Exception as e:
+        print(f"Photo removal request not sent ({f['email']}): {e}")
+        return JSONResponse(status_code=502, content={"error": "Could not send. Please email us instead."})
+    return {"sent": True}

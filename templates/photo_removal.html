@@ -1,0 +1,53 @@
+<style>
+  .rm-form{display:grid;gap:.8rem;margin-top:1.2rem;max-width:560px}
+  .rm-form label{display:block;font-size:.82rem;color:rgba(255,255,255,.7);margin-bottom:.3rem}
+  .rm-form input,.rm-form textarea{width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.2);border-radius:8px;
+    color:#fff;padding:.6rem .75rem;font-size:.95rem;font-family:inherit}
+  .rm-form input:focus,.rm-form textarea:focus{outline:none;border-color:#F5C518}
+  .rm-form textarea{min-height:90px;resize:vertical}
+  .rm-two{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+  @media(max-width:560px){.rm-two{grid-template-columns:1fr}}
+  .rm-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  .rm-btn{background:#F5C518;color:#0c2336;border:none;border-radius:8px;padding:.7rem 1.4rem;font-weight:700;font-size:.95rem;cursor:pointer;justify-self:start}
+  .rm-btn:disabled{opacity:.5;cursor:default}
+  .rm-msg{font-size:.9rem;min-height:1.2em}
+  .rm-msg.err{color:#ff8a80}
+  .rm-done{background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);border-radius:10px;padding:1rem;margin-top:1.2rem}
+</style>
+<h1>Request a Photo Removal</h1>
+<p>Tell us which photo and we'll take it down from the gallery. Parents and guardians can ask us to remove photos of their children at any time. You can also email <a href="mailto:__BIZ_EMAIL__">__BIZ_EMAIL__</a>.</p>
+<form class="rm-form" id="rm-form" novalidate>
+  <div class="rm-two">
+    <div><label for="rm-name">Your name</label><input id="rm-name" autocomplete="name" maxlength="80"></div>
+    <div><label for="rm-email">Your email (so we can confirm)</label><input id="rm-email" type="email" autocomplete="email" maxlength="120" required></div>
+  </div>
+  <div class="rm-two">
+    <div><label for="rm-date">Date of the photo</label><input id="rm-date" placeholder="e.g. Jan 12" maxlength="40"></div>
+    <div><label for="rm-location">Location</label><input id="rm-location" placeholder="e.g. Calamity Jane" maxlength="80"></div>
+  </div>
+  <div><label for="rm-photos">Photo number(s), shown under each photo</label><input id="rm-photos" placeholder="e.g. AMS02244" maxlength="300"></div>
+  <div><label for="rm-message">Anything else</label><textarea id="rm-message" maxlength="2000"></textarea></div>
+  <div class="rm-hp" aria-hidden="true"><label for="rm-website">Leave this empty</label><input id="rm-website" tabindex="-1" autocomplete="off"></div>
+  <button class="rm-btn" type="submit" id="rm-send">Send request</button>
+  <div class="rm-msg" id="rm-msg" role="status"></div>
+</form>
+<div class="rm-done" id="rm-done" style="display:none" role="status">Thanks, we got your request. We'll remove the photo and reply to you by email.</div>
+<script>
+document.getElementById('rm-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const v = id => document.getElementById(id).value.trim();
+  const msg = document.getElementById('rm-msg'), btn = document.getElementById('rm-send');
+  const body = {name: v('rm-name'), email: v('rm-email'), date: v('rm-date'), location: v('rm-location'),
+                photos: v('rm-photos'), message: v('rm-message'), website: v('rm-website')};
+  if(!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(body.email)){ msg.textContent = 'Please enter your email.'; msg.className = 'rm-msg err'; return; }
+  if(!body.photos && !body.message){ msg.textContent = 'Please tell us which photo (the number under it), or describe it.'; msg.className = 'rm-msg err'; return; }
+  btn.disabled = true; msg.textContent = 'Sending…'; msg.className = 'rm-msg';
+  try {
+    const r = await fetch('/api/photo-removal', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || 'Could not send. Please email us instead.');
+    document.getElementById('rm-form').style.display = 'none';
+    document.getElementById('rm-done').style.display = '';
+  } catch(err) { msg.textContent = err.message; msg.className = 'rm-msg err'; btn.disabled = false; }
+});
+</script>

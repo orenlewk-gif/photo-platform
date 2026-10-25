@@ -42,3 +42,28 @@ def test_customer_pages_link_the_policies_and_label_their_fields(client):
     assert labels and all(f for f in labels)                     # every checkout label points at its field
     gallery = client.get("/").text
     assert 'aria-label="Last name"' in gallery and 'class="select-check"' in gallery and "<button type=\"button\" class=\"select-check\"" in gallery
+
+
+def test_photo_removal_form_emails_the_business(client, main_module, monkeypatch):
+    sent = []
+
+    class _R:
+        ok = True
+        text = ""
+    monkeypatch.setattr(main_module, "RESEND_API_KEY", "re_test")
+    monkeypatch.setattr(main_module.http_requests, "post", lambda url, json=None, **kw: sent.append(json) or _R())
+
+    page = client.get("/photo-removal")
+    assert page.status_code == 200 and 'id="rm-form"' in page.text and 'class="custom-header"' in page.text
+    r = client.post("/api/photo-removal", json={"name": "Ann", "email": "ann@example.com", "photos": "AMS02244",
+                                                "message": "My kid <b>please</b>"})
+    assert r.json() == {"sent": True}
+    mail = sent[-1]
+    assert mail["reply_to"] == "ann@example.com" and "AMS02244" in mail["subject"]
+    assert "&lt;b&gt;please&lt;/b&gt;" in mail["html"]                      # shown as text, never as HTML
+    assert client.post("/api/photo-removal", json={"email": "bad"}).status_code == 400
+    assert client.post("/api/photo-removal", json={"email": "a@b.co"}).status_code == 400   # which photo?
+    n = len(sent)
+    assert client.post("/api/photo-removal", json={"email": "a@b.co", "photos": "x", "website": "spam"}).json() == {"sent": True}
+    assert len(sent) == n                                                    # robots are quietly ignored
+    assert 'href="/photo-removal"' in client.get("/").text
