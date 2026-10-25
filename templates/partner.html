@@ -745,9 +745,10 @@ function renderPm(){
     }
     html += '</div>';
   }
-  // The print order: this photo's prints, or everything (from the print list button)
+  // The print order: this photo's prints (shown once it has some, to change how many), or
+  // everything (from the print list button)
   const lines = printCart.map((it, i) => ({it, i})).filter(x => !path || x.it.photoPath === path);
-  html += `<div class="qs-section"><div class="qs-section-label">${path ? 'This photo in your print order' : 'Your print order'}</div>`
+  if(lines.length || !path) html += `<div class="qs-section"><div class="qs-section-label">${path ? 'This photo\'s prints in your order' : 'Your print order'}</div>`
     + (lines.length ? lines.map(({it, i}) => `<div class="pm-line">
         ${path ? '' : `<img src="${thumb(it.photoPath)}" alt="">`}
         <div class="pm-line-txt"><div>${esc(it.size)} print${it.frame && it.frame !== 'No Frame' ? ' + frame' : ''}${it._logo ? ' + logo' : ''}</div>
@@ -755,8 +756,8 @@ function renderPm(){
         <div class="pm-qty"><button onclick="pmQty(${i}, -1)" aria-label="One fewer">−</button><span>${it.qty}</span>
           <button onclick="pmQty(${i}, 1)" aria-label="One more">+</button></div>
         <span class="pm-line-price">${money(it.price * it.qty)}</span></div>`).join('')
-      : `<div class="pm-empty">${path ? 'No prints of this photo yet.' : 'No prints added yet.'}</div>`)
-    + '</div>';
+      : (path ? '' : `<div class="pm-empty">No prints added yet.</div>`))
+    + (lines.length || !path ? '</div>' : '');
   html += `<div class="pm-foot"><span class="pm-total">${cartCount() ? `${plural(cartCount(), 'print')} · ${money(cartTotal())}` : ''}</span>
     <button class="btn-ghost" onclick="closePrints()">Keep browsing</button>
     <button class="btn-main" onclick="printCheckout()"${cartCount() ? '' : ' disabled'}>Checkout</button></div>`;

@@ -5508,17 +5508,12 @@ function qsAddPrint(si, base, framed) {
 }
 
 function _renderQsOrder(i) {
-  // This photo's digital file and prints in the order (prints with − n +), then the cart total
+  // This photo's prints in the order, to change how many (shown only once it has prints), then the cart total
   const photo = allPhotos[i];
   const box = document.getElementById('qs-order'), foot = document.getElementById('qs-foot');
   if (!photo || !box) return;
-  let html = '<div class="qs-section-label">This photo in your order</div>';
+  let html = '<div class="qs-section-label">This photo\'s prints in your order</div>';
   let any = false;
-  if (!_poseData && selectedPhotos.has(i)) {
-    any = true;
-    html += `<div class="qs-line"><span class="qs-line-txt">Digital photo</span>
-      <button class="qs-line-rm" onclick="deSelectPhotoByPath('${escQ(photo.path)}');refreshQuickShop()">Remove</button></div>`;
-  }
   printCart.forEach((p, idx) => {
     if (p.photoPath !== photo.path) return;
     const copies = printGroup(printCart, idx);
@@ -5529,8 +5524,8 @@ function _renderQsOrder(i) {
       ${printQtyHtml(n, `changePrintQty(${idx},-1)`, `changePrintQty(${idx},1)`)}
       <span class="qs-line-price">$${((p.price + p.framePrice) * n).toFixed(2)}</span></div>`;
   });
-  if (!any) html += '<div class="qs-empty">Nothing from this photo yet.</div>';
-  box.innerHTML = html;
+  box.innerHTML = any ? html : '';
+  box.style.display = any ? '' : 'none';
   const total = (document.getElementById('cart-price-text') || {}).textContent || '';
   const hasCart = selectedPhotos.size > 0 || printCart.length > 0 || frameCart.length > 0
     || Object.values(folderCarts).some(fc => (fc.selectedPaths?.length || 0) + (fc.printCart?.length || 0) > 0)
