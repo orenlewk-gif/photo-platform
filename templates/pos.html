@@ -1778,17 +1778,20 @@ function scThumbsHtml(paths){
 }
 // The window stays open while things are added (each part shows "Added"), so staff can add
 // the photos, then each print, or everything at once with "Add all to sale".
-let _scAdded = new Set();                 // 'photos:<folder>' and 'print:<folder>:<print>' added this time
+// "Added" comes from the sale itself: what was added from the saved cart carries a _savedKey
+// ('photos:<folder>' / 'print:<folder>:<print>' for that customer), so removing it from the
+// sale makes it addable again.
+function scKey(k){ return `${(S.savedCart || {}).email || ''}|${k}`; }
+function scInSale(k){ return S.cart.some(i => i._savedKey === scKey(k)); }
 function openSavedCartModal(){
   const d = S.savedCart;
   if(!d) return;
-  if(_scAdded._for !== d.email){ _scAdded = new Set(); _scAdded._for = d.email; }
   $('sc-modal-title').textContent = `${d.first_name || 'Customer'}'s saved cart`;
-  const addBtn = (key, onclick, label) => _scAdded.has(key)
+  const addBtn = (key, onclick, label) => scInSale(key)
     ? `<button class="ap-add-btn" disabled style="opacity:.55">Added ✓</button>`
     : `<button class="ap-add-btn" onclick="${onclick}">${label}</button>`;
-  const canAdd = (d.folders || []).some((f, fi) => (f.photos.length && !_scAdded.has('photos:' + fi))
-    || f.prints.some((_, pi) => !_scAdded.has(`print:${fi}:${pi}`)));
+  const canAdd = (d.folders || []).some((f, fi) => (f.photos.length && !scInSale('photos:' + fi))
+    || f.prints.some((_, pi) => !scInSale(`print:${fi}:${pi}`)));
   let html = `<div class="sc-modal-row" style="margin-bottom:.4rem"><span class="sc-modal-sub">Saved on the website by ${escHtml(d.email)}.</span>
     ${canAdd ? `<button class="ap-add-btn" onclick="posAddAllSaved()">Add all to sale</button>` : ''}</div>`;
   (d.folders || []).forEach((f, fi) => {
@@ -1806,7 +1809,7 @@ function openSavedCartModal(){
     f.prints.forEach((pr, pi) => {
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${escHtml(pr.size)} print of ${escHtml(pr.path.split('/').pop())}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}</span>
         <span style="display:flex;gap:.4rem;align-items:center">
-          ${_scAdded.has(`print:${fi}:${pi}`) ? '' : `<button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="posSavedPrint(${fi},${pi})">Other size</button>`}
+          ${scInSale(`print:${fi}:${pi}`) ? '' : `<button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="posSavedPrint(${fi},${pi})">Other size</button>`}
           ${addBtn(`print:${fi}:${pi}`, `posAddSavedPrint(${fi},${pi})`, 'Add to sale')}</span></div>`;
     });
   });
@@ -1838,8 +1841,9 @@ async function posAddSavedPhotos(fi, quiet){
   S.ap.selected = new Set(want);
   S.ap.photos.forEach((p, i) => { const el = $('apph-' + i); if(el) el.classList.toggle('selected', S.ap.selected.has(p.path)); });
   renderApSelCount();
+  const before = new Set(S.cart.map(i => i.id));
   apAddToCart();
-  _scAdded.add('photos:' + fi);
+  S.cart.filter(i => !before.has(i.id)).forEach(i => { i._savedKey = scKey('photos:' + fi); });
   const missing = f.photos.length - want.length;
   if(!quiet) showToast(`${want.length} saved photo${want.length === 1 ? '' : 's'} added` + (missing ? ` (${missing} no longer on the site)` : ''));
   openSavedCartModal();
@@ -1864,7 +1868,7 @@ async function posAddSavedPrint(fi, pi, quiet){
     price, qty: 1, subtotal: price,
     _ship: false, _half: !pct && digitalInSale, _pkgPct: pct, _noCoupon: !!pct, _partnerPrint: !!pct,
     _logo: !!pr.logo, _logoPrice: logoPrice, _size_idx: s.size_idx !== undefined ? s.size_idx : pr.size_idx,
-    photo_paths: [pr.path],
+    photo_paths: [pr.path], _savedKey: scKey(`print:${fi}:${pi}`),
   });
   let note = '';
   if(pr.frame && pr.frame !== 'No Frame'){
@@ -1875,11 +1879,11 @@ async function posAddSavedPrint(fi, pi, quiet){
     if(opt){
       const orient = pr.orientation === 'portrait' ? 'Portrait' : 'Landscape';
       const fp = parseFloat(opt.price || 0);
-      cartAdd({category: 'frames', label: `${fr.size} Frame`, detail: orient, price: fp, qty: 1, subtotal: fp, _ship: false, _size_idx: pr.size_idx});
+      cartAdd({category: 'frames', label: `${fr.size} Frame`, detail: orient, price: fp, qty: 1, subtotal: fp, _ship: false, _size_idx: pr.size_idx,
+               _savedKey: scKey(`print:${fi}:${pi}`) + ':frame'});
     } else note = ' (add the frame from Frames)';
   }
   renderCart();
-  _scAdded.add(`print:${fi}:${pi}`);
   if(!quiet) showToast(`${s.label} print added${note}`);
   openSavedCartModal();
   return true;
@@ -1890,11 +1894,11 @@ async function posAddAllSaved(){
   let n = 0;
   for(let fi = 0; fi < (d.folders || []).length; fi++){
     const f = d.folders[fi];
-    if(f.photos.length && !_scAdded.has('photos:' + fi) && await posAddSavedPhotos(fi, true)) n += f.photos.length;
+    if(f.photos.length && !scInSale('photos:' + fi) && await posAddSavedPhotos(fi, true)) n += f.photos.length;
   }
   for(let fi = 0; fi < (d.folders || []).length; fi++){
     for(let pi = 0; pi < d.folders[fi].prints.length; pi++){
-      if(!_scAdded.has(`print:${fi}:${pi}`) && await posAddSavedPrint(fi, pi, true)) n++;
+      if(!scInSale(`print:${fi}:${pi}`) && await posAddSavedPrint(fi, pi, true)) n++;
     }
   }
   showToast(n ? `Added to the sale` : 'Nothing new to add');

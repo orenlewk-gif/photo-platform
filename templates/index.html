@@ -39,6 +39,11 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .ln-bar .btn { width:auto; padding:0.65rem 1.4rem; white-space:nowrap; }
 .save-box { margin-top:1.1rem; padding:0.9rem 1rem; border:1px solid rgba(245,197,24,0.3); border-radius:10px; background:rgba(245,197,24,0.06); font-size:0.85rem; }
 .save-box-title { color:#F5C518; font-weight:600; font-size:0.8rem; letter-spacing:1px; text-transform:uppercase; margin-bottom:0.45rem; }
+.save-details > summary { cursor:pointer; list-style:none; margin:0; display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.save-details > summary::-webkit-details-marker { display:none; }
+.save-details > summary::after { content:'▾'; font-size:.9rem; transition:transform .15s; }
+.save-details[open] > summary::after { transform:rotate(180deg); }
+.save-details-body { margin-top:.6rem; }
 .save-box-line { color:rgba(255,255,255,0.75); line-height:1.5; }
 .save-box a, .save-link { color:#F5C518; cursor:pointer; text-decoration:underline; background:none; border:none; font:inherit; padding:0; }
 .save-form { display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.55rem; }
@@ -1745,11 +1750,15 @@ async function savePromptSubmit(){
 function renderSaveBoxes(){
   const who = savedIdentity();
   document.querySelectorAll('[data-savebox]').forEach((box, i) => {
+    // A dropdown, closed to start (one line in the cart); tap the title to open it
+    const wasOpen = !!box.querySelector('details[open]');
+    const wrap = (title, inner) => `<details class="save-details"${wasOpen ? ' open' : ''}>
+      <summary class="save-box-title">${title}</summary><div class="save-details-body">${inner}</div></details>`;
     if(who){                                      // saved this visit: nothing more to enter
-      box.innerHTML = `<div class="save-box-title">Save your photos</div>
-        <div class="save-box-line">Saved for <strong>${escHtml(who.first_name)}</strong>. Changes save automatically while you're here.
+      box.innerHTML = wrap(`Photos saved for ${escHtml(who.first_name)}`, `
+        <div class="save-box-line">Changes save automatically while you're here.
           Next time, open the cart and enter your email to load them.</div>
-        <div class="save-box-line" style="margin-top:.35rem">Not you? <button class="save-link" onclick="forgetIdentity()">Reset</button></div>`;
+        <div class="save-box-line" style="margin-top:.35rem">Not you? <button class="save-link" onclick="forgetIdentity()">Reset</button></div>`);
       return;
     }
     const saveHtml = `<div class="save-box-line">Save your selection and come back to it anytime, on any device.
@@ -1762,7 +1771,7 @@ function renderSaveBoxes(){
            <button class="btn" onclick="startSaving(document.getElementById('sb-first-${i}').value, document.getElementById('sb-email-${i}').value, document.getElementById('sb-msg-${i}'))">Save</button>
          </div>
          <div class="save-msg" id="sb-msg-${i}" role="status"></div>`;
-    box.innerHTML = `<div class="save-box-title">Save your photos</div>${saveHtml}
+    box.innerHTML = wrap('Save your photos for later', `${saveHtml}
       <div class="save-divider"></div>
       <div class="save-box-line">Saved photos before? Load them here.</div>
       <div class="save-form">
@@ -1770,7 +1779,7 @@ function renderSaveBoxes(){
         <input id="sl-email-${i}" type="email" placeholder="Your email" autocomplete="email">
         <button class="btn btn-ghost btn-secondary" onclick="loadSavedCart(document.getElementById('sl-email-${i}').value, document.getElementById('sl-msg-${i}'))">Load my photos</button>
       </div>
-      <div class="save-msg" id="sl-msg-${i}" role="status"></div>`;
+      <div class="save-msg" id="sl-msg-${i}" role="status"></div>`);
   });
 }
 function forgetIdentity(){
