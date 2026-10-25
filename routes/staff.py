@@ -47,10 +47,10 @@ def owner_unlock(request: Request, body: dict = Body(...)):
 
 
 @router.get("/api/clock/status")
-def clock_status_ep(pin: str = Query(...)):
-    p = main._auth_photographer(pin)
+def clock_status_ep(request: Request, pin: str = Query(...)):
+    p = main._pin_photographer(request, pin)
     if not p:
-        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+        return main._pin_refusal(request)
     records = main._load_clock_records()
     active = next((r for r in reversed(records)
                    if r["photographer_id"] == p["id"] and not r.get("clock_out")), None)

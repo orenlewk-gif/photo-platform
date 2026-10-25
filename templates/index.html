@@ -1652,7 +1652,16 @@ async function renderState(state) {
     case 'days':      await showDays();                                  break;
     case 'locations': await showLocations(state.date);                   break;
     case 'families':  await showFamilies(state.date, state.location);                              break;
-    case 'gallery':   await showGallery(state.date, state.location, state.family, state.ln, state.group); break;
+    case 'gallery':
+      // An old "?ln=" link mixed several folders in one gallery, priced as one: show the name's
+      // folders instead, so each is opened (and priced) on its own
+      if (state.ln && !state.date) {
+        history.replaceState({ view: 'days' }, '', '/');
+        document.getElementById('ln-input').value = state.ln;
+        await doLnSearch();
+        break;
+      }
+      await showGallery(state.date, state.location, state.family, state.ln, state.group); break;
   }
 }
 
@@ -5139,6 +5148,10 @@ async function renderLB() {
   // Load medium-size (1200px) — sharp but fast, ~200-400 KB vs several MB for raw
   ph.style.opacity = '0';
   ph.onload = () => { ph.style.opacity = '1'; };
+  ph.onerror = () => {
+    if (allPhotos[cur] !== photo) return;
+    document.getElementById('lb-info').textContent = "This photo couldn't open. If you've been flipping through a lot of photos, wait a few minutes and try again.";
+  };
   ph.src = `/api/photo?path=${enc(photo.path)}&size=medium`;
 
   // Preload adjacent photos in the background

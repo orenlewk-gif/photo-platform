@@ -49,7 +49,7 @@ def _photo(path, loc, **kw):
 
 @pytest.fixture()
 def woo(main_module, monkeypatch, live_photos):
-    live_photos([_photo(ED + n, "El Dorado Action") for n in ("A.jpg", "B.jpg", "Z.jpg")] +
+    live_photos([_photo(ED + n, "El Dorado Action") for n in ("A.jpg", "B.jpg", "Z.jpg", "IMG_9.jpg")] +
                 [_photo(SM + n, "Big Sky Sign", last_name="Smith") for n in ("S1.jpg", "a.jpg", "b.jpg", "c.jpg", "d.jpg")])
     S3.put_object(Bucket="test-bucket", Key="meta/folder_meta.json", Body=json.dumps({
         "2026-06-07|Big Sky Sign|Smith": {"poses": [
@@ -107,7 +107,7 @@ def _meta(order):
     return {m["key"]: m["value"] for m in order["meta_data"]}
 
 
-PRINT_8X10 = {"filename": "IMG_9.jpg", "size": '8×10"', "size_idx": 1, "orientation": "landscape",
+PRINT_8X10 = {"filename": "IMG_9.jpg", "path": ED + "IMG_9.jpg", "size": '8×10"', "size_idx": 1, "orientation": "landscape",
               "frame": "No Frame", "price": 30, "frame_price": 0}
 
 
@@ -226,7 +226,7 @@ def test_logo_on_digital_photos_is_charged_and_listed_by_name(client, woo):
 def test_logo_on_a_print_is_charged_and_marked(client, woo):
     order = _order(client, woo, digital_albums=[ALBUM],
                    prints=[{**PRINT_8X10, "filename": "A.jpg", "path": ALBUM["paths"][0], "logo": True},
-                           {**PRINT_8X10, "filename": "Z.jpg", "logo": True}])
+                           {**PRINT_8X10, "filename": "Z.jpg", "path": ED + "Z.jpg", "logo": True}])
     a, z = order["line_items"][1], order["line_items"][2]
     assert a["name"] == '8×10" Print — A.jpg + Big Sky Resort logo' and float(a["total"]) == 17.0   # half + $2
     assert float(z["total"]) == 32.0

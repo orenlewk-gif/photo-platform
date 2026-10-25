@@ -34,7 +34,7 @@ def get_days():
 
 @router.get("/api/dates")
 def get_dates():
-    dates = sorted(set(item["date"] for item in main.data if not item.get("partner")), reverse=True)
+    dates = sorted(main._folder_index()["by_date"], reverse=True)      # published gallery days
     return {"dates": dates}
 
 
@@ -225,10 +225,23 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
         "medium": (1800, 90),
         "full":   (2400, 92),
     }
+    staff = main._nowm_allowed(request)
+    if nowm and not staff:
+        nowm = False
+    cache = "public"
+    if not staff:
+        # Visitors see published gallery photos (and their partner's photos), at most lightbox size
+        access = main._visitor_photo_access(request, path)
+        if not access:
+            return JSONResponse(status_code=404, content={"error": "Photo not found"})
+        if access == "partner":
+            cache = "private"          # never kept in a shared cache
+        if size == "full":
+            size = "medium"
+        if size != "thumb" and not main._preview_allowed(request):
+            return JSONResponse(status_code=429, content={"error": "Too many photos opened — wait a few minutes"})
     max_px, quality = SIZE_MAP.get(size, SIZE_MAP["medium"])
     cache_secs = 86400 if size == "thumb" else 3600
-    if nowm and not main._nowm_allowed(request):
-        nowm = False
 
     try:
         key = to_r2_key(path)
@@ -246,7 +259,7 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
                     return main._thumb_redirect(link)
                 data = main._thumb_on_demand(key, variant)
                 return SR(BytesIO(data), media_type=main._THUMB_MEDIA_TYPES[main._THUMB_VARIANTS[variant][5]],
-                          headers={"Cache-Control": f"{'private' if nowm else 'public'}, max-age={cache_secs}"})
+                          headers={"Cache-Control": f"{'private' if nowm else cache}, max-age={cache_secs}"})
 
             obj = main.s3.get_object(Bucket=main.R2_BUCKET, Key=key)
             img = Image.open(obj["Body"]).convert("RGB")
@@ -259,7 +272,7 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
 
             buf.seek(0)
             return SR(buf, media_type="image/jpeg",
-                      headers={"Cache-Control": f"public, max-age={cache_secs}"})
+                      headers={"Cache-Control": f"{'private' if nowm else cache}, max-age={cache_secs}"})
         elif os.path.exists(path):
             img = Image.open(path).convert("RGB")
             img = fix_orientation(img)

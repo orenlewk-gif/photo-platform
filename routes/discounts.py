@@ -14,9 +14,12 @@ router = APIRouter()
 
 
 @router.get("/api/validate-coupon")
-def validate_coupon(code: str = Query(""), email: str = Query("")):
+def validate_coupon(request: Request, code: str = Query(""), email: str = Query("")):
     """Validate a discount code against our own code store."""
+    if main._coupon_locked_out(request):
+        return JSONResponse(status_code=429, content={"valid": False, "error": main.COUPON_LOCKED_MSG})
     c, problem = main._check_coupon(code, email)
+    main._record_coupon_result(request, problem)
     if not c:
         return JSONResponse(status_code=404 if problem == "Invalid coupon code" else 400,
                             content={"valid": False, "error": problem})

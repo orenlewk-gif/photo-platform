@@ -44,6 +44,15 @@ def _stored_key(location: str) -> str:
     return location.split("/test-bucket/", 1)[1].split("?", 1)[0]
 
 
+@pytest.fixture(autouse=True)
+def photos_are_published(main_module, monkeypatch):
+    """These tests use photos that aren't in the photo list; treat them as published gallery
+    photos (who may see which photos is tested in test_access.py)."""
+    monkeypatch.setattr(main_module, "_visitor_photo_access", lambda request, path: "public")
+    main_module._preview_device_limiter._calls.clear()
+    main_module._preview_ip_limiter._calls.clear()
+
+
 @pytest.fixture()
 def pos_client(main_module):
     """A POS that has entered a photographer PIN (which sets the staff-thumbnail cookie)."""
@@ -194,7 +203,7 @@ def test_large_photo_without_watermark_needs_staff(client, admin_client, main_mo
     real = main_module.apply_watermark
     monkeypatch.setattr(main_module, "apply_watermark", lambda img, s="medium": marked.append(s) or real(img, s))
     assert client.get("/api/photo", params={"path": key, "size": size, "nowm": 1}).status_code == 200
-    assert marked == [size]                                  # a visitor asking for no watermark still gets one
+    assert marked == ["medium"]           # a visitor asking for no watermark still gets one, at most lightbox size
     marked.clear()
     assert admin_client.get("/api/photo", params={"path": key, "size": size, "nowm": 1}).status_code == 200
     assert marked == []

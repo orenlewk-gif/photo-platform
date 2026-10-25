@@ -2408,7 +2408,7 @@ async function loadApDates(){
   const sel = $('ap-date-select');
   if(sel.options.length > 1) return; // already loaded
   try {
-    const res = await fetch('/api/pos-dates');
+    const res = await fetch('/api/pos-dates', {headers: posPinHeaders()});
     const data = await res.json();
     S.ap._dateData = data.dates || [];
     S.ap._dateData.forEach(d => {
@@ -2446,7 +2446,7 @@ async function apLocChanged(){
   if(!date || !location) return;
   $('ap-results').innerHTML = '<div class="ap-loading">Loading families...</div>';
   try {
-    const res = await fetch(`/api/pos-families?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`);
+    const res = await fetch(`/api/pos-families?date=${encodeURIComponent(date)}&location=${encodeURIComponent(location)}`, {headers: posPinHeaders()});
     const data = await res.json();
     S.ap.families = data.families || [];
     renderApResults();
@@ -3408,7 +3408,7 @@ async function loadPtDates(){
   if(!sel || sel.options.length > 1) return;
   if(!S.ap._dateData || !S.ap._dateData.length){
     try {
-      const res = await fetch('/api/pos-dates');
+      const res = await fetch('/api/pos-dates', {headers: posPinHeaders()});
       const data = await res.json();
       S.ap._dateData = data.dates || [];
     } catch(e){ return; }
@@ -3447,7 +3447,7 @@ async function ptLocChanged(){
   const resultsEl = $('pt-results');
   if(resultsEl) resultsEl.innerHTML = '<div class="ap-loading">Loading families...</div>';
   try {
-    const res = await fetch(`/api/pos-families?date=${encodeURIComponent(_pt.date)}&location=${encodeURIComponent(_pt.location)}`);
+    const res = await fetch(`/api/pos-families?date=${encodeURIComponent(_pt.date)}&location=${encodeURIComponent(_pt.location)}`, {headers: posPinHeaders()});
     const data = await res.json();
     const families = data.families || [];
     if(!resultsEl) return;

@@ -723,6 +723,18 @@ class _RateLimiter:
             return len(dq)
 
 _search_limiter    = _RateLimiter(max_calls=20, window=60)   # 20 req/min per IP
+_coupon_fail_limiter = _RateLimiter(max_calls=15, window=600)  # wrong discount codes per IP: no guessing codes
+# Enlarged (lightbox-size) previews for visitors: plenty for flipping through photos, but nobody
+# can copy a whole day. Per device (address + browser), with a higher cap for the address so a
+# hotel's or the resort's shared Wi-Fi isn't treated as one person.
+_preview_device_limiter = _RateLimiter(max_calls=300, window=600)
+_preview_ip_limiter     = _RateLimiter(max_calls=1000, window=600)
+
+
+def _preview_allowed(request: Request) -> bool:
+    ip = _client_ip(request)
+    device = ip + "|" + hashlib.sha256(request.headers.get("user-agent", "").encode()).hexdigest()[:16]
+    return _preview_device_limiter.is_allowed(device) and _preview_ip_limiter.is_allowed(ip)
 _lastname_limiter  = _RateLimiter(max_calls=30, window=60)   # 30 req/min per IP
 
 # ─────────────────────────────────────────
@@ -814,11 +826,11 @@ def _search(last_name, date, location, group=None, time_from=None, time_to=None,
 
     # (time_from / time_to are applied in the browser from /api/folder-times)
     if has_labels:
-        pool = _folder_photos(date, location) if date and location else [i for i in data if not i.get("partner")]
+        pool = _folder_photos(date, location) if date and location else list(_folder_index()["by_path"].values())
         results = [(0.0, item) for item in filter_by_labels(pool, date, location, group, jacket_colors_filter,
                                                             pants_color, sport, ski_instructor)]
     else:
-        results = match_last_name([i for i in data if not i.get("partner")], last_name, date, location, group)
+        results = match_last_name(list(_folder_index()["by_path"].values()), last_name, date, location, group)
 
     paths  = [item["path"] for _, item in results]
     dims   = _dims_for_paths(paths)
@@ -1162,6 +1174,19 @@ def _check_coupon(code: str, email: str = ""):
     return check_coupon(_load_discount_codes(), code, email)
 
 
+COUPON_LOCKED_MSG = "Too many wrong codes — please wait a few minutes and try again"
+
+
+def _coupon_locked_out(request: Request) -> bool:
+    return _coupon_fail_limiter.count(_client_ip(request)) >= _coupon_fail_limiter.max_calls
+
+
+def _record_coupon_result(request: Request, problem: str) -> None:
+    """Counts a code that doesn't exist toward the visitor's lockout (expired codes etc. don't count)."""
+    if problem == "Invalid coupon code":
+        _coupon_fail_limiter.is_allowed(_client_ip(request))
+
+
 _FRAME_SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
 _FRAME_VARIATION_INFO = {vid: key for key, vid in FRAME_VARIATION_MAP.items()}   # vid -> (size_idx, orientation)
 _frame_prices_cache = {"data": None, "ts": 0.0}
@@ -1226,6 +1251,13 @@ def _check_portrait_single(single: dict, last_name: str, live: dict) -> None:
         raise CheckoutError("One of the portrait photos in your cart isn't available — please refresh the page and try again")
 
 
+def _photo_folder(item: dict) -> tuple:
+    """The gallery folder a photo is shown and priced in: its day, location and family (or
+    group). Checkout works this out from the photo itself, never from what the cart says."""
+    name = (item.get("last_name") or "").strip() or (item.get("group") or "").strip() or _item_group_from_path(item)
+    return item["date"], clean_location(item["location"]), name
+
+
 def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
     """Price an online cart. Returns the WooCommerce order parts (line_items,
     fee_lines, coupon_lines, meta) and the summary the checkout page shows.
@@ -1258,24 +1290,24 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
         count = parse_int(a.get("count"), 0, 1, 10000, "photo count")
         # Only the photos paid for are delivered: each must be a published photo from this
         # album's folder, and there must be exactly as many as are charged for.
+        # Its day, location and family come from the photos (all from one gallery folder), so
+        # nothing the cart says can change which prices apply.
         a_paths = list(dict.fromkeys(p for p in (a.get("paths") or []) if p))
-        a_date, a_loc = (a.get("date") or date).strip(), clean_location(a.get("location") or "")
-        if len(a_paths) != count or not all(
-                (it := live.get(p)) and it["date"] == a_date and clean_location(it["location"]) == a_loc
-                for p in a_paths):
+        if len(a_paths) != count or not all(p in live for p in a_paths) \
+                or len({_photo_folder(live[p]) for p in a_paths}) != 1:
             raise CheckoutError("Something in your cart isn't right (photos) — please refresh the page and try again")
+        f_date, f_loc, f_name = _photo_folder(live[a_paths[0]])
         try:
-            price = _server_digital_price(a, date)
+            price = _server_digital_price({"count": count, "date": f_date, "location": f_loc, "last_name": f_name}, date)
         except ValueError as e:
             raise CheckoutError(str(e))
-        label = a.get("last_name") or a.get("location") or "Photos"
+        label = f_name or f_loc or "Photos"
         add("digital", price, {"product_id": WC_DIGITAL_PRODUCT_ID, "quantity": count,
                                "name": f"Digital Photos — {label}",
                                "meta_data": [{"key": "Photos", "value": f"{count} digital photo{'s' if count != 1 else ''}"}]},
             sub=f"{count} photo{'s' if count != 1 else ''}")
         album_paths += a_paths
-        if a.get("location"):
-            locations.add(a["location"].strip().lower())
+        locations.add(f_loc.strip().lower())
 
     # ── Portrait poses and single photos ──
     poses = body.get("portrait_poses") or []
@@ -1323,8 +1355,13 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
     # ── Prints (half price when the same photo is bought digitally) and their frames ──
     sizes = _load_print_pricing().get("sizes", list(_DEFAULT_PRINT_SIZES))
     prints = body.get("prints") or []
+    all_photos = _folder_index()["all_by_path"]
     for p in prints:
         size_idx = parse_int(p.get("size_idx"), 0, 0, len(sizes) - 1, "print size")
+        # A print is of a published photo, or a partner photo the buyer is signed in for
+        photo = live.get(p.get("path") or "") or (all_photos.get(p["path"]) if p.get("path") in partner_prints else None)
+        if not photo:
+            raise CheckoutError("One of the prints in your cart isn't available — please refresh the page and try again")
         size_label = p.get("size") or sizes[size_idx].get("label", "")
         half = bool(p.get("path")) and p["path"] in bought_digital
         logo = bool(p.get("logo"))
@@ -1355,8 +1392,7 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
                                     "meta_data": meta},
                   name=f"{size_label} Print" + (f" + {frame}" if frame else "") + (" + Logo" if logo else ""),
                   sub=p.get("filename", ""), no_discount=bool(partner_pct))
-        if p.get("location"):
-            locations.add(str(p["location"]).strip().lower())
+        locations.add(clean_location(photo["location"]).strip().lower())
         if frame:
             orientation = p.get("orientation") if p.get("orientation") in ("landscape", "portrait") else "landscape"
             vid = FRAME_VARIATION_MAP.get((size_idx, orientation))
@@ -1460,11 +1496,39 @@ def _partner_print_discounts(request: Request, body: dict) -> dict:
         return out
     for partner in _load_partners():
         pct = float(partner.get("print_discount_pct") or 0)
-        if pct <= 0 or not _partner_signed_in(request, partner):
-            continue
+        if not _partner_signed_in(request, partner):
+            continue                              # (0% off still lets them order prints of their photos)
         for path in paths:
             if _partner_photo(partner, path):
                 out[path] = (pct, partner["name"])
+    return out
+
+
+def _visitor_photo_access(request: Request, path: str) -> str | None:
+    """May a visitor without a staff sign-in see this photo (watermarked)? "public" for photos
+    published in the gallery, "partner" for a partner's (Eagle Mount) photo when the visitor is
+    signed in to that partner's page, None for anything else (unpublished folders included)."""
+    index = _folder_index()
+    if path in index["by_path"]:
+        return "public"
+    item = index["all_by_path"].get(path or "")
+    if not item or not item.get("partner"):
+        return None
+    if any(_partner_photo(p, path) and _partner_signed_in(request, p) for p in _load_partners()):
+        return "partner"
+    return None
+
+
+def _studio_partner_prints(body: dict) -> dict:
+    """Studio invoices: the partner discount for prints of partner photos in the cart (the
+    customer saved them from the partner's page; the studio can still change any price)."""
+    partners = {p["id"]: p for p in _load_partners()}
+    out = {}
+    for p in body.get("prints") or []:
+        item = _folder_index()["all_by_path"].get((p or {}).get("path") or "")
+        partner = partners.get((item or {}).get("partner"))
+        if partner:
+            out[p["path"]] = (float(partner.get("print_discount_pct") or 0), partner["name"])
     return out
 
 
@@ -3001,8 +3065,11 @@ def _generate_code(prefix: str = "", length: int = 6) -> str:
     return f"{prefix.upper()}{suffix}" if prefix else suffix
 
 def _auth_photographer(pin: str):
+    pin = str(pin or "").strip()
+    if not pin:                       # a photographer saved without a PIN must not match an empty one
+        return None
     for p in _load_photographers():
-        if p.get("pin") == pin:
+        if hmac.compare_digest(str(p.get("pin") or ""), pin):
             return p
     return None
 
@@ -3078,15 +3145,34 @@ def _owner_required(request: Request):
     return JSONResponse(status_code=403, content={"error": "Enter your PIN to continue", "pin_required": True})
 
 
-def _pos_pin_photographer(request: Request):
-    """Photographer for the X-POS-PIN header, or None (also None while locked out)."""
-    pin = request.headers.get("X-POS-PIN", "").strip()
+def _pin_photographer(request: Request, pin: str):
+    """Photographer for a PIN someone typed, or None. Every PIN check goes through here so
+    wrong PINs count toward the lockout (and nothing answers a PIN while locked out)."""
+    pin = str(pin or "").strip()
     if not pin or _pin_locked_out(request):
         return None
     p = _auth_photographer(pin)
     if not p:
         _record_pin_failure(request)
     return p
+
+
+def _pin_refusal(request: Request):
+    """The answer for a PIN that _pin_photographer refused."""
+    if _pin_locked_out(request):
+        return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — wait 10 minutes"})
+    return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+
+
+def _pos_pin_photographer(request: Request):
+    """Photographer for the X-POS-PIN header, or None (also None while locked out)."""
+    return _pin_photographer(request, request.headers.get("X-POS-PIN", ""))
+
+
+def _pos_device_ok(request: Request) -> bool:
+    """A signed-in POS (its cookie or PIN) or the studio: for the POS's own photo lists,
+    which include partner (Eagle Mount) folders the public gallery leaves out."""
+    return _nowm_allowed(request) or bool(_pos_pin_photographer(request))
 
 def _presigned_get(key: str, expires: int = 3600) -> str:
     try:

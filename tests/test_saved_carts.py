@@ -155,7 +155,7 @@ def test_invoice_from_a_saved_cart(admin_client, client, main_module, monkeypatc
     assert body["prints"][0]["path"] == "images/2026-12-05/ski/DSC_0.JPG"
     assert body["portrait_singles"][0]["path"] == "images/p/b.jpg"
     made, mailed = [], []
-    monkeypatch.setattr(main_module, "_create_checkout", lambda b, **kw: made.append(b) or {
+    monkeypatch.setattr(main_module, "_create_checkout", lambda b, partner_prints=None, **kw: made.append(b) or {
         "checkout_url": "https://pay/x", "total": 61.0, "normal_total": 61.0, "order_id": 77})
     monkeypatch.setattr(main_module, "_send_invoice_email", lambda *a: mailed.append(a) or True)
     r = admin_client.post(f"/api/admin/saved-carts/{cid}/invoice", json={"first_name": "Sarah", "last_name": "Smith"})

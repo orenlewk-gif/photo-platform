@@ -24,7 +24,9 @@ def build_folder_index(items: list) -> dict:
                 if item.get("date", "").strip() and loc:
                     date_locs.setdefault(item.get("date", "").strip(), set()).add(loc)
             continue
-        # Name lookups (like last_name_search, drafts included)
+        if item.get("draft"):         # unpublished: not on the site, not even by name
+            continue
+        # Name lookups (last_name_search)
         ln = item.get("last_name", "").strip()
         if ln:
             key = ("ln", ln.lower(), item["date"], loc)
@@ -42,8 +44,6 @@ def build_folder_index(items: list) -> dict:
                     name_keys.append((key, {"group": g, "date": item["date"], "location": loc, "type": "group"}))
                 if path and len(name_previews[key]) < 4:
                     name_previews[key].append(path)
-        if item.get("draft"):
-            continue
         by_path[item.get("path", "")] = item
         all_by_path[item.get("path", "")] = item
         by_date.setdefault(item["date"], []).append(item)

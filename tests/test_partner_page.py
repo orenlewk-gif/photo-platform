@@ -353,7 +353,8 @@ def _quote(c, path, size_idx=1):
 def test_signed_in_members_get_40_percent_off_prints_at_checkout(member, client, main_module):
     full = float(main_module._load_print_pricing().get("sizes", main_module._DEFAULT_PRINT_SIZES)[1]["price"])
     assert _quote(member, PHOTOS[1]["path"])["subtotal"] == round(full * 0.6, 2)
-    assert _quote(client, PHOTOS[1]["path"])["subtotal"] == full              # not signed in: full price
+    # Not signed in: Eagle Mount photos aren't in the public shop, so the print is refused
+    assert "subtotal" not in _quote(client, PHOTOS[1]["path"])
     assert _quote(member, PHOTOS[0]["path"])["subtotal"] == full              # not an Eagle Mount photo
 
 

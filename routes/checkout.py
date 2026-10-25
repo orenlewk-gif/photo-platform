@@ -26,6 +26,8 @@ async def create_checkout(request: Request):
         return JSONResponse(status_code=500, content={"error": str(e)})
     # Pricing lookups and the WooCommerce order request are slow; run them off the
     # main loop so other visitors aren't held up while this checkout is created
+    if (body.get("coupon_code") or "").strip() and main._coupon_locked_out(request):
+        return JSONResponse(status_code=429, content={"error": main.COUPON_LOCKED_MSG})
     partner_prints = main._partner_print_discounts(request, body)     # Eagle Mount prints, from the cookie
     return await run_in_threadpool(main._create_checkout, body, partner_prints)
 
@@ -33,8 +35,12 @@ async def create_checkout(request: Request):
 @router.post("/api/checkout/quote")
 def checkout_quote(request: Request, body: dict = Body(...)):
     """The checkout page's totals: exactly what /api/checkout will charge."""
+    if (body.get("coupon_code") or "").strip() and main._coupon_locked_out(request):
+        return JSONResponse(status_code=429, content={"error": main.COUPON_LOCKED_MSG})
     try:
-        return main._price_order(body, main._partner_print_discounts(request, body))["summary"]
+        summary = main._price_order(body, main._partner_print_discounts(request, body))["summary"]
+        main._record_coupon_result(request, summary.get("coupon_note", ""))
+        return summary
     except CheckoutError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
 

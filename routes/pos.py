@@ -17,15 +17,19 @@ router = APIRouter()
 
 
 @router.get("/api/pos-dates")
-def pos_dates():
+def pos_dates(request: Request):
     """POS: return unique (date, location) pairs for the date/location dropdowns."""
+    if not main._pos_device_ok(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return main._folder_index()["pos_dates"]
 
 
 @router.get("/api/pos-families")
-def pos_families(date: str = Query(""), location: str = Query("")):
+def pos_families(request: Request, date: str = Query(""), location: str = Query("")):
     """POS: return unique families/groups for a given date+location with preview paths."""
     from collections import defaultdict
+    if not main._pos_device_ok(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     families: dict = {}
     previews: dict = defaultdict(list)
     for item in main._folder_photos(date, location, pos=True):
@@ -55,6 +59,8 @@ async def pos_checkout(request: Request):
     """Record a completed in-person (Square) sale and deliver the download link."""
     try:
         body = await request.json()
+        if not main._pin_photographer(request, body.get("pin", "")):
+            return main._pin_refusal(request)
         return await run_in_threadpool(main._record_pos_sale, body)
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
@@ -179,12 +185,8 @@ def api_pos_customers(request: Request, q: str = Query("")):
 def api_pos_resend(request: Request, body: dict = Body(...)):
     """Recent Sales: send the customer their receipt again (the same single email
     they got at checkout, with the download button when photos were bought)."""
-    pin = body.get("pin", "").strip()
-    if main._pin_locked_out(request):
-        return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — wait 10 minutes"})
-    if not main._auth_photographer(pin):
-        main._record_pin_failure(request)
-        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    if not main._pin_photographer(request, body.get("pin", "")):
+        return main._pin_refusal(request)
     order = main._find_pos_order(str(body.get("order_id") or ""), str(body.get("date") or ""),
                             str(body.get("token") or ""))
     if not order:
@@ -195,12 +197,9 @@ def api_pos_resend(request: Request, body: dict = Body(...)):
 
 @router.post("/api/photographer/auth")
 def photographer_auth(request: Request, body: dict = Body(...)):
-    if main._pin_locked_out(request):
-        return JSONResponse(status_code=429, content={"error": "Too many wrong PINs — try again in a few minutes"})
-    p = main._auth_photographer(body.get("pin", ""))
+    p = main._pin_photographer(request, body.get("pin", ""))
     if not p:
-        main._record_pin_failure(request)
-        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+        return main._pin_refusal(request)
     records = main._load_clock_records()
     active = next((r for r in reversed(records)
                    if r["photographer_id"] == p["id"] and not r.get("clock_out")), None)
@@ -213,19 +212,19 @@ def photographer_auth(request: Request, body: dict = Body(...)):
 
 
 @router.post("/api/clock/in")
-def clock_in(body: dict = Body(...)):
-    p = main._auth_photographer(body.get("pin", ""))
+def clock_in(request: Request, body: dict = Body(...)):
+    p = main._pin_photographer(request, body.get("pin", ""))
     if not p:
-        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+        return main._pin_refusal(request)
     with main._clock_lock:
         return main._clock_in(p, body)
 
 
 @router.post("/api/clock/out")
-def clock_out(body: dict = Body(...)):
-    p = main._auth_photographer(body.get("pin", ""))
+def clock_out(request: Request, body: dict = Body(...)):
+    p = main._pin_photographer(request, body.get("pin", ""))
     if not p:
-        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+        return main._pin_refusal(request)
     with main._clock_lock:
         return main._clock_out(p)
 

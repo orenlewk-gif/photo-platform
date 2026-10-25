@@ -200,7 +200,7 @@ def admin_invoice_lines(cart_id: str, request: Request):
         return JSONResponse(status_code=404, content={"error": "Not found"})
     order = main._saved_cart_order_body(rec)
     try:
-        priced = main._price_order(order)
+        priced = main._price_order(order, main._studio_partner_prints(order))
     except main.CheckoutError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     return {"lines": [{"name": ln["name"].strip(), "price": float(ln["total"])} for ln in priced["line_items"]],
@@ -244,7 +244,7 @@ def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     made = main._create_checkout({**order, "email": email, "billing": billing, "shipping": shipping},
-                                 line_prices=prices, extra_lines=extra, shipping_price=ship)
+                                 main._studio_partner_prints(order), line_prices=prices, extra_lines=extra, shipping_price=ship)
     if isinstance(made, JSONResponse):
         return made
     sent = main._send_invoice_email(email, first, made["checkout_url"], float(made["total"]))
