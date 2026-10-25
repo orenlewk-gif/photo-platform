@@ -2188,20 +2188,25 @@ async function applyCoupon(){
   if(!code) return;
   setLoading(true);
   try {
-    const res = await fetch('/api/validate-coupon', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({code, total: S.cart.reduce((a,i)=>a+i.subtotal,0)})
-    });
+    // The code store's lookup (a GET; per-customer limits use the sale's customer email)
+    const res = await fetch(`/api/validate-coupon?code=${encodeURIComponent(code)}&email=${encodeURIComponent(S.customer.email || '')}`);
     const data = await res.json();
     setLoading(false);
     if(!res.ok || !data.valid){
       showToast(data.error || 'Invalid coupon');
       return;
     }
-    S.coupon = {code: data.code, type: data.discount_type, amount: parseFloat(data.amount)};
+    const sub = S.cart.reduce((a,i) => a + i.subtotal, 0);
+    if(data.min_order && sub < data.min_order){
+      showToast(`This code needs an order of at least ${fmt(data.min_order)}`);
+      return;
+    }
+    // applies_to: what the code covers (see couponCovers), e.g. a family code on digital photos only
+    S.coupon = {code: data.code, type: data.discount_type, amount: parseFloat(data.amount), applies_to: data.applies_to || 'all'};
     $('coupon-input-row').classList.add('hidden');
     $('coupon-tag-row').classList.remove('hidden');
-    $('coupon-tag-label').textContent = code + ' (' + (data.discount_type === 'percent' ? data.amount + '% off' : fmt(data.amount) + ' off') + ')';
+    const covers = {digital: ' digital photos', portraits: ' digital photos', prints: ' prints', frames: ' frames'}[S.coupon.applies_to] || '';
+    $('coupon-tag-label').textContent = code + ' (' + (data.discount_type === 'percent' ? data.amount + '% off' : fmt(data.amount) + ' off') + covers + ')';
     renderCart();
   } catch(e){
     setLoading(false);
