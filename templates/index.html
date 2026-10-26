@@ -2188,6 +2188,7 @@ let _activeInstructorFilter = false;
 let _currentIsPortrait = false;
 let _chipContext = { date: '', location: '', group: '' };
 let _colorCombos = { jacket_to_pants: {}, pants_to_jacket: {}, jacket_to_jacket: {} };
+let _filterProfiles = null;   // every mix of sport / jacket / pants / instructor a photo in the folder has
 
 let _filterPanelOpen = false;
 
@@ -2224,6 +2225,7 @@ async function loadColorFilter(date, location, group) {
     const availDates = datesData.dates || [];
 
     _colorCombos = d.combos || { jacket_to_pants: {}, pants_to_jacket: {}, jacket_to_jacket: {} };
+    _filterProfiles = d.profiles || null;
     const cats = [
       { key: 'jacket', colors: d.jacket || [] },
       { key: 'pants',  colors: d.pants  || [] },
@@ -2283,30 +2285,36 @@ async function selectFilterDate(date) {
   }
 }
 
+// Every filter choice (sport, jacket colors, pants, instructor) stays available only while it
+// still leads to photos together with everything else picked, whatever order they're picked in
+function _profileMatches(pr, f) {
+  if (f.sport && pr.s !== f.sport) return false;
+  if (f.instructor && !pr.i) return false;
+  if (f.pants && !pr.p.includes(f.pants)) return false;
+  return f.jackets.every(j => pr.j.includes(j));
+}
 function _updateChipAvailability() {
-  const selJackets = _activeColorFilters.jacket;  // array
-  const selPants   = _activeColorFilters.pants;
-  document.querySelectorAll('.color-swatch').forEach(el => {
-    const cat   = el.dataset.cat;
-    const color = el.dataset.color;
-    let available = true;
-    if (cat === 'jacket' && selJackets.length > 0) {
-      // already selected → always available
-      if (selJackets.includes(color)) {
-        available = true;
-      } else {
-        // show only jacket colors that co-occur with ALL selected jackets
-        available = selJackets.every(j => (_colorCombos.jacket_to_jacket[j] || []).includes(color));
-      }
-    } else if (cat === 'pants' && selJackets.length) {
-      available = selJackets.every(j => (_colorCombos.jacket_to_pants[j] || []).includes(color));
-    } else if (cat === 'jacket' && selPants) {
-      const valid = _colorCombos.pants_to_jacket[selPants] || [];
-      available = valid.includes(color);
-    }
+  const cur = { jackets: _activeColorFilters.jacket, pants: _activeColorFilters.pants,
+                sport: _activeSport, instructor: _activeInstructorFilter };
+  const leadsToPhotos = f => !_filterProfiles || _filterProfiles.some(pr => _profileMatches(pr, f));
+  const setAvail = (el, available) => {
     el.style.opacity = available ? '' : '0.28';
     el.style.pointerEvents = available ? '' : 'none';
+  };
+  document.querySelectorAll('.color-swatch').forEach(el => {
+    const color = el.dataset.color;
+    if (el.dataset.cat === 'jacket') {
+      setAvail(el, cur.jackets.includes(color) || leadsToPhotos({ ...cur, jackets: [...cur.jackets, color] }));
+    } else {
+      setAvail(el, cur.pants === color || leadsToPhotos({ ...cur, pants: color }));
+    }
   });
+  ['ski', 'snowboard'].forEach(sport => {
+    const el = document.getElementById('sport-' + sport);
+    if (el) setAvail(el, cur.sport === sport || leadsToPhotos({ ...cur, sport }));
+  });
+  const instr = document.getElementById('filter-instructor');
+  if (instr) setAvail(instr, cur.instructor || leadsToPhotos({ ...cur, instructor: true }));
 }
 
 function selectColorSwatch(cat, color) {
@@ -2339,8 +2347,9 @@ function selectColorSwatch(cat, color) {
 function selectSport(sport) {
   _activeSport = (_activeSport === sport) ? null : sport;
   document.querySelectorAll('.sport-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.id === 'sport-' + _activeSport);
+    if (btn.id.startsWith('sport-')) btn.classList.toggle('active', btn.id === 'sport-' + _activeSport);
   });
+  _updateChipAvailability();
   const anyActive = _activeColorFilters.jacket.length > 0 || _activeColorFilters.pants !== null || _activeSport || _activeInstructorFilter;
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
@@ -2355,6 +2364,7 @@ function selectInstructorFilter() {
   _activeInstructorFilter = !_activeInstructorFilter;
   const btn = document.getElementById('filter-instructor');
   if (btn) btn.classList.toggle('active', _activeInstructorFilter);
+  _updateChipAvailability();
   const anyActive = _activeColorFilters.jacket.length > 0 || _activeColorFilters.pants !== null || _activeSport || _activeInstructorFilter;
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = anyActive ? '' : 'none';
@@ -2374,6 +2384,7 @@ function clearAllChips() {
   document.querySelectorAll('.sport-btn').forEach(btn => btn.classList.remove('active'));
   const instrBtn = document.getElementById('filter-instructor');
   if (instrBtn) instrBtn.classList.remove('active');
+  _updateChipAvailability();
   const clearBtn = document.getElementById('chip-clear-btn');
   if (clearBtn) clearBtn.style.display = 'none';
   _restoreFromChipFilter();

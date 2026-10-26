@@ -5,7 +5,7 @@ from PIL import Image
 from core.checkout import CheckoutError
 from core.images import fix_orientation
 from core.pricing import ZIP_LOCS_SET
-from core.search import COLOR_ENUM
+from core.search import COLOR_ENUM, color_family
 from core.text import clean_location
 from core.text import folder_key as _folder_key
 from core.text import item_group_from_path as _item_group_from_path
@@ -291,12 +291,17 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
 
 @router.get("/api/folder-colors")
 def get_folder_colors(date: str = Query(""), location: str = Query(""), group: str = Query("")):
-    """Return distinct jacket/pants colors, sport types, and valid combos for a folder."""
+    """Return distinct jacket/pants colors, sport types, and valid combos for a folder.
+    profiles: every distinct mix of what the filters can pick that a photo in the folder has,
+    with the same matching as /api/search (a chip matches its color family), so the gallery
+    can show only the choices that still lead to photos, whatever order they're picked in."""
     jacket, pants = set(), set()
     has_ski = has_snowboard = has_instructor = False
     j_to_p: dict = {}
     p_to_j: dict = {}
     j_to_j: dict = {}
+    profiles: dict = {}
+    chips = [c for c in COLOR_ENUM if c not in ("none", "unclear")]
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
     # A folder's photos straight from the folder index (published, no partner photos); the
@@ -328,6 +333,12 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         sp = item.get("sport")
         if sp == "ski":        has_ski = True
         elif sp == "snowboard": has_snowboard = True
+        item_j, item_p = item.get("jacket_colors") or [], item.get("pants_colors") or []
+        key = (sp if sp in ("ski", "snowboard") else "",
+               tuple(c for c in chips if any(x in color_family(c) for x in item_j)),
+               tuple(c for c in chips if any(x in color_family(c) for x in item_p)),
+               bool(item.get("ski_instructor")))
+        profiles[key] = profiles.get(key, 0) + 1
     order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","tan","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
@@ -340,6 +351,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             "pants_to_jacket":  {pc: sort_colors(js) for pc, js in p_to_j.items()},
             "jacket_to_jacket": {jc: sort_colors(js) for jc, js in j_to_j.items()},
         },
+        "profiles": [{"s": k[0], "j": list(k[1]), "p": list(k[2]), "i": k[3], "n": n} for k, n in profiles.items()],
     }
 
 
