@@ -155,6 +155,9 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .chip-clear-btn { font-size:0.68rem; color:rgba(255,255,255,0.25); background:none; border:none; cursor:pointer; padding:0 0.2rem; margin-left:0.3rem; font-family:inherit; }
 .chip-clear-btn:hover { color:rgba(255,255,255,0.55); }
 .sport-filter-row { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.45rem; }
+.filter-hint { font-size:0.72rem; color:rgba(255,255,255,0.45); line-height:1.45; margin:0.15rem 0 0.2rem; }
+.filter-hint-try { background:none; border:none; padding:0; font:inherit; color:#F5C518; cursor:pointer; text-decoration:underline; }
+.filter-hint-try:hover { color:#ffd84d; }
 .sport-btn { font-size:0.68rem; font-weight:600; letter-spacing:0.5px; padding:3px 12px; border-radius:20px; border:1.5px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06); color:rgba(255,255,255,0.55); cursor:pointer; transition:background 0.12s, border-color 0.12s, color 0.12s; font-family:inherit; }
 .sport-btn:hover { background:rgba(255,255,255,0.12); color:rgba(255,255,255,0.85); }
 .sport-btn.active { background:rgba(245,197,24,0.15); border-color:#F5C518; color:#F5C518; }
@@ -2266,8 +2269,10 @@ async function loadColorFilter(date, location, group) {
       html += '</div>';
     }
     html += '<button class="chip-clear-btn" id="chip-clear-btn" style="display:none" onclick="clearAllChips()">clear</button>';
+    if (cats.length) html += '<div class="filter-hint" id="filter-hint"></div>';
     html += '</div>';
     container.innerHTML = html;
+    _updateFilterHint();
     if (toggleWrap) toggleWrap.style.display = '';
     container.style.display = _filterPanelOpen ? '' : 'none';
   } catch(e) {}
@@ -2324,10 +2329,52 @@ function _updateTimeChoices(cur) {
     if (sel) [...sel.options].forEach(o => { o.disabled = o.value !== sel.value && !buckets.has(parseInt(o.value, 10)); });
   });
 }
-function _updateChipAvailability() {
-  const cur = { jackets: _activeColorFilters.jacket, pants: _activeColorFilters.pants,
-                sport: _activeSport, instructor: _activeInstructorFilter };
-  // Within a chosen time range, only the photos taken then count
+// Colors that look alike on camera, in the order to suggest them
+const _SIMILAR_COLORS = {
+  red: ['pink', 'orange'], pink: ['red', 'purple'], orange: ['red', 'yellow'], yellow: ['orange', 'green'],
+  green: ['blue', 'yellow'], blue: ['purple', 'black'], purple: ['blue', 'pink'], white: ['gray', 'tan'],
+  black: ['gray', 'blue'], gray: ['black', 'white'], brown: ['tan', 'black'], tan: ['brown', 'white'],
+};
+const _colorLabel = c => ((_CHIP_COLORS.find(x => x.name === c) || {}).label || c).toLowerCase();
+
+// Under the filters: a reminder that colors are matched automatically, and once a color is picked,
+// a quick swap to the colors it's most often confused with (only ones that still lead to photos)
+function _updateFilterHint() {
+  const el = document.getElementById('filter-hint');
+  if (!el) return;
+  const picked = _activeColorFilters.pants
+    ? { cat: 'pants', color: _activeColorFilters.pants }
+    : _activeColorFilters.jacket.length ? { cat: 'jacket', color: _activeColorFilters.jacket[_activeColorFilters.jacket.length - 1] } : null;
+  const cur = _currentFilters();
+  // A suggestion is the swap (that color instead of the picked one), and only if it has photos
+  const offered = c => document.querySelector(`.color-swatch[data-cat="${picked.cat}"][data-color="${c}"]`) &&
+    _filtersLeadToPhotos(picked.cat === 'pants' ? { ...cur, pants: c }
+                                                : { ...cur, jackets: [...cur.jackets.filter(j => j !== picked.color), c] });
+  const tries = picked ? (_SIMILAR_COLORS[picked.color] || []).filter(offered) : [];
+  if (!tries.length) {
+    el.textContent = "Colors are matched automatically and aren't always perfect — if you don't see your photos, try a similar color.";
+    return;
+  }
+  const links = tries.map(c => `<button class="filter-hint-try" onclick="_trySimilarColor('${picked.cat}','${picked.color}','${c}')">${_colorLabel(c)}</button>`);
+  el.innerHTML = `Not seeing them? Colors can look alike on camera — try ${links.join(' or ')}.`;
+}
+function _trySimilarColor(cat, from, to) {
+  // Swap the picked color for the similar one (same as tapping the chips)
+  if (cat === 'jacket') {
+    const i = _activeColorFilters.jacket.indexOf(from);
+    if (i >= 0) _activeColorFilters.jacket.splice(i, 1);
+    selectColorSwatch('jacket', to);
+  } else {
+    selectColorSwatch('pants', to);
+  }
+}
+
+function _currentFilters() {
+  return { jackets: _activeColorFilters.jacket, pants: _activeColorFilters.pants,
+           sport: _activeSport, instructor: _activeInstructorFilter };
+}
+// Does this mix of filters lead to any photo (within the chosen time range)?
+function _filtersLeadToPhotos(f) {
   let pool = _filterProfiles;
   const range = _timeRange();
   if (pool && _photoProfile && range && !range.isAll) {
@@ -2335,8 +2382,12 @@ function _updateChipAvailability() {
     for (const [fn, no] of _photoProfile) if (_inTimeRange(fn, range)) present.add(no);
     pool = pool.filter((_, no) => present.has(no));
   }
+  return !pool || pool.some(pr => _profileMatches(pr, f));
+}
+function _updateChipAvailability() {
+  const cur = _currentFilters();
   _updateTimeChoices(cur);
-  const leadsToPhotos = f => !pool || pool.some(pr => _profileMatches(pr, f));
+  const leadsToPhotos = _filtersLeadToPhotos;
   const setAvail = (el, available) => {
     el.style.opacity = available ? '' : '0.28';
     el.style.pointerEvents = available ? '' : 'none';
@@ -2355,6 +2406,7 @@ function _updateChipAvailability() {
   });
   const instr = document.getElementById('filter-instructor');
   if (instr) setAvail(instr, cur.instructor || leadsToPhotos({ ...cur, instructor: true }));
+  _updateFilterHint();
 }
 
 function selectColorSwatch(cat, color) {
