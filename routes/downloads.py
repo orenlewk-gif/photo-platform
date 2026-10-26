@@ -165,7 +165,6 @@ async def api_create_package_upload(request: Request):
     """Create a download package by uploading photos directly (not from the site gallery)."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    from fastapi import UploadFile, File, Form
     form = await request.form()
     title      = (form.get("title") or "").strip()
     emails_raw = (form.get("emails") or "").strip()

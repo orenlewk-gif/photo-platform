@@ -1,13 +1,10 @@
 import threading
-import zipfile
 import time as _time
-import numpy as np
 from collections import Counter, OrderedDict, deque
 from contextlib import contextmanager
 from html import escape as _html_escape
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from fastapi import Body, FastAPI, HTTPException, Query, Request, Response
-from fastapi.concurrency import run_in_threadpool
+from concurrent.futures import ThreadPoolExecutor
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,12 +17,10 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
-from rapidfuzz import fuzz
 import os
 import base64
 from io import BytesIO
-from PIL import Image, ImageOps
-from functools import lru_cache
+from PIL import Image
 import boto3
 import requests as http_requests
 from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientation,
@@ -35,12 +30,12 @@ from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientat
 from core.checkout import (CATEGORIES, CheckoutError, activity_groups, bundle_for_cart, check_coupon,
                            coupon_item_discount, coupon_scope, parse_int, shipping_for)
 from core.classify import MODEL_LABEL, ColorModel, open_for_model
-from core.index import SEARCHABLE_GROUP_LOCATIONS, build_folder_index as _build_folder_index
-from core.pricing import ZIP_LOCS_SET, best_tier_price, pricing_for, selection_limit
-from core.search import COLOR_ENUM, filter_by_labels, match_last_name
+from core.index import build_folder_index as _build_folder_index
+from core.pricing import best_tier_price, pricing_for, selection_limit
+from core.search import filter_by_labels, match_last_name
 from core.storage import JsonDoc
 from core.text import (clean_location, folder_key as _folder_key, item_group_from_path as _item_group_from_path,
-                       natural_sort_key, pick_four as _pick_four, to_r2_key)
+                       natural_sort_key, to_r2_key)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -2377,7 +2372,7 @@ def _build_followup_email(email: str, body: dict):
     # Load customer for personalisation
     customer = _customer_by_email(_load_customers(), email)
     first_name = (customer.get("first") or "").strip() if customer else ""
-    greeting   = f"Hi {first_name}," if first_name else "Hi,"
+    greeting   = f"Hi {_html_escape(first_name)}," if first_name else "Hi,"
 
     if ftype == "review":
         # Sent from the Review Request template (Settings > Email Templates),
@@ -2424,7 +2419,7 @@ def _build_followup_email(email: str, body: dict):
             return JSONResponse(status_code=400, content={"error": "message is required"})
         html_inner = f"<p style='margin:0 0 .8rem'>{greeting}</p>" + \
             "".join(f"<p style='margin:0 0 .8rem'>{line}</p>" for line in message.split("\n") if line.strip())
-        text_inner = f"{greeting}\n\n{message}"
+        text_inner = (f"Hi {first_name}," if first_name else "Hi,") + f"\n\n{message}"
 
     html = f"""<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f9f9f9;font-family:Arial,sans-serif">
 <div style="max-width:560px;margin:0 auto;padding:2rem 1rem">
@@ -3822,10 +3817,13 @@ def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
     Block tokens in html_blocks (buttons, code boxes) stay as tokens until their own
     paragraph is rendered; a plain_vars entry with the same name is only the
     plain-text fallback for the text version of the email."""
-    for key, val in plain_vars.items():
-        if key in html_blocks:
-            continue
-        body = body.replace(f"{{{{{key}}}}}", str(val) if val is not None else "")
+    def fill(text: str, escape: bool) -> str:
+        # Values (names people typed, codes) go into the HTML version as plain text
+        for key, val in plain_vars.items():
+            if key not in html_blocks:
+                v = str(val) if val is not None else ""
+                text = text.replace(f"{{{{{key}}}}}", _html_escape(v) if escape else v)
+        return text
     parts_html, parts_text = [], []
     for para in body.split("\n\n"):
         para = para.strip()
@@ -3837,9 +3835,9 @@ def _render_email_body(body: str, plain_vars: dict, html_blocks: dict) -> tuple:
                 parts_html.append(html_blocks[token])
                 parts_text.append(plain_vars.get(token, ""))
                 continue
-        inner = para.replace("\n", "<br>")
+        inner = fill(para, True).replace("\n", "<br>")
         parts_html.append(f'<p style="margin:0 0 .9rem;font-size:.9rem;color:#333;line-height:1.65">{inner}</p>')
-        parts_text.append(para)
+        parts_text.append(fill(para, False))
     return "".join(parts_html), "\n\n".join(parts_text)
 
 def _discount_detail(code_obj: dict) -> str:
@@ -5086,19 +5084,19 @@ def _send_pos_receipt_email(to_email: str, customer_name: str, order_id: str,
         f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Subtotal</td>'
         f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${total:.2f}</td></tr>'
         + (
-            f'<tr style="border-top:2px solid #eee">'
-            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Complimentary</td>'
-            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">No charge</td></tr>'
+            '<tr style="border-top:2px solid #eee">'
+            '<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Complimentary</td>'
+            '<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">No charge</td></tr>'
             if comp else
             f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">4% Resort Tax</td>'
             f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tax:.2f}</td></tr>'
             + (f'<tr><td style="padding:.25rem .5rem;font-size:.83rem;color:#888">Tip</td>'
                f'<td style="padding:.25rem .5rem;font-size:.83rem;text-align:right">${tip:.2f}</td></tr>' if tip else '')
-            + f'<tr style="border-top:2px solid #eee">'
-            f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td>'
+            + '<tr style="border-top:2px solid #eee">'
+            '<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total Charged</td>'
             f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${grand_total:.2f}</td></tr>'
         )
-        + f'</table>'
+        + '</table>'
     )
     dl_btn_html = ""
     if download_url:

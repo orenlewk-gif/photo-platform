@@ -13,12 +13,10 @@ from io import BytesIO
 
 from fastapi import APIRouter, Body, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
-from PIL import Image
 
 import main
-from core.images import fix_orientation
 from core.pages import render_page, site_footer, site_header
-from core.text import natural_sort_key, to_r2_key
+from core.text import to_r2_key
 
 router = APIRouter()
 
