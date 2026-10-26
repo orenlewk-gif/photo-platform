@@ -1902,7 +1902,6 @@ def _record_pos_sale_now(body: dict):
         "date":              now.strftime("%Y-%m-%d"),
         "created":           now.isoformat(),
         "source":            "pos",
-        "photographer_pin":  pin,
         "photographer_name": photog.get("name", ""),
         "photographer_id":   photog.get("id", ""),
         "name":              customer_name,
@@ -2996,7 +2995,9 @@ def _fetch_pos_orders(after: str = None, before: str = None) -> list:
         with ThreadPoolExecutor(max_workers=16) as ex:
             list(ex.map(read, stale))
     with _pos_order_cache_lock:
-        orders = [dict(_pos_order_cache[k][1]) for k, _ in listed if k in _pos_order_cache]
+        # (older sales stored the staff member's PIN; it's never handed out)
+        orders = [{f: v for f, v in _pos_order_cache[k][1].items() if f != "photographer_pin"}
+                  for k, _ in listed if k in _pos_order_cache]
     if after or before:
         orders = [o for o in orders
                   if (not a or o.get("date","") >= a)
@@ -3452,8 +3453,9 @@ def _update_folder_poses(date: str, location: str, folder: str, r2_keys: list[st
         if color:
             poses.append({"color": color, "label": f"Pose {pose_num}", "files": files})
             pose_num += 1
-        else:
-            poses.append({"color": "", "label": "Unlabeled", "files": files})
+        else:                                      # photos without a label are a pose too
+            poses.append({"color": "", "label": f"Pose {pose_num}", "files": files})
+            pose_num += 1
 
     fk = _folder_key(date, location, folder)
     fm = _load_folder_meta()

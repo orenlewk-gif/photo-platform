@@ -284,3 +284,13 @@ def test_partner_photo_addresses_need_the_partner_password(client, gallery, meth
                        json={"paths": [EM]}, follow_redirects=False)
     assert r.status_code in (401, 403, 404)
     assert not r.headers.get("content-type", "").startswith(("image/", "application/zip"))
+
+
+def test_recent_sales_never_show_a_staff_pin(main_module, client, photographers):
+    """Older sale records stored the PIN of whoever rang them up; no list ever hands it out."""
+    S3.put_object(Bucket=BUCKET, Key="pos_orders/2026-12-01_pos-old12345.json", Body=json.dumps(
+        {"id": "pos-old12345", "date": "2026-12-01", "created": "2026-12-01T10:00:00+00:00",
+         "photographer_pin": "4821", "photographer_id": "p1", "total": 25}).encode())
+    r = client.get("/api/pos-recent-sales", headers={"X-POS-PIN": "4821"})
+    assert r.status_code == 200 and "4821" not in r.text
+    assert all("photographer_pin" not in o for o in main_module._fetch_pos_orders())

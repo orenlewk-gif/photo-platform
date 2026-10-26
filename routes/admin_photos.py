@@ -468,12 +468,13 @@ async def admin_upload_index(request: Request):
             main.data.append(entry)
             existing.add(key)
             added += 1
-    main._save_photo_list()
+    # The save and the pose reading go to storage: off the main loop, so visitors aren't held up
+    await run_in_threadpool(main._save_photo_list)
     if is_portrait and folder and keys:
         if poses is not None:
             main._write_folder_poses_from_ui(date, location, folder, poses)
         else:
-            main._update_folder_poses(date, location, folder, keys)
+            await run_in_threadpool(main._update_folder_poses, date, location, folder, keys)
     if times:
         # Only persist times for locations that have time_search enabled
         _pricing = main._load_pricing()
@@ -590,7 +591,7 @@ async def admin_push_live(request: Request):
             pushed += 1
 
     if pushed:
-        main._save_photo_list()
+        await run_in_threadpool(main._save_photo_list)
 
     job_id = None
     if to_embed:

@@ -47,7 +47,7 @@ def test_poses_follow_the_color_labels_in_file_order(main_module, folder_meta):
     assert entry["poses"] == [
         {"color": "Red", "label": "Pose 1", "files": ["IMG_1.jpg", "IMG_2.jpg"]},
         {"color": "Green", "label": "Pose 2", "files": ["IMG_3.jpg", "IMG_5.jpg"]},
-        {"color": "", "label": "Unlabeled", "files": ["IMG_4.jpg"]},
+        {"color": "", "label": "Pose 3", "files": ["IMG_4.jpg"]},     # no label: a pose of its own
     ]
     assert entry["poses_live"] is True
 

@@ -299,7 +299,10 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
     j_to_j: dict = {}
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
-    for item in main.data:
+    # A folder's photos straight from the folder index (published, no partner photos); the
+    # whole list is only scanned for other asks
+    pool = main._folder_photos(date, location.strip()) if date and location else None
+    for item in pool if pool else main.data:
         if item.get("draft") or item.get("partner"):
             continue
         if date and item.get("date") != date:

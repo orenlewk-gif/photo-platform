@@ -2802,9 +2802,9 @@ async function startUpload() {
   const jobs = [];          // color indexing, one per folder pushed live
   const notIndexed = new Set();
   let totalLive = 0;
-  // Photos are added to the site in chunks while the rest are still uploading, so their
-  // thumbnails and color labels are made meanwhile. Each folder's chunks go in order; when its
-  // last photo is in, winter action folders are pushed live (by then nearly all are labeled).
+  // Winter action photos are added to the site in chunks while the rest are still uploading, so
+  // their thumbnails and color labels are made meanwhile (portrait families all at once). Each
+  // folder's chunks go in order; when its last photo is in, action folders are pushed live.
   const CHUNK = 40;
   for (const t of targets.values()) { t.ready = []; t.chain = Promise.resolve(); }
   function addChunk(folder, last) {
@@ -2853,7 +2853,7 @@ async function startUpload() {
     const t = targets.get(it.folder);
     if (it.ok) t.ready.push(it);
     if (--t.left === 0) addChunk(it.folder, true);
-    else if (t.ready.length >= CHUNK) addChunk(it.folder, false);
+    else if (t.ready.length >= CHUNK && !_isPortraitLoc) addChunk(it.folder, false);   // a family's poses are read from all its photos at once
   }
   await runPool(allItems, CONCURRENCY, putOne);
   const finishing = [...targets.values()].map(t => t.chain);
