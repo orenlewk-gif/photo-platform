@@ -47,6 +47,8 @@ PUBLIC = {
     ("GET", "/package/{token}/thumb/{idx}"), ("GET", "/unsubscribe/{token}"), ("POST", "/unsubscribe/{token}"),
     # Partner (Eagle Mount) page and its sign-in; its photos need the partner's password (tested below)
     ("GET", "/{slug}"), ("POST", "/{slug}"),
+    # Printed QR codes: the short address forwards to the destination the studio set
+    ("GET", "/q/{slug}"),
     ("GET", "/partner/{slug}/thumb"), ("GET", "/partner/{slug}/view"), ("GET", "/partner/{slug}/file"),
 }
 # Every query value an address might need, so none stops at "missing field" before its sign-in check

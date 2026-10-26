@@ -136,6 +136,18 @@ tbody tr:hover td{background:rgba(255,255,255,.02)}
   padding:.45rem 1rem;font-size:.84rem;font-weight:700;cursor:pointer}
 .btn-new-link:hover{background:#f0bc00}
 html.embedded #topbar,html.embedded #sidebar{display:none}
+
+/* QR codes */
+.qr-thumb{width:64px;height:64px;border-radius:6px;background:#fff;display:block}
+.qr-name{font-weight:600;color:#fff;margin-bottom:.2rem}
+.qr-short{font-family:monospace;font-size:.74rem;color:#63b3ed}
+.qr-target{font-size:.78rem;color:rgba(255,255,255,.6);word-break:break-all;max-width:260px}
+.qr-scans{font-weight:700;font-size:1rem;color:#fff}
+.qr-scans-sub{font-size:.7rem;color:rgba(255,255,255,.4)}
+#qr-modal .modal-box{width:460px}
+.qr-hint{font-size:.72rem;color:rgba(255,255,255,.38);margin-top:.3rem;line-height:1.45}
+#qr-slug-wrap{display:flex;align-items:center;gap:.3rem}
+#qr-slug-wrap span{font-family:monospace;font-size:.8rem;color:rgba(255,255,255,.45);white-space:nowrap}
 html.embedded #layout{height:100vh}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
@@ -178,6 +190,46 @@ html.embedded #layout{height:100vh}
     </div>
 
     <div id="table-area"><div class="empty-state">Loading…</div></div>
+
+    <div class="page-header-row" style="margin-top:2.4rem">
+      <div>
+        <div class="page-title">QR Codes</div>
+        <div class="page-sub">For flyers and signs. Each code opens a short address on this site that sends people wherever you set — change where it goes any time without reprinting. Scans are counted.</div>
+      </div>
+      <button class="btn-new-link" onclick="openQrModal()">+ New QR Code</button>
+    </div>
+    <div id="qr-area"><div class="empty-state">Loading…</div></div>
+  </div>
+</div>
+
+<!-- New / edit QR code -->
+<div class="modal-overlay" id="qr-modal" onclick="if(event.target===this)closeQrModal()">
+  <div class="modal-box">
+    <h3 id="qr-modal-title">New QR Code</h3>
+    <div class="modal-field">
+      <label>Name (for you)</label>
+      <input type="text" id="qr-name" placeholder="e.g. Eagle Mount flyer" autocomplete="off" oninput="qrNameTyped()">
+    </div>
+    <div class="modal-field" id="qr-slug-field">
+      <label>Short address</label>
+      <div id="qr-slug-wrap"><span>photos.bigskyphotos.com/q/</span>
+        <input type="text" id="qr-slug" placeholder="eaglemount" autocomplete="off" oninput="this.dataset.edited='1'"></div>
+      <div class="qr-hint">This is what the printed code opens, so it can't change later. Lowercase letters, numbers and dashes.</div>
+    </div>
+    <div class="modal-field">
+      <label>Sends people to</label>
+      <input type="text" id="qr-target" list="qr-targets" placeholder="https://… or a page here like /eaglemount" autocomplete="off">
+      <datalist id="qr-targets">
+        <option value="/eaglemount">Eagle Mount page</option>
+        <option value="/">Photo gallery</option>
+        <option value="https://bigskyphotos.com">Big Sky Photos website</option>
+      </datalist>
+      <div class="qr-hint">Change this whenever you like — printed codes follow it.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeQrModal()">Cancel</button>
+      <button class="modal-ok" id="qr-save" onclick="saveQr()">Create</button>
+    </div>
   </div>
 </div>
 
@@ -517,6 +569,78 @@ async function submitNLModal() {
     showToast('Failed: ' + err.message, 'error');
   }
 }
+</script>
+<script>
+// ── QR codes ──
+let _qrCodes = [], _qrEditing = null;
+const qrEsc = t => String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+
+async function loadQrCodes() {
+  const area = document.getElementById('qr-area');
+  try {
+    const r = await fetch('/api/admin/qr-codes');
+    _qrCodes = (await r.json()).codes || [];
+  } catch (e) { area.innerHTML = '<div class="empty-state">Could not load QR codes</div>'; return; }
+  if (!_qrCodes.length) {
+    area.innerHTML = '<div class="empty-state" style="padding:2.5rem 2rem">No QR codes yet — make one for a flyer or sign.</div>';
+    return;
+  }
+  area.innerHTML = `<div class="tbl-wrap"><table>
+    <thead><tr><th></th><th>Code</th><th>Sends people to</th><th>Scans</th><th>Last scan</th><th></th></tr></thead>
+    <tbody>${_qrCodes.map(c => `<tr>
+      <td><img class="qr-thumb" src="/api/admin/qr-codes/${encodeURIComponent(c.id)}/image" alt=""></td>
+      <td><div class="qr-name">${qrEsc(c.name)}</div><div class="qr-short">${qrEsc(c.short_url.replace(/^https?:\/\//, ''))}</div></td>
+      <td><a class="qr-target" href="${qrEsc(c.target)}" target="_blank" rel="noopener" style="color:inherit">${qrEsc(c.target)}</a></td>
+      <td><div class="qr-scans">${c.scans}</div><div class="qr-scans-sub">${c.last_7} this week · ${c.last_30} in 30 days</div></td>
+      <td style="font-size:.78rem;color:rgba(255,255,255,.55)">${c.last_scan ? fmtDate(c.last_scan) : '—'}</td>
+      <td><div class="action-btns">
+        <a class="abtn copy" href="/api/admin/qr-codes/${encodeURIComponent(c.id)}/image?format=png" style="text-decoration:none">Download PNG</a>
+        <a class="abtn" href="/api/admin/qr-codes/${encodeURIComponent(c.id)}/image?format=svg" style="text-decoration:none" title="Sharp at any size — for a print shop or design program">SVG</a>
+        <button class="abtn" onclick="copyUrl('${qrEsc(c.short_url)}')">Copy address</button>
+        <button class="abtn" onclick="openQrModal('${qrEsc(c.id)}')">Edit</button>
+        <button class="abtn del" onclick="deleteQr('${qrEsc(c.id)}')">Delete</button>
+      </div></td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function qrSlugFrom(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+}
+function qrNameTyped() {
+  const slug = document.getElementById('qr-slug');
+  if (!_qrEditing && !slug.dataset.edited) slug.value = qrSlugFrom(document.getElementById('qr-name').value);
+}
+function openQrModal(id) {
+  const c = id ? _qrCodes.find(x => x.id === id) : null;
+  _qrEditing = c ? c.id : null;
+  document.getElementById('qr-modal-title').textContent = c ? 'Edit QR Code' : 'New QR Code';
+  document.getElementById('qr-save').textContent = c ? 'Save' : 'Create';
+  document.getElementById('qr-name').value = c ? c.name : '';
+  const slug = document.getElementById('qr-slug');
+  slug.value = c ? c.slug : ''; slug.disabled = !!c; delete slug.dataset.edited;
+  document.getElementById('qr-target').value = c ? c.target : '';
+  document.getElementById('qr-modal').classList.add('open');
+  setTimeout(() => document.getElementById(c ? 'qr-target' : 'qr-name').focus(), 50);
+}
+function closeQrModal() { document.getElementById('qr-modal').classList.remove('open'); }
+async function saveQr() {
+  const body = {name: document.getElementById('qr-name').value.trim(),
+                target: document.getElementById('qr-target').value.trim()};
+  if (!_qrEditing) body.slug = document.getElementById('qr-slug').value.trim();
+  const r = await fetch(_qrEditing ? `/api/admin/qr-codes/${encodeURIComponent(_qrEditing)}` : '/api/admin/qr-codes', {
+    method: _qrEditing ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { showToast(d.error || 'Could not save', 'err'); return; }
+  closeQrModal();
+  showToast(_qrEditing ? 'Saved — printed codes now go to the new address' : 'QR code made');
+  loadQrCodes();
+}
+async function deleteQr(id) {
+  const c = _qrCodes.find(x => x.id === id);
+  if (!confirm(`Delete "${c ? c.name : 'this code'}"? Printed copies will open the photo gallery instead.`)) return;
+  const r = await fetch(`/api/admin/qr-codes/${encodeURIComponent(id)}`, {method: 'DELETE'});
+  if (r.ok) { showToast('Deleted'); loadQrCodes(); } else showToast('Could not delete', 'err');
+}
+loadQrCodes();
 </script>
 <script>if (window.parent !== window) document.documentElement.classList.add('embedded');</script>
 </body>

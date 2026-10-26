@@ -5267,6 +5267,9 @@ app.include_router(_routes_partners.router)
 from routes import saved_carts as _routes_saved_carts  # noqa: E402
 app.include_router(_routes_saved_carts.router)
 
+from routes import qr_codes as _routes_qr_codes  # noqa: E402
+app.include_router(_routes_qr_codes.router)
+
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them
 app.include_router(_routes_partners.page_router)
