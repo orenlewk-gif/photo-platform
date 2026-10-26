@@ -50,3 +50,14 @@ def test_profiles_agree_with_search_for_every_combination(client, folder, main_m
 def test_snowboard_narrows_the_jacket_colors(folder):
     snow = [pr for pr in folder["profiles"] if pr["s"] == "snowboard"]
     assert sorted({j for pr in snow for j in pr["j"]}) == ["blue"]   # red/white/green only on skiers
+
+
+def test_each_photo_names_its_profile_for_the_time_filter(folder):
+    """The time filter joins on file names: every photo maps to the profile that describes it."""
+    files, numbers = folder["photo_files"], folder["photo_profile"]
+    assert sorted(files) == sorted(p["path"].rsplit("/", 1)[1] for p in PHOTOS)
+    by_file = {p["path"].rsplit("/", 1)[1]: p for p in PHOTOS}
+    for fn, no in zip(files, numbers):
+        pr, photo = folder["profiles"][no], by_file[fn]
+        assert pr["s"] == (photo["sport"] if photo["sport"] in ("ski", "snowboard") else "")
+        assert pr["i"] == photo["ski_instructor"]

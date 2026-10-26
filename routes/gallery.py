@@ -301,6 +301,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
     p_to_j: dict = {}
     j_to_j: dict = {}
     profiles: dict = {}
+    photo_keys: list = []            # (file name, profile) per photo: the time filter joins on file names
     chips = [c for c in COLOR_ENUM if c not in ("none", "unclear")]
     loc_lower = location.strip().lower()
     grp_lower = group.strip().lower()
@@ -339,6 +340,8 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
                tuple(c for c in chips if any(x in color_family(c) for x in item_p)),
                bool(item.get("ski_instructor")))
         profiles[key] = profiles.get(key, 0) + 1
+        photo_keys.append((os.path.basename(item.get("path", "")), key))
+    profile_no = {k: i for i, k in enumerate(profiles)}
     order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","tan","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
@@ -352,6 +355,9 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             "jacket_to_jacket": {jc: sort_colors(js) for jc, js in j_to_j.items()},
         },
         "profiles": [{"s": k[0], "j": list(k[1]), "p": list(k[2]), "i": k[3], "n": n} for k, n in profiles.items()],
+        # each photo's profile (its number in the list above), by file name, for the time filter
+        "photo_files": [fn for fn, _ in photo_keys],
+        "photo_profile": [profile_no[k] for _, k in photo_keys],
     }
 
 
