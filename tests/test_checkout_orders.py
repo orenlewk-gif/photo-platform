@@ -381,3 +381,26 @@ def test_portrait_poses_must_match_the_folders_poses(client, woo, pose):
 def test_portrait_singles_must_be_that_familys_photos(client, woo, single):
     r = client.post("/api/checkout", json={"portrait_singles": [single], "email": "ann@example.com", "date": "2026-06-07"})
     assert r.status_code == 400 and "portrait photos" in r.json()["error"]
+
+
+def test_poses_are_priced_by_family(client, woo, live_photos, main_module):
+    """Each family's poses get the rate for that family's own number of poses: two families
+    with one pose each both pay the one-pose price."""
+    JO = "images/2026-06-07/big-sky-sign/jones/"
+    live_photos([_photo(SM + n, "Big Sky Sign", last_name="Smith") for n in ("a.jpg", "c.jpg")] +
+                [_photo(JO + "j1.jpg", "Big Sky Sign", last_name="Jones")])
+    S3.put_object(Bucket="test-bucket", Key="meta/folder_meta.json", Body=json.dumps({
+        "2026-06-07|Big Sky Sign|Smith": {"poses": [{"color": "Red", "label": "Red", "files": ["a.jpg"]},
+                                                    {"color": "Blue", "label": "Blue", "files": ["c.jpg"]}],
+                                          "poses_live": True},
+        "2026-06-07|Big Sky Sign|Jones": {"poses": [{"color": "Red", "label": "Red", "files": ["j1.jpg"]}],
+                                          "poses_live": True}}).encode())
+    main_module._folder_meta_cache["data"] = None
+    smith_red = {**POSE_BASE, "pose_label": "Red", "color": "Red", "files": ["a.jpg"], "paths": [SM + "a.jpg"]}
+    smith_blue = {**POSE_BASE, "pose_label": "Blue", "color": "Blue", "files": ["c.jpg"], "paths": [SM + "c.jpg"]}
+    jones_red = {**POSE_BASE, "family": "Jones", "pose_label": "Red", "color": "Red", "files": ["j1.jpg"],
+                 "paths": [JO + "j1.jpg"]}
+    one_each = _lines(_order(client, woo, portrait_poses=[smith_red, jones_red]))
+    assert [p for _, p in one_each] == [65.0, 65.0]
+    two_and_one = _lines(_order(client, woo, portrait_poses=[smith_red, smith_blue, jones_red]))
+    assert [p for _, p in two_and_one] == [57.5, 57.5, 65.0]

@@ -48,6 +48,8 @@ def owner_unlock(request: Request, body: dict = Body(...)):
 
 @router.get("/api/clock/status")
 def clock_status_ep(request: Request, pin: str = Query(...)):
+    if not main._pos_device_approved(request):
+        return main._device_refusal()
     p = main._pin_photographer(request, pin)
     if not p:
         return main._pin_refusal(request)

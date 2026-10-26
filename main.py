@@ -2,7 +2,7 @@ import threading
 import zipfile
 import time as _time
 import numpy as np
-from collections import OrderedDict, deque
+from collections import Counter, OrderedDict, deque
 from contextlib import contextmanager
 from html import escape as _html_escape
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1007,11 +1007,11 @@ def _pos_token(expires: int) -> str:
 
 
 # ── POS devices ──────────────────────────────────────────────────────────────
-# The first time a device signs in to the POS (a PIN on the POS page), the owner is emailed a
-# 6-digit code; once it's entered, that device is approved (for two years, or until removed in
-# Settings > Security) and only needs a PIN. Everything the POS does checks the device as well
-# as the PIN. Clocking in and out only needs a PIN. Kept in meta/admin_auth.json ("pos_devices"),
-# hashes only. POS_DEVICE_CODES=off on Railway is the safety valve (e.g. if email is down).
+# The first time a device signs in with a PIN (the POS or the time clock), the owner is emailed
+# a 6-digit code; once it's entered, that device is approved (for two years, or until removed in
+# Settings > Security) and only needs a PIN. Everything the POS and the time clock do checks the
+# device as well as the PIN. Kept in meta/admin_auth.json ("pos_devices"), hashes only.
+# POS_DEVICE_CODES=off on Railway is the safety valve (e.g. if email is down).
 POS_DEVICE_COOKIE   = "ci_pos_device"
 POS_DEVICE_DAYS     = 730
 POS_DEVICE_CODES_ON = os.getenv("POS_DEVICE_CODES", "on").strip().lower() != "off"
@@ -1028,6 +1028,11 @@ def _pos_device_approved(request: Request) -> bool:
         if dev and dev.get("expires", "") > _now_iso():
             return True
     return _admin_authed(request)
+
+
+def _device_refusal():
+    return JSONResponse(status_code=403, content={"device_approval_needed": True,
+                                                  "error": "This device needs approval — log out and enter your PIN"})
 
 
 def _approve_pos_device(info: dict, photographer: dict) -> str:
@@ -1054,7 +1059,7 @@ def _send_pos_device_code_email(code: str, info: dict, photographer: dict) -> bo
         when = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
     who = _html_escape(photographer.get("name", ""))
     body_html = (
-        f'<p><strong>{who}</strong> signed in to the POS on a <strong>new device</strong>:</p>'
+        f'<p><strong>{who}</strong> entered their PIN (POS or time clock) on a <strong>new device</strong>:</p>'
         f'<p style="margin:0 0 1rem;color:#555">{_html_escape(info.get("device", ""))} &middot; '
         f'internet address {_html_escape(info.get("ip", ""))} &middot; {when} (Mountain)</p>'
         f'<p>The code to approve it:</p>'
@@ -1067,9 +1072,9 @@ def _send_pos_device_code_email(code: str, info: dict, photographer: dict) -> bo
         r = http_requests.post("https://api.resend.com/emails",
                                headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
                                json={"from": RESEND_FROM, "to": [OWNER_EMAIL],
-                                     "subject": f"POS new device code: {code}",
+                                     "subject": f"New device code: {code}",
                                      "html": _wrap_email_html(body_html),
-                                     "text": f"POS new device code: {code} ({photographer.get('name', '')} on "
+                                     "text": f"New device code: {code} ({photographer.get('name', '')} on "
                                              f"{info.get('device', '')}, {info.get('ip', '')}, {when}). If this isn't "
                                              f"one of the shop's devices, change that PIN."},
                                timeout=10)
@@ -1392,10 +1397,17 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
         pp = _load_portrait_pricing()
         pose_tiers = pp.get("pose_tiers", _DEFAULT_PORTRAIT_PRICING["pose_tiers"])
         single_price = float(pp.get("single_photo", _DEFAULT_PORTRAIT_PRICING["single_photo"]))
-        pose_price = float(pose_tiers[min(len(poses) - 1, len(pose_tiers) - 1)]) if poses else 0.0
+        # Poses are sold by family: each family's poses get the rate for how many of that
+        # family's poses are in the order (two families with one pose each pay full price twice)
+        def family_of(pose):
+            return ((pose.get("date") or date or "").strip(), clean_location(pose.get("location") or location or ""),
+                    (pose.get("family") or last_name or "").strip().lower())
+        per_family = Counter(family_of(pose) for pose in poses)
         for pose in poses:
             n = len(pose.get("files", []))
             paths = _checked_pose_paths(pose, date, location, last_name, live)
+            count = per_family[family_of(pose)]
+            pose_price = float(pose_tiers[min(count - 1, len(pose_tiers) - 1)])
             add("digital", pose_price, {
                 "product_id": WC_DIGITAL_PRODUCT_ID, "quantity": 1,
                 "name": f"Portrait {pose.get('pose_label', 'Pose')} ({n} photo{'s' if n != 1 else ''}) — {pose.get('family', last_name or location)}",

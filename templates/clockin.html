@@ -44,6 +44,18 @@ select option{background:#0a1e2e}
   <button class="btn btn-in" onclick="doLogin()">Continue</button>
 </div>
 
+<!-- New Device Screen (the first time this device is used) -->
+<div class="card screen" id="screenDevice">
+  <h2>New Device</h2>
+  <p id="devLabel" style="font-size:.9rem;color:rgba(255,255,255,.6);line-height:1.5;margin-bottom:1.25rem">This device is new. We emailed a code to the owner. Enter it to approve this device (only needed once).</p>
+  <div class="err" id="devErr"></div>
+  <label>Code</label>
+  <input type="text" id="devInput" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code">
+  <button class="btn btn-in" id="devBtn" onclick="doDeviceCode()">Approve this device</button>
+  <hr class="divider">
+  <span class="tag-out" onclick="logout()">Back</span>
+</div>
+
 <!-- Clocked Out Screen -->
 <div class="card screen" id="screenOut">
   <div class="name-tag" id="outName"></div>
@@ -108,6 +120,11 @@ window.addEventListener('load', () => {
 document.getElementById('pinInput').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
+document.getElementById('devInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doDeviceCode();
+});
+
+let deviceChallenge = null;
 
 async function doLogin() {
   const pin = document.getElementById('pinInput').value.trim();
@@ -118,20 +135,73 @@ async function doLogin() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({pin})
     });
-    if (!res.ok) { document.getElementById('pinErr').style.display='block'; return; }
-    const d = await res.json();
-    photographer = {...d.photographer, pin};
-    localStorage.setItem('ci_photographer', JSON.stringify(photographer));
-    document.getElementById('pinErr').style.display = 'none';
-    if (d.clocked_in && d.active_record) {
-      clockInTime = new Date(d.active_record.clock_in);
-      showClockedIn(d.active_record.location);
-    } else {
-      showClockedOut();
+    const d = await res.json().catch(() => ({}));
+    const pinErr = document.getElementById('pinErr');
+    if (res.status === 403 && d.device_approval) {
+      // First time on this device: the owner gets a code to approve it
+      deviceChallenge = {challenge: d.challenge, pin};
+      pinErr.style.display = 'none';
+      document.getElementById('devLabel').textContent = `This device is new. We emailed a code to ${d.email || 'the owner'}. ` +
+        'Enter it to approve this device (only needed once).';
+      document.getElementById('devInput').value = '';
+      document.getElementById('devErr').style.display = 'none';
+      show('screenDevice');
+      return;
     }
+    if (!res.ok) {
+      pinErr.textContent = (res.status === 429 || res.status === 503) && d.error ? d.error : 'Invalid PIN. Try again.';
+      pinErr.style.display = 'block';
+      return;
+    }
+    signedIn(d, pin);
   } catch(e) {
     document.getElementById('pinErr').style.display = 'block';
   }
+}
+
+function signedIn(d, pin) {
+  photographer = {...d.photographer, pin};
+  localStorage.setItem('ci_photographer', JSON.stringify(photographer));
+  document.getElementById('pinErr').style.display = 'none';
+  document.getElementById('pinInput').value = '';
+  if (d.clocked_in && d.active_record) {
+    clockInTime = new Date(d.active_record.clock_in);
+    showClockedIn(d.active_record.location);
+  } else {
+    showClockedOut();
+  }
+}
+
+async function doDeviceCode() {
+  const code = document.getElementById('devInput').value.replace(/\D/g, '');
+  const err = document.getElementById('devErr');
+  const fail = msg => { err.textContent = msg; err.style.display = 'block'; };
+  if (code.length !== 6) { fail('Enter the 6-digit code from the email.'); return; }
+  if (!deviceChallenge) { logout(); return; }
+  const btn = document.getElementById('devBtn');
+  btn.disabled = true;
+  try {
+    const res = await fetch('/api/pos/device-verify', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({challenge: deviceChallenge.challenge, code})
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.ok && d.photographer) {
+      const pin = deviceChallenge.pin;
+      deviceChallenge = null;
+      signedIn(d, pin);
+    } else if (d.restart) {
+      logout();
+      const pinErr = document.getElementById('pinErr');
+      pinErr.textContent = d.error;
+      pinErr.style.display = 'block';
+    } else {
+      fail(d.error || 'Incorrect code.');
+    }
+  } catch(e) {
+    fail('Network error. Try again.');
+  }
+  btn.disabled = false;
 }
 
 async function checkStatus() {
@@ -177,7 +247,12 @@ async function doClockIn() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({pin: photographer.pin, location})
     });
-    if (!res.ok) { errEl.textContent = 'Failed to clock in.'; errEl.style.display='block'; return; }
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      errEl.textContent = e.device_approval_needed ? e.error : 'Failed to clock in.';
+      errEl.style.display = 'block';
+      return;
+    }
     const d = await res.json();
     clockInTime = new Date(d.record.clock_in);
     showClockedIn(location);
@@ -196,7 +271,12 @@ async function doClockOut() {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({pin: photographer.pin})
     });
-    if (!res.ok) { errEl.textContent = 'Failed to clock out.'; errEl.style.display='block'; return; }
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      errEl.textContent = e.device_approval_needed ? e.error : 'Failed to clock out.';
+      errEl.style.display = 'block';
+      return;
+    }
     const d = await res.json();
     stopTimer();
     document.getElementById('confirmName').textContent = photographer.name;

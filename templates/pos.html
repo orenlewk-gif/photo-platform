@@ -2972,13 +2972,22 @@ function portraitTogglePoseExpand(pi){
   renderPortraitPoses();
 }
 
+// Poses are sold by family: each family's poses get the rate for how many of that family's
+// poses are in the sale (two families with one pose each are each full price)
+function prFamilyKey(s){ return `${(s && s.date) || ''}|${((s && (s.last_name || s.name)) || '').toLowerCase()}`; }
+function prItemFamily(i){ return i._familyKey || (i._sessionKey || '').toLowerCase(); }
+function prFamilyPoseCount(key){
+  return S.cart.filter(i => i.category === 'portrait' && (i._poses || i._poseUnit) && prItemFamily(i) === key)
+               .reduce((n, i) => n + (i._poses ? i._poses.length : 1), 0);
+}
+
 function portraitAddPoseToCart(poseIdx){
   const pose = S.pr.poses[poseIdx];
   if(!pose || !pose.photos.length) return;
   const s = S.pr.session;
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
-  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+  const existingPoses = prFamilyPoseCount(prFamilyKey(s));
   const poseRate = tiers[Math.min(existingPoses, tiers.length - 1)];
   const paths = pose.photos.map(p => p.path || '');
   const total = poseRate;
@@ -2992,7 +3001,7 @@ function portraitAddPoseToCart(poseIdx){
     date: s.date || '', location: s.location || '',
     _poseUnit: true,
     _poseBasePrice: poseRate,
-    _logoPaths: [],
+    _logoPaths: [], _familyKey: prFamilyKey(s),
   });
   recalcPortraitPosePrices();
   S.pr.selected.clear();
@@ -3027,7 +3036,7 @@ function renderPortraitSelCount(){
   const pp = S.portraitPricing || {};
   const singlePrice = pp.single_photo || 40;
   const tiers = pp.pose_tiers || [65, 57.5, 50];
-  const existingPoses = S.cart.filter(i => i.category === 'portrait' && i._poseUnit).length;
+  const existingPoses = prFamilyPoseCount(prFamilyKey(S.pr.session));
 
   const btn = $('portrait-add-btn');
   const hint = $('pr-price-hint');
@@ -3039,7 +3048,7 @@ function renderPortraitSelCount(){
     const rate = tiers[Math.min(totalAfter - 1, tiers.length - 1)];
     const total = rate * nPoses;
     countEl.textContent = `${nPoses} pose${nPoses!==1?'s':''} selected — ${fmt(rate)} each = ${fmt(total)}`;
-    hint.textContent = existingPoses > 0 ? `${existingPoses} pose${existingPoses!==1?'s':''} already in cart — total ${totalAfter} poses` : '';
+    hint.textContent = existingPoses > 0 ? `${existingPoses} pose${existingPoses!==1?'s':''} of this family already in cart — total ${totalAfter} poses` : '';
     if(btn){ btn.disabled = false; btn.textContent = `Add ${nPoses} Pose${nPoses!==1?'s':''} to Cart`; }
   } else if(nSingle > 0){
     countEl.textContent = `1 photo selected — ${fmt(singlePrice)} single`;
@@ -3079,8 +3088,7 @@ function portraitAddSelectedPoses(){
     sessionItem.photo_paths = [...(sessionItem.photo_paths || []), ...newPoses.flatMap(p => p.paths)];
     recalcPortraitPosePrices();
   } else {
-    const existingCount = S.cart.filter(i => i.category === 'portrait' && i._poses).reduce((s,i)=>s+(i._poses||[]).length,0);
-    const totalAfter = existingCount + newPoses.length;
+    const totalAfter = prFamilyPoseCount(prFamilyKey(s)) + newPoses.length;
     const rate = tiers[Math.min(totalAfter - 1, tiers.length - 1)];
     const detail = [`${newPoses.length} pose${newPoses.length!==1?'s':''} · ${fmt(rate)}/pose`, s.date||'', s.location||''].filter(Boolean).join(' · ');
     cartAdd({
@@ -3089,7 +3097,7 @@ function portraitAddSelectedPoses(){
       detail, price: newPoses.length * rate, qty: 1, subtotal: newPoses.length * rate,
       photo_paths: newPoses.flatMap(p => p.paths),
       date: s.date || '', location: s.location || '',
-      _poses: newPoses, _poseBasePrice: rate, _logoPaths: [], _sessionKey: sessionKey,
+      _poses: newPoses, _poseBasePrice: rate, _logoPaths: [], _sessionKey: sessionKey, _familyKey: prFamilyKey(s),
     });
     recalcPortraitPosePrices();
   }
@@ -3104,27 +3112,23 @@ function portraitAddSelectedPoses(){
 function recalcPortraitPosePrices(){
   const pp = S.portraitPricing || {};
   const tiers = pp.pose_tiers || [65, 57.5, 50];
-  const sessionItems = S.cart.filter(i => i.category === 'portrait' && i._poses);
-  const legacyItems  = S.cart.filter(i => i.category === 'portrait' && i._poseUnit && !i._poses);
-  const totalPoses = sessionItems.reduce((s, i) => s + (i._poses||[]).length, 0) + legacyItems.length;
-  if(!totalPoses) return;
-  const rate = tiers[Math.min(totalPoses - 1, tiers.length - 1)];
-  sessionItems.forEach(item => {
+  const items = S.cart.filter(i => i.category === 'portrait' && (i._poses || i._poseUnit));
+  const counts = {};
+  items.forEach(i => { const k = prItemFamily(i); counts[k] = (counts[k] || 0) + (i._poses ? i._poses.length : 1); });
+  items.forEach(item => {
     if(item._customPrice != null) return;
-    item._poseBasePrice = rate;
-    const poseCount = item._poses.length;
-    const logoCount  = (item._logoPaths || []).length;
-    item.price    = poseCount * rate + logoCount * LOGO_FEE;
-    item.subtotal = item.price;
-    item.detail = [`${poseCount} pose${poseCount!==1?'s':''} · ${fmt(rate)}/pose`, item.date||''].filter(Boolean).join(' · ');
-  });
-  legacyItems.forEach(item => {
-    if(item._customPrice != null) return;
+    const rate = tiers[Math.min(counts[prItemFamily(item)] - 1, tiers.length - 1)];
     item._poseBasePrice = rate;
     const logoCount = (item._logoPaths || []).length;
-    item.price    = rate + logoCount * LOGO_FEE;
+    if(item._poses){
+      const poseCount = item._poses.length;
+      item.price    = poseCount * rate + logoCount * LOGO_FEE;
+      item.detail = [`${poseCount} pose${poseCount!==1?'s':''} · ${fmt(rate)}/pose`, item.date||''].filter(Boolean).join(' · ');
+    } else {
+      item.price    = rate + logoCount * LOGO_FEE;
+      item.detail   = item.detail.replace(/\$[\d.]+\/pose/, `${fmt(rate)}/pose`);
+    }
     item.subtotal = item.price;
-    item.detail   = item.detail.replace(/\$[\d.]+\/pose/, `${fmt(rate)}/pose`);
   });
 }
 

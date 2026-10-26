@@ -1,5 +1,5 @@
-"""A new device can't use the POS until the owner approves it with an emailed code; after that
-it only needs a PIN. Clocking in and out only ever needs a PIN."""
+"""A new device can't use the POS or the time clock until the owner approves it with an emailed
+code; after that it only needs a PIN."""
 import json
 
 import boto3
@@ -67,10 +67,9 @@ def test_an_unapproved_device_cant_use_the_pos_even_with_the_right_pin(main_modu
     assert c.get("/api/pos-recent-sales", headers=h).status_code == 401
     assert c.post("/api/pos-checkout", json={"pin": "4821", "items": [], "square_payment_id": "COMP"}).status_code == 401
     assert c.post("/api/pos-resend", json={"pin": "4821"}).status_code == 401
-    # The clock-in page's sign-in (no "pos") works but doesn't unlock the POS
+    # The clock-in page's sign-in needs the code too
     r = c.post("/api/photographer/auth", json={"pin": "4821"})
-    assert r.status_code == 200 and main_module.POS_COOKIE not in c.cookies
-    assert c.get("/api/pos-dates").status_code == 401
+    assert r.status_code == 403 and r.json()["device_approval"] and main_module.POS_COOKIE not in c.cookies
 
 
 def test_a_pos_cookie_from_before_needs_an_approved_device(main_module, codes_on):
@@ -80,9 +79,17 @@ def test_a_pos_cookie_from_before_needs_an_approved_device(main_module, codes_on
     assert c.get("/api/pos-dates").status_code == 401
 
 
-def test_clocking_in_and_out_only_needs_a_pin(main_module, codes_on):
+def test_the_time_clock_needs_an_approved_device(main_module, codes_on):
     c = TestClient(main_module.app)
+    assert c.get("/api/clock/status", params={"pin": "4821"}).json()["device_approval_needed"]
+    assert c.post("/api/clock/in", json={"pin": "4821", "location": "Shop"}).status_code == 403
+    assert c.post("/api/clock/out", json={"pin": "4821"}).status_code == 403
+    assert codes_on == []                                   # no code is emailed without the sign-in step
+    assert _approve(c, codes_on).status_code == 200
     assert c.get("/api/clock/status", params={"pin": "4821"}).status_code == 200
+    c.post("/api/clock/out", json={"pin": "4821"})          # (in case another test left them clocked in)
+    assert c.post("/api/clock/in", json={"pin": "4821", "location": "Shop"}).status_code == 200
+    assert c.post("/api/clock/out", json={"pin": "4821"}).status_code == 200
 
 
 def test_wrong_codes_and_expired_codes(main_module, codes_on, monkeypatch):

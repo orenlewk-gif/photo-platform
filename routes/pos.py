@@ -207,8 +207,8 @@ def photographer_auth(request: Request, body: dict = Body(...)):
     if not p:
         return main._pin_refusal(request)
     device_ok = main._pos_device_approved(request)
-    if body.get("pos") and not device_ok:
-        # The POS on a new device: the owner gets a code to approve it
+    if not device_ok:
+        # The POS or the time clock on a new device: the owner gets a code to approve it
         challenge = secrets.token_urlsafe(16)
         code = f"{secrets.randbelow(10 ** 6):06d}"
         now = _time.time()
@@ -269,6 +269,8 @@ def pos_device_verify(request: Request, body: dict = Body(...)):
 
 @router.post("/api/clock/in")
 def clock_in(request: Request, body: dict = Body(...)):
+    if not main._pos_device_approved(request):
+        return main._device_refusal()
     p = main._pin_photographer(request, body.get("pin", ""))
     if not p:
         return main._pin_refusal(request)
@@ -278,6 +280,8 @@ def clock_in(request: Request, body: dict = Body(...)):
 
 @router.post("/api/clock/out")
 def clock_out(request: Request, body: dict = Body(...)):
+    if not main._pos_device_approved(request):
+        return main._device_refusal()
     p = main._pin_photographer(request, body.get("pin", ""))
     if not p:
         return main._pin_refusal(request)
