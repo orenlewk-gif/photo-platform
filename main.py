@@ -3504,18 +3504,29 @@ def _r2_keys_under(prefix: str) -> set:
     return keys
 
 
+_trash_meta_lock = threading.Lock()
+
+
+def _add_to_trash_meta(entries: list) -> None:
+    """Add entries to the trash list (trash saves take turns, so none is lost)."""
+    if entries:
+        with _trash_meta_lock:
+            tm = _load_trash_meta()
+            tm.extend(entries)
+            _save_trash_meta(tm)
+
+
 def _bulk_trash(to_trash: list) -> tuple[list, int]:
-    """Copy items to trash sequentially, then batch-delete originals in one call."""
+    """Copy items to trash (8 at a time), then batch-delete the originals that were copied.
+    Returns (trash entries, how many)."""
     if not to_trash:
         return [], 0
 
     now       = datetime.now(timezone.utc)
     now_iso   = now.isoformat()
     purge_iso = (now + timedelta(days=7)).isoformat()
-    new_meta  = []
-    orig_keys = []
 
-    for item in to_trash:
+    def copy_one(item):
         key       = to_r2_key(item["path"])
         uid       = str(uuid.uuid4())[:8]
         trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
@@ -3525,9 +3536,8 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
                            Key=trash_key)
         except Exception as e:
             print(f"[trash] copy failed {key}: {e}")
-            continue
-        orig_keys.append(key)
-        new_meta.append({
+            return None
+        return {
             "key":          trash_key,
             "original_key": key,
             "filename":     os.path.basename(item["path"]),
@@ -3538,7 +3548,11 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
             "purge_at":     purge_iso,
             "type":         "studio",
             "image_entry":  item,
-        })
+        }
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        new_meta = [m for m in ex.map(copy_one, to_trash) if m]
+    orig_keys = [m["original_key"] for m in new_meta]
 
     if not orig_keys:
         return [], 0

@@ -23,6 +23,7 @@ from fastapi import HTTPException
 from fastapi import Query
 from fastapi import Request
 from fastapi import Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from io import BytesIO
 
@@ -789,7 +790,7 @@ async def admin_delete_folder(request: Request):
     def _bg():
         new_meta, trashed = main._bulk_trash(to_trash)
         if trashed:
-            tm = main._load_trash_meta(); tm.extend(new_meta); main._save_trash_meta(tm)
+            main._add_to_trash_meta(new_meta)
         print(f"[delete-folder] bg trash done: {trashed}/{count}")
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -831,7 +832,7 @@ async def admin_delete_location(request: Request):
     def _bg():
         new_meta, trashed = main._bulk_trash(to_trash)
         if trashed:
-            tm = main._load_trash_meta(); tm.extend(new_meta); main._save_trash_meta(tm)
+            main._add_to_trash_meta(new_meta)
         print(f"[delete-location] bg trash done: {trashed}/{count}")
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -866,7 +867,7 @@ async def admin_delete_date(request: Request):
     def _bg():
         new_meta, trashed = main._bulk_trash(to_trash)
         if trashed:
-            tm = main._load_trash_meta(); tm.extend(new_meta); main._save_trash_meta(tm)
+            main._add_to_trash_meta(new_meta)
         print(f"[delete-date] bg trash done: {trashed}/{count}")
     threading.Thread(target=_bg, daemon=True).start()
 
@@ -1177,46 +1178,28 @@ async def admin_photo_trash(request: Request):
         return JSONResponse(status_code=400, content={"error": "No paths"})
     paths_set  = set(paths)
     to_trash   = [item for item in main.data if item["path"] in paths_set]
-    now        = datetime.now(timezone.utc)
-    purge_at   = (now + timedelta(days=7)).isoformat()
-    trash_meta = main._load_trash_meta()
-    trashed    = 0
-    for item in to_trash:
-        key       = to_r2_key(item["path"])
-        uid       = str(uuid.uuid4())[:8]
-        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
-        try:
-            main.s3.copy_object(Bucket=main.R2_BUCKET,
-                           CopySource={"Bucket": main.R2_BUCKET, "Key": key},
-                           Key=trash_key)
-            main.s3.delete_object(Bucket=main.R2_BUCKET, Key=key)
-        except Exception as e:
-            print(f"Photo trash failed {key}: {e}")
-            continue
-        for key_fn in (_thumb_r2_key, _grid_thumb_r2_key):
-            try:
-                main.s3.delete_object(Bucket=main.R2_BUCKET, Key=key_fn(key))
-            except Exception:
-                pass
-        main._forget_thumb_links(key)
-        trash_meta.append({
-            "key":          trash_key,
-            "original_key": key,
-            "filename":     os.path.basename(item["path"]),
-            "date":         item["date"],
-            "location":     item["location"],
-            "folder":       (item.get("last_name") or item.get("group") or "").strip(),
-            "trashed_at":   now.isoformat(),
-            "purge_at":     purge_at,
-            "type":         "studio",
-            "image_entry":  item,
-        })
-        trashed += 1
-    main.data = [item for item in main.data if item["path"] not in paths_set]
-    if trashed:
-        main._save_photo_list()
-    main._save_trash_meta(trash_meta)
-    return {"trashed": trashed}
+
+    # Storage work runs off the main loop (visitors aren't held up), several photos at a time
+    def move_to_trash():
+        new_meta, _ = main._bulk_trash(to_trash)
+        for entry in new_meta:
+            key = entry["original_key"]
+            for key_fn in (_thumb_r2_key, _grid_thumb_r2_key):
+                try:
+                    main.s3.delete_object(Bucket=main.R2_BUCKET, Key=key_fn(key))
+                except Exception:
+                    pass
+            main._forget_thumb_links(key)
+        main._add_to_trash_meta(new_meta)
+        return new_meta
+
+    new_meta = await run_in_threadpool(move_to_trash)
+    # Only photos that reached the trash leave the site (one that couldn't be copied stays)
+    gone = {e["image_entry"]["path"] for e in new_meta}
+    if gone:
+        main.data = [item for item in main.data if item["path"] not in gone]
+        await run_in_threadpool(main._save_photo_list)
+    return {"trashed": len(gone), "failed": len(to_trash) - len(gone)}
 
 
 @router.post("/api/admin/pull-draft")

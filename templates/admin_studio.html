@@ -274,6 +274,9 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .sel-link-btn{background:rgba(245,197,24,.14);border:1px solid rgba(245,197,24,.4);color:#F5C518;
   border-radius:6px;padding:.28rem .8rem;font-size:.76rem;cursor:pointer;font-weight:600;margin-left:.25rem}
 .sel-link-btn:hover{background:rgba(245,197,24,.25)}
+.sel-trash-btn{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.45);color:#f87171;
+  border-radius:6px;padding:.28rem .8rem;font-size:.76rem;cursor:pointer;font-weight:600}
+.sel-trash-btn:hover{background:rgba(239,68,68,.22)}
 .sfd-item{padding:.42rem .9rem;font-size:.8rem;color:rgba(255,255,255,.8);cursor:pointer;white-space:nowrap}
 .sfd-item:hover{background:rgba(255,255,255,.08);color:#fff}
 .col-slider-wrap{display:flex;align-items:center;gap:.45rem;margin-left:auto}
@@ -554,6 +557,7 @@ input[type=file]{display:none}
           <button class="sel-clear" onclick="clearSelection()">Unselect All</button>
           <button class="sel-link-btn" onclick="openCreateLinkModal()">Create Link</button>
           <span id="sel-partner-btns" style="display:inline-flex;gap:.45rem"></span>
+          <button class="sel-trash-btn" onclick="trashSelected()">Move to Trash</button>
         </div>
         <button id="select-all-btn" onclick="selectAll()" style="display:none;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.28rem .7rem;font-size:.76rem;cursor:pointer">Select All</button>
         <div class="col-slider-wrap" style="margin-left:auto">
@@ -1725,10 +1729,11 @@ async function trashPaths(paths) {
   });
   if (res.ok) {
     const d = await res.json();
-    showToast(`${d.trashed} photo${d.trashed!==1?'s':''} moved to trash`);
-    folderPhotos = folderPhotos.filter(p => !paths.includes(p.path));
+    if (d.failed) showToast(`${d.trashed} moved to trash — ${d.failed} couldn't be moved, try again`,'error');
+    else showToast(`${d.trashed} photo${d.trashed!==1?'s':''} moved to trash`);
+    await loadFolderPhotos();                 // what's left, from the server (failed ones stay)
     paths.forEach(p => selectedPaths.delete(p));
-    renderPhotoGrid(); updateSelectionUI();
+    updateSelectionUI();
     await loadSidebar();
   } else showToast('Trash failed','error');
 }
