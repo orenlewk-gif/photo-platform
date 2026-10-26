@@ -20,3 +20,5 @@ model_v3_meta.json
 static/theme-admin.css
 static/theme-frontend.css
 training_run/
+dev/model_eval/results_versions.jsonl
+dev/model_eval/capture_times.json
