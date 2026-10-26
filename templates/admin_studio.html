@@ -715,6 +715,14 @@ function toggleNg(name) {
 const CONCURRENCY = 10;
 
 // Read EXIF capture times from local File objects (first 16KB only — fast, in-memory)
+// Runs fn over every item with n always in flight: the next one starts as soon as any finishes
+// (not in groups of n that each wait for their slowest photo)
+async function runPool(items, n, fn) {
+  let next = 0;
+  const worker = async () => { while (next < items.length) await fn(items[next++]); };
+  await Promise.all(Array.from({length: Math.min(n, items.length)}, worker));
+}
+
 async function readExifTimes(files) {
   const times = {};
   await Promise.all([...files].map(async f => {
@@ -2095,8 +2103,7 @@ async function handleAddPhotosInput(fileList) {
       } catch (e) { /* retry once below */ }
     }
   }
-  for (let i=0;i<items.length;i+=CONCURRENCY)
-    await Promise.all(items.slice(i,i+CONCURRENCY).map(putOne));
+  await runPool(items, CONCURRENCY, putOne);
   const okKeys = items.filter(it=>it.ok).map(it=>it.key);
   const failedCount = items.length - okKeys.length;
   if (okKeys.length) {
@@ -2532,16 +2539,22 @@ function updateUploadBtn() {
 let _uploadActive = false;
 let _uploadAbortCtrl = null;
 function _beforeUnloadGuard(e) { e.preventDefault(); e.returnValue = ''; }
-async function pollEmbedJob(jobId, total, label) {
+async function pollEmbedJobs(jobs, label) {
+  // Color indexing for every folder pushed live, shown as one count
+  const total = jobs.reduce((a, j) => a + j.total, 0);
+  const state = {};
   while (true) {
-    await new Promise(r => setTimeout(r, 2500));
-    try {
-      const res = await fetch(`/api/admin/embed-status?job_id=${jobId}`);
-      if (!res.ok) break;
-      const s = await res.json();
-      label.textContent = `Indexing ${s.done} / ${total} photos for color search…`;
-      if (s.finished) break;
-    } catch(e) { break; }
+    await new Promise(r => setTimeout(r, 2000));
+    let ok = true;
+    await Promise.all(jobs.filter(j => !(state[j.id] && state[j.id].finished)).map(async j => {
+      try {
+        const res = await fetch(`/api/admin/embed-status?job_id=${j.id}`);
+        if (res.ok) state[j.id] = await res.json(); else ok = false;
+      } catch (e) { ok = false; }
+    }));
+    const doneCount = jobs.reduce((a, j) => a + ((state[j.id] && state[j.id].done) || 0), 0);
+    label.textContent = `Indexing ${doneCount} / ${total} photos for color search…`;
+    if (!ok || jobs.every(j => state[j.id] && state[j.id].finished)) break;
   }
 }
 
@@ -2580,10 +2593,11 @@ async function startUpload() {
       }
       done++; if(!it.ok) failed++; setProgress();
     }
-    for (let i=0;i<allItems.length;i+=CONCURRENCY) await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>poseputOne(it)));
+    const timesReq=readExifTimes(files);          // read while the photos upload
+    await runPool(allItems, CONCURRENCY, poseputOne);
     const keys=allItems.filter(it=>it.ok).map(it=>it.key);
     const poses=getPoseGroupsForUpload();
-    const times=await readExifTimes(files);
+    const times=await timesReq;
     await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys,poses,times})});
     const succeeded=done-failed;
@@ -2636,6 +2650,24 @@ async function startUpload() {
     : [{folder: _isPortraitLoc ? document.getElementById('upload-folder-name').value.trim() : '', files:looseFiles}];
   const totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
   if (!totalFiles) { showToast('No photos to upload','error'); return; }
+  // Batches going to the same site folder (winter action subfolders all go into the location)
+  // are uploaded and finished together, so every file's capture time and Eagle Mount label counts
+  const targets = new Map();   // folder -> {files, fis (batch numbers, for zip group sizes), left}
+  batches.forEach(({folder, files}, fi) => {
+    if (!files.length) return;
+    const t = targets.get(folder) || {files: [], fis: [], left: 0};
+    t.files.push(...files); t.fis.push(fi);
+    targets.set(folder, t);
+  });
+  // Two files with the same name in one folder would overwrite each other
+  for (const [folder, t] of targets) {
+    const seen = new Set(), dup = new Set();
+    for (const f of t.files) { const n = f.name.toLowerCase(); if (seen.has(n)) dup.add(f.name); seen.add(n); }
+    if (dup.size) {
+      showToast(`Two photos are named ${[...dup].slice(0, 3).join(', ')}${dup.size > 3 ? '…' : ''} in ${folder || location} — rename one and try again`, 'error');
+      return;
+    }
+  }
   _uploadActive = true;
   _uploadAbortCtrl = new AbortController();
   window.addEventListener('beforeunload', _beforeUnloadGuard);
@@ -2656,13 +2688,53 @@ async function startUpload() {
   }
   // Presign every folder up front so all uploads can run as one shared pool
   const allItems=[]; // {url,key,filename,folder,file,ok}
-  for (const {folder,files} of batches) {
-    if (!files.length) continue;
+  for (const [folder, t] of targets) {
     const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
+      body:JSON.stringify({date,location,folder,files:t.files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
     if (!pr.ok) { showToast(`Presign failed for ${folder||'files'}`,'error'); continue; }
     const {urls}=await pr.json();
-    urls.forEach((u,i)=>allItems.push({...u,folder,file:files[i]}));
+    t.left = urls.length;
+    urls.forEach((u,i)=>allItems.push({...u,folder,file:t.files[i]}));
+  }
+  const isZip = _isZipUpload();
+  const jobs = [];          // color indexing, one per folder pushed live
+  const notIndexed = new Set();
+  let totalLive = 0;
+  // Photos are added to the site in chunks while the rest are still uploading, so their
+  // thumbnails and color labels are made meanwhile. Each folder's chunks go in order; when its
+  // last photo is in, winter action folders are pushed live (by then nearly all are labeled).
+  const CHUNK = 40;
+  for (const t of targets.values()) { t.ready = []; t.chain = Promise.resolve(); }
+  function addChunk(folder, last) {
+    const t = targets.get(folder);
+    const items = t.ready.splice(0);
+    t.chain = t.chain.then(async () => {
+      if (items.length) {
+        const files = items.map(it => it.file);
+        const times = await readExifTimes(files);     // reads file headers already in memory — fast
+        const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({date,location,folder,keys:items.map(it=>it.key),times,
+                               partner_files: _isPortraitLoc ? {} : partnerFilesFor(files)})}).catch(()=>null);
+        if (!ir?.ok) notIndexed.add(folder || location);
+      }
+      if (!last) return;
+      if (isZip) {
+        for (const fi of t.fis) {
+          const gs = getUploadGroupSize(fi);
+          if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({folder_key:`${date}|${location}|${folder}`,group_size:gs})}).catch(()=>{});
+        }
+      }
+      if (!_isPortraitLoc && !notIndexed.has(folder || location) && allItems.some(it => it.folder === folder && it.ok)) {
+        const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({date,location,folder})}).catch(()=>null);
+        if (lr?.ok) {
+          const ld = await lr.json();
+          totalLive += ld.pushed || 0;
+          if (ld.job_id) jobs.push({id: ld.job_id, total: ld.classify_total || 0});
+        }
+      }
+    });
   }
   // A non-2xx PUT response doesn't throw in fetch(), so it must be checked explicitly
   const _sig = _uploadAbortCtrl.signal;
@@ -2675,57 +2747,30 @@ async function startUpload() {
       } catch (e) { if (_sig.aborted) break; /* retry once on non-abort error */ }
     }
     done++; if (!it.ok) failed++; setProgress();
+    if (_sig.aborted) return;
+    const t = targets.get(it.folder);
+    if (it.ok) t.ready.push(it);
+    if (--t.left === 0) addChunk(it.folder, true);
+    else if (t.ready.length >= CHUNK) addChunk(it.folder, false);
   }
-  for (let i=0;i<allItems.length;i+=CONCURRENCY) {
-    if (_sig.aborted) break;
-    await Promise.all(allItems.slice(i,i+CONCURRENCY).map(it=>putOne(it)));
-  }
+  await runPool(allItems, CONCURRENCY, putOne);
+  const finishing = [...targets.values()].map(t => t.chain);
   if (_sig.aborted) {
+    await Promise.all(finishing);                     // photos already added stay (as drafts)
     label.textContent = 'Upload cancelled';
     fill.style.width = '0';
     cancelBtn.style.display = 'none';
     _uploadActive = false; _uploadAbortCtrl = null;
     window.removeEventListener('beforeunload', _beforeUnloadGuard);
     btn.disabled = false;
+    await loadSidebar();
     setTimeout(()=>{ progWrap.style.display='none'; }, 1500);
     return;
   }
-  // Index, set group size, and push live for each folder
-  const isZip = _isZipUpload();
-  const byFolder={};
-  for (const it of allItems) if (it.ok) (byFolder[it.folder]=byFolder[it.folder]||[]).push(it.key);
-  // Pre-extract EXIF times per batch (reads file headers already in memory — fast)
-  const batchTimes = {};
-  await Promise.all(batches.map(async ({folder:bf, files:bf_files}) => {
-    if (bf_files?.length) batchTimes[bf] = await readExifTimes(bf_files);
-  }));
-  let totalLive = 0;
-  for (const [fi, {folder}] of batches.entries()) {
-    const keys = byFolder[folder];
-    if (!keys?.length) continue;
-    const batchFiles = (batches[fi] && batches[fi].files) || [];
-    await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys,times:batchTimes[folder]||{},
-                           partner_files: _isPortraitLoc ? {} : partnerFilesFor(batchFiles)})});
-    if (isZip) {
-      const gs = getUploadGroupSize(fi);
-      if (gs) await fetch('/api/zip-folder/set-group-size',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({folder_key:`${date}|${location}|${folder}`,group_size:gs})}).catch(()=>{});
-    }
-    const isPortraitUpload = PORTRAIT_LOCS.has(location.trim().toLowerCase());
-    if (!isPortraitUpload) {
-      cancelBtn.style.display = 'none';
-      const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({date,location,folder})}).catch(()=>null);
-      if (lr?.ok) {
-        const ld = await lr.json();
-        totalLive += ld.pushed || 0;
-        if (ld.job_id) {
-          await pollEmbedJob(ld.job_id, ld.classify_total, label);
-        }
-      }
-    }
-  }
+  cancelBtn.style.display = 'none';
+  await Promise.all(finishing);
+  if (jobs.length) await pollEmbedJobs(jobs, label);
+  if (notIndexed.size) showToast(`Couldn't add ${[...notIndexed].join(', ')} to the site — upload again`, 'error');
   const succeeded = done - failed;
   const isPortraitUpload = PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
   if (failed) {

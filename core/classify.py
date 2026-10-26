@@ -21,16 +21,29 @@ CLIP_MEAN = np.array([0.48145466, 0.4578275,  0.40821073], dtype=np.float32).res
 CLIP_STD  = np.array([0.26862954, 0.26130258, 0.27577711], dtype=np.float32).reshape(3, 1, 1)
 
 
-def preprocess_image(img_bytes: bytes) -> np.ndarray:
+# Photos are decoded at reduced scale (still >= 900px): about half the time, same answers
+# (checked on the same 2,000 photos)
+MODEL_DECODE_PX = 900
+
+
+def open_for_model(img_bytes: bytes, min_px: int = MODEL_DECODE_PX) -> Image.Image:
+    """The photo decoded for the model (RGB, as stored: no rotation). min_px can be larger when
+    the same decode also makes thumbnails."""
     img = Image.open(BytesIO(img_bytes))
     if img.format in ("JPEG", "MPO"):   # MPO = camera JPEG with a built-in preview
-        # Decode at reduced scale (still >= 900px): about half the time, same answers
-        # (checked on the same 2,000 photos)
-        img.draft("RGB", (900, 900))
-    pil = img.convert("RGB").resize((224, 224), Image.LANCZOS)
+        img.draft("RGB", (max(min_px, MODEL_DECODE_PX),) * 2)
+    return img.convert("RGB")
+
+
+def preprocess_rgb(img: Image.Image) -> np.ndarray:
+    pil = img.resize((224, 224), Image.LANCZOS)
     arr = np.array(pil, dtype=np.float32).transpose(2, 0, 1) / 255.0  # HWC -> CHW
     arr = (arr - CLIP_MEAN) / CLIP_STD
     return arr[np.newaxis]  # (1, 3, 224, 224)
+
+
+def preprocess_image(img_bytes: bytes) -> np.ndarray:
+    return preprocess_rgb(open_for_model(img_bytes))
 
 
 def _sigmoid(x: np.ndarray) -> np.ndarray:
@@ -83,12 +96,20 @@ class ColorModel:
 
     def classify(self, img_bytes: bytes) -> dict | None:
         """Labels for one photo, or None if the model isn't available or the photo can't be read."""
+        try:
+            return self.classify_rgb(open_for_model(img_bytes)) if self.load() else None
+        except Exception as e:
+            print(f"ONNX classify failed: {e}")
+            return None
+
+    def classify_rgb(self, img: Image.Image) -> dict | None:
+        """Labels for a photo already decoded by open_for_model."""
         if not self.load():
             return None
         try:
             j_logits, p_logits, s_logits = self.session.run(
                 ["jacket_logits", "pants_logits", "sport_logits"],
-                {"pixel_values": preprocess_image(img_bytes)},
+                {"pixel_values": preprocess_rgb(img)},
             )
             return decide(j_logits[0], p_logits[0], s_logits[0], self.meta)
         except Exception as e:

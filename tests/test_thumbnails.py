@@ -320,3 +320,51 @@ def test_camera_mpo_files_get_the_fast_decode(main_module):
     assert Image.open(BytesIO(buf.getvalue())).format == "MPO"
     img = main_module._open_for_thumbnail(BytesIO(buf.getvalue()), 700)
     assert img.size == (1000, 750)                               # decoded at 1/4 scale, not full size
+
+
+@pytest.fixture()
+def fake_model(main_module, monkeypatch):
+    """The labeling model, faked: records the size of each photo it's shown."""
+    seen = []
+    monkeypatch.setattr(main_module._color_model, "load", lambda: True)
+    monkeypatch.setattr(main_module._color_model, "classify_rgb",
+                        lambda img: seen.append(img.size) or {"sport": "ski", "jacket_colors": ["red"], "pants_colors": ["black"]})
+    monkeypatch.setattr(main_module, "classify_photo_colors",
+                        lambda raw: seen.append("downloaded again") or {"sport": "ski", "jacket_colors": ["red"], "pants_colors": ["black"]})
+    return seen
+
+
+def test_action_photos_are_labeled_from_the_thumbnail_download(admin_client, main_module, live_photos, fake_model, monkeypatch):
+    """One download per new photo: thumbnails and color labels come from the same copy, and
+    going live doesn't download them again."""
+    live_photos([])
+    monkeypatch.setattr(main_module, "_load_pricing", lambda: {"default": {"tiers": [{"count": 1, "price": 25}]}})
+    keys = [f"images/2026-12-01/el-dorado-action/A{i}.jpg" for i in range(3)]
+    for k in keys:
+        _put(k, _jpeg(3000, 2000))
+    downloads = []
+    real_get = main_module.s3.get_object
+    monkeypatch.setattr(main_module.s3, "get_object",
+                        lambda **kw: downloads.append(kw["Key"]) or real_get(**kw))
+    r = admin_client.post("/api/admin/upload/index", json={"date": "2026-12-01", "location": "El Dorado Action", "keys": keys})
+    live = admin_client.post("/api/admin/push-live", json={"date": "2026-12-01", "location": "El Dorado Action", "folder": ""})
+    assert live.status_code == 200 and live.json()["pushed"] == 3
+    _wait_job(admin_client, r.json()["thumbs_job_id"])
+    _wait_job(admin_client, live.json()["job_id"])
+    labeled = [it for it in main_module.data if it["path"] in keys]
+    assert all(it["jacket_colors"] == ["red"] and it["classifier"] == main_module.MODEL_LABEL for it in labeled)
+    assert "downloaded again" not in fake_model and len(fake_model) == 3
+    assert all(min(size) >= 900 for size in fake_model)            # the model's usual decode size
+    assert sorted(k for k in downloads if k in keys) == sorted(keys)  # each original read once
+
+
+def test_portraits_arent_labeled(admin_client, main_module, live_photos, fake_model):
+    live_photos([])
+    keys = [f"images/2026-10-04/lone-peak-portraits/smith/Q{i}.jpg" for i in range(2)]
+    for k in keys:
+        _put(k, _jpeg(3000, 2000))
+    r = admin_client.post("/api/admin/upload/index", json={
+        "date": "2026-10-04", "location": "Lone Peak Portraits", "folder": "smith", "keys": keys})
+    _wait_job(admin_client, r.json()["thumbs_job_id"])
+    assert fake_model == []
+    assert all("jacket_colors" not in it for it in main_module.data if it["path"] in keys)

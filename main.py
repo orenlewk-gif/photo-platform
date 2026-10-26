@@ -34,7 +34,7 @@ from core.images import (admin_thumb_r2_key as _admin_thumb_r2_key, fix_orientat
                          thumb_r2_key as _thumb_r2_key)
 from core.checkout import (CATEGORIES, CheckoutError, activity_groups, bundle_for_cart, check_coupon,
                            coupon_item_discount, coupon_scope, parse_int, shipping_for)
-from core.classify import MODEL_LABEL, ColorModel
+from core.classify import MODEL_LABEL, ColorModel, open_for_model
 from core.index import SEARCHABLE_GROUP_LOCATIONS, build_folder_index as _build_folder_index
 from core.pricing import ZIP_LOCS_SET, best_tier_price, pricing_for, selection_limit
 from core.search import COLOR_ENUM, filter_by_labels, match_last_name
@@ -345,23 +345,41 @@ def classify_photo_colors(img_bytes: bytes) -> dict | None:
     return _color_model.classify(img_bytes)
 
 
+def _apply_labels(item: dict, colors: dict | None) -> None:
+    if colors:
+        item["sport"]         = colors.get("sport", "unclear")
+        item["jacket_colors"] = colors.get("jacket_colors", [])
+        item["pants_colors"]  = colors.get("pants_colors", [])
+        item["classifier"]    = MODEL_LABEL
+        print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+
+
+def _needs_labels(item: dict) -> bool:
+    """A winter action (non-portrait) photo the labeling model hasn't labeled yet."""
+    return item.get("jacket_colors") is None and not _is_portrait_location(item.get("location", ""))
+
+
+# Newly uploaded photos are labeled while their thumbnails are made (one download of each
+# original). A labeling job that reaches a photo still being handled there waits for it
+# instead of downloading it again.
+_label_waits: dict = {}          # photo path -> threading.Event, set once its upload work is done
+_LABEL_WAIT_SECONDS = 600
+
+
 def _label_photos(items: list, job_id: str = None, needs=None, save_every: int = 0) -> int:
     """Run the labeling model over photos, 8 at a time: download each original, label it,
     stamp the model version. `needs(item)` False skips a photo without downloading it.
     Progress shows in _embed_jobs[job_id]; save_every=N saves the photo list every N photos
     so a long job keeps its progress through a restart. Returns how many were handled."""
     def one(item):
+        pending = _label_waits.get(item["path"])
+        if pending:
+            pending.wait(_LABEL_WAIT_SECONDS)
         if needs and not needs(item):
             return True
         try:
             raw = s3.get_object(Bucket=R2_BUCKET, Key=item["path"])["Body"].read()
-            colors = classify_photo_colors(raw)
-            if colors:
-                item["sport"]         = colors.get("sport", "unclear")
-                item["jacket_colors"] = colors.get("jacket_colors", [])
-                item["pants_colors"]  = colors.get("pants_colors", [])
-                item["classifier"]    = MODEL_LABEL
-                print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
+            _apply_labels(item, classify_photo_colors(raw))
             return True
         except Exception as e:
             print(f"Labeling failed {item['path']}: {e}")
@@ -380,9 +398,7 @@ def _label_photos(items: list, job_id: str = None, needs=None, save_every: int =
 
 def embed_items_fast(items: list, job_id: str = None) -> int:
     """Label newly published photos (portraits and already-labeled photos are skipped)."""
-    portrait_locs = {loc.strip().lower() for loc in PORTRAIT_LOCATIONS}
-    count = _label_photos(items, job_id, needs=lambda it: it.get("jacket_colors") is None
-                          and it.get("location", "").strip().lower() not in portrait_locs)
+    count = _label_photos(items, job_id, needs=_needs_labels)
     if job_id and job_id in _embed_jobs:
         _embed_jobs[job_id]["finished"] = True
     return count
@@ -908,12 +924,19 @@ def _encode_thumb(img: Image.Image, variant: str) -> bytes:
     return buf.getvalue()
 
 
-def _make_thumbs(r2_key: str, variants, original: bytes = None) -> dict:
+def _make_thumbs(r2_key: str, variants, original: bytes = None, label_item: dict = None) -> dict:
     """Make the given thumbnail variants from one download of the original and save
-    them to R2. Returns {variant: jpeg bytes}. Saving is best-effort."""
+    them to R2. Returns {variant: jpeg bytes}. Saving is best-effort. label_item: also
+    label this photo record with the labeling model, from the same decode."""
     if original is None:
         original = s3.get_object(Bucket=R2_BUCKET, Key=r2_key)["Body"].read()
-    img = _open_for_thumbnail(BytesIO(original), max(_THUMB_VARIANTS[v][1] for v in variants))
+    max_px = max(_THUMB_VARIANTS[v][1] for v in variants)
+    if label_item is not None and _needs_labels(label_item):
+        rgb = open_for_model(original, max_px)        # as stored (the model's view), not yet turned upright
+        _apply_labels(label_item, _color_model.classify_rgb(rgb))
+        img = fix_orientation(rgb)
+    else:
+        img = _open_for_thumbnail(BytesIO(original), max_px)
     # Remember the original's size (as stored, like _fetch_dims) for the gallery layout
     try:
         _dim_cache[r2_key] = list(Image.open(BytesIO(original)).size)
@@ -1101,32 +1124,44 @@ def _nowm_allowed(request: Request) -> bool:
     return _pos_signed_in(request) or _admin_authed(request)
 
 
-def _make_thumbs_quietly(r2_key: str, variants, original: bytes = None) -> bool:
+def _make_thumbs_quietly(r2_key: str, variants, original: bytes = None, label_item: dict = None) -> bool:
     try:
-        _make_thumbs(r2_key, variants, original)
+        _make_thumbs(r2_key, variants, original, label_item)
         return True
     except Exception as e:
         print(f"[thumbs] failed {r2_key}: {e}")
         return False
+    finally:
+        if label_item is not None:
+            done = _label_waits.pop(label_item["path"], None)
+            if done:
+                done.set()
 
 
 def _start_thumb_job(work: list) -> str | None:
-    """Make thumbnails in the background. work = [(r2_key, [variants]), ...].
+    """Make thumbnails in the background. work = [(r2_key, [variants]) or
+    (r2_key, [variants], photo record to label), ...].
     Progress is visible at /api/admin/embed-status?job_id=…"""
-    work = [(k, v) for k, v in work if v]
+    work = [w for w in work if w[1]]
     if not work:
         return None
     job_id = "thumbs-" + str(uuid.uuid4())[:8]
     _embed_jobs[job_id] = {"total": len(work), "done": 0, "finished": False, "failed": 0}
+    for w in work:
+        if len(w) > 2 and w[2] is not None:
+            _label_waits.setdefault(w[2]["path"], threading.Event())
 
     def _run():
         job = _embed_jobs[job_id]
-        for ok in _thumb_pool.map(lambda kv: _make_thumbs_quietly(kv[0], kv[1]), work):
+        for ok in _thumb_pool.map(lambda w: _make_thumbs_quietly(w[0], w[1], label_item=w[2] if len(w) > 2 else None),
+                                  work):
             job["done"] += 1
             if not ok:
                 job["failed"] += 1
         job["finished"] = True
         _save_dim_cache_bg()   # sizes recorded while making the thumbnails
+        if any(len(w) > 2 and w[2] is not None for w in work):
+            _save_photo_list_soon()             # the labels
         print(f"[thumbs] job {job_id} done: {job['done'] - job['failed']}/{job['total']} ok")
 
     threading.Thread(target=_run, daemon=True).start()
@@ -1134,8 +1169,15 @@ def _start_thumb_job(work: list) -> str | None:
 
 
 def _queue_new_photo_thumbs(r2_keys: list) -> str | None:
-    """All thumbnail variants for newly uploaded / published / moved photos."""
-    return _start_thumb_job([(to_r2_key(k), list(_NEW_PHOTO_VARIANTS)) for k in r2_keys])
+    """All thumbnail variants for newly uploaded / published / moved photos; winter action
+    photos are labeled (colors and sport) from the same download."""
+    by_path = {it["path"]: it for it in data} if r2_keys else {}
+    work = []
+    for k in r2_keys:
+        item = by_path.get(k)
+        work.append((to_r2_key(k), list(_NEW_PHOTO_VARIANTS),
+                     item if item is not None and _needs_labels(item) and _color_model.load() else None))
+    return _start_thumb_job(work)
 
 _folder_times_cache: dict = {}  # in-memory cache: (date, location) → {filename: minutes}
 
