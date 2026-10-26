@@ -73,7 +73,7 @@ PRICING_KEY  = "meta/pricing.json"
 
 # ── Model file bootstrap — download from R2 on cold start if missing ──────────
 def _ensure_model_files():
-    files = ["model_v3.onnx", "model_v3.onnx.data", "model_v3_meta.json"]
+    files = [f"{MODEL_LABEL}.onnx", f"{MODEL_LABEL}.onnx.data", f"{MODEL_LABEL}_meta.json"]
     missing = [f for f in files if not os.path.exists(f)]
     if not missing:
         return
@@ -328,7 +328,7 @@ _embed_jobs: dict = {}  # job_id -> {"total": int, "done": int, "finished": bool
 
 
 # ── Labeling model ────────────────────────────────────────────────────────────
-_color_model = ColorModel("model_v3.onnx", "model_v3_meta.json")
+_color_model = ColorModel(f"{MODEL_LABEL}.onnx", f"{MODEL_LABEL}_meta.json")
 
 
 def _load_onnx_model() -> bool:

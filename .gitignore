@@ -23,3 +23,6 @@ training_run/
 dev/model_eval/results_versions.jsonl
 dev/model_eval/capture_times.json
 dev/model_eval/results_retry.jsonl
+model_v4*.onnx
+model_v4*.onnx.data
+model_v4*_meta.json

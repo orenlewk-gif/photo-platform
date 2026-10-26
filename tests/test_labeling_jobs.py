@@ -51,7 +51,7 @@ def test_classify_folder_labels_unlabeled_photos_and_saves(admin_client, main_mo
     assert r["queued"] == 2
     _wait(admin_client, r["job_id"])
     stored = _stored(main_module)
-    assert stored[items[0]["path"]]["jacket_colors"] == ["red"] and stored[items[0]["path"]]["classifier"] == "model_v3"
+    assert stored[items[0]["path"]]["jacket_colors"] == ["red"] and stored[items[0]["path"]]["classifier"] == main_module.MODEL_LABEL
     assert stored[items[2]["path"]]["jacket_colors"] == ["blue"]        # already labeled: left alone
 
 
@@ -68,7 +68,7 @@ def test_push_live_labeling_skips_portraits_and_labeled_photos_without_downloadi
     _put_photos(items)
     assert main_module.embed_items_fast(items) == 3
     assert lab == [items[0]["path"].encode()]                          # only the one that needed it was read
-    assert items[0]["classifier"] == "model_v3" and "classifier" not in items[2]
+    assert items[0]["classifier"] == main_module.MODEL_LABEL and "classifier" not in items[2]
 
 
 def test_a_photo_that_cant_be_read_is_skipped_not_fatal(main_module, lab):
