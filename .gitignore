@@ -19,3 +19,4 @@ model_v3_meta.json
 .pytest_cache/
 static/theme-admin.css
 static/theme-frontend.css
+training_run/
