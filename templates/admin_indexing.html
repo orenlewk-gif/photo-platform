@@ -47,6 +47,19 @@ html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c233
   background:rgba(255,255,255,.06);color:rgba(255,255,255,.5);font-size:.72rem;cursor:pointer;font-family:inherit;display:none}
 #shortcuts-hint{font-size:.65rem;color:rgba(255,255,255,.2);flex-shrink:0}
 
+#ix-filters{display:none;padding:.5rem 1.25rem .55rem;border-bottom:1px solid rgba(255,255,255,.06);
+  flex-shrink:0;gap:.35rem .9rem;flex-wrap:wrap;align-items:center}
+.ixf-group{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap}
+.ixf-label{font-size:.62rem;text-transform:uppercase;letter-spacing:.08em;color:rgba(255,255,255,.35);margin-right:.15rem}
+.ixf-btn{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .55rem;border-radius:12px;font-size:.72rem;
+  border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.04);color:rgba(255,255,255,.75);cursor:pointer;font-family:inherit}
+.ixf-btn:hover{border-color:rgba(255,255,255,.3)}
+.ixf-btn.on{border-color:#F5C518;background:rgba(245,197,24,.14);color:#F5C518}
+.ixf-btn.off{opacity:.28;pointer-events:none}
+.ixf-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+#ixf-count{font-size:.72rem;color:rgba(255,255,255,.45);margin-left:auto}
+#ixf-clear{font-size:.72rem;color:rgba(255,255,255,.45);background:none;border:none;cursor:pointer;text-decoration:underline;font-family:inherit;display:none}
+.pt.filtered-out{display:none}
 #photo-area{flex:1;overflow-y:auto;padding:1rem 1.25rem}
 #photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:.75rem}
 #empty-state{display:flex;align-items:center;justify-content:center;height:100%;
@@ -112,6 +125,7 @@ html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c233
       <button id="btn-deselect" onclick="deselectAll()">Deselect all</button>
       <div id="shortcuts-hint">Space: select  Arrow: navigate  Esc: clear</div>
     </div>
+    <div id="ix-filters"></div>
     <div id="photo-area">
       <div id="empty-state">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" opacity=".2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
@@ -149,6 +163,7 @@ let _lastClicked   = null;   // path for shift-select anchor
 let _focusedIdx    = -1;     // keyboard nav index
 let _editState     = {};     // path → {jacket, pants, sport, instructor}
 let _clipboard     = null;
+let _flt           = {sport: null, jackets: [], pants: null, instructor: false};   // what's being checked
 
 // ── Load folders ──────────────────────────────────────────────────────────────
 async function loadFolders() {
@@ -192,6 +207,8 @@ async function openFolder(key) {
   _currentFolder = _folders.find(f => f.folder_key === key);
   if (!_currentFolder) return;
   _selected.clear(); _lastClicked = null; _focusedIdx = -1; _editState = {};
+  _flt = {sport: null, jackets: [], pants: null, instructor: false};
+  document.getElementById('ix-filters').style.display = 'none';
   hidePanel();
   renderFolderList(document.getElementById('sidebar-search').value ? null : _folders);
   // Re-render sidebar with active state
@@ -214,8 +231,83 @@ async function openFolder(key) {
   document.getElementById('folder-stats').textContent = `${_photos.length} labeled photos`;
   document.getElementById('empty-state').style.display = 'none';
   document.getElementById('photo-grid').style.display = 'grid';
+  renderFilters();
   renderGrid();
   updateSelInfo();
+}
+
+// ── Filters: show only the photos labeled a certain way, to double-check them ─────
+// Any order: a choice stays available only while some photo has it along with the rest.
+const _SPORTS = ['ski', 'snowboard'];
+function _sportOf(p) { return _SPORTS.includes(p.sport) ? p.sport : 'unclear'; }
+function _fltMatch(p, f) {
+  if (f.sport && _sportOf(p) !== f.sport) return false;
+  if (f.instructor && !p.instructor) return false;
+  if (f.pants && !(p.pants || []).includes(f.pants)) return false;
+  return f.jackets.every(c => (p.jacket || []).includes(c));
+}
+function _fltActive() { return !!(_flt.sport || _flt.jackets.length || _flt.pants || _flt.instructor); }
+function _visible(i) { return _fltMatch(_photos[i], _flt); }
+
+function renderFilters() {
+  const bar = document.getElementById('ix-filters');
+  if (!_photos.length) { bar.style.display = 'none'; return; }
+  const present = (key) => _ALL_COLORS.filter(c => _photos.some(p => (p[key] || []).includes(c)));
+  const dot = c => `<span class="ixf-dot" style="background:${_HEX[c] || '#888'}"></span>`;
+  const sports = [..._SPORTS, 'unclear'].filter(sp => _photos.some(p => _sportOf(p) === sp));
+  let html = '';
+  if (sports.length > 1 || (sports.length === 1 && sports[0] === 'unclear'))
+    html += `<div class="ixf-group"><span class="ixf-label">Sport</span>${sports.map(sp =>
+      `<button class="ixf-btn" data-k="sport" data-v="${sp}" onclick="fltPick('sport','${sp}')">${sp[0].toUpperCase() + sp.slice(1)}</button>`).join('')}</div>`;
+  const jackets = present('jacket'), pants = present('pants');
+  if (jackets.length) html += `<div class="ixf-group"><span class="ixf-label">Jacket</span>${jackets.map(c =>
+    `<button class="ixf-btn" data-k="jacket" data-v="${c}" onclick="fltPick('jacket','${c}')">${dot(c)}${_COLOR_LABEL[c] || c}</button>`).join('')}</div>`;
+  if (pants.length) html += `<div class="ixf-group"><span class="ixf-label">Pants</span>${pants.map(c =>
+    `<button class="ixf-btn" data-k="pants" data-v="${c}" onclick="fltPick('pants','${c}')">${dot(c)}${_COLOR_LABEL[c] || c}</button>`).join('')}</div>`;
+  if (_photos.some(p => p.instructor))
+    html += `<div class="ixf-group"><button class="ixf-btn" data-k="instructor" data-v="1" onclick="fltPick('instructor')">Instructor</button></div>`;
+  html += `<button id="ixf-clear" onclick="fltClear()">clear</button><span id="ixf-count"></span>`;
+  bar.innerHTML = html;
+  bar.style.display = 'flex';
+  updateFilterButtons();
+}
+
+function updateFilterButtons() {
+  const any = f => _photos.some(p => _fltMatch(p, f));
+  document.querySelectorAll('#ix-filters .ixf-btn').forEach(el => {
+    const k = el.dataset.k, v = el.dataset.v;
+    let on, avail;
+    if (k === 'sport')      { on = _flt.sport === v;          avail = on || any({..._flt, sport: v}); }
+    else if (k === 'jacket') { on = _flt.jackets.includes(v);  avail = on || any({..._flt, jackets: [..._flt.jackets, v]}); }
+    else if (k === 'pants')  { on = _flt.pants === v;          avail = on || any({..._flt, pants: v}); }
+    else                     { on = _flt.instructor;           avail = on || any({..._flt, instructor: true}); }
+    el.classList.toggle('on', on);
+    el.classList.toggle('off', !avail);
+  });
+  const shown = _photos.filter(p => _fltMatch(p, _flt)).length;
+  document.getElementById('ixf-count').textContent = _fltActive() ? `Showing ${shown} of ${_photos.length}` : '';
+  document.getElementById('ixf-clear').style.display = _fltActive() ? '' : 'none';
+}
+
+function fltPick(k, v) {
+  if (k === 'sport') _flt.sport = _flt.sport === v ? null : v;
+  else if (k === 'jacket') _flt.jackets = _flt.jackets.includes(v) ? _flt.jackets.filter(c => c !== v) : [..._flt.jackets, v];
+  else if (k === 'pants') _flt.pants = _flt.pants === v ? null : v;
+  else _flt.instructor = !_flt.instructor;
+  fltApply();
+}
+function fltClear() { _flt = {sport: null, jackets: [], pants: null, instructor: false}; fltApply(); }
+function fltApply() {
+  // Hidden photos leave the selection, so an edit never reaches photos you can't see
+  for (const path of [..._selected]) {
+    const p = _photos.find(x => x.path === path);
+    if (!p || !_fltMatch(p, _flt)) _selected.delete(path);
+  }
+  if (_focusedIdx >= 0 && !_visible(_focusedIdx)) _focusedIdx = -1;
+  updateFilterButtons();
+  renderGrid();
+  updateSelInfo();
+  if (_selected.size) showPanel(); else hidePanel();
 }
 
 // ── Render grid ───────────────────────────────────────────────────────────────
@@ -227,7 +319,7 @@ function renderGrid() {
     const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
     const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
     const labeled = (p.jacket||[]).length || (p.pants||[]).length;
-    return `<div class="pt${sel?' selected':''}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" tabindex="-1" style="position:relative">
+    return `<div class="pt${sel?' selected':''}${_fltMatch(p, _flt)?'':' filtered-out'}" data-idx="${i}" data-path="${esc(p.path)}" onclick="photoClick(event,${i})" tabindex="-1" style="position:relative">
       <img src="/api/admin/photo?path=${encodeURIComponent(p.path)}&size=thumb" loading="lazy" onerror="this.style.background='#0a1f30';this.style.minHeight='120px'">
       <button onclick="event.stopPropagation();openZoom('${esc(p.path)}')" title="Enlarge" style="position:absolute;top:5px;right:5px;width:24px;height:24px;border-radius:4px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.2);cursor:pointer;color:#fff;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="5" cy="5" r="3.5"/><line x1="7.8" y1="7.8" x2="11" y2="11"/></svg>
@@ -245,7 +337,7 @@ function refreshTile(idx) {
   const tile = document.querySelector(`.pt[data-idx="${idx}"]`);
   if (!tile) return;
   const sel = _selected.has(p.path);
-  tile.className = 'pt' + (sel ? ' selected' : '');
+  tile.className = 'pt' + (sel ? ' selected' : '') + (_fltMatch(p, _flt) ? '' : ' filtered-out');
   const jDots = (p.jacket||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
   const pDots = (p.pants||[]).filter(c=>c!=='none'&&c!=='unclear').map(c=>`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${_HEX[c]||'#888'};margin-right:2px" title="${c}"></span>`).join('');
   const sport = p.sport ? `<span class="pt-sport">${p.sport}</span>` : '';
@@ -258,7 +350,7 @@ function photoClick(e, idx) {
   if (!p) return;
   if (e.shiftKey && _lastClicked !== null) {
     const a = Math.min(_lastClicked, idx), b = Math.max(_lastClicked, idx);
-    for (let i = a; i <= b; i++) _selected.add(_photos[i].path);
+    for (let i = a; i <= b; i++) if (_visible(i)) _selected.add(_photos[i].path);
     renderGrid();
   } else {
     const already = _selected.has(p.path);
@@ -465,6 +557,12 @@ async function applyEdit() {
     const idx = _photos.findIndex(p => p.path === path);
     if (idx >= 0) refreshTile(idx);
   });
+  if (document.getElementById('ix-filters').style.display !== 'none') {
+    // The filter choices follow the new labels; photos fixed so they no longer match the
+    // filters drop out of view (and out of the selection)
+    renderFilters();
+    fltApply();
+  }
   setTimeout(() => { statusEl.textContent = ''; }, 2000);
 }
 
@@ -503,12 +601,14 @@ document.addEventListener('keydown', e => {
 
   if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
     e.preventDefault();
-    _focusedIdx = Math.min(_focusedIdx + 1, _photos.length - 1);
-    focusTile(_focusedIdx);
+    let i = _focusedIdx + 1;                         // next photo the filters show
+    while (i < _photos.length && !_visible(i)) i++;
+    if (i < _photos.length) { _focusedIdx = i; focusTile(i); }
   } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
     e.preventDefault();
-    _focusedIdx = Math.max(_focusedIdx - 1, 0);
-    focusTile(_focusedIdx);
+    let i = _focusedIdx - 1;
+    while (i >= 0 && !_visible(i)) i--;
+    if (i >= 0) { _focusedIdx = i; focusTile(i); }
   } else if (e.key === ' ') {
     e.preventDefault();
     if (_focusedIdx < 0) return;
