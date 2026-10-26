@@ -139,6 +139,10 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
   padding:.68rem;font-weight:700;font-size:.92rem;cursor:pointer}
 #upload-action-btn:disabled{opacity:.45;cursor:not-allowed}
 #upload-action-btn:hover:not(:disabled){background:#f0bc00}
+#upload-all-btn{width:100%;background:transparent;color:#F5C518;border:1px solid rgba(245,197,24,.55);border-radius:8px;
+  padding:.6rem;font-weight:700;font-size:.88rem;cursor:pointer}
+#upload-all-btn:disabled{opacity:.45;cursor:not-allowed}
+#upload-all-btn:hover:not(:disabled){background:rgba(245,197,24,.08)}
 
 /* ── Pose Assignment Panel ── */
 #batch-header{margin-bottom:.75rem}
@@ -448,6 +452,7 @@ input[type=file]{display:none}
         </div>
 
         <button id="upload-action-btn" onclick="startUpload()" disabled>Upload</button>
+        <button id="upload-all-btn" onclick="uploadAllFamilies()" style="display:none;margin-top:.5rem">Upload all families</button>
       </div>
     </div>
 
@@ -2298,19 +2303,26 @@ function initPoseAssign(files) {
 
 // Each color label set while culling becomes a pose (in photo order). Photos without a
 // label stay unassigned; the photographer checks and can still change everything by hand.
+// Poses from color labels: one per color, in the order they first appear. Photos without a
+// label are a pose of their own (as the server reads them) when the family has any labels.
+function labelPoseGroups(files, labels) {
+  const order = [], byColor = {};
+  files.forEach((f, i) => {
+    const lab = (labels.get(f) || '').toLowerCase();
+    if (!byColor[lab]) { byColor[lab] = []; order.push(lab); }
+    byColor[lab].push(i);
+  });
+  const labeled = order.some(lab => lab);
+  return {labeled, order: labeled ? order : [], byColor};
+}
+
 async function posesFromLabels(imgs) {
   const labels = await readColorLabels(imgs);
   if (poseFiles !== imgs || poseGroups.length) return;      // another family loaded, or poses already picked
-  const order = [], byColor = {};
-  imgs.forEach((f, i) => {
-    const lab = (labels.get(f) || '').toLowerCase();
-    if (!lab) return;
-    if (!byColor[lab]) { byColor[lab] = new Set(); order.push(lab); }
-    byColor[lab].add(i);
-  });
+  const {order, byColor} = labelPoseGroups(imgs, labels);
   if (!order.length) return;
   poseGroups = order.map((lab, gi) => ({color: POSE_COLORS[gi % POSE_COLORS.length], label: `Pose ${gi + 1}`,
-                                        indices: byColor[lab]}));
+                                        indices: new Set(byColor[lab])}));
   renderPosePanel(true);
   updateUploadBtn();
   showToast(`${order.length} pose${order.length === 1 ? '' : 's'} filled in from color labels — check them, then upload`);
@@ -2517,6 +2529,8 @@ async function renderDetectedFolders() {
 function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders(); updateUploadBtn(); scanUploadLabels(); }
 function updateUploadBtn() {
   const btn = document.getElementById('upload-action-btn');
+  const allBtn = document.getElementById('upload-all-btn');
+  if (allBtn) allBtn.style.display = _isPoseMode() && _batchCursor >= 0 && _batchQueue.length - _batchCursor > 1 ? '' : 'none';
   if (_isPoseMode()) {
     btn.disabled = poseGroups.length === 0;
     if (_batchCursor >= 0 && _batchQueue.length > 1) {
@@ -2562,6 +2576,103 @@ function cancelUpload() {
   if (_uploadAbortCtrl) _uploadAbortCtrl.abort();
 }
 
+// One portrait family: upload its photos, then add them to the site with their poses.
+// progress(done, failed) after each photo. Returns {done, failed}, or null if nothing could start.
+async function uploadPoseFamily(date, location, folder, files, poses, progress) {
+  const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
+  if (!pr.ok) return null;
+  const {urls}=await pr.json();
+  const items=urls.map((u,i)=>({...u,file:files[i]}));
+  let done=0, failed=0;
+  progress(done, failed);
+  const timesReq=readExifTimes(files);          // read while the photos upload
+  await runPool(items, CONCURRENCY, async it => {
+    for (let attempt=0;attempt<2&&!it.ok;attempt++) {
+      try { const res=await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}}); if(res.ok) it.ok=true; } catch(e) {}
+    }
+    done++; if(!it.ok) failed++; progress(done, failed);
+  });
+  const keys=items.filter(it=>it.ok).map(it=>it.key);
+  const times=await timesReq;
+  if (keys.length) {
+    const ir=await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({date,location,folder,keys,poses,times})}).catch(()=>null);
+    if (!ir?.ok) failed=done;                     // uploaded but not added to the site: counts as failed
+  }
+  return {done, failed};
+}
+
+// A family's photos in pose order (file number), as the pose panel shows them
+function sortedFamilyPhotos(files) {
+  return [...files].filter(f => /\.(jpg|jpeg|png)$/i.test(f.name)).sort((a,b) => {
+    const na = a.name.replace(/\D+/g,''), nb = b.name.replace(/\D+/g,'');
+    if (na && nb) return parseInt(na) - parseInt(nb);
+    return a.name.localeCompare(b.name);
+  });
+}
+
+// "Upload all families": the rest of the batch without a click per family, each family's poses
+// from its color labels (the family on screen as it's set up there). Stops at a family with no
+// color labels at all (labels lost, or never labeled) and opens it to check.
+async function uploadAllFamilies() {
+  const date=document.getElementById('upload-date').value;
+  const location=document.getElementById('upload-location').value.trim();
+  if (!date||!location) { showToast('Enter date and location','error'); return; }
+  if (_batchCursor < 0 || !_batchQueue.length) return;
+  const btn=document.getElementById('upload-action-btn'), allBtn=document.getElementById('upload-all-btn');
+  btn.disabled=true; allBtn.disabled=true;
+  _uploadActive=true; window.addEventListener('beforeunload',_beforeUnloadGuard);
+  const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
+  const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
+  const total=_batchQueue.length;
+  let families=0, photos=0, failedPhotos=0, stoppedAt=-1, why='';
+  for (let idx=_batchCursor; idx<total; idx++) {
+    const fam=_batchQueue[idx];
+    const folder=idx===_batchCursor ? document.getElementById('upload-folder-name').value.trim() : (fam.name||'').trim();
+    let files, poses, labeled=true;
+    if (idx===_batchCursor && poseGroups.length) {
+      files=poseFiles; poses=getPoseGroupsForUpload();      // as set up on screen
+    } else {
+      files=sortedFamilyPhotos(fam.files);
+      const groups=labelPoseGroups(files, await readColorLabels(files));
+      labeled=groups.labeled;
+      poses=groups.order.map((lab, gi) => ({color: POSE_COLORS[gi % POSE_COLORS.length], label: `Pose ${gi + 1}`,
+                                            files: groups.byColor[lab].map(i => files[i].name)}));
+    }
+    if (!folder) why='has no family name';
+    else if (!files.length) why='has no photos';
+    else if (!labeled) why='has no color labels';
+    if (why) { stoppedAt=idx; break; }
+    _batchCursor=idx; renderBatchHeader();
+    const r=await uploadPoseFamily(date, location, folder, files, poses, (done, failed) => {
+      fill.style.width=Math.round(done/files.length*100)+'%';
+      label.textContent=`Family ${idx+1} of ${total} — ${folder}: ${done} / ${files.length} uploaded…`+(failed?` (${failed} failed)`:'');
+    });
+    if (!r) { stoppedAt=idx; why='couldn\'t start uploading'; break; }
+    families++; photos+=r.done-r.failed; failedPhotos+=r.failed;
+  }
+  _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard);
+  await loadSidebar();
+  if (stoppedAt>=0) {
+    const name=_batchQueue[stoppedAt].name||'This family';
+    loadBatchFamily(stoppedAt);
+    label.textContent=`${families} famil${families===1?'y':'ies'} uploaded — stopped at ${name}`;
+    showToast(`${name} ${why} — check its poses, then Upload`,'error');
+    btn.disabled=false; allBtn.disabled=false; updateUploadBtn();
+    return;
+  }
+  label.textContent=`All ${families} famil${families===1?'y':'ies'} uploaded — ${photos} photos`+(failedPhotos?`, ${failedPhotos} failed`:'');
+  showToast(failedPhotos ? `${failedPhotos} photos failed — upload those families again` : `All ${families} ${families===1?'family':'families'} uploaded — review then Push Live`, failedPhotos ? 'error' : undefined);
+  _batchQueue=[]; _batchCursor=-1;
+  document.getElementById('batch-header').style.display='none';
+  document.getElementById('drop-zone').style.display='';
+  clearPoseState();
+  uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
+  btn.disabled=false; allBtn.disabled=false;
+  setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
+}
+
 async function startUpload() {
   const date=document.getElementById('upload-date').value;
   const location=document.getElementById('upload-location').value.trim();
@@ -2579,27 +2690,13 @@ async function startUpload() {
     const btn=document.getElementById('upload-action-btn'); btn.disabled=true;
     const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
     const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
-    let done=0, failed=0;
-    const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
-    setProgress();
-    const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
-    if (!pr.ok) { showToast('Presign failed','error'); _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard); btn.disabled=false; progWrap.style.display='none'; return; }
-    const {urls}=await pr.json();
-    const allItems=urls.map((u,i)=>({...u,file:files[i]}));
-    async function poseputOne(it) {
-      for (let attempt=0;attempt<2&&!it.ok;attempt++) {
-        try { const res=await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}}); if(res.ok) it.ok=true; } catch(e) {}
-      }
-      done++; if(!it.ok) failed++; setProgress();
-    }
-    const timesReq=readExifTimes(files);          // read while the photos upload
-    await runPool(allItems, CONCURRENCY, poseputOne);
-    const keys=allItems.filter(it=>it.ok).map(it=>it.key);
     const poses=getPoseGroupsForUpload();
-    const times=await timesReq;
-    await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,keys,poses,times})});
+    const r=await uploadPoseFamily(date, location, folder, files, poses, (done, failed) => {
+      fill.style.width=Math.round(done/totalFiles*100)+'%';
+      label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:'');
+    });
+    if (!r) { showToast('Presign failed','error'); _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard); btn.disabled=false; progWrap.style.display='none'; return; }
+    const {done, failed}=r;
     const succeeded=done-failed;
     if (failed) {
       label.textContent=`Done — ${succeeded} uploaded, ${failed} failed`;
