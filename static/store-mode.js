@@ -101,11 +101,12 @@ function storeBuildUI() {
     tools.innerHTML = `<a class="store-head-btn" href="/eaglemount">Eagle Mount photos</a>
       <button type="button" class="store-head-btn" data-act="favs">${STORE_HEART} Favorites <span id="store-head-count"></span></button>
       <button type="button" class="store-head-btn" data-act="reset">Start over</button>`;
+    // The promo lines sit in the header, between the logo and the buttons (it stays at the top)
+    const promo = document.createElement('div');
+    promo.innerHTML = storePromoHTML('store-promo');
+    head.appendChild(promo.firstElementChild);
     head.appendChild(tools);
   }
-  const strip = document.createElement('div');
-  strip.innerHTML = storePromoHTML('store-promo');
-  document.querySelector('.custom-header')?.after(strip.firstElementChild);
 
   const bar = document.createElement('div');
   bar.id = 'store-bar';
@@ -278,6 +279,7 @@ function storeRenderFavorites() {
     return `<div class="store-fav-thumb">
         <button type="button" class="store-fav-open" data-act="view" data-i="${i}" aria-label="See this photo bigger">
           <img src="${escA(photoSrc(path, 'thumb'))}" alt="" loading="lazy">
+          <span class="store-fav-name">${escHtml(path.split('/').pop())}</span>
         </button>
         ${pose ? '' : `<button type="button" class="store-unfav" data-act="unfav" ${unfavAttrs(unfav)}
           aria-label="Remove this photo from favorites">${STORE_HEART}</button>`}
@@ -339,7 +341,7 @@ function storeView(i) {
   const it = _storeViewList[_storeViewAt];
   const v = document.getElementById('store-view');
   document.getElementById('store-view-img').src = photoSrc(it.path, 'medium');
-  document.getElementById('store-view-where').textContent = it.where;
+  document.getElementById('store-view-where').textContent = `${it.where} · ${it.path.split('/').pop()}`;
   document.getElementById('store-view-count').textContent = `${_storeViewAt + 1} of ${_storeViewList.length}`;
   v.querySelector('.store-view-remove').innerHTML = `${STORE_HEART} ${it.pose ? `Remove whole ${escHtml(it.pose)}` : 'Remove from favorites'}`;
   v.querySelectorAll('.store-view-nav').forEach(b => { b.hidden = _storeViewList.length < 2; });

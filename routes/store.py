@@ -18,8 +18,8 @@ router = APIRouter()
 _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
-_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=7">\n'
-                 '<script src="/static/store-mode.js?v=7"></script>')
+_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=8">\n'
+                 '<script src="/static/store-mode.js?v=8"></script>')
 
 
 def _store_page() -> str:

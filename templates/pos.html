@@ -478,6 +478,13 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .sc-print-thumb{position:relative;padding:0;border:none;background:none;cursor:pointer;display:block;border-radius:5px;overflow:hidden}
 .sc-print-thumb span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.65);color:#fff;font-size:.62rem;font-weight:700;border-radius:4px;padding:2px 6px}
 .sc-print-thumb.in-sale{outline:2px solid var(--accent)}
+.sc-print-thumb em{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.65);color:#fff;font-size:.6rem;font-style:normal;border-radius:4px;padding:1px 5px}
+.sc-thumb-wrap{position:relative}
+.sc-thumb-wrap em{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.65);color:#fff;font-size:.6rem;font-style:normal;border-radius:4px;padding:1px 5px}
+/* Photos the customer favorited, shown in their portrait session */
+.ap-photo-item.pr-fav{box-shadow:0 0 0 2.5px #ff5a7a}
+.pr-fav-tag{position:absolute;top:3px;right:4px;background:#ff5a7a;color:#fff;font-size:.55rem;font-weight:700;border-radius:3px;padding:1px 5px;pointer-events:none}
+.pr-fav-note{font-size:.68rem;color:#ff5a7a;font-weight:600;margin-left:.4rem}
 .stc-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);
   text-align:center;font-size:2.2rem;font-weight:800;letter-spacing:.45em;padding:.6rem .5rem .6rem 1rem;text-transform:uppercase;outline:none;font-family:var(--font)}
 .stc-input:focus{border-color:var(--accent)}
@@ -1093,7 +1100,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
         <div class="cust-bar-dropdown" id="cust-bar-dropdown"></div>
       </div>
       <!-- The customer's online saved cart (found by their email) -->
-      <button class="saved-cart-banner hidden" id="saved-cart-banner" onclick="openSavedCartModal()"></button>
+      <button class="saved-cart-banner hidden" id="saved-cart-banner" onclick="S.savedCart && S.savedCart.store_code ? posOpenStoreCode(S.savedCart.store_code) : openSavedCartModal()"></button>
 
       <!-- Cart section header -->
       <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);background:var(--surface);flex-shrink:0">
@@ -1352,7 +1359,7 @@ const S = {
   ap: { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData:[] },
 
   // Portraits
-  pr: { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set() },
+  pr: { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set(), favs: new Set() },
 
   // Private sessions
   privatePeople: 1,
@@ -1498,6 +1505,7 @@ function posSignedIn(photog, pin){
   showScreen('s-main');
   initMainPOS();
   checkSaleFinishedElsewhere();   // the app may have reloaded while staff were in Square
+  restoreStoreCode();
 }
 
 let _deviceChallenge = null;
@@ -1867,7 +1875,7 @@ function renderSavedCartBanner(){
 }
 function scThumbsHtml(paths){
   return `<div class="sc-modal-thumbs">${paths.slice(0, 24).map(p =>
-    `<img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">`).join('')}</div>`
+    `<div class="sc-thumb-wrap"><img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt=""><em>${escHtml(p.split('/').pop())}</em></div>`).join('')}</div>`
     + (paths.length > 24 ? `<div class="sc-modal-sub">+${paths.length - 24} more</div>` : '');
 }
 // The window stays open while things are added (each part shows "Added"), so staff can add
@@ -1886,6 +1894,7 @@ function openSavedCartModal(){
     ? `<button class="ap-add-btn" disabled style="opacity:.55">Added ✓</button>`
     : `<button class="ap-add-btn" onclick="${onclick}">${label}</button>`;
   const canAdd = (d.folders || []).some((f, fi) => (f.photos.length && !scInSale('photos:' + fi))
+    || (f.poses.length && !scInSale('portrait:' + fi))
     || f.prints.some((_, pi) => !scInSale(`print:${fi}:${pi}`)));
   const from = store
     ? `Favorited on ${escHtml(d.screen_name || 'a store screen')}.${d.status === 'sold' ? ' <b>Already sold.</b>' : ''} Tap a photo for a print.`
@@ -1902,8 +1911,10 @@ function openSavedCartModal(){
     }
     if(f.poses.length){
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.poses.map(p => escHtml(`${p.label}: ${p.whole ? 'whole pose' : p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's')}`)).join(' · ')}</span>
-        <button class="ap-add-btn" onclick="posOpenSavedPortrait(${fi})">Open session</button></div>`
-        + scThumbsHtml(f.poses.flatMap(p => p.paths));
+        <span style="display:flex;gap:.4rem;align-items:center">
+          <button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="posOpenSavedPortrait(${fi})">Open session</button>
+          ${addBtn('portrait:' + fi, `posAddSavedPortrait(${fi})`, 'Add to sale')}</span></div>`
+        + (store ? scPrintThumbsHtml(f.poses.flatMap(p => p.paths)) : scThumbsHtml(f.poses.flatMap(p => p.paths)));
     }
     f.prints.forEach((pr, pi) => {
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${escHtml(pr.size)} print of ${escHtml(pr.path.split('/').pop())}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}</span>
@@ -1912,7 +1923,8 @@ function openSavedCartModal(){
           ${addBtn(`print:${fi}:${pi}`, `posAddSavedPrint(${fi},${pi})`, 'Add to sale')}</span></div>`;
     });
   });
-  if((d.folders || []).some(f => f.poses.length)) html += `<div class="sc-modal-sub" style="margin-top:.6rem">Portrait poses: open the session to add them (pose pricing applies there).</div>`;
+  if((d.folders || []).some(f => f.poses.length)) html += `<div class="sc-modal-sub" style="margin-top:.6rem">Portraits: "Add to sale" adds the favorited whole poses and single photos at pose pricing; "Open session" shows them marked so you can change them.</div>`;
+  if(store) html += `<div style="margin-top:.6rem"><button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="openStoreCodeModal(true)">Use a different code</button></div>`;
   $('sc-modal-body').innerHTML = html;
   $('sc-modal').classList.remove('hidden');
 }
@@ -1999,6 +2011,10 @@ async function posAddAllSaved(){
     if(f.photos.length && !scInSale('photos:' + fi) && await posAddSavedPhotos(fi, true)) n += f.photos.length;
   }
   for(let fi = 0; fi < (d.folders || []).length; fi++){
+    const f = d.folders[fi];
+    if(f.poses.length && !scInSale('portrait:' + fi) && await posAddSavedPortrait(fi, true)) n += f.poses.length;
+  }
+  for(let fi = 0; fi < (d.folders || []).length; fi++){
     for(let pi = 0; pi < d.folders[fi].prints.length; pi++){
       if(!scInSale(`print:${fi}:${pi}`) && await posAddSavedPrint(fi, pi, true)) n++;
     }
@@ -2006,24 +2022,64 @@ async function posAddAllSaved(){
   showToast(n ? `Added to the sale` : 'Nothing new to add');
   openSavedCartModal();
 }
-async function posOpenSavedPortrait(fi){
+async function posLoadSavedPortrait(fi){
+  // Opens the family's session on the Portraits tile with the customer's favorites marked:
+  // whole poses ticked, single photos outlined. Returns {poses: [pose index], singles: [path]}.
   const f = S.savedCart.folders[fi];
-  closeSavedCartModal();
   openCategory('portraits', 'Portraits');
   $('pr-search-input').value = f.family || '';
   await portraitSearch();
   const idx = S.pr.sessions.findIndex(x => x.date === f.date && (x.last_name || x.name || '').toLowerCase() === (f.family || '').toLowerCase());
-  if(idx < 0){ showToast('That session is no longer on the POS'); return; }
+  if(idx < 0){ showToast('That session is no longer on the POS'); return null; }
   await portraitSelectSession(idx);
-  showToast('Saved: ' + f.poses.map(p => `${p.label} ${p.whole ? '(whole)' : '(' + p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's') + ')'}`).join(', '));
+  const poseOf = path => S.pr.poses.findIndex(p => p.photos.some(ph => ph.path === path));
+  const here = new Set(S.pr.photos.map(p => p.path));
+  const poses = new Set(), singles = [];
+  f.poses.forEach(sp => {
+    if(sp.whole){ const pi = sp.paths.map(poseOf).find(i => i >= 0); if(pi !== undefined) poses.add(pi); }
+    else sp.paths.filter(p => here.has(p)).forEach(p => singles.push(p));
+  });
+  S.pr.favs = new Set(singles);
+  S.pr.poses.forEach((p, pi) => {
+    p.favWhole = poses.has(pi);
+    if(p.photos.some(ph => S.pr.favs.has(ph.path))) p.expanded = true;
+  });
+  S.pr.selectedPoses = new Set(poses);
+  renderPortraitPoses();
+  renderPortraitSelCount();
+  return {poses: [...poses], singles};
+}
+async function posOpenSavedPortrait(fi){
+  closeSavedCartModal();
+  const m = await posLoadSavedPortrait(fi);
+  if(!m) return;
+  showToast(m.poses.length
+    ? `Favorite poses are ticked${m.singles.length ? ', favorite photos are outlined' : ''}: tap "Add" to add them`
+    : 'Favorite photos are outlined: tap each one to add it');
+}
+async function posAddSavedPortrait(fi, quiet){
+  // The favorited whole poses and single photos, added at the session's pose pricing
+  const m = await posLoadSavedPortrait(fi);
+  if(!m) return false;
+  if(!m.poses.length && !m.singles.length){ showToast('Those photos are no longer on the POS'); return false; }
+  const before = new Set(S.cart.map(i => i.id));
+  if(m.poses.length){ S.pr.selectedPoses = new Set(m.poses); portraitAddSelectedPoses(); }
+  m.singles.forEach(path => { S.pr.selectedPoses.clear(); S.pr.selected = new Set([path]); portraitAddToCart(); });
+  S.cart.filter(i => !before.has(i.id)).forEach(i => { i._savedKey = scKey('portrait:' + fi); });
+  renderCart();
+  if(!quiet) showToast([m.poses.length && `${m.poses.length} pose${m.poses.length === 1 ? '' : 's'}`,
+                        m.singles.length && `${m.singles.length} single photo${m.singles.length === 1 ? '' : 's'}`].filter(Boolean).join(' + ') + ' added');
+  openSavedCartModal();
+  return true;
 }
 async function posSavedPrint(fi, pi){
   // "Other size": the print sizes window for that photo
   const pr = S.savedCart.folders[fi].prints[pi];
   closeSavedCartModal();
   _ptPhoto = {path: pr.path, filename: pr.path.split('/').pop()};
-  if(pr.partner_pct) openPSM(_ptPhoto, false, pr.partner_pct, pr.partner_name, true);
-  else openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(pr.path)));
+  if(pr.partner_pct) await openPSM(_ptPhoto, false, pr.partner_pct, pr.partner_name, true);
+  else await openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(pr.path)));
+  if(!$('psm-overlay').classList.contains('hidden')) _psmAfter = openSavedCartModal;
   showToast(`Saved choice: ${pr.size}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}`);
 }
 
@@ -2032,33 +2088,61 @@ async function posSavedPrint(fi, pi){
 // like a saved cart: each folder's favorites go in as digital photos in one tap, and each photo
 // opens its print sizes (logo there too). The code goes with the sale; when the sale is recorded
 // the store screen thanks the customer and starts over.
-function openStoreCodeModal(){
+// The code stays with the sale (also across a reload) until it's done: the Store Code button and
+// the banner open it again with whatever the customer has hearted since.
+const STORE_CODE_KEY = 'ci_pos_store_code';
+S.storeCode = (() => { try { return localStorage.getItem(STORE_CODE_KEY) || ''; } catch(e) { return ''; } })();
+function setStoreCode(code){
+  S.storeCode = code || '';
+  try { if(S.storeCode) localStorage.setItem(STORE_CODE_KEY, S.storeCode); else localStorage.removeItem(STORE_CODE_KEY); } catch(e){}
+}
+function openStoreCodeModal(other){
+  if(S.storeCode && !other){ posOpenStoreCode(S.storeCode); return; }
+  closeSavedCartModal();
   $('stc-input').value = '';
   $('stc-msg').textContent = ''; $('stc-msg').className = 'stc-msg';
   $('stc-modal').classList.remove('hidden');
   setTimeout(() => $('stc-input').focus(), 50);
 }
 function closeStoreCodeModal(){ $('stc-modal').classList.add('hidden'); }
-async function posOpenStoreCode(){
-  const code = $('stc-input').value.trim().toUpperCase();
+async function posOpenStoreCode(again){
+  // again: the code already with this sale (fetched fresh); otherwise the one typed in the box
+  const code = (again || $('stc-input').value).trim().toUpperCase();
   const msg = $('stc-msg');
-  if(!/^[A-Z]{4}$/.test(code)){ msg.textContent = 'Type the 4 letters from the store screen'; msg.className = 'stc-msg err'; return; }
-  msg.textContent = 'Looking…'; msg.className = 'stc-msg';
+  const say = (t, err) => { if(again){ if(t) showToast(t); } else { msg.textContent = t; msg.className = 'stc-msg' + (err ? ' err' : ''); } };
+  if(!/^[A-Z]{4}$/.test(code)){ say('Type the 4 letters from the store screen', true); return; }
+  say('Looking…');
   $('stc-open-btn').disabled = true;
   try {
     const r = await fetch('/api/pos/store-code?code=' + encodeURIComponent(code), {headers: posPinHeaders()});
     const d = await r.json().catch(() => ({}));
-    if(!r.ok){ msg.textContent = d.error || 'No favorites under that code today'; msg.className = 'stc-msg err'; return; }
-    if(!(d.summary || {}).items){ msg.textContent = 'The customer cleared their favorites. Ask them to send again.'; msg.className = 'stc-msg err'; return; }
+    if(!r.ok){
+      if(again){ setStoreCode(''); S.savedCart = null; renderSavedCartBanner(); }
+      say(d.error || 'No favorites under that code today', true); return;
+    }
+    if(!(d.summary || {}).items){ say('The customer cleared their favorites. Ask them to send again.', true); return; }
     S.savedCart = d;
-    S.storeCode = d.store_code;
+    setStoreCode(d.store_code);
     closeStoreCodeModal();
     renderSavedCartBanner();
     openSavedCartModal();
   } catch(e){
-    msg.textContent = 'Could not connect. Try again.'; msg.className = 'stc-msg err';
+    say('Could not connect. Try again.', true);
   } finally {
     $('stc-open-btn').disabled = false;
+  }
+}
+async function restoreStoreCode(){
+  // After a reload or signing in again: the code that was with this sale
+  if(S.storeCode && !S.savedCart){
+    try {
+      const r = await fetch('/api/pos/store-code?code=' + encodeURIComponent(S.storeCode), {headers: posPinHeaders()});
+      if(!r.ok){ setStoreCode(''); return; }
+      const d = await r.json();
+      if(d.status === 'sold'){ setStoreCode(''); return; }
+      S.savedCart = d;
+      renderSavedCartBanner();
+    } catch(e){}
   }
 }
 function scPrintThumbsHtml(paths){
@@ -2067,13 +2151,14 @@ function scPrintThumbsHtml(paths){
     const printed = S.cart.some(i => i.category === 'prints' && (i.photo_paths || []).includes(p));
     return `<button type="button" class="sc-print-thumb${printed ? ' in-sale' : ''}" data-path="${escHtml(p)}" onclick="posStorePrint(this.dataset.path)"
       aria-label="Print of ${escHtml(p.split('/').pop())}"><img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">
-      <span>${printed ? 'Print added' : 'Print'}</span></button>`;
+      <em>${escHtml(p.split('/').pop())}</em><span>${printed ? 'Print added' : 'Print'}</span></button>`;
   }).join('')}</div>`;
 }
-function posStorePrint(path){
+async function posStorePrint(path){
   closeSavedCartModal();
   _ptPhoto = {path, filename: path.split('/').pop()};
-  openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(path)));
+  await openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(path)));
+  if(!$('psm-overlay').classList.contains('hidden')) _psmAfter = openSavedCartModal;   // back to the favorites after
 }
 
 // "Saved Online" tab: look up a saved cart when a customer says they saved photos on the website
@@ -2953,6 +3038,7 @@ async function portraitSelectSession(idx){
   S.pr.session = s;
   S.pr.selected.clear();
   S.pr.selectedPoses.clear();
+  S.pr.favs = new Set();
   $('pr-results').innerHTML = '';
   $('pr-photos-view').classList.remove('hidden');
   $('pr-breadcrumb-name').textContent = `${s.last_name || s.name || ''} — ${s.date || ''}`;
@@ -3020,10 +3106,12 @@ function renderPortraitPoses(){
       const fn = p.filename || (p.path||'').split('/').pop() || '';
       const num = ((fn.match(/\d+/g))||[]).pop() || (pi2+1);
       const sel = S.pr.selected.has(p.path||'');
-      return `<div class="ap-photo-item${sel?' selected':''}" id="prph-${pose.id}-${pi2}" onclick="portraitToggle(${pose.id},${pi2})">
+      const fav = S.pr.favs.has(p.path||'');
+      return `<div class="ap-photo-item${sel?' selected':''}${fav?' pr-fav':''}" id="prph-${pose.id}-${pi2}" onclick="portraitToggle(${pose.id},${pi2})">
         <img class="ap-photo-img" src="/api/photo?path=${encodeURIComponent(p.path||'')}&size=thumb&nowm=1" loading="lazy" decoding="async" alt="">
         <div class="ap-photo-overlay"><div class="ap-check">&#10003;</div></div>
         <div class="ap-photo-num">${num}</div>
+        ${fav ? '<div class="pr-fav-tag">FAVORITE</div>' : ''}
       </div>`;
     }).join('') : '';
     return `
@@ -3032,7 +3120,9 @@ function renderPortraitPoses(){
           <div style="display:flex;align-items:center;gap:.55rem">
             <div class="pr-pose-check${isSel?' checked':''}">${isSel ? '&#10003;' : ''}</div>
             <div>
-              <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos)</span></div>
+              <div class="pr-pose-name">Pose ${pi+1} <span style="font-size:.7rem;font-weight:400;color:var(--muted)">(${pose.photos.length} photos)</span>${
+                pose.favWhole ? '<span class="pr-fav-note">Favorite: whole pose</span>'
+                : pose.photos.some(p => S.pr.favs.has(p.path||'')) ? '<span class="pr-fav-note">Favorite photos inside</span>' : ''}</div>
             </div>
           </div>
           <span onclick="event.stopPropagation();portraitTogglePoseExpand(${pi})" style="color:var(--muted);font-size:1rem;padding:.2rem .4rem;cursor:pointer">${pose.expanded ? '&#8963;' : '&#8964;'}</span>
@@ -3783,12 +3873,17 @@ async function openPSM(photo, halfDefault, pkgPct, pkgLabel, noCoupon){
   _psm.noCoupon = !!noCoupon;                         // partner prints: no discount codes on top
   _psm.logo = false;
   _psm.ship = false;
+  _psmAfter = null;
   renderPSM();
   $('psm-overlay').classList.remove('hidden');
 }
 
+let _psmAfter = null;   // what to show again when the print window closes (the saved/store favorites)
 function closePSM(){
   $('psm-overlay').classList.add('hidden');
+  const after = _psmAfter;
+  _psmAfter = null;
+  if(after) after();
 }
 
 function psmBackdrop(e){
@@ -3910,6 +4005,7 @@ function psmToggleShip(){
 
 function psmCustomSize(){
   const p = _psm.photo;
+  _psmAfter = null;      // the custom-size window comes next instead
   closePSM();
   openItemModal({type:'print',label:'Custom Print',price:0,basePrice:0,category:'prints',
     _size_idx:0,_half:_psm.half,_customSize:true,
@@ -3929,7 +4025,7 @@ function psmAddToCart(){
     const s = sizes[idx];
     if(!s) return;
     const baseP = Math.round(s.price * psmFactor() * 100) / 100;
-    const logoPrice = _psm.logo ? 2 : 0;
+    const logoPrice = _psm.logo ? LOGO_FEE : 0;
     const price = baseP + logoPrice;
     const cartItem = {
       category: 'prints',
@@ -5224,6 +5320,7 @@ async function completeCheckout(squareTxId){
 }
 
 function showConfirmation(data, inOtherBrowser){
+  setStoreCode('');                // the store favorites were sold with this sale
   // The customer's download page as a QR code: they scan it and save their photos right away
   const qr = $('confirm-qr');
   if(data && data.token){
@@ -5261,12 +5358,12 @@ function newSale(){
   S.pendingOrder = null;
   S.customer = { first:'', last:'', email:'', phone:'', street:'', city:'', state:'', zip:'' };
   S.ap = { query:'', families:[], family:null, photos:[], selected: new Set(), _dateData: S.ap._dateData || [] };
-  S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set() };
+  S.pr = { query:'', sessions:[], session:null, photos:[], poses:[], selected: new Set(), selectedPoses: new Set(), favs: new Set() };
   S.privatePeople = 1;
   S._im = null;
   S.pkg = null;
   pkgStopAdding();
-  _scEmail = ''; S.savedCart = null; S.storeCode = ''; renderSavedCartBanner();
+  _scEmail = ''; S.savedCart = null; setStoreCode(''); renderSavedCartBanner();
   // Reset inner photo views so next sale starts fresh
   try { apClearPhotos(); } catch(e){}
   try { portraitClearPhotos(); } catch(e){}

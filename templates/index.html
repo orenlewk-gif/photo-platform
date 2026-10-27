@@ -989,6 +989,11 @@ select.co-input option { background:#0a1e2e; color:#fff; }
 .cal-label-text{font-size:.68rem;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.72);margin-bottom:5px}
 .cal-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:8px 12px;color:rgba(255,255,255,.72);font-size:.88rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:space-between;gap:10px;min-width:160px;font-family:monospace;transition:border-color .2s}
 .cal-btn:hover{border-color:rgba(255,255,255,.4);color:rgba(255,255,255,.7)}
+.cal-row{display:inline-flex;align-items:center;gap:8px}
+.cal-step{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.06);color:#fff;font-size:1.4rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0 0 3px;transition:border-color .2s,background .2s}
+.cal-step:hover:not(:disabled){border-color:rgba(255,255,255,.45);background:rgba(255,255,255,.12)}
+.cal-step:disabled{opacity:.3;cursor:default}
+.cal-step:focus-visible{outline:3px solid #fff;outline-offset:2px}
 #cal-wrap{position:relative}
 #cal-dropdown{position:absolute;top:calc(100% + 8px);right:0;background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:1rem;width:270px;z-index:20000;box-shadow:0 8px 32px rgba(0,0,0,.5)}
 .cal-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem}
@@ -1104,8 +1109,10 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
   <!-- Calendar widget -->
   <div id="cal-wrap" style="text-align:center;margin-bottom:1.5rem">
     <div class="cal-label-text">Search by Day</div>
+    <div class="cal-row">
+    <button type="button" class="cal-step" id="cal-prev" onclick="calStep(-1)" aria-label="Day before (with photos)">&#8249;</button>
     <div style="position:relative;display:inline-block">
-      <button class="cal-btn" onclick="toggleCal(event)" aria-label="Search by day: choose a date"><span>mm/dd/yyyy</span><span style="font-size:.9rem" aria-hidden="true">&#128197;</span></button>
+      <button class="cal-btn" onclick="toggleCal(event)" aria-label="Search by day: choose a date"><span id="cal-btn-day">mm/dd/yyyy</span><span style="font-size:.9rem" aria-hidden="true">&#128197;</span></button>
       <div id="cal-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:2000;background:#0d2035;border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:1rem;width:270px;box-shadow:0 12px 40px rgba(0,0,0,.6)">
         <div class="cal-hdr">
           <button onclick="calNav(-1);event.stopPropagation()">‹</button>
@@ -1117,6 +1124,8 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
         </div>
         <div class="cal-grid" id="cal-grid"></div>
       </div>
+    </div>
+    <button type="button" class="cal-step" id="cal-next" onclick="calStep(1)" aria-label="Day after (with photos)">&#8250;</button>
     </div>
   </div>
 
@@ -1671,6 +1680,7 @@ window.addEventListener('popstate', e => {
 
 async function renderState(state) {
   hideMsg();
+  calShowDay(state.date || '');
   switch (state.view) {
     case 'days':      await showDays();                                  break;
     case 'locations': await showLocations(state.date);                   break;
@@ -6067,11 +6077,13 @@ let _calY = new Date().getFullYear();
 let _calM = new Date().getMonth();
 const _calMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
+let _calDay = '', _calList = [];     // the day being looked at; every day with photos, oldest first
 async function _loadCalDates() {
   if (_calDates) return;
   const res = await fetch('/api/dates');
   const d = await res.json();
   _calDates = new Set(d.dates);
+  _calList = [...d.dates].sort();
   if (d.dates.length) {
     const [y, m] = d.dates[0].split('-').map(Number);
     _calY = y; _calM = m - 1;
@@ -6112,6 +6124,30 @@ function calNav(dir) {
   if (_calM > 11) { _calM = 0; _calY++; }
   if (_calM < 0)  { _calM = 11; _calY--; }
   _renderCal();
+}
+
+// The arrows beside the date go to the day before or after that has photos (with no day open
+// yet, either one opens the most recent day)
+function _calNeighbor(dir) {
+  if (!_calList.length) return '';
+  if (!_calDay) return _calList[_calList.length - 1];
+  return dir < 0 ? [..._calList].reverse().find(d => d < _calDay) || ''
+                 : _calList.find(d => d > _calDay) || '';
+}
+async function calShowDay(ds) {
+  _calDay = ds;
+  const [y, m, d] = (ds || '').split('-');
+  document.getElementById('cal-btn-day').textContent = ds ? `${m}/${d}/${y}` : 'mm/dd/yyyy';
+  try { await _loadCalDates(); } catch (e) { return; }
+  if (_calDay !== ds) return;                       // a newer day is already showing
+  if (ds) { _calY = +y; _calM = +m - 1; }
+  document.getElementById('cal-prev').disabled = !_calNeighbor(-1);
+  document.getElementById('cal-next').disabled = !_calNeighbor(1);
+}
+async function calStep(dir) {
+  try { await _loadCalDates(); } catch (e) { return; }
+  const ds = _calNeighbor(dir);
+  if (ds) calPick(ds);
 }
 
 function calPick(ds) {
