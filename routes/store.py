@@ -18,16 +18,18 @@ router = APIRouter()
 _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
-_STORE_ADDITIONS = ('<script>window.STORE_MODE = true;</script>\n'
-                    '<link rel="stylesheet" href="/static/store-mode.css?v=5">\n'
-                    '<script src="/static/store-mode.js?v=5"></script>')
+_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=6">\n'
+                 '<script src="/static/store-mode.js?v=6"></script>')
 
 
 def _store_page() -> str:
     html = open("templates/index.html").read()
     if _STORE_MARK not in html:
         raise RuntimeError("templates/index.html is missing the store-mode mark")
-    return html.replace(_STORE_MARK, _STORE_ADDITIONS, 1)
+    # The promo lines' numbers come from the same settings the sale uses, so they stay true
+    promo = {"print_off": main.PRINT_WITH_DIGITAL_PCT}
+    additions = f'<script>window.STORE_MODE = true; window.STORE_PROMO = {json.dumps(promo)};</script>\n' + _STORE_ASSETS
+    return html.replace(_STORE_MARK, additions, 1)
 
 
 @router.get("/store", response_class=HTMLResponse)

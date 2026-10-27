@@ -1228,6 +1228,11 @@ def _note_blocked_store_visit(info: dict) -> None:
         _send_store_screen_email(info)
 
 
+# Prints of photos also bought as digital files are this much off (online checkout; the POS's
+# print window starts at half price too). Store screens advertise it from here.
+PRINT_WITH_DIGITAL_PCT = 50
+
+
 # ── Send to sale: a store screen's favorites, picked up at the POS with a 4-letter code ────────
 # The customer taps "Send to sale" on a store screen. Their favorites are kept under a short code
 # (letters only, no I or O; good until the end of the day, Big Sky time) that staff type at the
@@ -1679,16 +1684,17 @@ def _price_order(body: dict, partner_prints: dict | None = None) -> dict:
         logo = bool(p.get("logo"))
         base = float(sizes[size_idx].get("price", 0))
         partner_pct, partner_name = partner_prints.get(p.get("path") or "", (0, ""))
-        if partner_pct and base * (1 - partner_pct / 100) < (base / 2 if half else base):
+        with_digital = base * (1 - PRINT_WITH_DIGITAL_PCT / 100)
+        if partner_pct and base * (1 - partner_pct / 100) < (with_digital if half else base):
             half = False                          # the partner discount is the better one
             base = round(base * (1 - partner_pct / 100), 2)
         else:
             partner_pct = 0
-            base = base / (2 if half else 1)
+            base = with_digital if half else base
         price = base + (logo_fee if logo else 0)
         meta = []
         if half:
-            meta.append({"key": "Price", "value": "50% off (digital photo also purchased)"})
+            meta.append({"key": "Price", "value": f"{PRINT_WITH_DIGITAL_PCT}% off (digital photo also purchased)"})
         if partner_pct:
             meta.append({"key": "Price", "value": f"{partner_pct:g}% off ({partner_name} photo)"})
             # hidden (leading _): lets the paid order record this print in the partner's report

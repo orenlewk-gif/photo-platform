@@ -53,6 +53,19 @@ function storeFavoritesChanged() {
   if (document.getElementById('store-favs')?.classList.contains('open')) storeRenderFavorites();
 }
 
+// ── Promo lines: what the counter offers (the numbers come from the server's settings) ──
+function storePromoLines() {
+  const off = Number((window.STORE_PROMO || {}).print_off) || 0;   // (built before the gallery script: no escHtml yet)
+  const lines = [];
+  if (off) lines.push(`<b>${off}% off prints</b> of the photos you get as digital files`);
+  lines.push('Add the <b>Big Sky Resort logo</b> to your favorite photos!');
+  return lines;
+}
+
+function storePromoHTML(cls) {
+  return `<div class="${cls}">${storePromoLines().map(l => `<p>${l}</p>`).join('')}</div>`;
+}
+
 // ── Screen furniture: the favorites bar and the header buttons ──
 function storeRenderBar() {
   const bar = document.getElementById('store-bar');
@@ -90,6 +103,9 @@ function storeBuildUI() {
       <button type="button" class="store-head-btn" data-act="reset">Start over</button>`;
     head.appendChild(tools);
   }
+  const strip = document.createElement('div');
+  strip.innerHTML = storePromoHTML('store-promo');
+  document.querySelector('.custom-header')?.after(strip.firstElementChild);
 
   const bar = document.createElement('div');
   bar.id = 'store-bar';
@@ -117,6 +133,7 @@ function storeBuildUI() {
         <button type="button" class="store-close" data-act="close" aria-label="Close">Close</button>
       </div>
       <div id="store-favs-body"></div>
+      ${storePromoHTML('store-promo-note')}
       <div class="store-modal-foot">
         <button type="button" class="store-clear" data-act="clear">Clear all favorites</button>
         <span class="store-foot-actions">
@@ -491,6 +508,7 @@ function storeRenderCode() {
       and you choose your digital photos and prints there.</p>
     <p class="store-code-status${_storeCodeStatus === 'opened' ? ' opened' : ''}" aria-live="polite">${
       _storeCodeStatus === 'opened' ? 'The counter has your favorites' : 'Waiting at the counter'}</p>
+    ${storePromoHTML('store-promo-note')}
     <p class="store-note store-small">Still looking? Keep hearting photos: they go along with this code.</p>
     <div class="store-modal-foot"><button type="button" class="btn" data-act="close">Keep looking</button></div>`;
 }

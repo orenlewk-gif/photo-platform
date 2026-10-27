@@ -285,3 +285,10 @@ def test_codes_last_until_the_end_of_the_day(main_module, emails, sends, client)
     main_module._store_sends.clear()
     assert client.get("/api/pos/store-code", params={"code": code}, headers=PIN).status_code == 404
     assert c.get(f"/api/store/send/{code}").status_code == 404
+
+
+def test_the_promo_number_is_the_one_checkout_uses(admin_client, main_module, monkeypatch):
+    # The page says what the sale does: change the setting and the promo follows
+    assert 'window.STORE_PROMO = {"print_off": 50}' in admin_client.get("/store").text
+    monkeypatch.setattr(main_module, "PRINT_WITH_DIGITAL_PCT", 40)
+    assert 'window.STORE_PROMO = {"print_off": 40}' in admin_client.get("/store").text
