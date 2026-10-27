@@ -175,6 +175,14 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .pose-thumb .pt-badge{position:absolute;top:3px;right:3px;width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(0,0,0,.5);display:none}
 .pose-thumb.pt-assigned .pt-badge{display:block}
 .pose-thumb .pt-num{position:absolute;bottom:2px;left:4px;font-size:.52rem;color:rgba(255,255,255,.55);text-shadow:0 1px 2px rgba(0,0,0,.8);line-height:1}
+/* Photos with no color label (from culling): flagged before upload */
+.pose-thumb .pt-nolabel{display:none;position:absolute;bottom:2px;right:3px;background:#e07a1f;color:#fff;font-size:.5rem;font-weight:700;border-radius:3px;padding:1px 4px;line-height:1.3}
+.pose-thumb.pt-unlabeled .pt-nolabel{display:block}
+.pose-warn{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem;padding:.5rem .7rem;border-radius:7px;
+  background:rgba(224,122,31,.12);border:1px solid rgba(224,122,31,.45);color:#f5b26b;font-size:.76rem;line-height:1.45}
+.pose-warn .pose-tbtn{margin-left:auto}
+.choice-list{margin:.2rem 0 0;padding-left:1.1rem;font-size:.82rem;color:rgba(255,255,255,.75);line-height:1.6;max-height:40vh;overflow:auto}
+.choice-text{font-size:.86rem;color:rgba(255,255,255,.8);line-height:1.5}
 .pose-empty-hint{font-size:.76rem;color:rgba(255,255,255,.28);text-align:center;padding:.75rem 0}
 
 /* ── Date overview view ── */
@@ -633,6 +641,17 @@ input[type=file]{display:none}
 </div>
 
 <!-- Move folder modal -->
+<div class="modal-overlay" id="choice-modal" role="dialog" aria-modal="true" aria-labelledby="choice-title">
+  <div class="modal-box" style="width:440px" onclick="event.stopPropagation()">
+    <h3 id="choice-title"></h3>
+    <div id="choice-body"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" id="choice-no"></button>
+      <button class="modal-ok" id="choice-yes"></button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="move-modal-overlay" onclick="closeMoveModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()">
     <h3>Move Folder</h3>
@@ -762,11 +781,15 @@ async function readColorLabel(f) {
     return m ? m[1].trim() : '';
   } catch(e) { return ''; }
 }
+const _labelCache = new WeakMap();   // File -> its label (read once: checked before upload and again for the poses)
 async function readColorLabels(files) {
   const out = new Map();
   const list = [...files];
   for (let i = 0; i < list.length; i += 16)
-    await Promise.all(list.slice(i, i + 16).map(async f => out.set(f, await readColorLabel(f))));
+    await Promise.all(list.slice(i, i + 16).map(async f => {
+      if (!_labelCache.has(f)) _labelCache.set(f, await readColorLabel(f));
+      out.set(f, _labelCache.get(f));
+    }));
   return out;
 }
 let PARTNERS = [];                 // [{id, name, label}] from /api/admin/partners
@@ -827,6 +850,7 @@ let _batchQueue  = [];     // [{name, files}] for multi-family portrait batch
 let _batchCursor = -1;     // index into _batchQueue; -1 = not in batch mode
 let poseGroups = [];       // [{color, label, indices: Set}]
 let poseLastClick = -1;    // for shift-click range
+let poseNoLabel = new Set();  // indices of this family's photos with no color label (when some others have one)
 function _isPoseMode() { return poseFiles.length > 0; }
 
 let _uploadCategories = [];
@@ -2239,7 +2263,7 @@ function _currentLocationIsPortrait() {
 
 function clearPoseState() {
   poseObjURLs.forEach(u => URL.revokeObjectURL(u));
-  poseFiles = []; poseObjURLs = []; poseSelection = new Set(); poseGroups = []; poseLastClick = -1;
+  poseFiles = []; poseObjURLs = []; poseSelection = new Set(); poseGroups = []; poseLastClick = -1; poseNoLabel = new Set();
   const panel = document.getElementById('pose-assign-panel');
   panel.style.display = 'none';
   panel.innerHTML = '';
@@ -2323,9 +2347,11 @@ function labelPoseGroups(files, labels) {
 
 async function posesFromLabels(imgs) {
   const labels = await readColorLabels(imgs);
-  if (poseFiles !== imgs || poseGroups.length) return;      // another family loaded, or poses already picked
+  if (poseFiles !== imgs) return;                            // another family loaded
   const {order, byColor} = labelPoseGroups(imgs, labels);
-  if (!order.length) return;
+  // A family with some labels: the photos without one are flagged (a missed label while culling)
+  poseNoLabel = new Set(order.length ? (byColor[''] || []) : []);
+  if (poseGroups.length || !order.length) { renderPosePanel(true); return; }   // poses already picked by hand
   poseGroups = order.map((lab, gi) => ({color: POSE_COLORS[gi % POSE_COLORS.length], label: `Pose ${gi + 1}`,
                                         indices: new Set(byColor[lab])}));
   renderPosePanel(true);
@@ -2363,11 +2389,12 @@ function renderPosePanel(fullRebuild) {
       const isSel = poseSelection.has(i);
       const grpIdx = poseGroups.findIndex(g => g.indices.has(i));
       const color = grpIdx >= 0 ? POSE_COLORS[grpIdx % POSE_COLORS.length] : '';
-      thumbsHtml += `<div class="pose-thumb${isSel?' pt-selected':''}${grpIdx>=0?' pt-assigned':''}"
+      thumbsHtml += `<div class="pose-thumb${isSel?' pt-selected':''}${grpIdx>=0?' pt-assigned':''}${poseNoLabel.has(i)?' pt-unlabeled':''}"
         data-idx="${i}" onclick="poseThumbClick(event,${i})">
         <img src="${esc(poseObjURLs[i])}" alt="${esc(f.name)}">
         <div class="pt-badge" style="${color?'background:'+color:''}"></div>
         <div class="pt-num">${i+1}</div>
+        <div class="pt-nolabel">NO LABEL</div>
       </div>`;
     }
     panel.innerHTML = `
@@ -2383,6 +2410,7 @@ function renderPosePanel(fullRebuild) {
         ${poseGroups.length ? `<button class="pose-tbtn" id="pose-btn-reset" onclick="clearPoseGroups()" style="margin-left:auto;color:rgba(255,80,80,.7)">Reset Poses</button>` : '<span id="pose-btn-reset" style="display:none"></span>'}
       </div>
       <div class="pose-legend" id="pose-legend">${legendHtml||'<span class="pose-empty-hint">Select photos and click + New Pose to begin</span>'}</div>
+      <div id="pose-warn">${poseWarnHtml()}</div>
       <div class="pose-grid">${thumbsHtml}</div>
     `;
     return;
@@ -2407,6 +2435,8 @@ function renderPosePanel(fullRebuild) {
 
   const legendEl = panel.querySelector('#pose-legend');
   if (legendEl) legendEl.innerHTML = legendHtml || '<span class="pose-empty-hint">Select photos and click + New Pose to begin</span>';
+  const warnEl = panel.querySelector('#pose-warn');
+  if (warnEl) warnEl.innerHTML = poseWarnHtml();
 
   panel.querySelectorAll('.pose-thumb').forEach(el => {
     const i = parseInt(el.dataset.idx, 10);
@@ -2441,6 +2471,91 @@ function poseThumbClick(e, idx) {
   }
   poseLastClick = idx;
   renderPosePanel();
+}
+
+// ── Photos with no color label ──
+// A family culled with color labels (one per pose) where some photos have none: usually a
+// missed label. They're flagged here and before upload; uploaded as they are, they're a pose
+// of their own. Photos left out of every pose are flagged the same way.
+function poseUnassigned() {
+  const assigned = new Set(poseGroups.flatMap(g => [...g.indices]));
+  return [...Array(poseFiles.length).keys()].filter(i => !assigned.has(i));
+}
+function poseNoLabelOwnPose() {
+  // The poses made only of photos with no label (photos moved into a labeled pose are fine)
+  return poseGroups.filter(g => g.indices.size && [...g.indices].every(i => poseNoLabel.has(i)));
+}
+function poseWarnHtml() {
+  if (!poseNoLabel.size) return '';
+  const own = poseNoLabelOwnPose();
+  const n = poseNoLabel.size;
+  return `<div class="pose-warn"><span><b>${n} photo${n === 1 ? ' has' : 's have'} no color label.</b> ${
+    own.length ? `${n === 1 ? 'It is' : 'They are'} in ${own.map(g => esc(g.label)).join(', ')} on ${n === 1 ? 'its' : 'their'} own.` : `Check ${n === 1 ? 'it is' : 'they are'} in the right pose.`}
+    Select ${n === 1 ? 'it' : 'them'} and click a pose to move ${n === 1 ? 'it' : 'them'}, or upload as is.</span>
+    <button class="pose-tbtn" onclick="poseSelectNoLabel()">Select ${n === 1 ? 'it' : 'them'}</button></div>`;
+}
+function poseSelectNoLabel() { poseSelection = new Set(poseNoLabel); renderPosePanel(); }
+
+let _choiceAnswer = null;
+function askChoice(title, bodyHtml, yes, no) {
+  // A two-button question; resolves true for yes
+  return new Promise(resolve => {
+    document.getElementById('choice-title').textContent = title;
+    document.getElementById('choice-body').innerHTML = bodyHtml;
+    const y = document.getElementById('choice-yes'), n = document.getElementById('choice-no');
+    y.textContent = yes; n.textContent = no;
+    const done = v => { document.getElementById('choice-modal').classList.remove('open'); y.onclick = n.onclick = null; resolve(v); };
+    y.onclick = () => done(true); n.onclick = () => done(false);
+    document.getElementById('choice-modal').classList.add('open');
+    y.focus();
+  });
+}
+
+// Before a family's upload: photos in no pose, or photos with no label in a pose of their own.
+// Returns true to go ahead (photos in no pose then become a pose of their own).
+async function checkPosesBeforeUpload() {
+  const loose = poseUnassigned();
+  if (loose.length) {
+    const ok = await askChoice(`${loose.length} photo${loose.length === 1 ? ' is' : 's are'} not in a pose`,
+      `<p class="choice-text">Put ${loose.length === 1 ? 'it' : 'them'} in a pose first, or upload ${loose.length === 1 ? 'it' : 'them'} as a pose of ${loose.length === 1 ? 'its' : 'their'} own.</p>`,
+      'Upload anyway', loose.length === 1 ? 'Put it in a pose' : 'Put them in poses');
+    if (!ok) { poseSelection = new Set(loose); renderPosePanel(); return false; }
+    poseGroups.push({color: POSE_COLORS[poseGroups.length % POSE_COLORS.length], label: `Pose ${poseGroups.length + 1}`, indices: new Set(loose)});
+    renderPosePanel(); updateUploadBtn();
+  }
+  const own = poseNoLabelOwnPose();
+  if (own.length) {
+    const n = own.reduce((a, g) => a + g.indices.size, 0);
+    const ok = await askChoice(`${n} photo${n === 1 ? ' has' : 's have'} no color label`,
+      `<p class="choice-text">${n === 1 ? 'It goes' : 'They go'} on the site as ${own.map(g => esc(g.label)).join(', ')}, a pose of ${n === 1 ? 'its' : 'their'} own.
+       If ${n === 1 ? 'it belongs' : 'they belong'} with another pose, label ${n === 1 ? 'it' : 'them'} first.</p>`,
+      'Upload anyway', n === 1 ? 'Label it' : 'Label them');
+    if (!ok) { poseSelectNoLabel(); return false; }
+  }
+  return true;
+}
+
+// "Upload all families": the families with photos missing a label, listed before anything uploads
+async function checkFamiliesBeforeUpload(from) {
+  const flagged = [];
+  for (let idx = from; idx < _batchQueue.length; idx++) {
+    if (idx === _batchCursor) {                              // the family on screen, as set up there
+      const own = poseNoLabelOwnPose().reduce((a, g) => a + g.indices.size, 0) + poseUnassigned().length;
+      if (own) flagged.push({idx, name: _batchQueue[idx].name, n: own, total: poseFiles.length});
+      continue;
+    }
+    const files = sortedFamilyPhotos(_batchQueue[idx].files);
+    const g = labelPoseGroups(files, await readColorLabels(files));
+    const n = g.labeled ? (g.byColor[''] || []).length : 0;    // no labels at all: Upload all stops there anyway
+    if (n) flagged.push({idx, name: _batchQueue[idx].name, n, total: files.length});
+  }
+  if (!flagged.length) return true;
+  const ok = await askChoice(`${flagged.length} ${flagged.length === 1 ? 'family has' : 'families have'} photos with no color label`,
+    `<p class="choice-text">Each family's photos with no label go on the site as a pose of their own.</p>
+     <ul class="choice-list">${flagged.map(f => `<li>${esc(f.name || 'Unnamed')}: ${f.n} of ${f.total} photos</li>`).join('')}</ul>`,
+    'Upload anyway', `Review ${flagged[0].name || 'the first'}`);
+  if (!ok) { if (flagged[0].idx !== _batchCursor) loadBatchFamily(flagged[0].idx); else poseSelectNoLabel(); }
+  return ok;
 }
 
 function poseSelectAll() { poseSelection = new Set(poseFiles.map((_,i)=>i)); renderPosePanel(); }
@@ -2627,6 +2742,13 @@ async function uploadAllFamilies() {
   if (_batchCursor < 0 || !_batchQueue.length) return;
   const btn=document.getElementById('upload-action-btn'), allBtn=document.getElementById('upload-all-btn');
   btn.disabled=true; allBtn.disabled=true;
+  const go = await checkFamiliesBeforeUpload(_batchCursor);
+  if (go && poseUnassigned().length && poseGroups.length) {    // the family on screen: its loose photos become a pose
+    const loose = poseUnassigned();
+    poseGroups.push({color: POSE_COLORS[poseGroups.length % POSE_COLORS.length], label: `Pose ${poseGroups.length + 1}`, indices: new Set(loose)});
+    renderPosePanel();
+  }
+  if (!go) { btn.disabled=false; allBtn.disabled=false; updateUploadBtn(); return; }
   _uploadActive=true; window.addEventListener('beforeunload',_beforeUnloadGuard);
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
@@ -2668,7 +2790,7 @@ async function uploadAllFamilies() {
     return;
   }
   label.textContent=`All ${families} famil${families===1?'y':'ies'} uploaded — ${photos} photos`+(failedPhotos?`, ${failedPhotos} failed`:'');
-  showToast(failedPhotos ? `${failedPhotos} photos failed — upload those families again` : `All ${families} ${families===1?'family':'families'} uploaded — review then Push Live`, failedPhotos ? 'error' : undefined);
+  showToast(failedPhotos ? `${failedPhotos} photos failed — upload those families again` : `All ${families} ${families===1?'family':'families'} uploaded — live on the site`, failedPhotos ? 'error' : undefined);
   _batchQueue=[]; _batchCursor=-1;
   document.getElementById('batch-header').style.display='none';
   document.getElementById('drop-zone').style.display='';
@@ -2688,6 +2810,7 @@ async function startUpload() {
     const folder=document.getElementById('upload-folder-name').value.trim();
     if (!folder) { showToast('Enter family last name','error'); return; }
     if (!poseGroups.length) { showToast('Assign at least one pose first','error'); return; }
+    if (!await checkPosesBeforeUpload()) return;
     const files=poseFiles;
     const totalFiles=files.length;
     if (!totalFiles) { showToast('No photos to upload','error'); return; }
@@ -2708,7 +2831,7 @@ async function startUpload() {
       showToast(`${succeeded} uploaded, ${failed} failed`,'error');
     } else {
       label.textContent=`Done — ${succeeded} photos, ${poses.length} poses saved`;
-      showToast(`${succeeded} photos uploaded — ${poses.length} poses saved, review then Push Live`);
+      showToast(`${succeeded} photos uploaded — ${poses.length} poses, live on the site`);
     }
     _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard);
     await loadSidebar();
@@ -2724,7 +2847,7 @@ async function startUpload() {
       } else {
         const total = _batchQueue.length;
         label.textContent = `All ${total} ${total===1?'family':'families'} uploaded`;
-        showToast(`All ${total} ${total===1?'family':'families'} uploaded — review then Push Live`);
+        showToast(`All ${total} ${total===1?'family':'families'} uploaded — live on the site`);
         _batchQueue=[]; _batchCursor=-1;
         document.getElementById('batch-header').style.display='none';
         document.getElementById('drop-zone').style.display='';
@@ -2879,8 +3002,8 @@ async function startUpload() {
     label.textContent = `Done — ${succeeded} uploaded, ${failed} failed`;
     showToast(`${succeeded} uploaded, ${failed} failed — try uploading the failed ones again`,'error');
   } else if (isPortraitUpload) {
-    label.textContent = `Done — ${succeeded} photos ready (draft)`;
-    showToast(`${succeeded} photos uploaded — review poses then Push Live`);
+    label.textContent = `Done — ${succeeded} photos live`;
+    showToast(`${succeeded} photos uploaded and live — check the poses in the folder`);
   } else {
     label.textContent = `Done — ${totalLive} photos live`;
     showToast(`${done} photos uploaded and live`);

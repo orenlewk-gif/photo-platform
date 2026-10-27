@@ -121,3 +121,21 @@ def test_label_reader_finds_the_color_written_while_culling(main_module):
            b'xmp:Label="Orange" xmp:Rating="3"/></x:xmpmeta>')
     assert main_module.read_xmp_color_label(xmp) == "Orange"
     assert main_module.read_xmp_color_label(b'\xff\xd8 no metadata') == ""
+
+
+def test_portrait_families_are_live_on_upload_with_their_poses(admin_client, client, main_module):
+    # Poses are set before upload, so a family is on the site (and its pose prices) right away;
+    # winter action photos wait for push-live (it labels their colors first)
+    files = [("P1.jpg", "image/jpeg"), ("P2.jpg", "image/jpeg"), ("P3.jpg", "image/jpeg")]
+    keys = [u["key"] for u in _presign(admin_client, "Lone Peak Portraits", files, folder="Nguyen").json()["urls"]]
+    poses = [{"color": "#f00", "label": "Pose 1", "files": ["P1.jpg", "P2.jpg"]},
+             {"color": "#ff0", "label": "Pose 2", "files": ["P3.jpg"]}]     # the photo with no label: its own pose
+    assert _index(admin_client, "Lone Peak Portraits", keys, folder="Nguyen", poses=poses).status_code == 200
+    assert not any(i.get("draft") for i in main_module.data if i["path"] in keys)
+    params = {"date": DATE, "location": "Lone Peak Portraits", "family": "Nguyen"}
+    assert len(client.get("/api/browse", params={**params, "dims": 0}).json()["photos"]) == 3
+    p = client.get("/api/folder/poses", params=params).json()
+    assert p["poses_live"] and [len(x["files"]) for x in p["poses"]] == [2, 1]
+    action = [u["key"] for u in _presign(admin_client, "Big Sky Ski School", [("A1.JPG", "image/jpeg")]).json()["urls"]]
+    _index(admin_client, "Big Sky Ski School", action)
+    assert next(i for i in main_module.data if i["path"] == action[0]).get("draft") is True
