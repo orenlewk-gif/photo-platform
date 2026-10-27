@@ -22,7 +22,7 @@ function storeFavorites() {
       if (state === 'pose') {
         items.push({kind: 'pose', color: pose.color || '', label: pose.label || 'Pose', paths});
       } else if (Array.isArray(state)) {
-        state.forEach(i => { if (paths[i]) items.push({kind: 'single', color: pose.color || '', path: paths[i]}); });
+        state.forEach(i => { if (paths[i]) items.push({kind: 'single', color: pose.color || '', label: pose.label || 'Pose', path: paths[i]}); });
       }
     });
     const label = fc.location && fc.label && fc.label !== fc.location ? `${fc.location} · ${fc.label}` : (fc.label || fc.location || 'Photos');
@@ -113,6 +113,7 @@ function storeBuildUI() {
       </div>
       <div id="store-favs-body"></div>
       <div class="store-modal-foot">
+        <button type="button" class="store-clear" data-act="clear">Clear all favorites</button>
         <button type="button" class="btn-ghost btn-secondary" data-act="save">Save for later</button>
       </div>
     </div>`;
@@ -135,6 +136,36 @@ function storeBuildUI() {
     </div>`;
   document.body.appendChild(save);
 
+  // A favorite, big: opens over the favorites list, flips through them all
+  const view = document.createElement('div');
+  view.id = 'store-view';
+  view.className = 'store-overlay store-view';
+  view.setAttribute('role', 'dialog');
+  view.setAttribute('aria-modal', 'true');
+  view.setAttribute('aria-label', 'Favorite photo');
+  view.innerHTML = `<div class="store-view-top">
+      <span id="store-view-where"></span>
+      <button type="button" class="store-close" data-act="close" aria-label="Close">Close</button>
+    </div>
+    <div class="store-view-stage">
+      <button type="button" class="store-view-nav" data-act="view-prev" aria-label="Previous photo">&#8249;</button>
+      <img id="store-view-img" alt="">
+      <button type="button" class="store-view-nav" data-act="view-next" aria-label="Next photo">&#8250;</button>
+    </div>
+    <div class="store-view-foot">
+      <span id="store-view-count"></span>
+      <button type="button" class="store-view-remove" data-act="view-unfav"></button>
+    </div>`;
+  document.body.appendChild(view);
+  let touchX = null;
+  view.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; }, {passive: true});
+  view.addEventListener('touchend', e => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    touchX = null;
+    if (Math.abs(dx) > 50) storeViewStep(dx < 0 ? 1 : -1);
+  });
+
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act]');
     if (b && (b.closest('#store-bar') || b.closest('.store-head-tools') || b.closest('.store-overlay'))) {
@@ -144,13 +175,24 @@ function storeBuildUI() {
       else if (act === 'reset') storeStartOver();
       else if (act === 'close') storeClose(b.closest('.store-overlay'));
       else if (act === 'unfav') storeUnfavorite(b.dataset);
+      else if (act === 'clear') storeClearFavorites();
+      else if (act === 'view') storeView(+b.dataset.i);
+      else if (act === 'view-prev') storeViewStep(-1);
+      else if (act === 'view-next') storeViewStep(1);
+      else if (act === 'view-unfav') storeViewUnfavorite();
       return;
     }
-    if (e.target.classList?.contains('store-overlay')) storeClose(e.target);   // tap outside the box
+    if (e.target.classList?.contains('store-overlay') || e.target.classList?.contains('store-view-stage')) {
+      storeClose(e.target.closest('.store-overlay'));                              // tap outside the box
+    }
   });
   document.addEventListener('keydown', e => {
+    const viewing = document.getElementById('store-view')?.classList.contains('open');
+    if (viewing && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) { storeViewStep(e.key === 'ArrowLeft' ? -1 : 1); return; }
     if (e.key !== 'Escape') return;
-    document.querySelectorAll('.store-overlay.open').forEach(storeClose);
+    // The big photo closes first, back to the favorites list
+    if (viewing) storeClose(document.getElementById('store-view'));
+    else document.querySelectorAll('.store-overlay.open').forEach(storeClose);
   });
 }
 
@@ -174,37 +216,114 @@ function storeClose(o) {
 }
 
 // ── The favorites list ──
+// Each folder's photos, then each portrait pose on its own row: a whole pose shows all its
+// photos under one heart, single photos each have their own. Any photo opens big.
+let _storeViewList = [];   // every photo in the list, in order: {path, where, unfav: {...}, pose}
+
 function storeRenderFavorites() {
   const body = document.getElementById('store-favs-body');
   const folders = storeFavorites();
+  _storeViewList = [];
+  document.querySelector('#store-favs [data-act="clear"]').hidden = !folders.length;
   if (!folders.length) {
     body.innerHTML = '<p class="store-note">No favorites yet. Tap the heart on any photo to add it here.</p>';
     return;
   }
-  const thumb = (path, data, label) => `<div class="store-fav-thumb">
-      <img src="${escA(photoSrc(path, 'thumb'))}" alt="" loading="lazy">
-      <button type="button" class="store-unfav" data-act="unfav" ${data} aria-label="${escA(label)}">${STORE_HEART}</button>
-    </div>`;
+  const unfavAttrs = u => Object.entries(u).map(([k, v]) => `data-${k}="${escA(v)}"`).join(' ');
+  // A photo tile; whole-pose photos have no heart of their own (the pose's heart is on its row)
+  const tile = (path, where, unfav, pose) => {
+    const i = _storeViewList.push({path, where, unfav, pose}) - 1;
+    return `<div class="store-fav-thumb">
+        <button type="button" class="store-fav-open" data-act="view" data-i="${i}" aria-label="See this photo bigger">
+          <img src="${escA(photoSrc(path, 'thumb'))}" alt="" loading="lazy">
+        </button>
+        ${pose ? '' : `<button type="button" class="store-unfav" data-act="unfav" ${unfavAttrs(unfav)}
+          aria-label="Remove this photo from favorites">${STORE_HEART}</button>`}
+      </div>`;
+  };
   body.innerHTML = folders.map(f => {
-    const cards = f.items.map(it => {
-      const k = `data-key="${escA(f.key)}"`;
-      if (it.kind === 'pose') {
-        const shown = it.paths.slice(0, 4).map(p => `<img src="${escA(photoSrc(p, 'thumb'))}" alt="" loading="lazy">`).join('');
-        return `<div class="store-fav-pose">
-            <div class="store-fav-pose-imgs">${shown}</div>
-            <div class="store-fav-pose-label">${escHtml(it.label)}: whole pose, ${it.paths.length} photo${it.paths.length !== 1 ? 's' : ''}</div>
-            <button type="button" class="store-unfav" data-act="unfav" ${k} data-kind="pose" data-color="${escA(it.color)}"
-              aria-label="Remove ${escA(it.label)} from favorites">${STORE_HEART}</button>
-          </div>`;
+    const base = {key: f.key};
+    const photos = f.items.filter(it => it.kind === 'photo');
+    const rows = [];
+    if (photos.length) {
+      rows.push(`<div class="store-fav-grid">${photos.map(it =>
+        tile(it.path, f.label, {...base, kind: 'photo', path: it.path})).join('')}</div>`);
+    }
+    // Portrait poses, in the order they're picked: a whole pose, or its single photos
+    const poseRows = new Map();
+    f.items.forEach(it => {
+      if (it.kind === 'photo') return;
+      const k = `${it.kind === 'pose' ? 'p' : 's'}:${it.color}`;
+      if (!poseRows.has(k)) poseRows.set(k, {kind: it.kind, color: it.color, label: it.label, paths: []});
+      const row = poseRows.get(k);
+      if (it.kind === 'pose') row.paths = it.paths; else row.paths.push(it.path);
+    });
+    poseRows.forEach(r => {
+      const n = r.paths.length, nPhotos = `${n} photo${n !== 1 ? 's' : ''}`;
+      const where = `${f.label} · ${r.label}`;
+      let head, tiles;
+      if (r.kind === 'pose') {
+        const unfav = {...base, kind: 'pose', color: r.color};
+        head = `<span><b>${escHtml(r.label)}</b> · whole pose, ${nPhotos}</span>
+          <button type="button" class="store-fav-pose-remove" data-act="unfav" ${unfavAttrs(unfav)}
+            aria-label="Remove ${escA(r.label)} from favorites">${STORE_HEART} Remove pose</button>`;
+        tiles = r.paths.map(p => tile(p, `${where} (whole pose)`, unfav, r.label)).join('');
+      } else {
+        head = `<span><b>${escHtml(r.label)}</b> · ${nPhotos}</span>`;
+        tiles = r.paths.map(p => tile(p, where, {...base, kind: 'single', color: r.color, path: p})).join('');
       }
-      return thumb(it.path, `${k} data-kind="${it.kind}" data-color="${escA(it.color || '')}" data-path="${escA(it.path)}"`,
-                   'Remove this photo from favorites');
-    }).join('');
+      rows.push(`<div class="store-fav-pose-row"><div class="store-fav-pose-head">${head}</div>
+        <div class="store-fav-grid">${tiles}</div></div>`);
+    });
     return `<section class="store-fav-folder">
         <div class="store-fav-folder-title">${escHtml(f.label)}${f.date ? ` <span>${escHtml(formatDateLong(f.date))}</span>` : ''}</div>
-        <div class="store-fav-grid">${cards}</div>
+        ${rows.join('')}
       </section>`;
   }).join('');
+}
+
+// Clear every favorite on this screen and stay where they are
+function storeClearFavorites() {
+  if (!confirm('Remove all favorites on this screen?')) return;
+  clearCart();
+  storeFavoritesChanged();
+}
+
+// ── A favorite, big ──
+let _storeViewAt = 0;
+function storeView(i) {
+  if (!_storeViewList.length) { storeClose(document.getElementById('store-view')); return; }
+  _storeViewAt = Math.max(0, Math.min(i, _storeViewList.length - 1));
+  const it = _storeViewList[_storeViewAt];
+  const v = document.getElementById('store-view');
+  document.getElementById('store-view-img').src = photoSrc(it.path, 'medium');
+  document.getElementById('store-view-where').textContent = it.where;
+  document.getElementById('store-view-count').textContent = `${_storeViewAt + 1} of ${_storeViewList.length}`;
+  v.querySelector('.store-view-remove').innerHTML = `${STORE_HEART} ${it.pose ? `Remove whole ${escHtml(it.pose)}` : 'Remove from favorites'}`;
+  v.querySelectorAll('.store-view-nav').forEach(b => { b.hidden = _storeViewList.length < 2; });
+  // The next ones load while this one is looked at
+  [1, -1].forEach(d => {
+    const n = _storeViewList[(_storeViewAt + d + _storeViewList.length) % _storeViewList.length];
+    if (n) new Image().src = photoSrc(n.path, 'medium');
+  });
+  if (!v.classList.contains('open')) {
+    v.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    v.querySelector('.store-close').focus();
+  }
+}
+
+function storeViewStep(d) {
+  const n = _storeViewList.length;
+  if (n > 1) storeView((_storeViewAt + d + n) % n);
+}
+
+function storeViewUnfavorite() {
+  const it = _storeViewList[_storeViewAt];
+  if (!it) return;
+  storeUnfavorite({...it.unfav});
+  storeRenderFavorites();
+  storeView(_storeViewAt);       // the next one slides into its place (closes when none are left)
 }
 
 // Un-heart from the favorites list. The open gallery changes through its own heart buttons (so
