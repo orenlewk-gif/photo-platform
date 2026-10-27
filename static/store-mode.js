@@ -97,8 +97,10 @@ function storeBuildUI() {
     }
     const tools = document.createElement('div');
     tools.className = 'store-head-tools';
-    // Eagle Mount families use their own page for now (the store's own Eagle Mount area comes later)
-    tools.innerHTML = `<a class="store-head-btn" href="/eaglemount">Eagle Mount photos</a>
+    // Partner programs (Eagle Mount): their photos on the store's own page for them
+    const partners = ((window.STORE_PROMO || {}).partners || []).map(p =>
+      `<a class="store-head-btn" href="/store/${encodeURIComponent(p.slug)}">${String(p.name).replace(/[&<>"]/g, '')} photos</a>`).join('');
+    tools.innerHTML = `${partners}
       <button type="button" class="store-head-btn" data-act="favs">${STORE_HEART} Favorites <span id="store-head-count"></span></button>
       <button type="button" class="store-head-btn" data-act="reset">Start over</button>`;
     // The promo lines sit in the header, between the logo and the buttons (it stays at the top)

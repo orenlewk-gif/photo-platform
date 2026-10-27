@@ -25,9 +25,11 @@ def _closed():
     return HTMLResponse(main._pkg_error("This page isn't available.", 404), status_code=404)
 
 
-def _page_head(p: dict) -> dict:
+def _page_head(p: dict, store_header: str = "") -> dict:
+    """The page's values. A store screen gets the store's own header and no site footer."""
     return {"partner": escape(p["name"]), "slug": escape(p["slug"]), "welcome": escape(p.get("welcome") or ""),
-            "site_header": site_header(), "site_footer": site_footer()}
+            "store": "true" if store_header else "false",
+            "site_header": store_header or site_header(), "site_footer": "" if store_header else site_footer()}
 
 
 # The page itself lives at the short address photos.bigskyphotos.com/<slug> (e.g. /eaglemount).
@@ -71,17 +73,21 @@ def partner_login(slug: str, request: Request, password: str = Form("")):
     return r
 
 
-def _signed_in_partner(slug: str, request: Request):
+def _signed_in_partner(slug: str, request: Request, store_ok: bool = False):
+    """The partner whose page this device is signed in to. store_ok: an approved store screen
+    may also look at the photos (the store's own page for them: no password, no downloads)."""
     p = main._partner_by_slug(slug)
-    if not p or not main._partner_signed_in(request, p):
+    if not p or not p.get("password"):
         return None
-    return p
+    if main._partner_signed_in(request, p) or (store_ok and main._store_page_allowed(request)):
+        return p
+    return None
 
 
 @router.get("/api/partner/{slug}/photos")
 def partner_photos(slug: str, request: Request):
     """The partner's photos by day, newest day first, photos in shooting order."""
-    p = _signed_in_partner(slug, request)
+    p = _signed_in_partner(slug, request, store_ok=True)
     if not p:
         return JSONResponse(status_code=401, content={"error": "Please enter the password"})
     by_day = main._partner_photos(p)
@@ -97,7 +103,7 @@ def partner_photos(slug: str, request: Request):
 
 @router.get("/partner/{slug}/thumb")
 def partner_thumb(slug: str, request: Request, path: str = Query("")):
-    p = _signed_in_partner(slug, request)
+    p = _signed_in_partner(slug, request, store_ok=True)
     if not p or not main._partner_photo(p, path):
         return JSONResponse(status_code=404, content={"error": "Not found"})
     key = to_r2_key(path)
@@ -113,7 +119,7 @@ def partner_thumb(slug: str, request: Request, path: str = Query("")):
 def partner_view(slug: str, request: Request, path: str = Query("")):
     """The enlarged view: 1800 px, no watermark. Served from its stored copy (made when the
     photo was marked or uploaded); the first view of an older photo makes it."""
-    p = _signed_in_partner(slug, request)
+    p = _signed_in_partner(slug, request, store_ok=True)
     if not p or not main._partner_photo(p, path):
         return JSONResponse(status_code=404, content={"error": "Not found"})
     key = to_r2_key(path)

@@ -12,22 +12,26 @@ from fastapi import APIRouter, BackgroundTasks, Body, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
 import main
+from core.pages import render_page
 
 router = APIRouter()
 
 _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
-_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=8">\n'
-                 '<script src="/static/store-mode.js?v=8"></script>')
+_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=9">\n'
+                 '<script src="/static/store-mode.js?v=9"></script>')
 
 
 def _store_page() -> str:
     html = open("templates/index.html").read()
     if _STORE_MARK not in html:
         raise RuntimeError("templates/index.html is missing the store-mode mark")
-    # The promo lines' numbers come from the same settings the sale uses, so they stay true
-    promo = {"print_off": main.PRINT_WITH_DIGITAL_PCT}
+    # The promo lines' numbers come from the same settings the sale uses, so they stay true;
+    # partner programs with an open page (Eagle Mount) get a header button to their store page
+    promo = {"print_off": main.PRINT_WITH_DIGITAL_PCT,
+             "partners": [{"name": p["name"], "slug": p["slug"]} for p in main._load_partners()
+                          if p.get("slug") and p.get("password")]}
     additions = f'<script>window.STORE_MODE = true; window.STORE_PROMO = {json.dumps(promo)};</script>\n' + _STORE_ASSETS
     return html.replace(_STORE_MARK, additions, 1)
 
@@ -42,6 +46,62 @@ def store_page(request: Request, background: BackgroundTasks):
         return HTMLResponse(_store_page(), headers=_NO_INDEX)
     background.add_task(main._note_blocked_store_visit, main._request_info(request))
     return HTMLResponse(open("templates/store_locked.html").read(), status_code=403, headers=_NO_INDEX)
+
+
+# ── Partner photos (Eagle Mount) on the store screens ──────────────────────
+# The partner's page without its password: families pick their photos, give their name and
+# email, and get them free through a download link (a QR code on the screen, and an email).
+# No downloads on the store screen itself and no checkout; prints are bought at the counter.
+
+def _store_partner_header(p: dict) -> str:
+    return """<header class="st-head">
+  <a class="st-logo" href="/store" aria-label="Back to the store photos"><img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="Crystal Images"></a>
+  <div class="st-title"></div>
+  <nav class="st-tools" aria-label="Store">
+    <a class="st-btn" href="/store">All photos</a>
+    <button type="button" class="st-btn" onclick="storeStartOver()">Start over</button>
+  </nav>
+</header>"""
+
+
+@router.get("/store/{slug}", response_class=HTMLResponse)
+def store_partner_page(slug: str, request: Request, background: BackgroundTasks):
+    if not main._store_page_allowed(request):
+        return store_page(request, background)                  # the locked screen (and the owner is told)
+    p = main._partner_by_slug(slug)
+    if not p or not p.get("password"):                          # the program's page is closed
+        return HTMLResponse(main._pkg_error("This page isn't available.", 404), status_code=404, headers=_NO_INDEX)
+    from routes.partners import _page_head
+    return HTMLResponse(render_page("partner.html", **_page_head(p, _store_partner_header(p))), headers=_NO_INDEX)
+
+
+@router.post("/api/store/partner/{slug}/send")
+def store_partner_send(slug: str, request: Request, background: BackgroundTasks, body: dict = Body(...)):
+    """The photos a family picked: a download link for them (QR code + email)."""
+    screen = _sending_screen(request)
+    if not screen:
+        return JSONResponse(status_code=403, content={"error": "This screen isn't approved for store mode"})
+    p = main._partner_by_slug(slug)
+    if not p or not p.get("password"):
+        return JSONResponse(status_code=404, content={"error": "This page isn't available"})
+    first = " ".join(str(body.get("first_name") or "").split())[:40]
+    last = " ".join(str(body.get("last_name") or "").split())[:40]
+    email = str(body.get("email") or "").strip()[:120]
+    if not first or not last:
+        return JSONResponse(status_code=400, content={"error": "Please enter your first and last name"})
+    if not main._EMAIL_RE.match(email):
+        return JSONResponse(status_code=400, content={"error": "Please enter a valid email"})
+    wanted = body.get("paths") if isinstance(body.get("paths"), list) else []
+    items = [i for i in (main._partner_photo(p, x) for x in dict.fromkeys(wanted) if isinstance(x, str)) if i]
+    if not items:
+        return JSONResponse(status_code=400, content={"error": "Pick some photos first"})
+    if len(items) > main.STORE_PARTNER_MAX_PHOTOS:
+        return JSONResponse(status_code=400, content={"error": f"Up to {main.STORE_PARTNER_MAX_PHOTOS} photos at a time"})
+    if not main._store_partner_limiter.is_allowed(screen[0]):
+        return JSONResponse(status_code=429, content={"error": "Too many in a short time — please wait a few minutes"})
+    main._fill_taken_times(items)
+    items.sort(key=main._taken_order)
+    return main._store_partner_send(p, items, first, last, email, background)
 
 
 @router.post("/api/store/request")

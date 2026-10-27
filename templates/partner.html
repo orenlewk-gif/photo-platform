@@ -192,6 +192,40 @@ button { font-family:inherit; }
 .save-status { font-size:.85rem; color:rgba(255,255,255,.75); margin-top:.6rem; line-height:1.5; min-height:1.3em; }
 .save-prints { margin-top:.8rem; padding-top:.7rem; border-top:1px solid rgba(255,255,255,.1); font-size:.84rem; color:rgba(255,255,255,.75); }
 img { -webkit-touch-callout:none; }
+.gallery { user-select:none; -webkit-user-select:none; }    /* shift-click picks a range, not text */
+
+/* On the store's screens (/store/<slug>): the store's header, no downloads, a form for the link */
+.st-head { position:sticky; top:0; z-index:9000; display:flex; align-items:center; gap:1.5rem; padding:0 40px; height:96px;
+  background:#063249; box-shadow:0 2px 14px rgba(0,0,0,.35); }
+.st-logo img { height:72px; display:block; }
+.st-title { flex:1; text-align:center; font-size:1.3rem; font-weight:700; color:#F5C518; }
+.st-tools { display:flex; gap:.6rem; }
+.st-btn { display:inline-flex; align-items:center; background:transparent; border:1px solid rgba(255,255,255,.3); color:#fff; font-size:.95rem;
+  font-weight:600; border-radius:8px; padding:.55rem 1rem; cursor:pointer; text-decoration:none; font-family:inherit; }
+.st-btn:hover { border-color:#fff; }
+.st-btn:focus-visible { outline:3px solid #fff; outline-offset:2px; }
+@media(max-width:700px){ .st-head { padding:.6rem 16px; height:auto; flex-wrap:wrap; gap:.6rem; } .st-title { order:3; flex-basis:100%; } .st-logo img { height:52px; } }
+.st-prints { margin:1rem 0 0; padding:1.1rem 1.3rem; border-radius:12px; text-align:center;
+  background:linear-gradient(90deg, rgba(245,197,24,.12), rgba(245,197,24,.22), rgba(245,197,24,.12)); border:2px solid rgba(245,197,24,.55); }
+.st-prints-big { font-size:1.9rem; font-weight:800; color:#F5C518; line-height:1.2; }
+.st-prints-sub { font-size:1.05rem; color:#fff; margin-top:.3rem; }
+.store .card-acts, .store #lb-get, .store #lb-print, .store .cart-bar { display:none !important; }
+.store .card-btn-row { opacity:1; }
+.store .select-check { width:34px; height:34px; font-size:16px; }
+.field { display:block; margin-top:.8rem; }
+.field span { display:block; font-size:.78rem; color:rgba(255,255,255,.65); margin-bottom:.3rem; }
+.field input { width:100%; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); border-radius:8px; color:#fff;
+  padding:.75rem .9rem; font-size:1rem; font-family:inherit; outline:none; }
+.field input:focus { border-color:#F5C518; }
+.field-row { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+@media(max-width:480px){ .field-row { grid-template-columns:1fr; } }
+.send-err { color:#ff8a80; font-size:.85rem; min-height:1.2em; margin-top:.6rem; }
+.send-done { text-align:center; }
+.send-done img { width:240px; height:240px; background:#fff; border-radius:10px; padding:8px; margin:.8rem auto; display:block; }
+.send-done .box-sub { text-align:center; }
+.send-prints { margin-top:1rem; padding:.8rem 1rem; border-radius:10px; background:rgba(245,197,24,.1); border:1px solid rgba(245,197,24,.4);
+  font-size:1.05rem; color:#fff; text-align:center; }
+.send-prints b { color:#F5C518; }
 </style>
 <link rel="stylesheet" href="/static/theme-frontend.css">
 </head>
@@ -202,6 +236,7 @@ __SITE_HEADER__
     <h1>__PARTNER__ Photos</h1>
     <div class="welcome">__WELCOME__</div>
     <div class="code" id="code" style="display:none"></div>
+    <div class="st-prints" id="st-prints" style="display:none"></div>
   </div>
   <nav class="breadcrumb" id="crumbs" aria-label="Breadcrumb"></nav>
   <div id="view-days"><div class="msg">Loading photos...</div></div>
@@ -288,12 +323,18 @@ __SITE_FOOTER__
   </div>
 </div>
 
+<div class="modal" id="send" onclick="if(event.target === this && !sendBusy) closeSend()" role="dialog" aria-modal="true" aria-labelledby="send-title">
+  <div class="box small" id="send-box"></div>
+</div>
+
 <form id="zipform" method="post" action="/partner/__SLUG__/zip" style="display:none">
   <input type="hidden" name="paths" id="zip-paths"><input type="hidden" name="date" id="zip-date">
 </form>
 
 <script>
 const SLUG = '__SLUG__';
+const STORE = __STORE__;        // on a store screen: pick photos, get a link (QR + email); no downloads here
+if(STORE) document.body.classList.add('store');
 let days = [];                   // [{date, photos:[{path, filename}]}], newest day first
 let day = null;                  // the day that's open
 let photos = [];                 // that day's photos, in the order taken
@@ -333,13 +374,20 @@ async function load(){
   if(d.family_code_message){
     const c = document.getElementById('code');
     // the code in bold; {gallery} (and an older message's site address) as a link to the gallery
+    const gallery = STORE ? 'our photo gallery' : '<a href="/" style="color:#F5C518">our photo gallery</a>';
     c.innerHTML = esc(d.family_code_message).split(esc(d.family_code)).join(`<b>${esc(d.family_code)}</b>`)
-      .split('{gallery}').join('<a href="/" style="color:#F5C518">our photo gallery</a>')
+      .split('{gallery}').join(gallery)
       .split('online at photos.bigskyphotos.com').join('online in photos.bigskyphotos.com')
-      .split('photos.bigskyphotos.com').join('<a href="/" style="color:#F5C518">our photo gallery</a>');
+      .split('photos.bigskyphotos.com').join(gallery);
     c.style.display = '';
   }
   PRINT_PCT = Number(d.print_pct) || 0;
+  if(STORE && PRINT_PCT > 0){
+    const b = document.getElementById('st-prints');
+    b.innerHTML = `<div class="st-prints-big">${PRINT_PCT}% off prints of your photos</div>
+      <div class="st-prints-sub">Pick your favorites and ask us at the counter.</div>`;
+    b.style.display = '';
+  }
   days = d.days;
   renderCartBar();
   route();
@@ -386,7 +434,7 @@ function showDays(){
 
 function showDay(d){
   closeLb();
-  if(day !== d){ selected.clear(); anchor = null; rangeMode = false; }
+  if(day !== d){ if(!STORE) selected.clear(); anchor = null; rangeMode = false; }
   day = d; photos = d.photos;
   document.getElementById('view-days').style.display = 'none';
   document.getElementById('view-day').style.display = '';
@@ -401,12 +449,12 @@ function showDay(d){
         <button type="button" class="select-check" onclick="event.stopPropagation(); pick(event, ${i})"
           aria-label="Select photo ${esc(p.filename)}" aria-pressed="${selected.has(p.path)}">✓</button>
       </div>
-      <div class="card-acts">
+      ${STORE ? '' : `<div class="card-acts">
         ${PRINT_PCT > 0 ? `<button type="button" class="card-btn alt" onclick="event.stopPropagation(); openPrints([photos[${i}].path])"
           aria-label="Order prints of ${esc(p.filename)}">${ICON_PRINT}<span class="lbl">Prints</span></button>` : ''}
         <button type="button" class="card-btn" onclick="event.stopPropagation(); getOne(photos[${i}].path)"
           aria-label="${SAVE_OK ? 'Save' : 'Download'} ${esc(p.filename)}">${ICON_DL}<span class="lbl">${SAVE_OK ? 'Save' : 'Download'}</span></button>
-      </div>
+      </div>`}
     </div>`).join('');
   layout();
   updateBox();
@@ -438,9 +486,13 @@ function setSel(i, on){
 }
 function pick(e, i){
   if((e.shiftKey || rangeMode) && anchor !== null && anchor !== i){
+    // Like the gallery: shift-click picks everything between the last photo clicked and this one
+    // (or unpicks it all when this one was picked); the next shift-click goes on from here
+    window.getSelection()?.removeAllRanges();
+    const on = rangeMode || !selected.has(photos[i].path);
     const [a, b] = [Math.min(anchor, i), Math.max(anchor, i)];
-    for(let k = a; k <= b; k++) setSel(k, true);
-    anchor = null;
+    for(let k = a; k <= b; k++) setSel(k, on);
+    anchor = i;
     if(rangeMode) toggleRange(false);
   } else if(rangeMode){                          // the first photo of a range is always picked
     setSel(i, true);
@@ -462,10 +514,12 @@ function toggleRange(on){
   updateBox();
 }
 function clearSel(){
+  if(STORE) selected.clear();                     // the store screen's picks span days
   photos.forEach((p, i) => { if(selected.has(p.path)) setSel(i, false); });
   anchor = null; toggleRange(false);
 }
 function updateBox(){
+  if(STORE){ updateStoreBox(); return; }
   const n = selected.size, total = photos.length;
   const verb = SAVE_OK ? 'Save' : 'Download';
   document.getElementById('dl-main').textContent = n
@@ -481,12 +535,14 @@ function updateBox(){
 
 // ── Downloading (computers) and saving to Photos (phones and tablets) ──
 function chosenPaths(){
+  if(STORE && selected.size) return [...selected];          // picked on any day
   const picked = photos.filter(p => selected.has(p.path)).map(p => p.path);
   return picked.length ? picked : photos.map(p => p.path);
 }
 function bulkAction(){
   const paths = chosenPaths();
   if(!paths.length) return;
+  if(STORE){ openSend(paths); return; }
   if(SAVE_OK){ startSaver(paths); return; }
   if(paths.length === 1){ location.href = `/partner/${SLUG}/file?path=${encodeURIComponent(paths[0])}`; }
   else {
@@ -610,7 +666,7 @@ function openLb(i){
   big.src = large(p.path);
   [i + 1, i - 1].forEach(k => { const q = photos[(k + photos.length) % photos.length]; if(q) new Image().src = large(q.path); });
   document.getElementById('lb-get').textContent = SAVE_OK ? 'Save to Photos' : 'Download';
-  document.getElementById('lb-print').style.display = PRINT_PCT > 0 ? '' : 'none';
+  document.getElementById('lb-print').style.display = PRINT_PCT > 0 && !STORE ? '' : 'none';
   lbSelectLabel();
   document.getElementById('lb-fn').textContent = p.filename;
   document.getElementById('lb-ct').textContent = `${i + 1} / ${photos.length}`;
@@ -664,7 +720,7 @@ function cartTotal(){ return printCart.reduce((a, it) => a + it.price * it.qty, 
 function storeCart(){ try { localStorage.setItem(CART_KEY, JSON.stringify(printCart)); } catch(e) {} renderCartBar(); }
 function renderCartBar(){
   const bar = document.getElementById('cart-bar');
-  const on = printCart.length > 0 && PRINT_PCT > 0;
+  const on = !STORE && printCart.length > 0 && PRINT_PCT > 0;
   bar.classList.toggle('show', on);
   document.getElementById('main').style.paddingBottom = on ? '7rem' : '';
   if(!on) return;
@@ -797,6 +853,82 @@ function printCheckout(){
     folderCarts: {}, printCart: prints, frameCart: [], returnUrl: location.href, timestamp: Date.now(),
   }));
   location.href = '/checkout';          // the checkout empties this print list once the order goes through
+}
+
+// ── Store screens: the photos picked go to the family as a link (QR code + email) ──
+function updateStoreBox(){
+  const n = selected.size, total = photos.length;
+  const here = photos.filter(p => selected.has(p.path)).length;
+  document.getElementById('dl-main').textContent = n ? `Get my ${plural(n, 'photo')}` : `Get all ${total} photos from this day`;
+  document.getElementById('dl-clear').style.display = n ? '' : 'none';
+  document.getElementById('dl-range').textContent = rangeMode ? 'Cancel range' : 'Select a range';
+  document.getElementById('dl-text').textContent = rangeMode
+    ? (anchor === null ? 'Range: tap the first photo.' : 'Range: now tap the last photo.')
+    : n ? `${plural(n, 'photo')} picked${here < n ? ` (${here} on this day)` : ''}. Tap ✓ on more, or get them now: free.`
+        : 'Your photos are free. Tap ✓ on the ones you want (shift-click picks a range), or get the whole day.';
+}
+function clearAllPicks(){ selected.clear(); anchor = null; rangeMode = false; }
+let sendPaths = [], sendBusy = false;
+function openSend(paths){
+  closeLb();
+  sendPaths = paths;
+  document.getElementById('send-box').innerHTML = `
+    <div class="box-title" id="send-title">Get your ${plural(paths.length, 'photo')}</div>
+    <div class="box-sub">We'll send you a link to download them, free. You can also scan it here with your phone.</div>
+    <div class="field-row">
+      <label class="field"><span>First name</span><input id="sf-first" autocomplete="off" maxlength="40"></label>
+      <label class="field"><span>Last name</span><input id="sf-last" autocomplete="off" maxlength="40"></label>
+    </div>
+    <label class="field"><span>Email</span><input id="sf-email" type="email" inputmode="email" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="120"></label>
+    <div class="send-err" id="sf-err" role="alert"></div>
+    <div class="box-foot">
+      <button class="btn-ghost" onclick="closeSend()">Cancel</button>
+      <button class="btn-main" id="sf-go" onclick="sendPhotos()">Send my photos</button>
+    </div>`;
+  document.getElementById('send').classList.add('open');
+  document.getElementById('send-box').querySelectorAll('input').forEach(inp =>
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') sendPhotos(); }));
+  setTimeout(() => document.getElementById('sf-first').focus(), 50);
+}
+function closeSend(){ document.getElementById('send').classList.remove('open'); }
+async function sendPhotos(){
+  if(sendBusy) return;
+  const v = id => document.getElementById(id).value.trim();
+  const first = v('sf-first'), last = v('sf-last'), email = v('sf-email');
+  const err = document.getElementById('sf-err');
+  if(!first || !last){ err.textContent = 'Please enter your first and last name.'; return; }
+  if(!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email)){ err.textContent = 'Please enter a valid email.'; return; }
+  err.textContent = '';
+  sendBusy = true;
+  const btn = document.getElementById('sf-go');
+  btn.disabled = true; btn.textContent = 'Sending...';
+  try {
+    const r = await fetch(`/api/store/partner/${SLUG}/send`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({paths: sendPaths, first_name: first, last_name: last, email})});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok) throw new Error(d.error || 'Something went wrong. Please try again.');
+    document.getElementById('send-box').innerHTML = `<div class="send-done">
+      <div class="box-title" id="send-title">Your photos are ready, ${esc(first)}!</div>
+      <img src="/api/pos/download-qr?token=${encodeURIComponent(d.token)}" alt="QR code for your download link">
+      <div class="box-sub">Scan with your phone camera to save them now.<br>We also emailed the link to <b>${esc(email)}</b>.</div>
+      ${PRINT_PCT > 0 ? `<div class="send-prints"><b>${PRINT_PCT}% off prints</b> of your photos. Ask us at the counter!</div>` : ''}
+      <div class="box-foot" style="justify-content:center"><button class="btn-main" onclick="sendDone()">Done</button></div></div>`;
+  } catch(e) {
+    err.textContent = e.message;
+    btn.disabled = false; btn.textContent = 'Send my photos';
+  } finally {
+    sendBusy = false;
+  }
+}
+function sendDone(){
+  // Ready for the next family
+  closeSend();
+  clearAllPicks();
+  go('');
+}
+function storeStartOver(){
+  if(selected.size && !confirm('Clear the photos picked and start over?')) return;
+  closeSend(); clearAllPicks(); go('');
 }
 
 load();

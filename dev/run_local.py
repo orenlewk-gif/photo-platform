@@ -124,6 +124,20 @@ for i in range(12):
     _pose_files[color].append(os.path.basename(key))
 put_json("meta/folder_meta.json", {"2026-06-07|Winter Portraits|Sample": {"poses_live": True, "poses": [
     {"color": c, "label": f"Pose {n + 1}", "files": f} for n, (c, f) in enumerate(_pose_files.items())]}})
+# Eagle Mount (a partner program): 16 photos over two days, hidden from the public gallery, on
+# its own page (/eaglemount, password "local-eagle") and the store screens' page (/store/eaglemount)
+for i in range(16):
+    date = ("2026-06-08", "2026-06-09")[i // 8]
+    key = f"images/{date}/big-sky-ski-school/EM{7100 + i:05d}.JPG"
+    buf = BytesIO()
+    Image.new("RGB", (4000, 3000), (230, 120 + i * 6, 40)).save(buf, "JPEG", quality=85)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
+    sample_photos.append({"path": key, "date": date, "location": "Big Sky Ski School",
+                          "last_name": "", "group": "", "partner": "eagle-mount"})
+put_json("meta/partners.json", [{"id": "eagle-mount", "name": "Eagle Mount", "label": "Orange", "slug": "eaglemount",
+                                 "password": "local-eagle", "print_discount_pct": 40, "value_per_photo": 25,
+                                 "family_code": "EAGLEFAM", "family_code_pct": 25,
+                                 "welcome": "Welcome! Your photos are free to download. Thank you for skiing with Eagle Mount."}])
 put_json("images.json", sample_photos)
 _pricing = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pricing.json")))
 _pricing.setdefault("activities", {})["Winter Action"] = {

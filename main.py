@@ -5049,6 +5049,34 @@ def _log_partner_downloads(partner: dict, items: list, how: str) -> None:
         print(f"Partner download log not saved ({partner['id']}): {e}")
 
 
+# A family picks their partner photos on a store screen and gets them free: a download link
+# (shown as a QR code on the screen and emailed). Counted in the donation report as "store".
+STORE_PARTNER_MAX_PHOTOS = 500
+_store_partner_limiter = _RateLimiter(max_calls=30, window=3600)     # links per store screen
+
+
+def _store_partner_send(partner: dict, items: list, first: str, last: str, email: str, background=None) -> dict:
+    """Make the download link for these partner photos, log the downloads and email the link
+    (after the answer, when background tasks are given)."""
+    token = uuid.uuid4().hex
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=DOWNLOAD_EXPIRE_DAYS)
+    title = partner["name"]                  # the email: "Your Eagle Mount photos are ready"
+    paths = [i["path"] for i in items]
+    _store_pkg(token, {"token": token, "title": title, "emails": [email], "paths": paths,
+                       "created": now.isoformat(), "expires": expires.isoformat(),
+                       "expire_days": DOWNLOAD_EXPIRE_DAYS, "source": "store-partner",
+                       "partner": partner["id"], "name": f"{first} {last}".strip()})
+    _log_partner_downloads(partner, items, "store")
+    url = f"{SITE_URL}/package/{token}"
+    mail = ([email], title, url, len(paths), expires.strftime("%B %d, %Y"), first)
+    if background is not None:
+        background.add_task(_send_package_email, *mail)
+    else:
+        _send_package_email(*mail)
+    return {"token": token, "url": url, "count": len(paths)}
+
+
 def _log_partner_prints(pid: str, prints: list, order_key: str) -> None:
     """Prints of a partner's photos sold at the partner discount, for their report: one entry
     per print ({source, path, size, price, full}). An order is recorded once (the shop can
@@ -5196,7 +5224,8 @@ def _list_unsubscribe_headers(email: str) -> dict:
     return {"List-Unsubscribe": f"<{_unsubscribe_url(email)}>, <mailto:info@bigskyphotos.com?subject=unsubscribe>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
 
-def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str):
+def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str,
+                        first_name: str = ""):
     if not RESEND_API_KEY:
         print("RESEND_API_KEY not set — skipping email")
         return
@@ -5208,7 +5237,7 @@ def _send_package_email(to_emails: list, title: str, download_url: str, photo_co
         f'View &amp; Download Photos</a></p>'
     )
     for email in to_emails:
-        first = _customer_first_name(email) or "there"
+        first = first_name or _customer_first_name(email) or "there"
         plain_vars = {
             "first_name": first,
             "title": title,

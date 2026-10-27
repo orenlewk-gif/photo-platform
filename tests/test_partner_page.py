@@ -541,3 +541,84 @@ def test_online_partner_prints_are_recorded_once(admin_client, main_module, memb
     main_module._log_partner_online_prints(order)                           # the shop's second "paid" message
     d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount"}).json()
     assert d["prints"]["count"] == 1 and d["prints"]["paid"] == float(line["total"])
+
+
+# ── On the store's screens (/store/eaglemount) ────────────────────────────────
+
+@pytest.fixture()
+def screen(main_module):
+    """An approved store screen (no Eagle Mount password on it)."""
+    main_module._store_partner_limiter._calls.clear()
+    c = TestClient(main_module.app)
+    c.cookies.set(main_module.STORE_SCREEN_COOKIE, main_module._approve_store_screen("Front iMac", {"ip": "1.2.3.4"}))
+    yield c
+    main_module._load_admin_auth()["store_screens"] = {}
+
+
+@pytest.fixture()
+def sent(main_module, monkeypatch):
+    emails = []
+    monkeypatch.setattr(main_module, "_send_package_email", lambda *a, **k: emails.append(a))
+    return emails
+
+
+def test_a_store_screen_sees_eagle_mount_photos_without_the_password(screen, client, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "_note_blocked_store_visit", lambda info: None)
+    page = screen.get("/store/eaglemount")
+    assert page.status_code == 200 and "const STORE = true;" in page.text and "Start over" in page.text
+    assert 'href="/store"' in page.text and "site-footer" not in page.text
+    days = screen.get("/api/partner/eaglemount/photos").json()["days"]
+    assert [d["date"] for d in days] == ["2026-12-07", DAY2, DAY1]
+    assert screen.get("/partner/eaglemount/thumb", params={"path": PHOTOS[1]["path"]}, follow_redirects=False).status_code in (200, 302, 307)
+    # No downloads on the screen itself: those are for families signed in to the page
+    assert screen.get("/partner/eaglemount/file", params={"path": PHOTOS[1]["path"]}, follow_redirects=False).status_code == 404
+    assert screen.post("/partner/eaglemount/zip", data={"date": DAY2}).status_code == 401
+    assert screen.post("/partner/eaglemount/links", json={"paths": [PHOTOS[1]["path"]]}).status_code == 401
+    # Anyone else gets the locked store screen; the partner's own page still wants its password
+    assert client.get("/store/eaglemount").status_code == 403
+    assert client.get("/api/partner/eaglemount/photos").status_code == 401
+    assert "const STORE = false;" not in client.get("/eaglemount").text
+
+
+def test_the_store_header_links_to_open_partner_pages(screen, main_module):
+    assert '"partners": [{"name": "Eagle Mount", "slug": "eaglemount"}]' in screen.get("/store").text
+    _partners(password="")
+    main_module._partners_doc.cache["data"] = None
+    assert '"partners": []' in screen.get("/store").text
+    assert screen.get("/store/eaglemount").status_code == 404                  # closed while it has no password
+
+
+def test_a_family_gets_their_photos_as_a_link_and_it_counts_as_a_donation(screen, sent, admin_client, client, main_module):
+    paths = [PHOTOS[1]["path"], PHOTOS[3]["path"], PHOTOS[0]["path"]]     # the last isn't Eagle Mount's
+    r = screen.post("/api/store/partner/eaglemount/send",
+                    json={"paths": paths, "first_name": "Sam", "last_name": "Lee", "email": "sam@example.com"})
+    assert r.status_code == 200 and r.json()["count"] == 2
+    token = r.json()["token"]
+    pkg = main_module._load_pkg(token)
+    assert sorted(pkg["paths"]) == sorted(paths[:2]) and pkg["emails"] == ["sam@example.com"] and pkg["name"] == "Sam Lee"
+    assert sent and sent[0][0] == ["sam@example.com"] and sent[0][3] == 2 and sent[0][5] == "Sam"
+    assert client.get(f"/package/{token}").status_code == 200
+    assert client.get("/api/pos/download-qr", params={"token": token}).status_code == 200     # the QR on the screen
+    d = admin_client.get("/api/admin/partner-report", params={"partner": "eagle-mount"}).json()
+    assert d["photos"] == 2
+    csv_text = admin_client.get("/admin/partner-report.csv", params={"partner": "eagle-mount"}).text
+    assert "DSC_0002.JPG" in csv_text and "DSC_0010.JPG" in csv_text and "DSC_0001.JPG" not in csv_text
+    assert main_module._load_partner_log("eagle-mount")["photos"][paths[0]]["how"] == "store"
+
+
+@pytest.mark.parametrize("body, msg", [
+    ({"first_name": "", "last_name": "Lee", "email": "sam@example.com"}, "first and last name"),
+    ({"first_name": "Sam", "last_name": "Lee", "email": "nope"}, "valid email"),
+    ({"first_name": "Sam", "last_name": "Lee", "email": "sam@example.com", "paths": ["images/x.jpg"]}, "Pick some photos"),
+])
+def test_the_link_needs_a_name_an_email_and_their_photos(screen, sent, body, msg):
+    body = {"paths": [PHOTOS[1]["path"]], **body}
+    r = screen.post("/api/store/partner/eaglemount/send", json=body)
+    assert r.status_code == 400 and msg in r.json()["error"] and not sent
+
+
+def test_only_store_screens_make_links(client, member, sent):
+    body = {"paths": [PHOTOS[1]["path"]], "first_name": "Sam", "last_name": "Lee", "email": "sam@example.com"}
+    assert client.post("/api/store/partner/eaglemount/send", json=body).status_code == 403
+    assert member.post("/api/store/partner/eaglemount/send", json=body).status_code == 403
+    assert not sent
