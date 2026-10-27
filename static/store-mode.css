@@ -113,6 +113,24 @@ a.store-head-btn { text-decoration:none; }
 .store-clear:hover { border-color:#ff8a80; }
 .store-clear[hidden] { display:none; }
 
+/* Send to sale: the code to tell the counter */
+.store-foot-actions { display:flex; gap:.6rem; margin-left:auto; }
+.store-foot-actions .btn, .store-send-box .btn { width:auto; padding:.6rem 1.4rem; }
+.store-bar [data-act="send"] b { letter-spacing:.12em; }
+.store-code-label { text-align:center; font-size:.85rem; letter-spacing:.12em; text-transform:uppercase; color:rgba(255,255,255,.6); }
+.store-code {
+  text-align:center; font-size:4.2rem; font-weight:800; letter-spacing:.35em; padding-left:.35em;
+  color:#F5C518; margin:.2rem 0 1rem; font-variant-numeric:tabular-nums;
+}
+.store-send-box .store-note { text-align:center; }
+.store-send-box .store-modal-foot { justify-content:center; }
+.store-code-status { text-align:center; font-weight:600; margin:0 0 .8rem; color:rgba(255,255,255,.85); }
+.store-code-status::before { content:''; display:inline-block; width:9px; height:9px; border-radius:50%; background:#F5C518; margin-right:.5rem; vertical-align:middle; }
+.store-code-status.opened::before { background:#4ade80; }
+.store-small { font-size:.82rem; }
+.store-err { color:#ff8a80; }
+.store-thanks { text-align:center; font-size:1.6rem; font-weight:700; color:#F5C518; margin:.6rem 0 .8rem; }
+
 /* A favorite, big */
 .store-view.open { flex-direction:column; align-items:stretch; padding:0; background:#05101a; z-index:10001; overflow:hidden; }
 .store-view-top, .store-view-foot { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.9rem 1.2rem; }

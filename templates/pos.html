@@ -474,6 +474,15 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
 .sc-modal-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:5px;margin-bottom:.4rem}
 .sc-modal-thumbs img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:5px;background:var(--surface2);display:block}
 .sc-modal-row{display:flex;align-items:center;gap:.5rem;justify-content:space-between;flex-wrap:wrap;margin:.3rem 0}
+/* Store favorites: each photo is a button for its print sizes */
+.sc-print-thumb{position:relative;padding:0;border:none;background:none;cursor:pointer;display:block;border-radius:5px;overflow:hidden}
+.sc-print-thumb span{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.65);color:#fff;font-size:.62rem;font-weight:700;border-radius:4px;padding:2px 6px}
+.sc-print-thumb.in-sale{outline:2px solid var(--accent)}
+.stc-input{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);
+  text-align:center;font-size:2.2rem;font-weight:800;letter-spacing:.45em;padding:.6rem .5rem .6rem 1rem;text-transform:uppercase;outline:none;font-family:var(--font)}
+.stc-input:focus{border-color:var(--accent)}
+.stc-msg{min-height:1.2em;font-size:.8rem;color:var(--muted);text-align:center;margin:.6rem 0 0}
+.stc-msg.err{color:#ff8a80}
 
 /* ── Unlimited packages ── */
 .pkg-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem 1rem;margin-bottom:.55rem;cursor:pointer;touch-action:manipulation}
@@ -1141,6 +1150,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
   <!-- Bottom utility bar -->
   <div class="bottom-bar">
     <button class="bottom-btn" data-tab="packages" onclick="openCategory('packages','Packages')">Packages</button>
+    <button class="bottom-btn" onclick="openStoreCodeModal()">Store Code</button>
     <button class="bottom-btn" data-tab="savedonline" onclick="openCategory('savedonline','Saved Online')">Saved Online</button>
     <button class="bottom-btn" data-tab="recent" onclick="openCategory('recent','Recent Sales')">Recent Sales</button>
     <button class="bottom-btn" data-tab="customers" onclick="openCategory('customers','Customers')">Customers</button>
@@ -1157,6 +1167,25 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div id="sc-modal-body" style="padding:0 1.25rem"></div>
     <div style="display:flex;justify-content:flex-end;margin-top:1rem;padding:0 1.25rem 1.25rem">
       <button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="closeSavedCartModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Store code: the favorites a customer sent from a store screen -->
+<div id="stc-modal" class="modal-overlay hidden" onclick="if(event.target===this)closeStoreCodeModal()">
+  <div class="modal-sheet" onclick="event.stopPropagation()">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Store code</div>
+    <div style="padding:1rem 1.25rem 0">
+      <div class="sc-modal-sub" style="margin-bottom:.6rem">The 4-letter code from the store screen the customer favorited photos on.</div>
+      <input id="stc-input" class="stc-input" maxlength="4" autocomplete="off" autocorrect="off" autocapitalize="characters"
+             spellcheck="false" aria-label="Store code" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'')"
+             onkeydown="if(event.key==='Enter')posOpenStoreCode()">
+      <div class="stc-msg" id="stc-msg" role="status" aria-live="polite"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;margin-top:1rem;padding:0 1.25rem 1.25rem">
+      <button class="ap-add-btn" style="background:var(--surface2);color:var(--text)" onclick="closeStoreCodeModal()">Cancel</button>
+      <button class="ap-add-btn" id="stc-open-btn" onclick="posOpenStoreCode()">Open</button>
     </div>
   </div>
 </div>
@@ -1802,6 +1831,7 @@ function updateCartCustomerBar(){
 // tap (priced like any selection), portraits open their session, prints open the print sizes.
 let _scEmail = '', _scAskedAt = 0;
 async function checkSavedCart(email){
+  if(S.savedCart && S.savedCart.store_code) return;   // the store favorites they came with stay up
   email = (email || '').trim().toLowerCase();
   // Same customer with a cart already found: nothing to do. A customer found without one is
   // asked again after a little while (they may have saved on the website since being looked up).
@@ -1830,7 +1860,9 @@ function renderSavedCartBanner(){
   const b = $('saved-cart-banner');
   if(!b) return;
   if(!S.savedCart){ b.classList.add('hidden'); b.innerHTML = ''; return; }
-  b.innerHTML = `<b>Saved online:</b> ${escHtml(savedCartCounts(S.savedCart.summary || {}))} · Tap to view`;
+  b.innerHTML = S.savedCart.store_code
+    ? `<b>Store favorites (${escHtml(S.savedCart.store_code)}):</b> ${escHtml(savedCartCounts(S.savedCart.summary || {}))} · Tap to view`
+    : `<b>Saved online:</b> ${escHtml(savedCartCounts(S.savedCart.summary || {}))} · Tap to view`;
   b.classList.remove('hidden');
 }
 function scThumbsHtml(paths){
@@ -1843,25 +1875,30 @@ function scThumbsHtml(paths){
 // "Added" comes from the sale itself: what was added from the saved cart carries a _savedKey
 // ('photos:<folder>' / 'print:<folder>:<print>' for that customer), so removing it from the
 // sale makes it addable again.
-function scKey(k){ return `${(S.savedCart || {}).email || ''}|${k}`; }
+function scKey(k){ const d = S.savedCart || {}; return `${d.email || (d.store_code ? 'store:' + d.store_code : '')}|${k}`; }
 function scInSale(k){ return S.cart.some(i => i._savedKey === scKey(k)); }
 function openSavedCartModal(){
   const d = S.savedCart;
   if(!d) return;
-  $('sc-modal-title').textContent = `${d.first_name || 'Customer'}'s saved cart`;
+  const store = !!d.store_code;
+  $('sc-modal-title').textContent = store ? `Store favorites · code ${d.store_code}` : `${d.first_name || 'Customer'}'s saved cart`;
   const addBtn = (key, onclick, label) => scInSale(key)
     ? `<button class="ap-add-btn" disabled style="opacity:.55">Added ✓</button>`
     : `<button class="ap-add-btn" onclick="${onclick}">${label}</button>`;
   const canAdd = (d.folders || []).some((f, fi) => (f.photos.length && !scInSale('photos:' + fi))
     || f.prints.some((_, pi) => !scInSale(`print:${fi}:${pi}`)));
-  let html = `<div class="sc-modal-row" style="margin-bottom:.4rem"><span class="sc-modal-sub">Saved on the website by ${escHtml(d.email)}.</span>
+  const from = store
+    ? `Favorited on ${escHtml(d.screen_name || 'a store screen')}.${d.status === 'sold' ? ' <b>Already sold.</b>' : ''} Tap a photo for a print.`
+    : `Saved on the website by ${escHtml(d.email)}.`;
+  let html = `<div class="sc-modal-row" style="margin-bottom:.4rem"><span class="sc-modal-sub">${from}</span>
     ${canAdd ? `<button class="ap-add-btn" onclick="posAddAllSaved()">Add all to sale</button>` : ''}</div>`;
   (d.folders || []).forEach((f, fi) => {
     if(!f.photos.length && !f.poses.length && !f.prints.length) return;
     html += `<div class="sc-modal-folder">${escHtml(f.label)}</div>`;
     if(f.photos.length){
-      html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.photos.length} digital photo${f.photos.length === 1 ? '' : 's'}</span>
-        ${addBtn('photos:' + fi, `posAddSavedPhotos(${fi})`, 'Add to sale')}</div>` + scThumbsHtml(f.photos);
+      html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.photos.length} ${store ? 'favorite' : 'digital'} photo${f.photos.length === 1 ? '' : 's'}</span>
+        ${addBtn('photos:' + fi, `posAddSavedPhotos(${fi})`, store ? 'Add as digital' : 'Add to sale')}</div>`
+        + (store ? scPrintThumbsHtml(f.photos) : scThumbsHtml(f.photos));
     }
     if(f.poses.length){
       html += `<div class="sc-modal-row"><span class="sc-modal-sub">${f.poses.map(p => escHtml(`${p.label}: ${p.whole ? 'whole pose' : p.paths.length + ' photo' + (p.paths.length === 1 ? '' : 's')}`)).join(' · ')}</span>
@@ -1988,6 +2025,55 @@ async function posSavedPrint(fi, pi){
   if(pr.partner_pct) openPSM(_ptPhoto, false, pr.partner_pct, pr.partner_name, true);
   else openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(pr.path)));
   showToast(`Saved choice: ${pr.size}${pr.frame && pr.frame !== 'No Frame' ? ' + frame' : ''}${pr.logo ? ' + logo' : ''}`);
+}
+
+// ─── Store code: the favorites a customer sent from a store screen ───────────────
+// The customer taps "Send to sale" on a store screen and tells staff a 4-letter code. It opens
+// like a saved cart: each folder's favorites go in as digital photos in one tap, and each photo
+// opens its print sizes (logo there too). The code goes with the sale; when the sale is recorded
+// the store screen thanks the customer and starts over.
+function openStoreCodeModal(){
+  $('stc-input').value = '';
+  $('stc-msg').textContent = ''; $('stc-msg').className = 'stc-msg';
+  $('stc-modal').classList.remove('hidden');
+  setTimeout(() => $('stc-input').focus(), 50);
+}
+function closeStoreCodeModal(){ $('stc-modal').classList.add('hidden'); }
+async function posOpenStoreCode(){
+  const code = $('stc-input').value.trim().toUpperCase();
+  const msg = $('stc-msg');
+  if(!/^[A-Z]{4}$/.test(code)){ msg.textContent = 'Type the 4 letters from the store screen'; msg.className = 'stc-msg err'; return; }
+  msg.textContent = 'Looking…'; msg.className = 'stc-msg';
+  $('stc-open-btn').disabled = true;
+  try {
+    const r = await fetch('/api/pos/store-code?code=' + encodeURIComponent(code), {headers: posPinHeaders()});
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok){ msg.textContent = d.error || 'No favorites under that code today'; msg.className = 'stc-msg err'; return; }
+    if(!(d.summary || {}).items){ msg.textContent = 'The customer cleared their favorites. Ask them to send again.'; msg.className = 'stc-msg err'; return; }
+    S.savedCart = d;
+    S.storeCode = d.store_code;
+    closeStoreCodeModal();
+    renderSavedCartBanner();
+    openSavedCartModal();
+  } catch(e){
+    msg.textContent = 'Could not connect. Try again.'; msg.className = 'stc-msg err';
+  } finally {
+    $('stc-open-btn').disabled = false;
+  }
+}
+function scPrintThumbsHtml(paths){
+  // Every favorite, each a button for its print sizes (outlined once a print of it is in the sale)
+  return `<div class="sc-modal-thumbs">${paths.map(p => {
+    const printed = S.cart.some(i => i.category === 'prints' && (i.photo_paths || []).includes(p));
+    return `<button type="button" class="sc-print-thumb${printed ? ' in-sale' : ''}" data-path="${escHtml(p)}" onclick="posStorePrint(this.dataset.path)"
+      aria-label="Print of ${escHtml(p.split('/').pop())}"><img src="/api/photo?path=${encodeURIComponent(p)}&size=thumb&nowm=1" loading="lazy" alt="">
+      <span>${printed ? 'Print added' : 'Print'}</span></button>`;
+  }).join('')}</div>`;
+}
+function posStorePrint(path){
+  closeSavedCartModal();
+  _ptPhoto = {path, filename: path.split('/').pop()};
+  openPSM(_ptPhoto, S.cart.some(i => ['action_photos', 'portrait'].includes(i.category) && (i.photo_paths || []).includes(path)));
 }
 
 // "Saved Online" tab: look up a saved cart when a customer says they saved photos on the website
@@ -4874,6 +4960,7 @@ async function launchSquare(){
     coupon_discount: cartDiscount(),
     pin:     S._savedPin || '',
     square_customer: !!prep.customer_id,
+    store_code: S.storeCode || '',
   };
   try { localStorage.setItem('ci_pos_pending', JSON.stringify(S.pendingOrder)); } catch(e){}
   try { localStorage.setItem('ci_pos_pin', S._savedPin || ''); } catch(e){}
@@ -5109,6 +5196,7 @@ function buildCheckoutPayload(squareTxId){
     coupon_discount:  cartDiscount() || o.coupon_discount || 0,
     square_payment_id: squareTxId || '',
     customer:         {...(o.customer || {}), ...c},
+    store_code:       S.storeCode || o.store_code || '',
   };
 }
 
@@ -5178,7 +5266,7 @@ function newSale(){
   S._im = null;
   S.pkg = null;
   pkgStopAdding();
-  _scEmail = ''; S.savedCart = null; renderSavedCartBanner();
+  _scEmail = ''; S.savedCart = null; S.storeCode = ''; renderSavedCartBanner();
   // Reset inner photo views so next sale starts fresh
   try { apClearPhotos(); } catch(e){}
   try { portraitClearPhotos(); } catch(e){}

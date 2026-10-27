@@ -4,6 +4,7 @@ their favorite photos. The same gallery page as the website, with no prices, sho
 Only approved store screens get in (see "Store screens" in main.py): any other device sees a
 locked screen, the owner is told, and it can ask for access with a code emailed to the owner."""
 import hmac
+import json
 import secrets
 import time as _time
 
@@ -18,8 +19,8 @@ _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
 _STORE_ADDITIONS = ('<script>window.STORE_MODE = true;</script>\n'
-                    '<link rel="stylesheet" href="/static/store-mode.css?v=4">\n'
-                    '<script src="/static/store-mode.js?v=4"></script>')
+                    '<link rel="stylesheet" href="/static/store-mode.css?v=5">\n'
+                    '<script src="/static/store-mode.js?v=5"></script>')
 
 
 def _store_page() -> str:
@@ -89,6 +90,66 @@ def store_verify(body: dict = Body(...)):
     resp.set_cookie(main.STORE_SCREEN_COOKIE, token, httponly=True, samesite="lax",
                     max_age=main.STORE_SCREEN_DAYS * 86400)
     return resp
+
+
+# ── Send to sale: the customer's favorites, picked up at the POS with a code ──
+
+def _sending_screen(request: Request) -> tuple[str, str] | None:
+    """(id, name) of the screen sending: an approved store screen, or the studio looking at it."""
+    screen = main._store_screen(request)
+    if screen:
+        return screen[0][:16], screen[1].get("name", "")
+    return ("studio", "Studio preview") if main._admin_authed(request) else None
+
+
+@router.post("/api/store/send")
+def store_send(request: Request, body: dict = Body(...)):
+    """Send (or update) this screen's favorites for the POS. Returns the code to show."""
+    screen = _sending_screen(request)
+    if not screen:
+        return JSONResponse(status_code=403, content={"error": "This screen isn't approved for store mode"})
+    if not main._store_send_limiter.is_allowed(screen[0]):
+        return JSONResponse(status_code=429, content={"error": "Too many sends — wait a few minutes"})
+    cart = body.get("cart")
+    if not isinstance(cart, dict):
+        return JSONResponse(status_code=400, content={"error": "Nothing to send"})
+    if len(json.dumps(cart)) > main.SAVED_CART_MAX_BYTES:
+        return JSONResponse(status_code=413, content={"error": "Too many favorites to send at once"})
+    code = str(body.get("code") or "").strip().upper()
+    if not code and not main._cart_summary(cart)["items"]:
+        return JSONResponse(status_code=400, content={"error": "Heart some photos first"})
+    rec = main._store_send(screen[0], screen[1], cart, code)
+    return {"code": rec["code"], "status": rec["status"]}
+
+
+@router.get("/api/store/send/{code}")
+def store_send_status(code: str, request: Request):
+    """The screen checks on its code: waiting, opened at the POS, sold (then it starts over)."""
+    screen = _sending_screen(request)
+    if not screen:
+        return JSONResponse(status_code=403, content={"error": "This screen isn't approved for store mode"})
+    rec = main._load_store_send(code)
+    if not rec or rec.get("screen") != screen[0]:
+        return JSONResponse(status_code=404, content={"status": "gone"})
+    return {"code": rec["code"], "status": rec["status"]}
+
+
+@router.get("/api/pos/store-code")
+def pos_store_code(request: Request, code: str = ""):
+    """POS: the favorites a store screen sent under this code, laid out like a saved cart."""
+    if not main._pos_pin_photographer(request):
+        return JSONResponse(status_code=401, content={"error": "Invalid PIN"})
+    rec = main._load_store_send(code)
+    if not rec:
+        return JSONResponse(status_code=404, content={"error": "No favorites under that code today"})
+    if rec["status"] == "waiting":
+        main._mark_store_send(rec["code"], "opened")
+    from routes.saved_carts import _cart_detail
+    detail = _cart_detail({"id": rec["code"], "email": "", "first_name": "", "cart": rec.get("cart") or {},
+                           "summary": rec.get("summary") or {}, "created": rec.get("created", ""),
+                           "updated": rec.get("updated", "")})
+    return {**detail, "store_code": rec["code"], "screen_name": rec.get("screen_name", ""),
+            "status": rec["status"]}
 
 
 # ── Studio: Settings > Security > Store screens ─────────────────────────────

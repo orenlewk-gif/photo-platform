@@ -1228,6 +1228,85 @@ def _note_blocked_store_visit(info: dict) -> None:
         _send_store_screen_email(info)
 
 
+# ── Send to sale: a store screen's favorites, picked up at the POS with a 4-letter code ────────
+# The customer taps "Send to sale" on a store screen. Their favorites are kept under a short code
+# (letters only, no I or O; good until the end of the day, Big Sky time) that staff type at the
+# POS. While the code waits, the screen keeps it up to date with any new hearts. When the POS
+# records the sale that used it, the code is marked sold and the screen starts over by itself.
+STORE_SENDS_PREFIX = "store_sends/"
+STORE_CODE_LETTERS = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+_STORE_CODE_RE = re.compile(r"[A-HJ-NP-Z]{4}")
+_store_sends: dict = {}                     # code -> record (R2 keeps them across restarts)
+_store_sends_lock = threading.Lock()
+_store_send_limiter = _RateLimiter(max_calls=240, window=3600)    # sends and updates per screen
+
+
+def _store_send_r2_key(code: str) -> str:
+    return f"{STORE_SENDS_PREFIX}{code}.json"
+
+
+def _load_store_send(code: str) -> dict | None:
+    """The favorites sent under this code, or None (unknown, or past the end of its day)."""
+    code = (code or "").strip().upper()
+    if not _STORE_CODE_RE.fullmatch(code):
+        return None
+    rec = _store_sends.get(code)
+    if rec is None:
+        try:
+            rec = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=_store_send_r2_key(code))["Body"].read())
+        except Exception:
+            return None
+        _store_sends[code] = rec
+    return rec if rec.get("expires", "") > _now_iso() else None
+
+
+def _save_store_send(rec: dict) -> None:
+    s3.put_object(Bucket=R2_BUCKET, Key=_store_send_r2_key(rec["code"]), Body=json.dumps(rec).encode(),
+                  ContentType="application/json")
+    _store_sends[rec["code"]] = rec
+
+
+def _store_code_day_end() -> str:
+    """Midnight tonight, Big Sky time (as UTC, like the other times kept)."""
+    now = datetime.now(ZoneInfo("America/Denver"))
+    midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tzinfo=now.tzinfo)
+    return midnight.astimezone(timezone.utc).isoformat()
+
+
+def _store_send(screen_id: str, screen_name: str, cart: dict, code: str = "") -> dict:
+    """Keep these favorites for the POS: under the screen's code that's still waiting, or a new
+    one. Favorites cleared on the screen leave the code with nothing to sell ("cleared")."""
+    summary = _cart_summary(cart)
+    with _store_sends_lock:
+        rec = _load_store_send(code) if code else None
+        if rec and rec.get("screen") == screen_id and rec["status"] == "sold":
+            return rec                      # already sold: the screen thanks them and starts over
+        if not rec or rec.get("screen") != screen_id:
+            if not summary["items"]:
+                return {"code": "", "status": "cleared"}
+            for _ in range(100):
+                code = "".join(secrets.choice(STORE_CODE_LETTERS) for _ in range(4))
+                if not _load_store_send(code):
+                    break
+            rec = {"code": code, "screen": screen_id, "screen_name": screen_name, "created": _now_iso(),
+                   "expires": _store_code_day_end(), "status": "waiting"}
+        status = rec["status"] if summary["items"] else "cleared"
+        if status == "cleared" and summary["items"]:
+            status = "waiting"
+        rec = {**rec, "cart": cart, "summary": summary, "updated": _now_iso(), "status": status}
+        _save_store_send(rec)
+    return rec
+
+
+def _mark_store_send(code: str, status: str, **fields) -> None:
+    """The POS opened a code ("opened"), or recorded the sale that used it ("sold")."""
+    with _store_sends_lock:
+        rec = _load_store_send(code)
+        if not rec or rec.get("status") == "sold":
+            return
+        _save_store_send({**rec, **fields, "status": status, status: _now_iso()})
+
+
 def _make_thumbs_quietly(r2_key: str, variants, original: bytes = None, label_item: dict = None) -> bool:
     try:
         _make_thumbs(r2_key, variants, original, label_item)
@@ -2046,6 +2125,13 @@ def _record_pos_sale_now(body: dict):
         _clear_saved_cart_for(customer_email)
     except Exception as e:
         print(f"Saved cart not cleared after POS sale ({customer_email}): {e}")
+
+    store_code = str(body.get("store_code") or "")
+    try:                                     # favorites sent from a store screen: that screen starts over
+        if store_code:
+            _mark_store_send(store_code, "sold", order_id=order_id)
+    except Exception as e:
+        print(f"Store code not marked sold after POS sale ({store_code}): {e}")
 
     # Add the customer to the directory (or refresh their contact info).
     # A failure here must never block the sale.

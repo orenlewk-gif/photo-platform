@@ -173,3 +173,115 @@ def _request_with(c, main_module):
     from starlette.requests import Request
     cookie = "; ".join(f"{k}={v}" for k, v in c.cookies.items())
     return Request({"type": "http", "headers": [(b"cookie", cookie.encode())], "client": ("1.2.3.4", 1)})
+
+
+# ── Send to sale ──────────────────────────────────────────────────────────────
+
+def _favorites(n=2):
+    return {"ts": 1, "frameCart": [], "currentFolderKey": "2026-12-06||Big Sky Ski School", "digitalLogoPaths": [],
+            "folderCarts": {"2026-12-06||Big Sky Ski School": {
+                "selectedPaths": [f"images/2026-12-06/big-sky-ski-school/DSC_{i}.JPG" for i in range(n)],
+                "selectedPhotos": [], "printCart": [], "label": "Big Sky Ski School", "location": "Big Sky Ski School"}}}
+
+
+@pytest.fixture()
+def sends(main_module):
+    def clear():
+        for o in S3.list_objects_v2(Bucket=BUCKET, Prefix=main_module.STORE_SENDS_PREFIX).get("Contents", []):
+            S3.delete_object(Bucket=BUCKET, Key=o["Key"])
+        main_module._store_sends.clear()
+        main_module._store_send_limiter._calls.clear()
+    clear()
+    S3.put_object(Bucket=BUCKET, Key="meta/photographers.json",
+                  Body=json.dumps([{"id": "p1", "name": "Test Photog", "pin": "4821"}]).encode())
+    main_module._pin_fail_limiter._calls.clear()
+    yield
+    clear()
+
+
+PIN = {"X-POS-PIN": "4821"}
+
+
+def test_only_a_store_screen_can_send_favorites(client, sends):
+    r = client.post("/api/store/send", json={"cart": _favorites()})
+    assert r.status_code == 403
+
+
+def test_sending_gives_a_four_letter_code_that_new_hearts_follow(main_module, emails, sends, client):
+    c = TestClient(main_module.app)
+    _approve(c, emails)
+    assert c.post("/api/store/send", json={"cart": _favorites(0)}).status_code == 400     # nothing hearted yet
+    r = c.post("/api/store/send", json={"cart": _favorites(2)})
+    code = r.json()["code"]
+    assert r.status_code == 200 and len(code) == 4 and code.isalpha() and code.isupper()
+    assert not set(code) & {"I", "O"} and r.json()["status"] == "waiting"
+    # More hearts: the same code, now with three photos
+    assert c.post("/api/store/send", json={"cart": _favorites(3), "code": code}).json()["code"] == code
+    d = client.get("/api/pos/store-code", params={"code": code.lower()}, headers=PIN).json()
+    assert d["store_code"] == code and d["screen_name"] == "Front counter iMac" and d["email"] == ""
+    f = d["folders"][0]
+    assert (f["date"], f["location"]) == ("2026-12-06", "Big Sky Ski School") and len(f["photos"]) == 3
+    # The screen sees the counter opened it
+    assert c.get(f"/api/store/send/{code}").json()["status"] == "opened"
+
+
+def test_the_pos_needs_its_pin_and_a_real_code(main_module, emails, sends, client):
+    c = TestClient(main_module.app)
+    _approve(c, emails)
+    code = c.post("/api/store/send", json={"cart": _favorites()}).json()["code"]
+    assert client.get("/api/pos/store-code", params={"code": code}).status_code == 401
+    other = "ABCD" if code != "ABCD" else "ABCE"
+    assert client.get("/api/pos/store-code", params={"code": other}, headers=PIN).status_code == 404
+    # The store screen itself can't open it at the POS
+    assert c.get("/api/pos/store-code", params={"code": code}).status_code == 401
+
+
+def test_another_screen_cant_follow_or_change_the_code(main_module, emails, sends):
+    a, b = TestClient(main_module.app), TestClient(main_module.app)
+    _approve(a, emails, "Screen A")
+    _approve(b, emails, "Screen B")
+    code = a.post("/api/store/send", json={"cart": _favorites(2)}).json()["code"]
+    assert b.get(f"/api/store/send/{code}").status_code == 404
+    other = b.post("/api/store/send", json={"cart": _favorites(1), "code": code}).json()["code"]
+    assert other != code
+    assert len(main_module._load_store_send(code)["summary"]["paths"]) == 2
+
+
+def test_the_sale_marks_the_code_sold_and_the_screen_starts_over(main_module, emails, sends, client):
+    c = TestClient(main_module.app)
+    _approve(c, emails)
+    code = c.post("/api/store/send", json={"cart": _favorites()}).json()["code"]
+    r = client.post("/api/pos-checkout", json={"pin": "4821", "email": "kim@example.com", "name": "Kim Lee",
+                                               "items": [], "total": 0, "square_payment_id": "COMP",
+                                               "store_code": code})
+    assert r.status_code == 200
+    assert c.get(f"/api/store/send/{code}").json()["status"] == "sold"
+    # A heart a moment after the sale doesn't start a new code: the screen thanks them instead
+    assert c.post("/api/store/send", json={"cart": _favorites(3), "code": code}).json() == {"code": code, "status": "sold"}
+    rec = main_module._load_store_send(code)
+    assert rec["order_id"].startswith("pos-") and len(rec["summary"]["paths"]) == 2
+
+
+def test_clearing_the_favorites_leaves_the_code_with_nothing_to_sell(main_module, emails, sends, client):
+    c = TestClient(main_module.app)
+    _approve(c, emails)
+    code = c.post("/api/store/send", json={"cart": _favorites()}).json()["code"]
+    assert c.post("/api/store/send", json={"cart": _favorites(0), "code": code}).json()["status"] == "cleared"
+    assert client.get("/api/pos/store-code", params={"code": code}, headers=PIN).json()["summary"]["items"] == 0
+
+
+def test_codes_last_until_the_end_of_the_day(main_module, emails, sends, client):
+    c = TestClient(main_module.app)
+    _approve(c, emails)
+    code = c.post("/api/store/send", json={"cart": _favorites()}).json()["code"]
+    from datetime import datetime, timedelta, timezone
+    from zoneinfo import ZoneInfo
+    end = datetime.fromisoformat(main_module._load_store_send(code)["expires"]).astimezone(ZoneInfo("America/Denver"))
+    now = datetime.now(ZoneInfo("America/Denver"))
+    assert (end.hour, end.minute) == (0, 0) and end.date() == now.date() + timedelta(days=1)
+    # Tomorrow it's gone (also after a restart, from storage)
+    rec = main_module._load_store_send(code)
+    main_module._save_store_send({**rec, "expires": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()})
+    main_module._store_sends.clear()
+    assert client.get("/api/pos/store-code", params={"code": code}, headers=PIN).status_code == 404
+    assert c.get(f"/api/store/send/{code}").status_code == 404
