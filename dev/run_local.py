@@ -111,13 +111,27 @@ for i in range(20):
     s3.put_object(Bucket=BUCKET, Key=key, Body=body, ContentType="image/jpeg")
     sample_photos.append({"path": key, "date": "2026-06-07", "location": "El Dorado Action",
                           "last_name": "", "group": ""})
+# A portrait family (Winter Portraits) with three poses, so pose galleries can be tried locally
+_pose_files = {"Red": [], "Yellow": [], "Green": []}
+for i in range(12):
+    color = ("Red", "Yellow", "Green")[i // 4]
+    key = f"images/2026-06-07/winter-portraits/sample/DSC{1200 + i:05d}.JPG"
+    buf = BytesIO()
+    Image.new("RGB", (3000, 4000), ((180, 40, 40), (200, 180, 40), (40, 150, 70))[i // 4]).save(buf, "JPEG", quality=85)
+    s3.put_object(Bucket=BUCKET, Key=key, Body=buf.getvalue(), ContentType="image/jpeg")
+    sample_photos.append({"path": key, "date": "2026-06-07", "location": "Winter Portraits",
+                          "last_name": "Sample", "group": ""})
+    _pose_files[color].append(os.path.basename(key))
+put_json("meta/folder_meta.json", {"2026-06-07|Winter Portraits|Sample": {"poses_live": True, "poses": [
+    {"color": c, "label": f"Pose {n + 1}", "files": f} for n, (c, f) in enumerate(_pose_files.items())]}})
 put_json("images.json", sample_photos)
 _pricing = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pricing.json")))
 _pricing.setdefault("activities", {})["Winter Action"] = {
     "tiers": [{"label": "1 Photo", "count": 1, "price": 25},
               {"label": "All Photos", "count": "all", "price": 115, "max": True}],
     "flags": {"time_search": True, "clip": True}}
-_pricing["activity_categories"] = [{"name": "Winter Action", "acts": ["El Dorado Action"]}]
+_pricing["activity_categories"] = [{"name": "Winter Action", "acts": ["El Dorado Action"]},
+                                   {"name": "Winter Portraits", "acts": ["Winter Portraits"]}]
 _pricing["logo_fee"] = 2
 put_json("meta/pricing.json", _pricing)
 

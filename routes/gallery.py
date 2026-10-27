@@ -217,7 +217,7 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
     size=thumb  → 700px  (gallery thumbnails — a redirect to the stored thumbnail when there is one)
     size=medium → 1800px q90  (lightbox)
     size=full   → 2400px q92  (download-quality)
-    nowm=1      → skip watermark (POS / studio only; others get the watermarked photo)
+    nowm=1      → skip watermark (POS / studio / approved store screens; others get the watermarked photo)
     """
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {
@@ -226,7 +226,10 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
         "full":   (2400, 92),
     }
     staff = main._nowm_allowed(request)
-    if nowm and not staff:
+    # A store screen sees the same photos as any visitor, just without watermarks and without
+    # the visitor's limit on enlarged photos (customers flip through a lot of photos in the store)
+    store = not staff and bool(main._store_screen(request))
+    if nowm and not (staff or store):
         nowm = False
     cache = "public"
     if not staff:
@@ -238,7 +241,7 @@ def get_photo(request: Request, path: str, size: str = Query("medium"), nowm: bo
             cache = "private"          # never kept in a shared cache
         if size == "full":
             size = "medium"
-        if size != "thumb" and not main._preview_allowed(request):
+        if size != "thumb" and not store and not main._preview_allowed(request):
             return JSONResponse(status_code=429, content={"error": "Too many photos opened — wait a few minutes"})
     max_px, quality = SIZE_MAP.get(size, SIZE_MAP["medium"])
     cache_secs = 86400 if size == "thumb" else 3600

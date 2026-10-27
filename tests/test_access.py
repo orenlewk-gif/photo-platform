@@ -38,6 +38,8 @@ PUBLIC = {
     ("POST", "/api/saved-cart"), ("POST", "/api/saved-cart/load"), ("POST", "/api/photo-removal"),
     # The POS access-code screen (it only shows the PIN pad; everything after needs a PIN)
     ("POST", "/api/pos-unlock"),
+    # A store screen asking for access: it emails the owner a code (limited per address), and the code approves it
+    ("POST", "/api/store/request"), ("POST", "/api/store/verify"),
     # Signed or secret-link addresses: the link, payment or WooCommerce signature is the key
     ("POST", "/webhook"), ("GET", "/api/saved-cart/link"), ("GET", "/api/pos/download-qr"),
     ("POST", "/api/pos/square-complete"), ("POST", "/api/pos/square-pending"), ("POST", "/api/pos/device-verify"),

@@ -1119,6 +1119,115 @@ def _nowm_allowed(request: Request) -> bool:
     return _pos_signed_in(request) or _admin_authed(request)
 
 
+# ── Store screens ────────────────────────────────────────────────────────────
+# The in-store favoriting screens (/store). A new screen asks for access: the owner is emailed a
+# 6-digit code, it's typed on that screen once, and the screen is approved under the name it was
+# given (two years, or until removed in Settings > Security). A separate list from POS devices:
+# a store screen sees published photos without watermarks, but can't use the POS. Every visit
+# from a screen that isn't approved is blocked and the owner is told (one email per address an hour).
+STORE_SCREEN_COOKIE = "ci_store_screen"
+STORE_SCREEN_DAYS   = 730
+STORE_NAME_MAX      = 40
+_store_challenges: dict = {}      # challenge id -> pending code (in memory, 10 minutes)
+_store_request_limiter = _RateLimiter(max_calls=3, window=3600)      # access requests per address
+_store_notice_limiter  = _RateLimiter(max_calls=1, window=3600)      # blocked-visit emails per address
+_store_notice_daily    = _RateLimiter(max_calls=20, window=86400)    # blocked-visit emails in all, a day
+
+
+def _store_screen(request: Request) -> tuple[str, dict] | None:
+    """(id hash, record) of this device's approved store screen, or None."""
+    token = request.cookies.get(STORE_SCREEN_COOKIE, "")
+    if not token:
+        return None
+    h = _token_hash(token)
+    rec = _load_admin_auth()["store_screens"].get(h)
+    return (h, rec) if rec and rec.get("expires", "") > _now_iso() else None
+
+
+def _store_page_allowed(request: Request) -> bool:
+    """An approved store screen, or the owner signed in to the studio (to look at it)."""
+    return bool(_store_screen(request)) or _admin_authed(request)
+
+
+def _approve_store_screen(name: str, info: dict) -> str:
+    """Remember a newly approved store screen. Returns the token for its cookie."""
+    token = secrets.token_urlsafe(32)
+    now = _now_iso()
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["store_screens"][_token_hash(token)] = {
+            "name": name, "approved": now, "last_used": now,
+            "describe": info.get("device", ""), "ip": info.get("ip", ""),
+            "expires": (datetime.now(timezone.utc) + timedelta(days=STORE_SCREEN_DAYS)).isoformat()}
+        _save_admin_auth(d)
+    return token
+
+
+def _touch_store_screen(screen_id: str) -> None:
+    """Note when a screen was last used (saved at most once an hour)."""
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        rec = d["store_screens"].get(screen_id)
+        if not rec:
+            return
+        an_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        if rec.get("last_used", "") < an_hour_ago:
+            rec["last_used"] = _now_iso()
+            _save_admin_auth(d)
+
+
+def _send_store_screen_email(info: dict, name: str = "", code: str = "") -> bool:
+    """To the owner: a store screen asking for access (with its code), or a blocked visit."""
+    if not RESEND_API_KEY:
+        print(f"[Store screen] {'code ' + code if code else 'blocked visit'} ({name or 'no name'}, "
+              f"{info.get('device', '')}, {info.get('ip', '')}) — RESEND_API_KEY not set, so it wasn't emailed")
+        return False
+    try:
+        when = datetime.now(ZoneInfo("America/Denver")).strftime("%b %d, %Y at %I:%M %p").replace(" 0", " ")
+    except Exception:
+        when = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
+    where = (f'<p style="margin:0 0 1rem;color:#555">{_html_escape(info.get("device", ""))} &middot; '
+             f'internet address {_html_escape(info.get("ip", ""))} &middot; {when} (Mountain)</p>')
+    if code:
+        subject = f"Store screen code: {code}"
+        body_html = (
+            f'<p>A screen asked to use <strong>store mode</strong> as '
+            f'<strong>{_html_escape(name)}</strong>:</p>{where}'
+            f'<p>The code to approve it:</p>'
+            f'<p style="font-size:2rem;font-weight:700;letter-spacing:.3rem;margin:.5rem 0 1rem">{code}</p>'
+            f'<p style="color:#555">It works for {LOGIN_CODE_MINUTES} minutes. After that, the screen stays approved '
+            f'until you remove it in Settings &gt; Security.</p>'
+            f'<p style="color:#b91c1c"><strong>If this isn\'t one of the shop\'s screens,</strong> don\'t share the code.</p>')
+        text = (f"Store screen code: {code} ({name} on {info.get('device', '')}, {info.get('ip', '')}, {when}). "
+                f"If this isn't one of the shop's screens, don't share the code.")
+    else:
+        subject = "Store mode: a screen that isn't approved was blocked"
+        body_html = (f'<p>A device that isn\'t an approved store screen opened <strong>store mode</strong> '
+                     f'and was blocked:</p>{where}'
+                     f'<p style="color:#555">Nothing to do if this was you or the shop. Approved screens are '
+                     f'listed in Settings &gt; Security.</p>')
+        text = (f"A device that isn't an approved store screen opened store mode and was blocked "
+                f"({info.get('device', '')}, {info.get('ip', '')}, {when}).")
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [OWNER_EMAIL], "subject": subject,
+                                     "html": _wrap_email_html(body_html), "text": text},
+                               timeout=10)
+        if not r.ok:
+            print(f"Store screen email failed: {r.text}")
+        return r.ok
+    except Exception as e:
+        print(f"Store screen email failed: {e}")
+        return False
+
+
+def _note_blocked_store_visit(info: dict) -> None:
+    """Tell the owner about a blocked visit (one email per address an hour, 20 a day in all)."""
+    if _store_notice_limiter.is_allowed(info.get("ip", "")) and _store_notice_daily.is_allowed("all"):
+        _send_store_screen_email(info)
+
+
 def _make_thumbs_quietly(r2_key: str, variants, original: bytes = None, label_item: dict = None) -> bool:
     try:
         _make_thumbs(r2_key, variants, original, label_item)
@@ -2681,6 +2790,7 @@ def _load_admin_auth() -> dict:
             d.setdefault("sessions", {})
             d.setdefault("devices", {})
             d.setdefault("pos_devices", {})
+            d.setdefault("store_screens", {})
             _admin_auth_cache["data"] = d
         return _admin_auth_cache["data"]
 
@@ -2691,6 +2801,7 @@ def _save_admin_auth(d: dict):
     d["sessions"] = {k: v for k, v in d["sessions"].items() if v.get("expires", "") > now}
     d["devices"] = {k: v for k, v in d["devices"].items() if v.get("expires", "") > now}
     d["pos_devices"] = {k: v for k, v in d.get("pos_devices", {}).items() if v.get("expires", "") > now}
+    d["store_screens"] = {k: v for k, v in d.get("store_screens", {}).items() if v.get("expires", "") > now}
     s3.put_object(Bucket=R2_BUCKET, Key=ADMIN_AUTH_KEY, Body=json.dumps(d, indent=1).encode(),
                   ContentType="application/json")
     _admin_auth_cache["data"] = d
@@ -5269,6 +5380,9 @@ app.include_router(_routes_saved_carts.router)
 
 from routes import qr_codes as _routes_qr_codes  # noqa: E402
 app.include_router(_routes_qr_codes.router)
+
+from routes import store as _routes_store  # noqa: E402
+app.include_router(_routes_store.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

@@ -1476,7 +1476,20 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
   </div>
 </div>
 
+<!--store-mode-->
 <script>
+// Store mode (/store, on the shop's approved screens) is this page with no prices, shop or
+// watermarks: customers heart their favorite photos. static/store-mode.js adds the rest.
+const STORE = window.STORE_MODE === true;
+
+// A gallery photo's address (store screens get it without the watermark)
+// The page's own address: the gallery's links stay on /store in store mode
+const PAGE_PATH = STORE ? '/store' : '/';
+
+function photoSrc(path, size) {
+  return `/api/photo?path=${enc(path)}&size=${size}${size === 'thumb' ? '&v=4' : ''}${STORE ? '&nowm=1' : ''}`;
+}
+
 // ── State ──
 let allPhotos      = [];
 let _jCols         = 4;     // current column count
@@ -1525,9 +1538,6 @@ function saveCurrentFolder() {
     label:          currentFolderLabel,
   };
   if (hasPose) {
-    const ser = {};
-    for (const [c, v] of Object.entries(_poseState)) ser[c] = v === 'pose' ? 'pose' : [...v];
-    entry.poseState = ser;
     entry.portraitPricing = _portraitPricing;
     // Save pose structure so unified cart and checkout can render/send portrait items
     entry.poses = (_poseData?.poses || []).map(p => ({
@@ -1539,6 +1549,16 @@ function saveCurrentFolder() {
         return ph ? ph.path : '';
       }).filter(Boolean),
     }));
+    // Single photos are saved by their place in their own pose (what checkout, saved carts and
+    // the POS read); on the page they're kept by their place in the whole gallery
+    const ser = {};
+    for (const [c, v] of Object.entries(_poseState)) {
+      if (v === 'pose') { ser[c] = 'pose'; continue; }
+      const posePaths = entry.poses.find(p => p.color === c)?.paths || [];
+      const picked = [...v].map(i => posePaths.indexOf(allPhotos[i]?.path)).filter(i => i >= 0);
+      if (picked.length) ser[c] = picked;
+    }
+    entry.poseState = ser;
     entry.poseDate = _poseDate;
     entry.poseLoc  = _poseLoc;
     entry.poseFam  = _poseFam;
@@ -1638,7 +1658,7 @@ function navigate(state, replace = false) {
   if (state.family)   params.set('family',   state.family);
   if (state.group)    params.set('group',    state.group);
   if (state.ln)       params.set('ln',       state.ln);
-  const url = params.toString() ? '?' + params.toString() : '/';
+  const url = PAGE_PATH + (params.toString() ? '?' + params.toString() : '');
   if (replace) history.replaceState(state, '', url);
   else         history.pushState(state, '', url);
   renderState(state);
@@ -1659,7 +1679,7 @@ async function renderState(state) {
       // An old "?ln=" link mixed several folders in one gallery, priced as one: show the name's
       // folders instead, so each is opened (and priced) on its own
       if (state.ln && !state.date) {
-        history.replaceState({ view: 'days' }, '', '/');
+        history.replaceState({ view: 'days' }, '', PAGE_PATH);
         document.getElementById('ln-input').value = state.ln;
         await doLnSearch();
         break;
@@ -1670,8 +1690,10 @@ async function renderState(state) {
 
 // ── Boot ──
 // ── Cart persistence (7-day localStorage) ────────────────────────────────────
-const CART_KEY = 'bsp_cart_v1';
-const CART_TTL = 7 * 24 * 60 * 60 * 1000;
+// Store screens keep favorites apart from the website's cart, and only for a day (customers
+// come one after another; Start over clears them sooner)
+const CART_KEY = STORE ? 'ci_store_favorites_v1' : 'bsp_cart_v1';
+const CART_TTL = (STORE ? 1 : 7) * 24 * 60 * 60 * 1000;
 
 function saveCart() {
   try {
@@ -1695,8 +1717,8 @@ function saveCart() {
 const SAVED_ID_KEY = 'ci_saved_cart_session';      // {first_name, email}, this tab's visit only
 const SAVE_PROMPT_KEY = 'ci_save_prompt_done';      // asked once per device
 let _savePromptShown = false, _remoteSaveTimer = null;
-function savedIdentity(){ try { return JSON.parse(sessionStorage.getItem(SAVED_ID_KEY) || 'null'); } catch(e) { return null; } }
-function rememberIdentity(who){ try { sessionStorage.setItem(SAVED_ID_KEY, JSON.stringify(who)); } catch(e) {} }
+function savedIdentity(){ if (STORE) return null; try { return JSON.parse(sessionStorage.getItem(SAVED_ID_KEY) || 'null'); } catch(e) { return null; } }
+function rememberIdentity(who){ if (STORE) return; try { sessionStorage.setItem(SAVED_ID_KEY, JSON.stringify(who)); } catch(e) {} }
 function cartItemCount(data){
   let n = (data.frameCart || []).reduce((s, f) => s + (f.quantity || 1), 0);
   Object.values(data.folderCarts || {}).forEach(fc => {
@@ -1705,6 +1727,7 @@ function cartItemCount(data){
   return n;
 }
 function afterCartSaved(data){
+  if (STORE) return;            // store screens save only when the customer asks (no prompt, no auto-save)
   const who = savedIdentity();
   if(who){                                        // they gave their email this visit: keep it saved
     clearTimeout(_remoteSaveTimer);
@@ -1734,11 +1757,16 @@ async function startSaving(first, email, msgEl){
   if(!first){ msgEl.textContent = 'Please enter your first name.'; msgEl.className = 'save-msg err'; return false; }
   if(!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email)){ msgEl.textContent = 'Please enter a valid email.'; msgEl.className = 'save-msg err'; return false; }
   const data = currentCartData();
-  if(!cartItemCount(data)){ msgEl.textContent = 'Select some photos first, then save them here.'; msgEl.className = 'save-msg err'; return false; }
+  if(!cartItemCount(data)){ msgEl.textContent = STORE ? 'Heart some photos first, then save them here.' : 'Select some photos first, then save them here.'; msgEl.className = 'save-msg err'; return false; }
   msgEl.textContent = 'Saving…'; msgEl.className = 'save-msg';
   const who = {first_name: first, email};
   const problem = await remoteSaveCart(who, data);
   if(problem){ msgEl.textContent = problem; msgEl.className = 'save-msg err'; return false; }
+  if(STORE){                    // a snapshot: later changes aren't saved unless they save again
+    msgEl.textContent = `Saved for ${first}. Load them anytime on bigskyphotos.com or here with ${email}.`;
+    msgEl.className = 'save-msg ok';
+    return true;
+  }
   try { localStorage.setItem(SAVE_PROMPT_KEY, '1'); } catch(e) {}
   rememberIdentity(who);
   renderSaveBoxes();
@@ -1803,7 +1831,8 @@ async function loadSavedCart(email, msgEl){
   email = (email || '').trim();
   if(!email){ msgEl.textContent = 'Please enter your email.'; msgEl.className = 'save-msg err'; return; }
   const here = cartItemCount(currentCartData());
-  if(here && !confirm('Loading your saved photos replaces what is in your cart now. Continue?')) return;
+  if(here && !confirm(STORE ? 'Loading your saved photos replaces the favorites on this screen now. Continue?'
+                            : 'Loading your saved photos replaces what is in your cart now. Continue?')) return;
   msgEl.textContent = 'Loading…'; msgEl.className = 'save-msg';
   try {
     const r = await fetch('/api/saved-cart/load', {method:'POST', headers:{'Content-Type':'application/json'},
@@ -2120,7 +2149,7 @@ async function showGallery(date, location, family, ln, group) {
     <div class="gallery-header">
       <span class="gallery-title">${title}</span>
       <span class="results-count" id="results-count">${photos.length} photo${photos.length!==1?'s':''}</span>
-      ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">Select All ${photos.length} Photos</button>` : ''}
+      ${(family || ln) ? `<button class="select-all-btn" onclick="selectAllPhotos()">${STORE ? 'Favorite' : 'Select'} All ${photos.length} Photos</button>` : ''}
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
     ${folderInfoHtml}
@@ -2681,10 +2710,14 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
   _poseData  = poseData;
   _poseState = {};
   _poseExpandedMobile.clear();
-  // Restore saved pose selections if returning to this folder
-  const savedPs = folderCarts[currentFolderKey]?.poseState;
-  if (savedPs) {
-    for (const [c, v] of Object.entries(savedPs)) _poseState[c] = Array.isArray(v) ? new Set(v) : v;
+  // Restore saved pose selections if returning to this folder (single photos are saved by
+  // their place in their pose; here they're kept by their place in the whole gallery)
+  const saved = folderCarts[currentFolderKey];
+  for (const [c, v] of Object.entries(saved?.poseState || {})) {
+    if (!Array.isArray(v)) { _poseState[c] = v; continue; }
+    const posePaths = (saved.poses || []).find(p => (p.color || '') === c)?.paths || [];
+    const picked = v.map(i => photos.findIndex(p => p.path === posePaths[i])).filter(i => i >= 0);
+    if (picked.length) _poseState[c] = new Set(picked);
   }
   _poseDate  = date; _poseLoc = loc; _poseFam = fam;
 
@@ -2699,7 +2732,7 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
     </div>
     ${folderInfoHtml}
     ${previewBanner}
-    ${folderInfoHtml
+    ${STORE ? storePoseIntroHTML() : folderInfoHtml
       ? `<div style="margin:-.5rem 0 1.25rem;text-align:center"><button style="background:none;border:none;color:#F5C518;font-size:.85rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button></div>`
       : `<div class="pose-intro">Our portrait photos are sold by the pose. Below you will see sets of poses. A pose is considered a group of photos with the same amount of people, doing the same thing, all while having the same background. The more full poses you purchase, the cheaper each pose will become, capping out at $50 per pose. We also offer the ability to purchase single photos of each pose in either digital or print format. Click <strong>Buy this pose</strong> to get all digital downloads for that pose, or hover any photo and click the circle to add a single photo. <button style="background:none;border:none;color:#F5C518;font-size:.96rem;cursor:pointer;text-decoration:underline;padding:0" onclick="openPPModal()">See pricing details →</button></div>`
     }
@@ -2712,6 +2745,7 @@ function renderPoseGallery(el, photos, poseData, title, folderInfoHtml, date, lo
 }
 
 function _poseHeaderHTML(pose, pi, fullPoseCount) {
+  if (STORE) return storePoseHeaderHTML(pose, pi);
   const color  = pose.color || '';
   const label  = pose.label || `Pose ${pi + 1}`;
   const files  = pose.files || [];
@@ -2767,11 +2801,12 @@ function updateAllPosesBtn() {
   if (!btn || !_poseData) return;
   const poses = _poseData.poses || [];
   const allSelected = poses.length > 0 && poses.every(p => _poseState[p.color || ''] === 'pose');
+  btn.classList.toggle('selected', allSelected);
+  if (STORE) { btn.textContent = allSelected ? 'All poses favorited · Undo' : `Favorite all ${poses.length} poses`; return; }
   const total = calcTotalCost(poses.length);
   btn.textContent = allSelected
     ? `✓ All Poses Added · Remove`
     : `Buy All ${poses.length} Poses — $${total.toFixed(2)}`;
-  btn.classList.toggle('selected', allSelected);
 }
 
 function toggleAllPoses() {
@@ -2831,7 +2866,7 @@ function renderPoseSections(photos) {
       card.dataset.poseColor = color;
       card.innerHTML = `
         <div class="card-btn-row">
-          <button type="button" class="select-check" data-idx="${globalIdx}" aria-label="Select photo ${escA(photo.filename || '')}" aria-pressed="${isFullPose || isSingleSel ? 'true' : 'false'}">✓</button>
+          <button type="button" class="select-check" data-idx="${globalIdx}" aria-label="${STORE ? 'Favorite' : 'Select'} photo ${escA(photo.filename || '')}" aria-pressed="${isFullPose || isSingleSel ? 'true' : 'false'}">${STORE ? STORE_HEART : '✓'}</button>
         </div>
         <img data-path="${escA(photo.path)}" src="" alt="${photo.filename || ''}" />
         <div class="watermark"></div>
@@ -2915,6 +2950,7 @@ function togglePoseSingle(globalIdx, color) {
 }
 
 function updatePoseCart() {
+  if (STORE) { storeFavoritesChanged(); return; }
   const { fullPoses, singles, total } = calcPortraitTotal();
   const poseCount  = fullPoses + singles;
   const printCount = printCart.length;
@@ -2923,6 +2959,7 @@ function updatePoseCart() {
   if (poseCount === 0 && printCount === 0) {
     cartBar.classList.remove('show');
     document.getElementById('main-container').style.paddingBottom = '';
+    saveCart();
     return;
   }
   cartBar.classList.add('show');
@@ -2953,6 +2990,7 @@ function updatePoseCart() {
   if (saBtn)   saBtn.hidden = true;
   if (viewBtn) viewBtn.onclick = openCartView;
   if (clearBtn) clearBtn.onclick = clearPoseCart;
+  saveCart();                   // keep pose picks in the browser (and the saved cart, once they've saved)
 }
 
 function openPPModal() {
@@ -3019,7 +3057,7 @@ function _fpOpenPosePhotos(label, photos) {
 function _fpRenderPoseGrid() {
   if (!_fpPosePhotos) return;
   const thumbsHtml = _fpPosePhotos.photos.map(p => {
-    const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
+    const src = imgCache[p.path] || photoSrc(p.path, 'thumb');
     const logoOn = _digitalLogoPhotos.has(p.path);
     return `<div class="cartview-thumb"><img src="${src}" alt="${p.filename || ''}" loading="lazy" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="_fpTogglePosePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
   }).join('');
@@ -3062,7 +3100,7 @@ function renderPoseCartView() {
     const gridClick = rest > 0 ? `onclick="${clickFn}" style="margin:.5rem 0 .75rem;cursor:pointer"` : `style="margin:.5rem 0 .75rem"`;
     let t = `<div class="cartview-photo-grid" ${gridClick}>`;
     shown.forEach(p => {
-      const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
+      const src = imgCache[p.path] || photoSrc(p.path, 'thumb');
       const logoOn = _digitalLogoPhotos.has(p.path);
       t += `<div class="cartview-thumb"><img src="${src}" alt="" /><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}')">Logo</button></div>`;
     });
@@ -3227,7 +3265,7 @@ function renderThumbs(photos) {
     card.dataset.idx = i;
     card.innerHTML = `
       <div class="card-btn-row">
-        <button type="button" class="select-check" data-idx="${i}" aria-label="Select photo ${escA(photo.filename || '')}" aria-pressed="${_cartPhotoMap.has(photo.path) ? 'true' : 'false'}">✓</button>
+        <button type="button" class="select-check" data-idx="${i}" aria-label="${STORE ? 'Favorite' : 'Select'} photo ${escA(photo.filename || '')}" aria-pressed="${_cartPhotoMap.has(photo.path) ? 'true' : 'false'}">${STORE ? STORE_HEART : '✓'}</button>
       </div>
       <img data-path="${escA(photo.path)}" src="" alt="${photo.filename}" />
       <div class="watermark"></div>
@@ -3274,7 +3312,7 @@ new MutationObserver(muts => muts.forEach(m => {
 })).observe(document.documentElement, {subtree: true, attributes: true, attributeFilter: ['class']});
 
 function getMaxSelectionLimit() {
-  if (!currentPricing?.tiers) return null;
+  if (STORE || !currentPricing?.tiers) return null;
   const maxTiers = currentPricing.tiers
     .filter(t => t.max)
     .map(t => typeof t.count === 'number' ? t.count : 30)
@@ -3764,6 +3802,7 @@ function updateHeaderCartBtn() {
 }
 
 function updateCart() {
+  if (STORE) { storeFavoritesChanged(); return; }
   if (_poseData) { updatePoseCart(); return; }
   recalcPrintPrices();
   const count      = _cartPhotoMap.size;
@@ -4073,7 +4112,7 @@ function renderCartView() {
           const SHOW = 5;
           html += `<div class="cartview-photo-grid" style="margin-bottom:.25rem">`;
           posePhotos.slice(0, SHOW).forEach(p => {
-            const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
+            const src = imgCache[p.path] || photoSrc(p.path, 'thumb');
             const logoOn = _digitalLogoPhotos.has(p.path);
             html += `<div class="cartview-thumb"><img src="${src}" alt="" loading="lazy"/><div class="watermark"></div><button class="cv-logo-btn${logoOn ? ' active' : ''}" onclick="event.stopPropagation();togglePhotoLogo('${escQ(p.path)}');renderCartView()">Logo</button></div>`;
           });
@@ -4112,7 +4151,7 @@ function renderCartView() {
       const gridStyle = digitalCount > 10 ? 'max-height:220px;overflow-y:auto;' : '';
       html += `<div class="cartview-photo-grid" style="${gridStyle}">`;
       photos.forEach(p => {
-        const src = imgCache[p.path] || `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
+        const src = imgCache[p.path] || photoSrc(p.path, 'thumb');
         const logoOn = _digitalLogoPhotos.has(p.path);
         html += `<div class="cartview-thumb">
           <img src="${src}" alt="${p.filename}" />
@@ -5056,7 +5095,7 @@ const _imgObserver = new IntersectionObserver((entries) => {
     const img = entry.target;
     const path = img.dataset.path;
     if (path) {
-      if (!imgCache[path]) imgCache[path] = `/api/photo?path=${enc(path)}&size=thumb&v=4`;
+      if (!imgCache[path]) imgCache[path] = photoSrc(path, 'thumb');
       img.src = imgCache[path];
     }
     _imgObserver.unobserve(img);
@@ -5072,7 +5111,7 @@ function lazyLoad(container) {
 
 function loadPhoto(path) {
   if (imgCache[path]) return Promise.resolve(imgCache[path]);
-  const src = `/api/photo?path=${enc(path)}&size=thumb&v=4`;
+  const src = photoSrc(path, 'thumb');
   imgCache[path] = src;
   return Promise.resolve(src);
 }
@@ -5253,7 +5292,7 @@ async function renderLB() {
     if (allPhotos[cur] !== photo) return;
     document.getElementById('lb-info').textContent = "This photo couldn't open. If you've been flipping through a lot of photos, wait a few minutes and try again.";
   };
-  ph.src = `/api/photo?path=${enc(photo.path)}&size=medium`;
+  ph.src = photoSrc(photo.path, 'medium');
 
   // Preload adjacent photos in the background
   [cur - 1, cur + 1].forEach(idx => {
@@ -5261,7 +5300,7 @@ async function renderLB() {
     const p = allPhotos[(idx + n) % n];
     if (p) {
       const pre = new window.Image();
-      pre.src = `/api/photo?path=${enc(p.path)}&size=medium`;
+      pre.src = photoSrc(p.path, 'medium');
     }
   });
   document.getElementById('lb-info').innerHTML = `<strong>${photo.location}</strong> &nbsp;·&nbsp; ${formatDate(photo.date)}`;
@@ -5271,6 +5310,7 @@ async function renderLB() {
 }
 
 function updateLBSelectBtn() {
+  if (STORE) { storeUpdateLBButton(); return; }
   const btn    = document.getElementById('lb-select-btn');
   const upsell = document.getElementById('lb-upsell');
   if (!btn) return;
@@ -5293,6 +5333,7 @@ function updateLBSelectBtn() {
 }
 
 function toggleSelectFromLB() {
+  if (STORE) { storeToggleFromLB(); return; }
   toggleSelect(cur);
   updateLBSelectBtn();
 }
@@ -5681,7 +5722,7 @@ function openPrintsModal() {
   // Photo rows
   const listEl = document.getElementById('pu-photo-list');
   listEl.innerHTML = photos.map(({ idx, photo }) => {
-    const src = imgCache[photo.path] || `/api/photo?path=${enc(photo.path)}&size=thumb&v=4`;
+    const src = imgCache[photo.path] || photoSrc(photo.path, 'thumb');
     if (!imgCache[photo.path]) imgCache[photo.path] = src;
     const sizesHtml = PRINT_SIZES.map((s, si) => {
       return `<option value="${si}">${s.label} Print — $${s.price / 2}</option>`;
@@ -5728,7 +5769,7 @@ function openFolderPhotosModal(key) {
   document.getElementById('fp-title').textContent = `${label} — ${photos.length} photo${photos.length !== 1 ? 's' : ''}`;
   const grid = document.getElementById('fp-grid');
   grid.innerHTML = photos.map(p => {
-    const src = `/api/photo?path=${enc(p.path)}&size=thumb&v=4`;
+    const src = photoSrc(p.path, 'thumb');
     return `<img src="${src}" alt="${p.filename || ''}" loading="lazy" />`;
   }).join('');
   document.getElementById('fp-overlay').classList.add('open');

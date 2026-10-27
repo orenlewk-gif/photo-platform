@@ -1,0 +1,108 @@
+/* Store mode (/store): the gallery with no prices, shop or watermarks, and hearts for favorites.
+   The gallery's own styles stay; this hides the shop and adds the favorites bar and lists. */
+
+/* No shop: header links and cart, shop buttons, prices, checkout, upsells, the website footer */
+.store-mode .nav-center, .store-mode .header-cart-btn, .store-mode .custom-header .dropdown,
+.store-mode #cart-bar, .store-mode .cart-gallery-banner, .store-mode .card-shop-btn,
+.store-mode .thumb-shop-btn, .store-mode .lb-shop-btn, .store-mode #lb-upsell,
+.store-mode .pose-price-tag, .store-mode .pose-how-btn, .store-mode .site-footer,
+.store-mode .save-prompt { display:none !important; }
+
+.store-mode .custom-header .logo { cursor:pointer; }
+.store-head-tools { display:flex; align-items:center; gap:.6rem; margin-left:auto; }
+.store-head-btn {
+  display:inline-flex; align-items:center; gap:.4rem;
+  background:transparent; border:1px solid rgba(255,255,255,.3); color:#fff;
+  font-family:'DM Sans',sans-serif; font-size:.95rem; font-weight:600;
+  border-radius:8px; padding:.55rem 1rem; cursor:pointer; white-space:nowrap;
+}
+.store-head-btn:hover { border-color:#fff; }
+a.store-head-btn { text-decoration:none; }
+.store-head-btn .store-heart { fill:#ff5a7a; }
+
+/* Hearts: always showing (customers may be on a touch screen), filled when favorited */
+.store-heart { fill:none; stroke:currentColor; stroke-width:2; flex-shrink:0; }
+.store-mode .card-btn-row { opacity:1; }
+.store-mode .select-check {
+  width:36px; height:36px; color:#fff;
+  background:rgba(0,0,0,.5); border:2px solid rgba(255,255,255,.75);
+}
+.store-mode .select-check .store-heart { width:18px; height:18px; }
+.store-mode .thumb-card.selected .select-check { background:#fff; border-color:#fff; color:#e11d48; }
+.store-mode .thumb-card.selected .select-check .store-heart { fill:#e11d48; stroke:#e11d48; }
+.store-mode .thumb-card.selected { border-color:#ff5a7a; box-shadow:0 0 0 1px rgba(255,90,122,.45), 0 8px 24px rgba(0,0,0,.5); }
+
+.store-mode .lb-select-btn { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; }
+.store-mode .lb-select-btn.selected-btn { background:#fff; border-color:#fff; color:#e11d48; }
+.store-mode .lb-select-btn.selected-btn .store-heart { fill:#e11d48; stroke:#e11d48; }
+
+.store-mode .store-pose-heart { display:inline-flex; align-items:center; gap:.4rem; }
+.store-mode .store-pose-heart.selected { color:#fff; }
+.store-mode .store-pose-heart.selected .store-heart { fill:#ff5a7a; stroke:#ff5a7a; }
+
+/* The favorites bar along the bottom */
+.store-mode #main-container { padding-bottom:96px; }
+.store-bar {
+  position:fixed; bottom:0; left:0; right:0; z-index:9999;
+  display:flex; align-items:center; gap:1rem; flex-wrap:wrap;
+  background:#0c2336; border-top:2px solid rgba(255,90,122,.5);
+  padding:.9rem 2rem;
+}
+.store-bar-count { display:flex; align-items:center; gap:.55rem; font-weight:600; font-size:1rem; }
+.store-bar-count .store-heart { width:20px; height:20px; fill:#ff5a7a; stroke:#ff5a7a; }
+.store-bar-actions { display:flex; gap:.6rem; margin-left:auto; flex-wrap:wrap; }
+.store-bar-actions .btn { width:auto; padding:.6rem 1.4rem; }
+.store-bar [hidden] { display:none !important; }
+
+/* Favorites list and Save for later */
+.store-overlay {
+  display:none; position:fixed; inset:0; z-index:10000;
+  background:rgba(0,0,0,.7); align-items:flex-start; justify-content:center;
+  padding:5vh 16px; overflow-y:auto;
+}
+.store-overlay.open { display:flex; }
+.store-modal {
+  background:#0d2035; border:1px solid rgba(255,255,255,.12); border-radius:14px;
+  width:100%; max-width:900px; padding:1.4rem 1.5rem; box-shadow:0 12px 40px rgba(0,0,0,.6);
+}
+.store-modal-narrow { max-width:520px; }
+.store-modal-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem; }
+.store-modal-head h3 { font-size:1.2rem; color:#F5C518; }
+.store-close {
+  background:none; border:1px solid rgba(255,255,255,.25); color:rgba(255,255,255,.75);
+  border-radius:20px; padding:.3rem .9rem; font-size:.85rem; cursor:pointer;
+}
+.store-modal-foot { display:flex; justify-content:flex-end; margin-top:1rem; }
+.store-note { font-size:.9rem; line-height:1.55; color:rgba(255,255,255,.7); margin-bottom:1rem; }
+.store-mode .save-msg.ok { color:#4ade80; }
+/* The Save for later box is always open here (its title is the window's) */
+#store-save .save-details > summary { display:none; }
+
+.store-fav-folder + .store-fav-folder { margin-top:1.3rem; }
+.store-fav-folder-title { font-weight:700; margin-bottom:.6rem; }
+.store-fav-folder-title span { font-weight:400; color:rgba(255,255,255,.5); font-size:.85rem; margin-left:.4rem; }
+.store-fav-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; }
+.store-fav-thumb, .store-fav-pose { position:relative; border-radius:8px; overflow:hidden; background:rgba(255,255,255,.05); align-self:start; }
+/* The whole photo shows, upright or sideways */
+.store-fav-thumb img { display:block; width:100%; aspect-ratio:1; object-fit:contain; background:rgba(0,0,0,.25); }
+.store-fav-pose { grid-column:span 2; padding-bottom:.4rem; }
+.store-fav-pose-imgs { display:grid; grid-template-columns:repeat(2, 1fr); gap:2px; }
+.store-fav-pose-imgs img { display:block; width:100%; aspect-ratio:1; object-fit:contain; background:rgba(0,0,0,.25); }
+.store-fav-pose-label { font-size:.8rem; padding:.4rem .5rem 0; color:rgba(255,255,255,.8); }
+.store-unfav {
+  position:absolute; top:6px; right:6px; width:32px; height:32px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  background:#fff; border:none; color:#e11d48; cursor:pointer; padding:0;
+}
+.store-unfav .store-heart { fill:#e11d48; stroke:#e11d48; }
+
+.store-head-btn:focus-visible, .store-close:focus-visible, .store-unfav:focus-visible,
+.store-mode .custom-header .logo:focus-visible { outline:3px solid #fff; outline-offset:2px; }
+
+@media (max-width: 640px) {
+  .store-bar { padding:.75rem 1rem; gap:.5rem; }
+  .store-bar-actions { margin-left:0; width:100%; }
+  .store-bar-actions .btn, .store-bar-actions .btn-ghost { flex:1; }
+  .store-head-btn { padding:.45rem .7rem; font-size:.85rem; }
+  .store-fav-pose { grid-column:span 2; }
+}
