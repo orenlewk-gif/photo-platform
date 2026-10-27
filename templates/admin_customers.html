@@ -129,6 +129,7 @@ html.embedded #inv-layout{height:calc(100vh - 40px)}
 .order-date{font-size:.78rem;color:rgba(255,255,255,.4);min-width:80px;flex-shrink:0}
 .order-source{font-size:.65rem;padding:.12rem .45rem;border-radius:8px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.4);flex-shrink:0}
 .order-source.pos{background:rgba(99,179,237,.1);color:#63b3ed}
+.order-source.gift{background:rgba(245,140,40,.12);color:#f5a04a}
 .order-items{flex:1;font-size:.78rem;color:rgba(255,255,255,.55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .order-total{font-size:.88rem;font-weight:600;color:#e8eaf0;flex-shrink:0}
 .order-gallery-btn{font-size:.72rem;padding:.2rem .55rem;border-radius:6px;background:rgba(245,197,24,.13);color:#F5C518;border:none;cursor:pointer;text-decoration:none;flex-shrink:0;display:inline-block}
@@ -217,7 +218,7 @@ select.fu-input{cursor:pointer}
   <!-- ── Left: customer list ── -->
   <div id="list-pane">
     <div id="list-header">
-      <input type="text" id="search-input" placeholder="Search name, email or phone…" oninput="doSearch(this.value)" autocomplete="off">
+      <input type="text" id="search-input" placeholder="Search name, email, phone or tag…" oninput="doSearch(this.value)" autocomplete="off">
       <div id="count-label">Loading…</div>
     </div>
 
@@ -1118,7 +1119,8 @@ async function loadHistory(email) {
 
     const orders   = d.orders    || [];
     const posOrds  = d.pos_orders || [];
-    const combined = [...orders, ...posOrds].sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    const gifts    = (d.gifts || []).map(g => ({...g, total: 0, items: [`${g.photos} free digital photo${g.photos === 1 ? '' : 's'}`]}));
+    const combined = [...orders, ...posOrds, ...gifts].sort((a,b) => (b.date||'').localeCompare(a.date||''));
 
     if (!combined.length) {
       document.getElementById('order-list').innerHTML = '<div style="font-size:.8rem;color:rgba(255,255,255,.25);padding:.4rem 0">No purchase history found</div>';
@@ -1127,6 +1129,7 @@ async function loadHistory(email) {
         const items = (o.items || []).filter(Boolean).join(', ') || (o.location || '');
         const sourceLabel = o.source === 'pos'
           ? `<span class="order-source pos">POS${o.location ? ' · '+esc(o.location) : ''}</span>`
+          : o.source === 'gift' ? `<span class="order-source gift">${esc(o.partner || 'Partner')} · store</span>`
           : `<span class="order-source">Online</span>`;
         let galleryBtn = '';
         if (o.gallery_url) {

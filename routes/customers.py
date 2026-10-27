@@ -276,6 +276,12 @@ def api_customer_history(email: str, request: Request):
                 "source": "pos",
             })
 
+    # Free photos given in the store to a partner family (Eagle Mount): shown, not counted as spending
+    known = main._customer_by_email(main._load_customers(), email) or {}
+    gifts_out = [{"date": g.get("date", ""), "partner": g.get("partner", ""), "photos": int(g.get("photos") or 0),
+                  "gallery_url": f"/package/{g['token']}" if g.get("token") else None, "source": "gift"}
+                 for g in (known.get("partner_gifts") or []) if isinstance(g, dict)]
+
     all_totals = [o["total"] for o in orders_out + pos_orders_out]
     all_dates  = sorted([o["date"] for o in orders_out + pos_orders_out if o.get("date")], reverse=True)
     stats = {
@@ -283,7 +289,7 @@ def api_customer_history(email: str, request: Request):
         "order_count": len(all_totals),
         "last_purchase": all_dates[0] if all_dates else None,
     }
-    return {"stats": stats, "orders": orders_out, "pos_orders": pos_orders_out}
+    return {"stats": stats, "orders": orders_out, "pos_orders": pos_orders_out, "gifts": gifts_out}
 
 
 @router.post("/api/admin/customer/{email}/followup/preview")

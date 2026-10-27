@@ -622,3 +622,68 @@ def test_only_store_screens_make_links(client, member, sent):
     assert client.post("/api/store/partner/eaglemount/send", json=body).status_code == 403
     assert member.post("/api/store/partner/eaglemount/send", json=body).status_code == 403
     assert not sent
+
+
+# ── Partner families in the customer list ─────────────────────────────────────
+
+@pytest.fixture()
+def no_customers(main_module):
+    def clear():
+        S3.put_object(Bucket="test-bucket", Key=main_module.CUSTOMERS_KEY, Body=b"[]")
+        main_module._customers_cache["data"] = None
+    clear()
+    yield
+    clear()
+
+
+def _customer(main_module, email):
+    return main_module._customer_by_email(main_module._load_customers(), email)
+
+
+def test_a_family_from_the_store_screen_goes_in_the_customer_list(screen, sent, admin_client, main_module, no_customers):
+    body = {"paths": [PHOTOS[1]["path"], PHOTOS[3]["path"]], "first_name": "Sam", "last_name": "Lee", "email": "sam@example.com"}
+    token = screen.post("/api/store/partner/eaglemount/send", json=body).json()["token"]
+    c = _customer(main_module, "sam@example.com")
+    assert (c["first"], c["last"], c["source"]) == ("Sam", "Lee", "store")
+    assert c["tags"] == ["Eagle Mount", "Eagle Mount digital only"]
+    # Their history shows the free photos (not as spending)
+    h = admin_client.get("/api/admin/customer/sam@example.com/history").json()
+    assert h["gifts"][0]["photos"] == 2 and h["gifts"][0]["gallery_url"] == f"/package/{token}"
+    assert h["stats"]["total_spend"] == 0
+    # Found by searching the tag
+    found = admin_client.get("/api/admin/customers", params={"q": "eagle mount digital"}).json()["customers"]
+    assert [x["email"] for x in found] == ["sam@example.com"]
+
+
+def test_buying_prints_at_the_pos_changes_digital_only_to_prints(screen, sent, pos, main_module, monkeypatch, no_customers):
+    monkeypatch.setattr(main_module, "_send_pos_receipt_email", lambda **kw: None)
+    screen.post("/api/store/partner/eaglemount/send", json={"paths": [PHOTOS[1]["path"]], "first_name": "Sam",
+                                                           "last_name": "Lee", "email": "sam@example.com"})
+    r = pos.post("/api/pos-checkout", json={"pin": "4821", "email": "sam@example.com", "name": "Samuel Lee-Smith",
+        "square_payment_id": "COMP", "total": 18, "items": [
+            {"category": "prints", "label": '8×10" Print', "price": 18, "qty": 1, "subtotal": 18,
+             "_pkgPct": 40, "_partnerPrint": True, "_size_idx": 1, "photo_paths": [PHOTOS[1]["path"]]}]})
+    assert r.status_code == 200
+    c = _customer(main_module, "sam@example.com")
+    assert c["tags"] == ["Eagle Mount", "Eagle Mount prints"]
+    assert (c["first"], c["last"]) == ("Sam", "Lee")                       # details on file stay
+
+
+def test_online_prints_tag_the_buyer_and_keep_their_own_tags(main_module, member, no_customers):
+    S3.put_object(Bucket="test-bucket", Key=main_module.CUSTOMERS_KEY, Body=json.dumps([
+        {"id": "c1", "email": "kim@example.com", "first": "Kim", "last": "Ray", "tags": ["Local"]}]).encode())
+    main_module._customers_cache["data"] = None
+    priced = main_module._price_order({"prints": [{"path": PHOTOS[1]["path"], "size_idx": 1, "filename": "a.jpg"}]},
+                                      {PHOTOS[1]["path"]: (40, "Eagle Mount")})
+    main_module._log_partner_online_prints({"id": 777, "line_items": [priced["line_items"][0]],
+                                            "billing": {"email": "kim@example.com", "first_name": "K", "last_name": "R"}})
+    c = _customer(main_module, "kim@example.com")
+    assert c["tags"] == ["Local", "Eagle Mount", "Eagle Mount prints"] and c["first"] == "Kim"
+
+
+def test_free_partner_photos_at_the_pos_tag_digital_only(pos, main_module, monkeypatch, no_customers):
+    monkeypatch.setattr(main_module, "_send_pos_receipt_email", lambda **kw: None)
+    pos.post("/api/pos-checkout", json={"pin": "4821", "email": "fam@example.com", "name": "Fam Ily", "square_payment_id": "COMP",
+        "total": 0, "items": [{"category": "action_photos", "label": "Eagle Mount Photos — free", "price": 0, "qty": 1,
+                               "subtotal": 0, "photo_paths": [PHOTOS[1]["path"]], "filenames": [], "_partnerFree": True}]})
+    assert _customer(main_module, "fam@example.com")["tags"] == ["Eagle Mount", "Eagle Mount digital only"]

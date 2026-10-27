@@ -2123,7 +2123,7 @@ def _record_pos_sale_now(body: dict):
         fee_check.start()
 
     try:                                     # partner photos (Eagle Mount): their donation report
-        _log_partner_pos_sale(items, photo_paths, order_id)
+        _log_partner_pos_sale(items, photo_paths, order_id, customer_email)
     except Exception as e:
         print(f"Partner sale not logged ({order_id}): {e}")
 
@@ -2513,11 +2513,14 @@ def _customer_name_matches(c: dict, q: str) -> bool:
     return fn.startswith(ql) or ln.startswith(ql)
 
 def _customer_admin_matches(c: dict, q: str) -> bool:
-    """Studio search: name prefix, or email / phone containing the text."""
+    """Studio search: name prefix, email / phone containing the text, or a tag (e.g. "Eagle Mount",
+    or "Eagle Mount digital only")."""
     if _customer_name_matches(c, q):
         return True
     ql = q.lower().strip()
     if ql in (c.get("email") or "").lower():
+        return True
+    if len(ql) >= 3 and any(ql in str(t).lower() for t in (c.get("tags") or [])):
         return True
     digits = re.sub(r"\D", "", ql)
     return len(digits) >= 3 and digits in re.sub(r"\D", "", c.get("phone") or "")
@@ -5068,6 +5071,12 @@ def _store_partner_send(partner: dict, items: list, first: str, last: str, email
                        "expire_days": DOWNLOAD_EXPIRE_DAYS, "source": "store-partner",
                        "partner": partner["id"], "name": f"{first} {last}".strip()})
     _log_partner_downloads(partner, items, "store")
+    try:
+        _tag_partner_customer(partner, email, first, last, gift={
+            "date": now.astimezone(_MOUNTAIN).date().isoformat(), "partner": partner["name"],
+            "photos": len(paths), "token": token})
+    except Exception as e:                   # the family still gets their photos
+        print(f"Partner family not added to customers ({email}): {e}")
     url = f"{SITE_URL}/package/{token}"
     mail = ([email], title, url, len(paths), expires.strftime("%B %d, %Y"), first)
     if background is not None:
@@ -5075,6 +5084,43 @@ def _store_partner_send(partner: dict, items: list, first: str, last: str, email
     else:
         _send_package_email(*mail)
     return {"token": token, "url": url, "count": len(paths)}
+
+
+def _tag_partner_customer(partner: dict, email: str, first: str = "", last: str = "", prints: bool = False,
+                          gift: dict | None = None) -> None:
+    """A partner family in the customer list: tagged with the partner's name, and with whether
+    they bought prints of their photos ("Eagle Mount prints") or only had the free digital files
+    ("Eagle Mount digital only"; it changes to prints when they buy some). gift: free photos
+    given in the store, kept for their history."""
+    email = (email or "").strip()
+    if not _EMAIL_RE.match(email):
+        return
+    name = partner["name"]
+    tag_prints, tag_digital = f"{name} prints", f"{name} digital only"
+    with _customers_lock:
+        customers = _load_customers()
+        c = _customer_by_email(customers, email)
+        if not c:
+            c = {"id": _new_customer_id(), "email": email, "first": first, "last": last,
+                 "source": "store", "created": datetime.now(timezone.utc).strftime("%Y-%m-%d")}
+            customers.append(c)
+        else:                                # like the POS: details on file are never overwritten
+            for k, v in (("first", first), ("last", last)):
+                if v and not (c.get(k) or "").strip():
+                    c[k] = v
+        tags = [t for t in (c.get("tags") or []) if isinstance(t, str)]
+        if name not in tags:
+            tags.append(name)
+        if prints:
+            tags = [t for t in tags if t != tag_digital]
+            if tag_prints not in tags:
+                tags.append(tag_prints)
+        elif tag_prints not in tags and tag_digital not in tags:
+            tags.append(tag_digital)
+        c["tags"] = tags
+        if gift:
+            c["partner_gifts"] = (c.get("partner_gifts") or []) + [gift]
+        _save_customers(customers)
 
 
 def _log_partner_prints(pid: str, prints: list, order_key: str) -> None:
@@ -5097,9 +5143,10 @@ def _log_partner_prints(pid: str, prints: list, order_key: str) -> None:
         print(f"Partner print sales not saved ({pid}, {order_key}): {e}")
 
 
-def _log_partner_pos_sale(items: list, photo_paths: list, order_id: str) -> None:
+def _log_partner_pos_sale(items: list, photo_paths: list, order_id: str, email: str = "") -> None:
     """A POS sale: partner photos given as free digital files count in the donation report, and
-    prints of partner photos sold at the partner discount are recorded."""
+    prints of partner photos sold at the partner discount are recorded. The customer is tagged
+    as that partner's family (prints, or digital only)."""
     idx = _folder_index()["all_by_path"]
     partners = {p["id"]: p for p in _load_partners()}
     given = {}
@@ -5126,6 +5173,11 @@ def _log_partner_pos_sale(items: list, photo_paths: list, order_id: str) -> None
         sold.setdefault(pid, []).extend(dict(one) for _ in range(max(1, int(it.get("qty") or 1))))
     for pid, prints in sold.items():
         _log_partner_prints(pid, prints, f"pos:{order_id}")
+    for pid in set(given) | set(sold):
+        try:
+            _tag_partner_customer(partners[pid], email, prints=pid in sold)
+        except Exception as e:
+            print(f"Partner family not tagged ({email}, {order_id}): {e}")
 
 
 def _log_partner_online_prints(order: dict) -> None:
@@ -5147,8 +5199,14 @@ def _log_partner_online_prints(order: dict) -> None:
         sold.setdefault(info["partner"], []).append({"source": "online", "path": info.get("path", ""),
                                                      "size": info.get("size", ""), "price": price,
                                                      "full": float(info.get("full") or 0)})
+    billing = order.get("billing") or {}
     for pid, prints in sold.items():
         _log_partner_prints(pid, prints, f"wc:{order.get('id')}")
+        try:
+            _tag_partner_customer(next(p for p in _load_partners() if p["id"] == pid), billing.get("email", ""),
+                                  billing.get("first_name", ""), billing.get("last_name", ""), prints=True)
+        except Exception as e:
+            print(f"Partner family not tagged ({order.get('id')}): {e}")
 
 
 # ── Marketing email opt-outs ──────────────────────────────────────────────────
