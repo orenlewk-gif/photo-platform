@@ -170,7 +170,7 @@ function storeBuildUI() {
   send.setAttribute('aria-labelledby', 'store-send-title');
   send.innerHTML = `<div class="store-modal store-modal-narrow store-send-box">
       <div class="store-modal-head">
-        <h3 id="store-send-title">Your favorites are ready</h3>
+        <h3 id="store-send-title">Store code</h3>
         <button type="button" class="store-close" data-act="close" aria-label="Close">Close</button>
       </div>
       <div id="store-send-body"></div>
@@ -456,16 +456,15 @@ function storePoseIntroHTML() {
 }
 
 // ── Send to sale ──
-// The favorites go to the POS under a 4-letter code the customer tells staff. While the code
-// waits, new hearts go along with it. When the sale is done the screen thanks them and starts
-// over for the next customer.
+// Staff, beside the customer, send the favorites and type the 4-letter code at the POS. While
+// the code waits, new hearts go along with it. When the sale is done the screen thanks them and
+// starts over for the next customer.
 const STORE_SEND_KEY = 'ci_store_send_v1';
 let _storeCode = (() => { try { return JSON.parse(localStorage.getItem(STORE_SEND_KEY) || 'null')?.code || ''; } catch (e) { return ''; } })();
-let _storeCodeStatus = 'waiting', _storeCodeTimer = null, _storeCodeWatch = null, _storeThanked = false;
+let _storeCodeTimer = null, _storeCodeWatch = null, _storeThanked = false;
 
-function storeSetCode(code, status = 'waiting') {
+function storeSetCode(code) {
   _storeCode = code || '';
-  _storeCodeStatus = status;
   try {
     if (_storeCode) localStorage.setItem(STORE_SEND_KEY, JSON.stringify({code: _storeCode}));
     else localStorage.removeItem(STORE_SEND_KEY);
@@ -492,7 +491,7 @@ async function storeSendToSale() {
   try {
     const d = await storePostFavorites();
     if (d.status === 'sold') { storeThankYou(); return; }
-    storeSetCode(d.code, d.status);
+    storeSetCode(d.code);
     storeRenderCode();
   } catch (e) {
     body.innerHTML = `<p class="store-note store-err">${escHtml(e.message || 'Could not send — check the internet connection')}</p>`;
@@ -500,17 +499,11 @@ async function storeSendToSale() {
 }
 
 function storeRenderCode() {
+  // Staff send it from beside the customer: just the code to type at the POS
   const body = document.getElementById('store-send-body');
   if (!body || !_storeCode) return;
-  body.innerHTML = `<p class="store-code-label">Your code</p>
-    <div class="store-code" aria-label="${escA(_storeCode.split('').join(' '))}">${escHtml(_storeCode)}</div>
-    <p class="store-note">Tell this code to anyone at the counter. They'll bring up your favorites,
-      and you choose your digital photos and prints there.</p>
-    <p class="store-code-status${_storeCodeStatus === 'opened' ? ' opened' : ''}" aria-live="polite">${
-      _storeCodeStatus === 'opened' ? 'The counter has your favorites' : 'Waiting at the counter'}</p>
-    ${storePromoHTML('store-promo-note')}
-    <p class="store-note store-small">Still looking? Keep hearting photos: they go along with this code.</p>
-    <div class="store-modal-foot"><button type="button" class="btn" data-act="close">Keep looking</button></div>`;
+  body.innerHTML = `<div class="store-code" aria-label="Code ${escA(_storeCode.split('').join(' '))}">${escHtml(_storeCode)}</div>
+    <div class="store-modal-foot"><button type="button" class="btn" data-act="close">Done</button></div>`;
 }
 
 // New hearts go along with the code (a moment after the last change)
@@ -522,7 +515,7 @@ function storeCodeFollow() {
       const d = await storePostFavorites();
       if (d.status === 'sold') storeThankYou();
       else if (d.status === 'cleared') storeSetCode('');
-      else if (d.code !== _storeCode) storeSetCode(d.code, d.status);
+      else if (d.code !== _storeCode) storeSetCode(d.code);
     } catch (e) {}
   }, 1500);
 }
@@ -536,18 +529,13 @@ async function storeCheckCode() {
     if (!r.ok) { storeSetCode(''); return; }       // gone (a new day, or this screen was removed)
   } catch (e) { return; }
   if (d.status === 'sold') { storeThankYou(); return; }
-  if (d.status !== _storeCodeStatus) {
-    _storeCodeStatus = d.status;
-    if (document.getElementById('store-send')?.classList.contains('open')) storeRenderCode();
-  }
 }
 
 function storeThankYou() {
   _storeThanked = true;
   clearInterval(_storeCodeWatch);
   document.getElementById('store-send-title').textContent = 'Thank you!';
-  document.getElementById('store-send-body').innerHTML = `<p class="store-thanks">Enjoy your photos.</p>
-    <p class="store-note">This screen is starting over for the next guest.</p>`;
+  document.getElementById('store-send-body').innerHTML = '<p class="store-thanks">Enjoy your photos.</p>';
   storeOpen('store-send');
   setTimeout(() => storeStartOver(false), 8000);
 }
