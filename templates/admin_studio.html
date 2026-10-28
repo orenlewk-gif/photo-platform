@@ -133,6 +133,11 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .prog-bar-fill{height:100%;background:#F5C518;border-radius:100px;transition:width .25s;width:0}
 .prog-label-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
 .prog-label{font-size:.75rem;color:rgba(255,255,255,.4)}
+/* Photos that didn't upload: listed, with a button to send just those again */
+#upload-retry{display:none;margin:.2rem 0 .85rem;padding:.6rem .75rem;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4)}
+#upload-retry .ur-text{font-size:.78rem;color:#fca5a5;line-height:1.5;margin-bottom:.5rem;word-break:break-word}
+#upload-retry button{background:#F5C518;color:#07151f;border:none;border-radius:7px;font-weight:700;font-size:.82rem;padding:.45rem .9rem;cursor:pointer;font-family:inherit}
+#upload-retry button:disabled{opacity:.5;cursor:default}
 #upload-cancel-btn{font-size:.7rem;color:rgba(255,255,255,.35);background:none;border:none;cursor:pointer;padding:0;line-height:1;white-space:nowrap}
 #upload-cancel-btn:hover{color:rgba(255,255,255,.7)}
 #upload-action-btn{width:100%;background:#F5C518;color:#07151f;border:none;border-radius:8px;
@@ -461,6 +466,10 @@ input[type=file]{display:none}
             <button id="upload-cancel-btn" onclick="cancelUpload()" style="display:none">Cancel</button>
           </div>
         </div>
+        <div id="upload-retry" role="alert">
+          <div class="ur-text" id="upload-retry-text"></div>
+          <button type="button" id="upload-retry-btn" onclick="retryFailedUploads()">Retry</button>
+        </div>
 
         <button id="upload-action-btn" onclick="startUpload()" disabled>Upload</button>
         <button id="upload-all-btn" onclick="uploadAllFamilies()" style="display:none;margin-top:.5rem">Upload all families</button>
@@ -749,6 +758,44 @@ async function runPool(items, n, fn) {
   let next = 0;
   const worker = async () => { while (next < items.length) await fn(items[next++]); };
   await Promise.all(Array.from({length: Math.min(n, items.length)}, worker));
+}
+
+// One photo to storage, tried up to 4 times with growing pauses (a brief network or storage
+// hiccup usually clears in a few seconds). A non-2xx answer doesn't throw in fetch(), so it's checked.
+const PUT_WAITS = [0, 1000, 4000, 8000];
+async function putPhoto(it, signal) {
+  for (const wait of PUT_WAITS) {
+    if (it.ok || signal?.aborted) break;
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    if (signal?.aborted) break;
+    try {
+      const res = await fetch(it.url, {method:'PUT', body:it.file, headers:{'Content-Type':it.file.type||'image/jpeg'}, signal});
+      if (res.ok) it.ok = true;
+    } catch (e) {}
+  }
+  return !!it.ok;
+}
+
+// ── Photos that still didn't upload: a box listing them, and a button to send just those ──
+// The files stay in this page's memory, so a retry needs nothing dropped again (dropping the
+// folder again also works: photos already on the site are offered to be skipped).
+let _retryJob = null;     // {label, run: async () => still-failed count}
+function showRetry(names, run) {
+  const box = document.getElementById('upload-retry');
+  if (!names.length) { box.style.display = 'none'; _retryJob = null; return; }
+  const n = names.length;
+  document.getElementById('upload-retry-text').innerHTML =
+    `<b>${n} photo${n === 1 ? '' : 's'} didn't upload:</b> ${names.slice(0, 12).map(esc).join(', ')}${n > 12 ? ` and ${n - 12} more` : ''}`;
+  const btn = document.getElementById('upload-retry-btn');
+  btn.textContent = `Retry ${n} photo${n === 1 ? '' : 's'}`; btn.disabled = false;
+  box.style.display = 'block';
+  _retryJob = run;
+}
+async function retryFailedUploads() {
+  if (!_retryJob || _uploadActive) return;
+  document.getElementById('upload-retry-btn').disabled = true;
+  const run = _retryJob; _retryJob = null;
+  await run();
 }
 
 async function readExifTimes(files) {
@@ -2708,19 +2755,45 @@ async function uploadPoseFamily(date, location, folder, files, poses, progress) 
   progress(done, failed);
   const timesReq=readExifTimes(files);          // read while the photos upload
   await runPool(items, CONCURRENCY, async it => {
-    for (let attempt=0;attempt<2&&!it.ok;attempt++) {
-      try { const res=await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'}}); if(res.ok) it.ok=true; } catch(e) {}
-    }
+    await putPhoto(it);
     done++; if(!it.ok) failed++; progress(done, failed);
   });
   const keys=items.filter(it=>it.ok).map(it=>it.key);
   const times=await timesReq;
+  let failedFiles=items.filter(it=>!it.ok).map(it=>it.file);
   if (keys.length) {
     const ir=await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({date,location,folder,keys,poses,times})}).catch(()=>null);
-    if (!ir?.ok) failed=done;                     // uploaded but not added to the site: counts as failed
+    if (!ir?.ok) { failed=done; failedFiles=items.map(it=>it.file); }   // uploaded but not added to the site
   }
-  return {done, failed};
+  return {done, failed, failedFiles};
+}
+
+// Retry a portrait family's photos that didn't upload: the same family and poses (the poses are
+// saved again whole, so the retried photos land in theirs)
+function poseRetry(date, location, fams) {
+  // fams: [{folder, files (the failed ones), poses}]
+  const names = fams.flatMap(f => f.files.map(x => `${f.folder}/${x.name}`));
+  showRetry(names, async () => {
+    _uploadActive = true;
+    const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
+    const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
+    const still = [];
+    for (const f of fams) {
+      const r = await uploadPoseFamily(date, location, f.folder, f.files, f.poses, (done, failed) => {
+        fill.style.width = Math.round(done / f.files.length * 100) + '%';
+        label.textContent = `Retrying ${f.folder}: ${done} / ${f.files.length}…` + (failed ? ` (${failed} failed)` : '');
+      });
+      const left = r ? r.failedFiles : f.files;
+      if (left.length) still.push({...f, files: left});
+    }
+    _uploadActive = false;
+    await loadSidebar();
+    const n = still.reduce((a, f) => a + f.files.length, 0);
+    label.textContent = n ? `Retry done — ${n} still didn't upload` : 'Retry done — all photos uploaded';
+    showToast(n ? `${n} photos still didn't upload — check the connection and retry` : 'All photos uploaded and live', n ? 'error' : undefined);
+    poseRetry(date, location, still);
+  });
 }
 
 // A family's photos in pose order (file number), as the pose panel shows them
@@ -2743,6 +2816,7 @@ async function uploadAllFamilies() {
   const btn=document.getElementById('upload-action-btn'), allBtn=document.getElementById('upload-all-btn');
   btn.disabled=true; allBtn.disabled=true;
   const go = await checkFamiliesBeforeUpload(_batchCursor);
+  if (go) showRetry([]);
   if (go && poseUnassigned().length && poseGroups.length) {    // the family on screen: its loose photos become a pose
     const loose = poseUnassigned();
     poseGroups.push({color: POSE_COLORS[poseGroups.length % POSE_COLORS.length], label: `Pose ${poseGroups.length + 1}`, indices: new Set(loose)});
@@ -2754,6 +2828,7 @@ async function uploadAllFamilies() {
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
   const total=_batchQueue.length;
   let families=0, photos=0, failedPhotos=0, stoppedAt=-1, why='';
+  const failedFams=[];
   for (let idx=_batchCursor; idx<total; idx++) {
     const fam=_batchQueue[idx];
     const folder=idx===_batchCursor ? document.getElementById('upload-folder-name').value.trim() : (fam.name||'').trim();
@@ -2778,9 +2853,11 @@ async function uploadAllFamilies() {
     });
     if (!r) { stoppedAt=idx; why='couldn\'t start uploading'; break; }
     families++; photos+=r.done-r.failed; failedPhotos+=r.failed;
+    if (r.failedFiles.length) failedFams.push({folder, files: r.failedFiles, poses});
   }
   _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard);
   await loadSidebar();
+  poseRetry(date, location, failedFams);
   if (stoppedAt>=0) {
     const name=_batchQueue[stoppedAt].name||'This family';
     loadBatchFamily(stoppedAt);
@@ -2790,7 +2867,7 @@ async function uploadAllFamilies() {
     return;
   }
   label.textContent=`All ${families} famil${families===1?'y':'ies'} uploaded — ${photos} photos`+(failedPhotos?`, ${failedPhotos} failed`:'');
-  showToast(failedPhotos ? `${failedPhotos} photos failed — upload those families again` : `All ${families} ${families===1?'family':'families'} uploaded — live on the site`, failedPhotos ? 'error' : undefined);
+  showToast(failedPhotos ? `${failedPhotos} photos failed — Retry sends just those` : `All ${families} ${families===1?'family':'families'} uploaded — live on the site`, failedPhotos ? 'error' : undefined);
   _batchQueue=[]; _batchCursor=-1;
   document.getElementById('batch-header').style.display='none';
   document.getElementById('drop-zone').style.display='';
@@ -2811,6 +2888,7 @@ async function startUpload() {
     if (!folder) { showToast('Enter family last name','error'); return; }
     if (!poseGroups.length) { showToast('Assign at least one pose first','error'); return; }
     if (!await checkPosesBeforeUpload()) return;
+    showRetry([]);
     const files=poseFiles;
     const totalFiles=files.length;
     if (!totalFiles) { showToast('No photos to upload','error'); return; }
@@ -2826,9 +2904,10 @@ async function startUpload() {
     if (!r) { showToast('Presign failed','error'); _uploadActive=false; window.removeEventListener('beforeunload',_beforeUnloadGuard); btn.disabled=false; progWrap.style.display='none'; return; }
     const {done, failed}=r;
     const succeeded=done-failed;
+    poseRetry(date, location, r.failedFiles.length ? [{folder, files: r.failedFiles, poses}] : []);
     if (failed) {
       label.textContent=`Done — ${succeeded} uploaded, ${failed} failed`;
-      showToast(`${succeeded} uploaded, ${failed} failed`,'error');
+      showToast(`${succeeded} uploaded, ${failed} failed — Retry sends just those`,'error');
     } else {
       label.textContent=`Done — ${succeeded} photos, ${poses.length} poses saved`;
       showToast(`${succeeded} photos uploaded — ${poses.length} poses, live on the site`);
@@ -2873,7 +2952,7 @@ async function startUpload() {
   let batches = uploadFolders.length
     ? [...uploadFolders.map(f=>({folder: _isPortraitLoc ? f.name : '', files:f.files})), ...(looseFiles.length?[{folder:'',files:looseFiles}]:[]) ]
     : [{folder: _isPortraitLoc ? document.getElementById('upload-folder-name').value.trim() : '', files:looseFiles}];
-  const totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
+  let totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
   if (!totalFiles) { showToast('No photos to upload','error'); return; }
   // Batches going to the same site folder (winter action subfolders all go into the location)
   // are uploaded and finished together, so every file's capture time and Eagle Mount label counts
@@ -2900,8 +2979,10 @@ async function startUpload() {
   const cancelBtn=document.getElementById('upload-cancel-btn'); cancelBtn.style.display='';
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
-  let done=0, failed=0;
-  const setProgress=()=>{ const p=Math.round(done/totalFiles*100); fill.style.width=p+'%'; label.textContent=`${done} / ${totalFiles} uploaded…`+(failed?` (${failed} failed)`:''); };
+  let done=0, failed=0, labeled=0;
+  const labelJobs=[];     // thumbnail + color label jobs started for each batch added to the site
+  const setProgress=()=>{ const p=totalFiles ? Math.round(done/totalFiles*100) : 100; fill.style.width=p+'%';
+    label.textContent=`${done} / ${totalFiles} uploaded`+(labelJobs.length?` · ${labeled} ${_isPortraitLoc ? 'ready' : 'labeled'}`:'')+'…'+(failed?` (${failed} failed)`:''); };
   setProgress();
   // Save group sizes immediately so local viewer shows correct pricing right away
   if (_isZipUpload()) {
@@ -2915,12 +2996,38 @@ async function startUpload() {
   const allItems=[]; // {url,key,filename,folder,file,ok}
   for (const [folder, t] of targets) {
     const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,files:t.files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
+      body:JSON.stringify({date,location,folder,files:t.files.map(f=>({name:f.name,type:f.type||'image/jpeg',size:f.size}))})});
     if (!pr.ok) { showToast(`Presign failed for ${folder||'files'}`,'error'); continue; }
     const {urls}=await pr.json();
-    t.left = urls.length;
     urls.forEach((u,i)=>allItems.push({...u,folder,file:t.files[i]}));
   }
+  // A different photo with a name already in this folder (another camera, or another computer
+  // uploading the same day) would replace it: nothing uploads until those are renamed
+  const clash = allItems.filter(it => it.name_taken);
+  if (clash.length) {
+    await askChoice(`${clash.length} photo${clash.length === 1 ? ' has' : 's have'} the same name as a different photo already here`,
+      `<p class="choice-text">Uploading ${clash.length === 1 ? 'it' : 'them'} would replace the photo${clash.length === 1 ? '' : 's'} on the site
+        (likely another camera numbering the same way). Rename ${clash.length === 1 ? 'it' : 'them'} (for example add the photographer's initials) and upload again.</p>
+       <ul class="choice-list">${clash.slice(0, 10).map(it => `<li>${esc(it.file.name)}</li>`).join('')}${clash.length > 10 ? `<li>and ${clash.length - 10} more</li>` : ''}</ul>`,
+      'OK', 'Close');
+    _uploadActive = false; _uploadAbortCtrl = null; window.removeEventListener('beforeunload', _beforeUnloadGuard);
+    btn.disabled = false; cancelBtn.style.display = 'none'; progWrap.style.display = 'none';
+    return;
+  }
+  // Dropped again after a failed upload: the photos already on the site can be skipped
+  const already = allItems.filter(it => it.on_site);
+  if (already.length) {
+    const fresh = allItems.length - already.length;
+    const skip = await askChoice(`${already.length} of these photos ${already.length === 1 ? 'is' : 'are'} already on the site`,
+      `<p class="choice-text">${fresh ? `Upload just the ${fresh} that ${fresh === 1 ? "isn't" : "aren't"} there yet, or all of them again (the ones on the site are replaced).`
+                                      : 'All of them are already there. Upload them all again (the ones on the site are replaced)?'}</p>`,
+      fresh ? `Upload the ${fresh} new` : 'Skip them all', 'Upload all again');
+    if (skip) for (let i = allItems.length - 1; i >= 0; i--) if (allItems[i].on_site) allItems.splice(i, 1);
+  }
+  for (const [folder, t] of targets) t.left = allItems.filter(it => it.folder === folder).length;
+  totalFiles = allItems.length;
+  setProgress();
+  showRetry([]);
   const isZip = _isZipUpload();
   const jobs = [];          // color indexing, one per folder pushed live
   const notIndexed = new Set();
@@ -2928,7 +3035,7 @@ async function startUpload() {
   // Winter action photos are added to the site in chunks while the rest are still uploading, so
   // their thumbnails and color labels are made meanwhile (portrait families all at once). Each
   // folder's chunks go in order; when its last photo is in, action folders are pushed live.
-  const CHUNK = 40;
+  const CHUNK = 20;
   for (const t of targets.values()) { t.ready = []; t.chain = Promise.resolve(); }
   function addChunk(folder, last) {
     const t = targets.get(folder);
@@ -2941,6 +3048,7 @@ async function startUpload() {
           body:JSON.stringify({date,location,folder,keys:items.map(it=>it.key),times,
                                partner_files: _isPortraitLoc ? {} : partnerFilesFor(files)})}).catch(()=>null);
         if (!ir?.ok) notIndexed.add(folder || location);
+        else { const d = await ir.json().catch(() => ({})); if (d.thumbs_job_id) labelJobs.push({id: d.thumbs_job_id, done: 0, finished: false}); }
       }
       if (!last) return;
       if (isZip) {
@@ -2965,12 +3073,7 @@ async function startUpload() {
   const _sig = _uploadAbortCtrl.signal;
   async function putOne(it) {
     if (_sig.aborted) { done++; failed++; setProgress(); return; }
-    for (let attempt=0; attempt<2 && !it.ok; attempt++) {
-      try {
-        const res = await fetch(it.url,{method:'PUT',body:it.file,headers:{'Content-Type':it.file.type||'image/jpeg'},signal:_sig});
-        if (res.ok) it.ok = true;
-      } catch (e) { if (_sig.aborted) break; /* retry once on non-abort error */ }
-    }
+    await putPhoto(it, _sig);
     done++; if (!it.ok) failed++; setProgress();
     if (_sig.aborted) return;
     const t = targets.get(it.folder);
@@ -2978,7 +3081,23 @@ async function startUpload() {
     if (--t.left === 0) addChunk(it.folder, true);
     else if (t.ready.length >= CHUNK && !_isPortraitLoc) addChunk(it.folder, false);   // a family's poses are read from all its photos at once
   }
+  // A folder with nothing left to upload (all on the site already) still finishes: push-live
+  // puts anything an earlier, interrupted upload left as drafts on the site
+  for (const [folder, t] of targets) if (t.left === 0) addChunk(folder, true);
+  // While photos upload, the labeling of the ones already in shows next to the upload count
+  let uploading = true;
+  const watchLabels = (async () => {
+    while (uploading) {
+      await new Promise(r => setTimeout(r, 3000));
+      await Promise.all(labelJobs.filter(j => !j.finished).map(async j => {
+        try { const r = await fetch(`/api/admin/embed-status?job_id=${j.id}`); if (r.ok) Object.assign(j, await r.json()); } catch (e) {}
+      }));
+      labeled = labelJobs.reduce((a, j) => a + (j.done || 0), 0);
+      if (uploading) setProgress();
+    }
+  })();
   await runPool(allItems, CONCURRENCY, putOne);
+  uploading = false;
   const finishing = [...targets.values()].map(t => t.chain);
   if (_sig.aborted) {
     await Promise.all(finishing);                     // photos already added stay (as drafts)
@@ -2995,12 +3114,28 @@ async function startUpload() {
   cancelBtn.style.display = 'none';
   await Promise.all(finishing);
   if (jobs.length) await pollEmbedJobs(jobs, label);
-  if (notIndexed.size) showToast(`Couldn't add ${[...notIndexed].join(', ')} to the site — upload again`, 'error');
+  if (notIndexed.size) showToast(`Couldn't add ${[...notIndexed].join(', ')} to the site — Retry sends them again`, 'error');
+  // Still not on the site: failed uploads, and photos uploaded to a folder that couldn't be added.
+  // Retry runs this same upload with just those files (date and location as they were).
+  const retryItems = allItems.filter(it => !it.ok || notIndexed.has(it.folder || location));
+  const retryBatches = [...new Set(retryItems.map(it => it.folder))].map(folder =>
+    ({name: folder, files: retryItems.filter(it => it.folder === folder).map(it => it.file)}));
+  const retryNames = retryItems.map(it => (it.folder ? it.folder + '/' : '') + it.file.name);
+  const retryRun = async () => {
+    if (document.getElementById('upload-location').value !== location) {
+      showToast(`Set the location back to ${location} to retry`, 'error'); showRetry(retryNames, retryRun); return;
+    }
+    document.getElementById('upload-date').value = date;
+    if (_isPortraitLoc) { uploadFolders = retryBatches.filter(b => b.name); looseFiles = retryBatches.filter(b => !b.name).flatMap(b => b.files); }
+    else { uploadFolders = []; looseFiles = retryItems.map(it => it.file); }
+    await startUpload();
+  };
+  showRetry(retryNames, retryRun);
   const succeeded = done - failed;
   const isPortraitUpload = PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
   if (failed) {
     label.textContent = `Done — ${succeeded} uploaded, ${failed} failed`;
-    showToast(`${succeeded} uploaded, ${failed} failed — try uploading the failed ones again`,'error');
+    showToast(`${succeeded} uploaded, ${failed} failed — Retry sends just those`,'error');
   } else if (isPortraitUpload) {
     label.textContent = `Done — ${succeeded} photos live`;
     showToast(`${succeeded} photos uploaded and live — check the poses in the folder`);

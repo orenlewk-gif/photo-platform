@@ -401,6 +401,7 @@ async def admin_upload_presign(request: Request):
             "error": "Only photos (JPG or PNG) can be uploaded: " + ", ".join(refused[:5])})
     loc_slug    = location.lower().replace(" ", "-")
     folder_slug = folder.lower().replace(" ", "-") if folder else ""
+    on_site = {item["path"] for item in main.data}       # dropped again after a failed upload: these are in
     urls = []
     for f in files:
         filename = os.path.basename(f["name"])
@@ -413,7 +414,17 @@ async def admin_upload_presign(request: Request):
             Params={"Bucket": main.R2_BUCKET, "Key": key, "ContentType": f.get("type", "image/jpeg")},
             ExpiresIn=7200,
         )
-        urls.append({"key": key, "url": presigned, "filename": filename})
+        entry = {"key": key, "url": presigned, "filename": filename, "on_site": key in on_site}
+        if entry["on_site"] and isinstance(f.get("size"), int):
+            # The same name isn't always the same photo (two cameras numbering alike, two computers
+            # uploading the same day): a different size means a different photo
+            try:
+                stored = main.s3.head_object(Bucket=main.R2_BUCKET, Key=key)["ContentLength"]
+            except Exception:
+                stored = None
+            if stored is not None and stored != f["size"]:
+                entry["on_site"], entry["name_taken"] = False, True
+        urls.append(entry)
     return {"urls": urls}
 
 
@@ -466,8 +477,11 @@ async def admin_upload_index(request: Request):
             main.data.append(entry)
             existing.add(key)
             added += 1
-    # The save and the pose reading go to storage: off the main loop, so visitors aren't held up
-    await run_in_threadpool(main._save_photo_list)
+    # Thumbnails and color labels for these photos start right away (the next photos are still
+    # uploading); the photo list is saved a moment later in the background, one save for several
+    # batches, instead of each batch waiting on a save of the whole list. Push-live saves it too.
+    thumbs_job = main._queue_new_photo_thumbs(keys)
+    main._save_photo_list_soon()
     if is_portrait and folder and keys:
         if poses is not None:
             main._write_folder_poses_from_ui(date, location, folder, poses)
@@ -493,8 +507,6 @@ async def admin_upload_index(request: Request):
     marked = [i for i in main.data if i.get("partner") and i["path"] in keyset]
     if marked:
         threading.Thread(target=main._prepare_partner_photos, args=(marked,), daemon=True).start()
-    # Thumbnails for every uploaded photo (drafts too — the studio shows them)
-    thumbs_job = main._queue_new_photo_thumbs(keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder,
             "thumbs_job_id": thumbs_job, "partner_marked": sum(1 for k in keys if os.path.basename(k) in partner_of)}
 
