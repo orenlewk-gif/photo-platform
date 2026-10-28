@@ -749,9 +749,8 @@ function toggleNg(name) {
   arr.classList.toggle('open', open);
   if (hdr) hdr.classList.toggle('open', open);
 }
-// Photos uploading at once. Chrome allows 6 at a time per address and storage speaks HTTP/1.1,
-// so every other photo goes to storage's second address (url_alt): 12 really in flight.
-const CONCURRENCY = 12;
+// Photos uploading at once (as before 2026-10-28; the two-address upload is off, see UPLOAD_ALT_HOST)
+const CONCURRENCY = 10;
 
 // Read EXIF capture times from local File objects (first 16KB only — fast, in-memory)
 // Runs fn over every item with n always in flight: the next one starts as soon as any finishes
