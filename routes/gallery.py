@@ -5,7 +5,7 @@ from PIL import Image
 from core.checkout import CheckoutError
 from core.images import fix_orientation
 from core.pricing import ZIP_LOCS_SET
-from core.search import COLOR_ENUM, color_family, merged_colors
+from core.search import COLOR_ENUM, color_family
 from core.text import clean_location
 from core.text import folder_key as _folder_key
 from core.text import item_group_from_path as _item_group_from_path
@@ -321,8 +321,8 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
         _valid = set(COLOR_ENUM) - {"none", "unclear"}
-        jcs = [c for c in merged_colors(item.get("jacket_colors") or []) if c in _valid]
-        pcs = [c for c in merged_colors(item.get("pants_colors")  or []) if c in _valid]
+        jcs = [c for c in (item.get("jacket_colors") or []) if c in _valid]
+        pcs = [c for c in (item.get("pants_colors")  or []) if c in _valid]
         for c in jcs: jacket.add(c)
         for c in pcs: pants.add(c)
         if item.get("ski_instructor"): has_instructor = True

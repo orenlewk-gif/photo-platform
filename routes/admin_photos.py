@@ -11,7 +11,6 @@ from core.images import grid_thumb_r2_key as _grid_thumb_r2_key
 from core.images import nowm_thumb_r2_key as _nowm_thumb_r2_key
 from core.images import thumb_r2_key as _thumb_r2_key
 from core.pricing import ZIP_LOCS_SET
-from core.search import merged_colors
 from core.text import clean_location
 from core.text import folder_key as _folder_key
 from core.text import natural_sort_key
@@ -51,8 +50,8 @@ async def admin_color_labels(request: Request, date: str = Query(""), location: 
             continue
         results.append({
             "file": item["path"].split("/")[-1],
-            "jacket": merged_colors(item.get("jacket_colors")),
-            "pants":  merged_colors(item.get("pants_colors")),
+            "jacket": item.get("jacket_colors"),
+            "pants":  item.get("pants_colors"),
         })
     return {"count": len(results), "photos": results}
 
@@ -77,8 +76,8 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
         results.append({
             "path":       item["path"],
             "file":       item["path"].split("/")[-1],
-            "jacket":     merged_colors(item.get("jacket_colors")),     # camo shows (and saves) as green
-            "pants":      merged_colors(item.get("pants_colors")),
+            "jacket":     item.get("jacket_colors"),
+            "pants":      item.get("pants_colors"),
             "sport":      item.get("sport"),
             "instructor": bool(item.get("ski_instructor")),
             "partner":    item.get("partner", ""),
@@ -167,8 +166,8 @@ async def admin_set_photo_colors(request: Request):
     item = next((it for it in main.data if it["path"] == path), None)
     if not item:
         return JSONResponse(status_code=404, content={"error": "Photo not found"})
-    if "jacket_colors" in body: item["jacket_colors"] = merged_colors(body["jacket_colors"] or [])
-    if "pants_colors"  in body: item["pants_colors"]  = merged_colors(body["pants_colors"]  or [])
+    if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
+    if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
     if "sport"         in body: item["sport"]          = body["sport"] or None
     if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
     item["manually_corrected"] = True
@@ -191,8 +190,8 @@ async def admin_set_photos_colors_bulk(request: Request):
         item = path_index.get(path.strip())
         if not item:
             continue
-        if "jacket_colors" in body: item["jacket_colors"] = merged_colors(body["jacket_colors"] or [])
-        if "pants_colors"  in body: item["pants_colors"]  = merged_colors(body["pants_colors"]  or [])
+        if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
+        if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
         if "sport"         in body: item["sport"]          = body["sport"] or None
         if "ski_instructor" in body: item["ski_instructor"] = bool(body["ski_instructor"])
         item["manually_corrected"] = True
@@ -401,7 +400,6 @@ async def admin_upload_presign(request: Request):
             "error": "Only photos (JPG or PNG) can be uploaded: " + ", ".join(refused[:5])})
     loc_slug    = location.lower().replace(" ", "-")
     folder_slug = folder.lower().replace(" ", "-") if folder else ""
-    on_site = {item["path"] for item in main.data}       # dropped again after a failed upload: these are in
     urls = []
     for f in files:
         filename = os.path.basename(f["name"])
@@ -414,21 +412,7 @@ async def admin_upload_presign(request: Request):
             Params={"Bucket": main.R2_BUCKET, "Key": key, "ContentType": f.get("type", "image/jpeg")},
             ExpiresIn=7200,
         )
-        entry = {"key": key, "url": presigned, "filename": filename, "on_site": key in on_site}
-        if main.s3_alt_host is not None:          # the same upload on storage's second address
-            entry["url_alt"] = main.s3_alt_host.generate_presigned_url(
-                "put_object", Params={"Bucket": main.R2_BUCKET, "Key": key, "ContentType": f.get("type", "image/jpeg")},
-                ExpiresIn=7200)
-        if entry["on_site"] and isinstance(f.get("size"), int):
-            # The same name isn't always the same photo (two cameras numbering alike, two computers
-            # uploading the same day): a different size means a different photo
-            try:
-                stored = main.s3.head_object(Bucket=main.R2_BUCKET, Key=key)["ContentLength"]
-            except Exception:
-                stored = None
-            if stored is not None and stored != f["size"]:
-                entry["on_site"], entry["name_taken"] = False, True
-        urls.append(entry)
+        urls.append({"key": key, "url": presigned, "filename": filename})
     return {"urls": urls}
 
 
@@ -481,11 +465,8 @@ async def admin_upload_index(request: Request):
             main.data.append(entry)
             existing.add(key)
             added += 1
-    # Thumbnails and color labels for these photos start right away (the next photos are still
-    # uploading); the photo list is saved a moment later in the background, one save for several
-    # batches, instead of each batch waiting on a save of the whole list. Push-live saves it too.
-    thumbs_job = main._queue_new_photo_thumbs(keys)
-    main._save_photo_list_soon()
+    # The save and the pose reading go to storage: off the main loop, so visitors aren't held up
+    await run_in_threadpool(main._save_photo_list)
     if is_portrait and folder and keys:
         if poses is not None:
             main._write_folder_poses_from_ui(date, location, folder, poses)
@@ -511,6 +492,8 @@ async def admin_upload_index(request: Request):
     marked = [i for i in main.data if i.get("partner") and i["path"] in keyset]
     if marked:
         threading.Thread(target=main._prepare_partner_photos, args=(marked,), daemon=True).start()
+    # Thumbnails for every uploaded photo (drafts too — the studio shows them)
+    thumbs_job = main._queue_new_photo_thumbs(keys)
     return {"indexed": added, "date": date, "location": location, "folder": folder,
             "thumbs_job_id": thumbs_job, "partner_marked": sum(1 for k in keys if os.path.basename(k) in partner_of)}
 

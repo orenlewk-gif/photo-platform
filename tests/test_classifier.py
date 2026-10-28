@@ -58,19 +58,3 @@ def test_pants_get_one_color_and_teal_reads_as_blue(model):
 
 def test_labels_are_stamped_with_the_model_version(main_module):
     assert main_module.MODEL_LABEL == "model_v4a"
-
-
-def test_camo_reads_as_green(model):
-    out = model(jacket={"camo": 0.8, "green": 0.75}, pants={"camo": 0.9})
-    assert out["jacket_colors"] == ["green"] and out["pants_colors"] == ["green"]      # one green, not two
-
-
-def test_studio_shows_and_saves_camo_as_green(admin_client, live_photos, main_module):
-    path = "images/2026-12-20/el-dorado-action/C1.jpg"
-    live_photos([{"path": path, "date": "2026-12-20", "location": "El Dorado Action", "group": "", "last_name": "",
-                  "jacket_colors": ["camo", "black"], "pants_colors": ["camo"]}])
-    photos = admin_client.get("/api/admin/folder-photos", params={"date": "2026-12-20", "location": "El Dorado Action"}).json()["photos"]
-    assert photos[0]["jacket"] == ["green", "black"] and photos[0]["pants"] == ["green"]
-    admin_client.post("/api/admin/set-photo-colors", json={"path": path, "jacket_colors": ["camo"], "pants_colors": ["camo", "green"]})
-    item = next(i for i in main_module.data if i["path"] == path)
-    assert item["jacket_colors"] == ["green"] and item["pants_colors"] == ["green"]

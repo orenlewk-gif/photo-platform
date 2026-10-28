@@ -5,19 +5,8 @@ from core.text import clean_location, natural_sort_key
 
 COLOR_ENUM = [
     "red", "orange", "yellow", "green", "blue", "purple", "pink",
-    "white", "black", "gray", "brown", "tan", "teal", "none", "unclear",
+    "white", "black", "gray", "brown", "tan", "teal", "camo", "none", "unclear",
 ]
-
-# Colors folded into another one (too few photos to be a filter of their own). Photos already
-# labeled with them count as the other color everywhere; they're never stored again.
-MERGED_COLORS = {"camo": "green"}
-
-
-def merged_colors(colors) -> list | None:
-    """A photo's colors with the folded ones replaced (order kept, no repeats); None stays None."""
-    if colors is None:
-        return None
-    return list(dict.fromkeys(MERGED_COLORS.get(c, c) for c in colors))
 
 # Color families — similar shades treated as equivalent during filtering
 COLOR_FAMILY: dict[str, set] = {
@@ -25,7 +14,7 @@ COLOR_FAMILY: dict[str, set] = {
     "tan":    {"tan"},
     "red":    {"red", "maroon"},
     "maroon": {"maroon", "red"},
-    "green":  {"green", "camo"},     # camo is part of green (MERGED_COLORS)
+    "green":  {"green"},
     "teal":   {"teal"},
     "gray":   {"gray"},
     "purple": {"purple", "violet"},

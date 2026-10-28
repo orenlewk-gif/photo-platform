@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 from pathlib import Path
 from collections import Counter
 
-from core.search import merged_colors
 from core.text import folder_key
 
 load_dotenv()
@@ -137,8 +136,8 @@ def main():
     for item in exportable:
         rows.append({
             "r2_key":             item["path"],
-            "jacket_colors":      "|".join(merged_colors(item.get("jacket_colors") or [])),   # camo -> green
-            "pants_colors":       "|".join(merged_colors(item.get("pants_colors") or [])),
+            "jacket_colors":      "|".join(item.get("jacket_colors") or []),
+            "pants_colors":       "|".join(item.get("pants_colors") or []),
             "sport":              item.get("sport") or "",
             "classifier":         item.get("classifier") or "haiku",
             "manually_corrected": "1" if item.get("manually_corrected") else "0",

@@ -6,7 +6,6 @@ from io import BytesIO
 
 import numpy as np
 from PIL import Image
-from core.search import merged_colors
 
 # Which trained model labels new photos (files <name>.onnx, .onnx.data, _meta.json, kept in storage
 # under models/). Set COLOR_MODEL=model_v3 on the server to go back to v3. The name is also stamped on
@@ -65,7 +64,7 @@ def decide(j_logits, p_logits, s_logits, meta: dict) -> dict:
         jacket.append(colors[j_sorted[1]])
     pants = [colors[int(np.argmax(p_prob))]]
     sport = sports[int(np.argmax(s_logits))]
-    remap = lambda cs: merged_colors(['blue' if c == 'teal' else c for c in cs])    # camo -> green
+    remap = lambda cs: ['blue' if c == 'teal' else c for c in cs]
     return {"sport": sport, "jacket_colors": remap(jacket), "pants_colors": remap(pants)}
 
 
