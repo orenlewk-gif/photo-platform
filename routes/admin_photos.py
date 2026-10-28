@@ -415,6 +415,10 @@ async def admin_upload_presign(request: Request):
             ExpiresIn=7200,
         )
         entry = {"key": key, "url": presigned, "filename": filename, "on_site": key in on_site}
+        if main.s3_alt_host is not None:          # the same upload on storage's second address
+            entry["url_alt"] = main.s3_alt_host.generate_presigned_url(
+                "put_object", Params={"Bucket": main.R2_BUCKET, "Key": key, "ContentType": f.get("type", "image/jpeg")},
+                ExpiresIn=7200)
         if entry["on_site"] and isinstance(f.get("size"), int):
             # The same name isn't always the same photo (two cameras numbering alike, two computers
             # uploading the same day): a different size means a different photo

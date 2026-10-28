@@ -163,3 +163,18 @@ def test_a_different_photo_with_a_name_already_in_the_folder_is_flagged(admin_cl
         "files": [{"name": "DSC_0042.JPG", "type": "image/jpeg", "size": 7777}]}).json()["urls"][0]
     assert same["on_site"] and not same.get("name_taken")                  # the same photo, dropped again
     assert not other["on_site"] and other["name_taken"]                    # another camera's DSC_0042
+
+
+def test_upload_links_come_on_both_storage_addresses(admin_client, main_module, monkeypatch):
+    # Chrome sends 6 at a time per address: the second address lets 12 photos upload at once
+    import boto3
+    from botocore.config import Config
+    from urllib.parse import urlparse
+    alt = boto3.client("s3", region_name="us-east-1", config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}))
+    monkeypatch.setattr(main_module, "s3_alt_host", alt)
+    [u] = _presign(admin_client, "Big Sky Ski School", [("DSC_0500.JPG", "image/jpeg")]).json()["urls"]
+    a, b = urlparse(u["url"]), urlparse(u["url_alt"])
+    assert a.netloc != b.netloc and b.netloc.startswith("test-bucket.") and u["key"].lstrip("/") in b.path.lstrip("/")
+    monkeypatch.setattr(main_module, "s3_alt_host", None)
+    [u] = _presign(admin_client, "Big Sky Ski School", [("DSC_0501.JPG", "image/jpeg")]).json()["urls"]
+    assert "url_alt" not in u                                                   # local fake storage: one address

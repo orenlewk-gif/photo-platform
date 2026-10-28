@@ -67,6 +67,19 @@ s3 = boto3.client(
     aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
     config=BotocoreConfig(signature_version="s3v4", max_pool_connections=50),
 )
+# Upload links on storage's second address style (bucket name in the host). Chrome sends at most
+# 6 requests at a time to one address, and storage only speaks HTTP/1.1, so studio uploads split
+# their photos over both addresses (12 at a time). Off for the local fake storage (no such host).
+_ENDPOINT = os.getenv("R2_ENDPOINT_URL") or ""
+s3_alt_host = None
+if os.getenv("UPLOAD_ALT_HOST", "on") != "off" and not any(h in _ENDPOINT for h in ("127.0.0.1", "localhost")):
+    s3_alt_host = boto3.client(
+        "s3",
+        endpoint_url=_ENDPOINT or None,
+        aws_access_key_id=os.getenv("R2_ACCESS_KEY_ID"),
+        aws_secret_access_key=os.getenv("R2_SECRET_ACCESS_KEY"),
+        config=BotocoreConfig(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+    )
 R2_BUCKET          = os.getenv("R2_BUCKET_NAME", "crystal-images")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 PRICING_KEY  = "meta/pricing.json"

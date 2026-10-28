@@ -749,7 +749,9 @@ function toggleNg(name) {
   arr.classList.toggle('open', open);
   if (hdr) hdr.classList.toggle('open', open);
 }
-const CONCURRENCY = 10;
+// Photos uploading at once. Chrome allows 6 at a time per address and storage speaks HTTP/1.1,
+// so every other photo goes to storage's second address (url_alt): 12 really in flight.
+const CONCURRENCY = 12;
 
 // Read EXIF capture times from local File objects (first 16KB only — fast, in-memory)
 // Runs fn over every item with n always in flight: the next one starts as soon as any finishes
@@ -764,12 +766,14 @@ async function runPool(items, n, fn) {
 // hiccup usually clears in a few seconds). A non-2xx answer doesn't throw in fetch(), so it's checked.
 const PUT_WAITS = [0, 1000, 4000, 8000];
 async function putPhoto(it, signal) {
-  for (const wait of PUT_WAITS) {
+  for (const [n, wait] of PUT_WAITS.entries()) {
     if (it.ok || signal?.aborted) break;
     if (wait) await new Promise(r => setTimeout(r, wait));
     if (signal?.aborted) break;
+    // Every other photo tries the second address first; any retry uses the usual one
+    const url = n === 0 && it.altFirst && it.url_alt ? it.url_alt : it.url;
     try {
-      const res = await fetch(it.url, {method:'PUT', body:it.file, headers:{'Content-Type':it.file.type||'image/jpeg'}, signal});
+      const res = await fetch(url, {method:'PUT', body:it.file, headers:{'Content-Type':it.file.type||'image/jpeg'}, signal});
       if (res.ok) it.ok = true;
     } catch (e) {}
   }
@@ -2750,7 +2754,7 @@ async function uploadPoseFamily(date, location, folder, files, poses, progress) 
     body:JSON.stringify({date,location,folder,files:files.map(f=>({name:f.name,type:f.type||'image/jpeg'}))})});
   if (!pr.ok) return null;
   const {urls}=await pr.json();
-  const items=urls.map((u,i)=>({...u,file:files[i]}));
+  const items=urls.map((u,i)=>({...u,file:files[i],altFirst:i%2===1}));
   let done=0, failed=0;
   progress(done, failed);
   const timesReq=readExifTimes(files);          // read while the photos upload
@@ -3028,6 +3032,7 @@ async function startUpload() {
     if (skip) for (let i = allItems.length - 1; i >= 0; i--) if (allItems[i].on_site) allItems.splice(i, 1);
   }
   for (const [folder, t] of targets) t.left = allItems.filter(it => it.folder === folder).length;
+  allItems.forEach((it, i) => { it.altFirst = i % 2 === 1; });
   totalFiles = allItems.length;
   setProgress();
   showRetry([]);
