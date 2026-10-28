@@ -11,6 +11,7 @@ from core.images import grid_thumb_r2_key as _grid_thumb_r2_key
 from core.images import nowm_thumb_r2_key as _nowm_thumb_r2_key
 from core.images import thumb_r2_key as _thumb_r2_key
 from core.pricing import ZIP_LOCS_SET
+from core.search import merged_colors
 from core.text import clean_location
 from core.text import folder_key as _folder_key
 from core.text import natural_sort_key
@@ -50,8 +51,8 @@ async def admin_color_labels(request: Request, date: str = Query(""), location: 
             continue
         results.append({
             "file": item["path"].split("/")[-1],
-            "jacket": item.get("jacket_colors"),
-            "pants":  item.get("pants_colors"),
+            "jacket": merged_colors(item.get("jacket_colors")),
+            "pants":  merged_colors(item.get("pants_colors")),
         })
     return {"count": len(results), "photos": results}
 
@@ -76,8 +77,8 @@ async def admin_folder_photos(request: Request, date: str = Query(""), location:
         results.append({
             "path":       item["path"],
             "file":       item["path"].split("/")[-1],
-            "jacket":     item.get("jacket_colors"),
-            "pants":      item.get("pants_colors"),
+            "jacket":     merged_colors(item.get("jacket_colors")),     # camo shows (and saves) as green
+            "pants":      merged_colors(item.get("pants_colors")),
             "sport":      item.get("sport"),
             "instructor": bool(item.get("ski_instructor")),
             "partner":    item.get("partner", ""),
@@ -166,8 +167,8 @@ async def admin_set_photo_colors(request: Request):
     item = next((it for it in main.data if it["path"] == path), None)
     if not item:
         return JSONResponse(status_code=404, content={"error": "Photo not found"})
-    if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
-    if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
+    if "jacket_colors" in body: item["jacket_colors"] = merged_colors(body["jacket_colors"] or [])
+    if "pants_colors"  in body: item["pants_colors"]  = merged_colors(body["pants_colors"]  or [])
     if "sport"         in body: item["sport"]          = body["sport"] or None
     if "ski_instructor"  in body: item["ski_instructor"]  = bool(body["ski_instructor"])
     item["manually_corrected"] = True
@@ -190,8 +191,8 @@ async def admin_set_photos_colors_bulk(request: Request):
         item = path_index.get(path.strip())
         if not item:
             continue
-        if "jacket_colors" in body: item["jacket_colors"] = body["jacket_colors"] or []
-        if "pants_colors"  in body: item["pants_colors"]  = body["pants_colors"]  or []
+        if "jacket_colors" in body: item["jacket_colors"] = merged_colors(body["jacket_colors"] or [])
+        if "pants_colors"  in body: item["pants_colors"]  = merged_colors(body["pants_colors"]  or [])
         if "sport"         in body: item["sport"]          = body["sport"] or None
         if "ski_instructor" in body: item["ski_instructor"] = bool(body["ski_instructor"])
         item["manually_corrected"] = True

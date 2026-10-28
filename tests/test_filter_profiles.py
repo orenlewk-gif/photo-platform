@@ -14,7 +14,8 @@ def _p(n, sport, jackets, pants, instructor=False):
 
 PHOTOS = [_p(1, "ski", ["red"], ["black"]), _p(2, "ski", ["red", "white"], ["black"]),
           _p(3, "snowboard", ["blue"], ["black"]), _p(4, "snowboard", ["navy"], ["gray"]),   # navy counts as blue
-          _p(5, "ski", ["green"], ["green"], instructor=True), _p(6, "unclear", ["red"], ["gray"])]
+          _p(5, "ski", ["green"], ["green"], instructor=True), _p(6, "unclear", ["red"], ["gray"]),
+          _p(7, "ski", ["camo"], ["camo"])]                                  # camo counts as green
 
 
 @pytest.fixture()
@@ -61,3 +62,10 @@ def test_each_photo_names_its_profile_for_the_time_filter(folder):
         pr, photo = folder["profiles"][no], by_file[fn]
         assert pr["s"] == (photo["sport"] if photo["sport"] in ("ski", "snowboard") else "")
         assert pr["i"] == photo["ski_instructor"]
+
+
+def test_camo_is_part_of_green(client, folder, main_module):
+    assert "camo" not in folder["jacket"] and "camo" not in folder["pants"] and "green" in folder["jacket"]
+    main_module._search_limiter._calls.clear()
+    found = client.get("/api/search", params={"date": D, "location": L, "jacket_color": "green"}).json()["photos"]
+    assert sorted(p["path"].rsplit("/", 1)[-1] for p in found) == ["P5.jpg", "P7.jpg"]
