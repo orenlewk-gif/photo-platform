@@ -2979,10 +2979,13 @@ async function startUpload() {
   const cancelBtn=document.getElementById('upload-cancel-btn'); cancelBtn.style.display='';
   const progWrap=document.getElementById('upload-progress'); progWrap.style.display='block';
   const fill=document.getElementById('prog-fill'), label=document.getElementById('prog-label');
-  let done=0, failed=0, labeled=0;
+  let done=0, failed=0, labeled=0, sentBytes=0, startedAt=0;
   const labelJobs=[];     // thumbnail + color label jobs started for each batch added to the site
+  // The upload speed so far (photos finished / time), to compare with the line's speed test
+  const speedText=()=>{ const secs=(Date.now()-startedAt)/1000;
+    return startedAt && secs > 3 && sentBytes ? ` · ${(sentBytes*8/secs/1e6).toFixed(0)} Mbps` : ''; };
   const setProgress=()=>{ const p=totalFiles ? Math.round(done/totalFiles*100) : 100; fill.style.width=p+'%';
-    label.textContent=`${done} / ${totalFiles} uploaded`+(labelJobs.length?` · ${labeled} ${_isPortraitLoc ? 'ready' : 'labeled'}`:'')+'…'+(failed?` (${failed} failed)`:''); };
+    label.textContent=`${done} / ${totalFiles} uploaded`+(labelJobs.length?` · ${labeled} ${_isPortraitLoc ? 'ready' : 'labeled'}`:'')+speedText()+'…'+(failed?` (${failed} failed)`:''); };
   setProgress();
   // Save group sizes immediately so local viewer shows correct pricing right away
   if (_isZipUpload()) {
@@ -3074,7 +3077,7 @@ async function startUpload() {
   async function putOne(it) {
     if (_sig.aborted) { done++; failed++; setProgress(); return; }
     await putPhoto(it, _sig);
-    done++; if (!it.ok) failed++; setProgress();
+    done++; if (!it.ok) failed++; else sentBytes += it.file.size; setProgress();
     if (_sig.aborted) return;
     const t = targets.get(it.folder);
     if (it.ok) t.ready.push(it);
@@ -3096,8 +3099,11 @@ async function startUpload() {
       if (uploading) setProgress();
     }
   })();
+  startedAt = Date.now();
   await runPool(allItems, CONCURRENCY, putOne);
   uploading = false;
+  const upSecs = (Date.now() - startedAt) / 1000;
+  if (sentBytes && upSecs > 3) console.log(`Upload: ${(sentBytes / 1e6).toFixed(0)} MB in ${upSecs.toFixed(0)} s = ${(sentBytes * 8 / upSecs / 1e6).toFixed(0)} Mbps`);
   const finishing = [...targets.values()].map(t => t.chain);
   if (_sig.aborted) {
     await Promise.all(finishing);                     // photos already added stay (as drafts)
@@ -3133,14 +3139,15 @@ async function startUpload() {
   showRetry(retryNames, retryRun);
   const succeeded = done - failed;
   const isPortraitUpload = PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
+  const avg = sentBytes && upSecs > 3 ? ` · ${(sentBytes * 8 / upSecs / 1e6).toFixed(0)} Mbps average` : '';
   if (failed) {
-    label.textContent = `Done — ${succeeded} uploaded, ${failed} failed`;
+    label.textContent = `Done — ${succeeded} uploaded, ${failed} failed${avg}`;
     showToast(`${succeeded} uploaded, ${failed} failed — Retry sends just those`,'error');
   } else if (isPortraitUpload) {
     label.textContent = `Done — ${succeeded} photos live`;
     showToast(`${succeeded} photos uploaded and live — check the poses in the folder`);
   } else {
-    label.textContent = `Done — ${totalLive} photos live`;
+    label.textContent = `Done — ${totalLive} photos live${avg}`;
     showToast(`${done} photos uploaded and live`);
   }
   _uploadActive = false; _uploadAbortCtrl = null;
