@@ -57,7 +57,7 @@ def test_pants_get_one_color_and_teal_reads_as_blue(model):
 
 
 def test_labels_are_stamped_with_the_model_version(main_module):
-    assert main_module.MODEL_LABEL == "model_v4a"
+    assert main_module.MODEL_LABEL == "model_v5a"
 
 
 def test_camo_reads_as_green(model):

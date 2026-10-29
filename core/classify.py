@@ -9,9 +9,9 @@ from PIL import Image
 from core.search import merged_colors
 
 # Which trained model labels new photos (files <name>.onnx, .onnx.data, _meta.json, kept in storage
-# under models/). Set COLOR_MODEL=model_v3 on the server to go back to v3. The name is also stamped on
+# under models/). Set COLOR_MODEL=model_v4a (or model_v3) on the server to go back. The name is also stamped on
 # each photo the model labels, so it's always known which version labeled what.
-MODEL_LABEL = os.getenv("COLOR_MODEL", "model_v4a").strip() or "model_v4a"
+MODEL_LABEL = os.getenv("COLOR_MODEL", "model_v5a").strip() or "model_v5a"
 
 # Decision rules, tuned 2026-10-18 on 2,000 labeled photos v3 never trained on (6/6 + 6/7):
 # photos needing no fix went from 60.7% to 62.9%, and every folder improved.
