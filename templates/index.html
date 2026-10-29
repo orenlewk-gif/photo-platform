@@ -166,7 +166,9 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .date-pill:hover { background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.8); }
 .date-pill.active { border-color:#F5C518; background:rgba(245,197,24,0.12); color:#F5C518; }
 
-/* Time filter bar */
+/* Time filter bar (above the color filters) */
+.time-filter-row { margin:0 0 0.7rem; }
+.time-filter-row:has(.time-filter-bar[style*="display:none"]), .time-filter-row:has(.time-filter-bar[style*="display: none"]) { display:none; }
 .time-filter-bar {
   display:flex; align-items:center; gap:.7rem; flex:1; min-width:200px;
 }
@@ -2163,6 +2165,16 @@ async function showGallery(date, location, family, ln, group) {
       <button class="thumb-shop-btn" style="padding:0.45rem 1.1rem;font-size:0.85rem;" onclick="openQuickShop(0)">Shop</button>
     </div>
     ${folderInfoHtml}
+    <!-- Time first: it narrows a folder the fastest, so it's the first thing people see -->
+    <div class="time-filter-row">
+      <div class="time-filter-bar" id="time-filter-bar" style="display:none">
+        <span class="tf-label">TIME</span>
+        <select class="tf-select" id="tf-from" aria-label="From time"></select>
+        <span class="tf-sep">–</span>
+        <select class="tf-select" id="tf-to" aria-label="To time"></select>
+        <span class="tf-range" id="tf-range"></span>
+      </div>
+    </div>
     ${(!family && !ln) ? `
     <div id="filter-toggle-wrap" style="display:none;margin:0 0 0.4rem">
       <button class="filter-toggle-btn" id="filter-toggle-btn" onclick="toggleFilterPanel()">
@@ -2175,13 +2187,6 @@ async function showGallery(date, location, family, ln, group) {
       <div class="size-slider-wrap">
         <input type="range" id="size-slider" min="1" max="4" value="3" aria-label="Photo size" />
         <span>⊞</span>
-      </div>
-      <div class="time-filter-bar" id="time-filter-bar" style="display:none">
-        <span class="tf-label">TIME</span>
-        <select class="tf-select" id="tf-from" aria-label="From time"></select>
-        <span class="tf-sep">–</span>
-        <select class="tf-select" id="tf-to" aria-label="To time"></select>
-        <span class="tf-range" id="tf-range"></span>
       </div>
     </div>
     <div class="gallery" id="gallery"></div>`;
