@@ -710,7 +710,7 @@ def _autopurge_loop():
             purge = [t for t in trash if datetime.fromisoformat(t["purge_at"]) <= now]
             if purge:
                 _save_trash_meta(keep)
-                _batch_delete_keys([t["key"] for t in purge])
+                _purge_trash_entries(purge)
                 print(f"[autopurge] removed {len(purge)} expired trash items")
         except Exception as e:
             print(f"[autopurge] error: {e}")
@@ -3798,29 +3798,22 @@ def _add_to_trash_meta(entries: list) -> None:
 
 
 def _bulk_trash(to_trash: list) -> tuple[list, int]:
-    """Copy items to trash (8 at a time), then batch-delete the originals that were copied.
+    """Put photos in the trash. The original stays where it is (nothing is copied, so 500 photos
+    take a moment, not minutes, and a sold photo's download keeps working for the week); only
+    the thumbnails visitors could see are removed now. The photo's record (labels and all) is
+    kept in the trash entry; restoring puts it back, and purging after 7 days deletes the files.
     Returns (trash entries, how many)."""
     if not to_trash:
         return [], 0
-
-    now       = datetime.now(timezone.utc)
-    now_iso   = now.isoformat()
-    purge_iso = (now + timedelta(days=7)).isoformat()
-
-    def copy_one(item):
-        key       = to_r2_key(item["path"])
-        uid       = str(uuid.uuid4())[:8]
-        trash_key = f"studio_trash/{uid}_{os.path.basename(item['path'])}"
-        try:
-            s3.copy_object(Bucket=R2_BUCKET,
-                           CopySource={"Bucket": R2_BUCKET, "Key": key},
-                           Key=trash_key)
-        except Exception as e:
-            print(f"[trash] copy failed {key}: {e}")
-            return None
-        return {
-            "key":          trash_key,
+    now = datetime.now(timezone.utc)
+    now_iso, purge_iso = now.isoformat(), (now + timedelta(days=7)).isoformat()
+    entries, public_thumbs = [], []
+    for item in to_trash:
+        key = to_r2_key(item["path"])
+        entries.append({
+            "key":          key,                  # in place: the trash entry points at the original
             "original_key": key,
+            "in_place":     True,
             "filename":     os.path.basename(item["path"]),
             "date":         item["date"],
             "location":     item["location"],
@@ -3829,25 +3822,28 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
             "purge_at":     purge_iso,
             "type":         "studio",
             "image_entry":  item,
-        }
+        })
+        for v in ("grid", "pos", "public", "large"):          # the studio's own thumbnail stays for the trash page
+            public_thumbs.append(_THUMB_VARIANTS[v][0](key))
+        _forget_thumb_links(key)
+    _batch_delete_keys(public_thumbs)
+    return entries, len(entries)
 
-    with ThreadPoolExecutor(max_workers=8) as ex:
-        new_meta = [m for m in ex.map(copy_one, to_trash) if m]
-    orig_keys = [m["original_key"] for m in new_meta]
 
-    if not orig_keys:
-        return [], 0
-
-    # Batch-delete originals (up to 1000 per call instead of one-by-one)
-    for i in range(0, len(orig_keys), 1000):
-        chunk = orig_keys[i:i+1000]
-        try:
-            s3.delete_objects(Bucket=R2_BUCKET,
-                              Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True})
-        except Exception as e:
-            print(f"[trash] batch delete failed: {e}")
-
-    return new_meta, len(new_meta)
+def _purge_trash_entries(entries: list) -> None:
+    """Delete trashed photos for good. A photo back on the site under the same name (uploaded
+    again while its old copy was in the trash) is left alone."""
+    live = {it["path"] for it in data}
+    keys = []
+    for t in entries:
+        if not t.get("in_place"):
+            keys.append(t["key"])                             # trashed before 2026-10-29: a copy in studio_trash/
+            continue
+        if t["original_key"] in live:
+            continue
+        keys.append(t["original_key"])
+        keys += [fn(t["original_key"]) for fn, *_ in _THUMB_VARIANTS.values()]
+    _batch_delete_keys(keys)
 
 
 import copy as _copy

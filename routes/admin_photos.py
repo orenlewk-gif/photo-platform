@@ -7,7 +7,6 @@ import uuid
 import zipfile
 from PIL import Image
 from core.images import fix_orientation
-from core.images import grid_thumb_r2_key as _grid_thumb_r2_key
 from core.images import nowm_thumb_r2_key as _nowm_thumb_r2_key
 from core.images import thumb_r2_key as _thumb_r2_key
 from core.pricing import ZIP_LOCS_SET
@@ -1204,15 +1203,7 @@ async def admin_photo_trash(request: Request):
 
     # Storage work runs off the main loop (visitors aren't held up), several photos at a time
     def move_to_trash():
-        new_meta, _ = main._bulk_trash(to_trash)
-        for entry in new_meta:
-            key = entry["original_key"]
-            for key_fn in (_thumb_r2_key, _grid_thumb_r2_key):
-                try:
-                    main.s3.delete_object(Bucket=main.R2_BUCKET, Key=key_fn(key))
-                except Exception:
-                    pass
-            main._forget_thumb_links(key)
+        new_meta, _ = main._bulk_trash(to_trash)            # thumbnails go in one batch there
         main._add_to_trash_meta(new_meta)
         return new_meta
 

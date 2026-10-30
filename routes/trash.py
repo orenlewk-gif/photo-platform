@@ -21,8 +21,10 @@ def get_trash_ep(request: Request):
     out   = []
     for t in trash:
         days_left = max(0, (datetime.fromisoformat(t["purge_at"]) - now).days)
-        out.append({**t, "days_left": days_left,
-                    "thumb_url": main._presigned_get(t["key"])})
+        # The small studio thumbnail (made at upload) instead of the original, which is several MB;
+        # linked without checking it exists first, so a long trash list still opens at once
+        small = main._THUMB_VARIANTS["admin"][0](t["original_key"]) if t.get("in_place") else t["key"]
+        out.append({**t, "days_left": days_left, "thumb_url": main._presigned_get(small)})
     return {"items": out}
 
 
@@ -36,18 +38,22 @@ async def trash_restore(request: Request):
     item      = next((t for t in trash if t["key"] == trash_key), None)
     if not item:
         return JSONResponse(status_code=404, content={"error": "Not found"})
-    try:
-        main.s3.copy_object(Bucket=main.R2_BUCKET,
-                       CopySource={"Bucket": main.R2_BUCKET, "Key": trash_key},
-                       Key=item["original_key"])
-        main.s3.delete_object(Bucket=main.R2_BUCKET, Key=trash_key)
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-    if item.get("type") == "studio":
-        entry = item.get("image_entry")
-        if entry and entry["path"] not in {d["path"] for d in main.data}:
-            main.data.append(entry)
-            main._save_photo_list()
+    entry = item.get("image_entry") if item.get("type") == "studio" else None
+    if entry and entry["path"] in {d["path"] for d in main.data}:
+        return JSONResponse(status_code=409, content={
+            "error": "A photo with this name was uploaded to that folder again, so this one can't come back"})
+    if not item.get("in_place"):                              # trashed before 2026-10-29: copied out
+        try:
+            main.s3.copy_object(Bucket=main.R2_BUCKET,
+                           CopySource={"Bucket": main.R2_BUCKET, "Key": trash_key},
+                           Key=item["original_key"])
+            main.s3.delete_object(Bucket=main.R2_BUCKET, Key=trash_key)
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": str(e)})
+    if entry:
+        main.data.append(entry)
+        main._save_photo_list()
+        main._queue_new_photo_thumbs([entry["path"]])         # the thumbnails visitors see, made again
     else:
         pending = main._load_pending_meta()
         for m in pending:
@@ -77,8 +83,7 @@ async def trash_empty(request: Request):
         return {"emptied": 0}
     count = len(trash)
     main._save_trash_meta([])   # clear meta immediately so UI updates fast
-    keys = [t["key"] for t in trash]
-    threading.Thread(target=main._batch_delete_keys, args=(keys,), daemon=True).start()
+    threading.Thread(target=main._purge_trash_entries, args=(trash,), daemon=True).start()
     return {"emptied": count}
 
 
