@@ -574,6 +574,7 @@ input[type=file]{display:none}
           <button class="sel-clear" onclick="clearSelection()">Unselect All</button>
           <button class="sel-link-btn" onclick="openCreateLinkModal()">Create Link</button>
           <span id="sel-partner-btns" style="display:inline-flex;gap:.45rem"></span>
+          <button class="sel-link-btn" onclick="openMovePhotosModal()">Move</button>
           <button class="sel-trash-btn" onclick="trashSelected()">Move to Trash</button>
         </div>
         <button id="select-all-btn" onclick="selectAll()" style="display:none;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.28rem .7rem;font-size:.76rem;cursor:pointer">Select All</button>
@@ -663,14 +664,14 @@ input[type=file]{display:none}
 
 <div class="modal-overlay" id="move-modal-overlay" onclick="closeMoveModal(event)">
   <div class="modal-box" onclick="event.stopPropagation()">
-    <h3>Move Folder</h3>
+    <h3 id="move-title">Move Folder</h3>
     <div class="modal-field">
       <label>New Date</label>
       <input type="date" id="move-date">
     </div>
     <div class="modal-field">
       <label>New Location</label>
-      <select id="move-location">
+      <select id="move-location" onchange="updateMoveFolderLabel()">
         <option value="Adventure Zip">Adventure Zip</option>
         <option value="Nature Zip">Nature Zip</option>
         <option value="Dirt Days">Dirt Days</option>
@@ -679,6 +680,10 @@ input[type=file]{display:none}
         <option value="Explorer Gondola">Explorer Gondola</option>
         <option value="Ramcharger Portraits">Ramcharger Portraits</option>
       </select>
+    </div>
+    <div class="modal-field" id="move-folder-field" style="display:none">
+      <label id="move-folder-label">Folder</label>
+      <input type="text" id="move-folder" maxlength="80" autocomplete="off">
     </div>
     <div class="modal-actions">
       <button class="modal-cancel" onclick="document.getElementById('move-modal-overlay').classList.remove('open')">Cancel</button>
@@ -2099,15 +2104,63 @@ function moveFromContext() {
   hideCtxMenu();
   if (!_ctxCard) return;
   _ctxMoveFolder = { date: _ctxCard.dataset.date, location: _ctxCard.dataset.loc, folder: _ctxCard.dataset.folder };
+  _movePaths = null; setMoveMode(null);
   document.getElementById('move-date').value = _ctxMoveFolder.date;
   document.getElementById('move-location').value = _ctxMoveFolder.location;
   document.getElementById('move-modal-overlay').classList.add('open');
 }
 
 // ── Move modal ──
+// Folder mode moves a whole folder; photos mode (_movePaths) moves just the photos selected.
+let _movePaths = null;
+function setMoveMode(photos) {
+  const n = photos ? photos.length : 0;
+  document.getElementById('move-title').textContent = photos ? `Move ${n} photo${n === 1 ? '' : 's'}` : 'Move Folder';
+  document.getElementById('move-ok-btn').textContent = photos ? `Move ${n} photo${n === 1 ? '' : 's'}` : 'Move Folder';
+  document.getElementById('move-folder-field').style.display = photos ? '' : 'none';
+  updateMoveFolderLabel();
+}
+function updateMoveFolderLabel() {
+  const portrait = PORTRAIT_LOCS.has((document.getElementById('move-location').value || '').trim().toLowerCase());
+  document.getElementById('move-folder-label').textContent = portrait ? 'Family name' : 'Folder (optional)';
+}
+function openMovePhotosModal() {
+  if (!selectedPaths.size) return;
+  _movePaths = [...selectedPaths];
+  _ctxMoveFolder = null;
+  const f = currentFolder || {};
+  document.getElementById('move-date').value = f.date || '';
+  if (f.location) document.getElementById('move-location').value = f.location;
+  document.getElementById('move-folder').value = f.folder || '';
+  setMoveMode(_movePaths);
+  document.getElementById('move-modal-overlay').classList.add('open');
+}
+async function doMovePhotos() {
+  const newDate = document.getElementById('move-date').value;
+  const newLoc  = document.getElementById('move-location').value;
+  const newFolder = document.getElementById('move-folder').value.trim();
+  if (!newDate || !newLoc) { showToast('Select date and location', 'error'); return; }
+  const btn = document.getElementById('move-ok-btn'); const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Moving…';
+  const res = await fetch('/api/admin/photos/move', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({paths: _movePaths, new_date: newDate, new_location: newLoc, new_folder: newFolder})}).catch(() => null);
+  btn.disabled = false; btn.textContent = label;
+  const d = res ? await res.json().catch(() => ({})) : {};
+  if (!res || !res.ok) { showToast(d.error || 'Move failed', 'error'); return; }
+  document.getElementById('move-modal-overlay').classList.remove('open');
+  const skipped = (d.skipped || []).length;
+  showToast(`${d.moved} photo${d.moved === 1 ? '' : 's'} moved` + (skipped ? ` — ${skipped} skipped (same name already there: ${d.skipped.slice(0, 3).join(', ')}${skipped > 3 ? '…' : ''})` : '')
+            + (d.failed ? ` — ${d.failed} couldn't be moved, try again` : ''), skipped || d.failed ? 'error' : undefined);
+  _movePaths.forEach(p => selectedPaths.delete(p));
+  _movePaths = null;
+  updateSelectionUI();
+  await loadSidebar();
+  if (currentFolder) await loadFolderPhotos();
+}
 function openMoveModal() {
   if (!currentFolder) return;
   _ctxMoveFolder = null;
+  _movePaths = null; setMoveMode(null);
   document.getElementById('move-date').value = currentFolder.date;
   document.getElementById('move-location').value = currentFolder.location;
   document.getElementById('move-modal-overlay').classList.add('open');
@@ -2117,6 +2170,7 @@ function closeMoveModal(e) {
     document.getElementById('move-modal-overlay').classList.remove('open');
 }
 async function doMove() {
+  if (_movePaths) { await doMovePhotos(); return; }
   const src = currentFolder || _ctxMoveFolder;
   if (!src) return;
   const newDate = document.getElementById('move-date').value;

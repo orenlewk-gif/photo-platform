@@ -1323,6 +1323,144 @@ async def admin_folder_move(request: Request):
     return {"moved": len(path_remap), "new_date": new_date, "new_location": new_location}
 
 
+# ── Moving selected photos to another folder ────────────────────────────────
+
+def _times_of(date: str, location: str) -> dict:
+    """A time-search folder's capture times {file name: minutes}, from memory or storage."""
+    cached = main._folder_times_cache.get((date, location.strip().lower()))
+    if cached is not None:
+        return dict(cached)
+    try:
+        return json.loads(main.s3.get_object(Bucket=main.R2_BUCKET, Key=main._times_r2_key(date, location))["Body"].read())
+    except Exception:
+        return {}
+
+
+def _save_times(date: str, location: str, times: dict) -> None:
+    main._folder_times_cache[(date, location.strip().lower())] = times
+    try:
+        main.s3.put_object(Bucket=main.R2_BUCKET, Key=main._times_r2_key(date, location),
+                           Body=json.dumps(times).encode(), ContentType="application/json")
+    except Exception as e:
+        print(f"[move] times not saved for {date} {location}: {e}")
+
+
+def _move_photos(paths: list, new_date: str, new_location: str, new_folder: str) -> dict:
+    """Move photos (any folders) into one folder: originals and thumbnails to the new place, the
+    photo records with them (labels, partner marks, model answers kept), capture times for the
+    time filter, portrait poses (out of the old pose; a pose of their own in the new family) and
+    Unlimited packages. A name already in the new folder is skipped, never overwritten."""
+    is_portrait = main._is_portrait_location(new_location)
+    by_path = {it["path"]: it for it in main.data}
+    items = [by_path[p] for p in dict.fromkeys(paths) if p in by_path]
+    prefix = _upload_prefix(new_date, new_location, new_folder)
+    taken = {it["path"] for it in main.data}
+    plan, skipped = [], []
+    for it in items:
+        new_key = prefix + os.path.basename(it["path"])
+        if new_key == it["path"]:
+            continue                                      # already there
+        if new_key in taken:
+            skipped.append(os.path.basename(it["path"]))
+            continue
+        taken.add(new_key)
+        plan.append((it, new_key))
+
+    def move_one(job):
+        it, new_key = job
+        old_key = to_r2_key(it["path"])
+        try:
+            main.s3.copy_object(Bucket=main.R2_BUCKET, CopySource={"Bucket": main.R2_BUCKET, "Key": old_key}, Key=new_key)
+            main.s3.delete_object(Bucket=main.R2_BUCKET, Key=old_key)
+        except Exception as e:
+            print(f"[move] {old_key}: {e}")
+            return None
+        try:
+            main.s3.copy_object(Bucket=main.R2_BUCKET, CopySource={"Bucket": main.R2_BUCKET, "Key": _thumb_r2_key(old_key)},
+                                Key=_thumb_r2_key(new_key))
+            main.s3.delete_object(Bucket=main.R2_BUCKET, Key=_thumb_r2_key(old_key))
+        except Exception:
+            pass                                          # remade below
+        main._forget_thumb_links(old_key)
+        return job
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        done = [j for j in ex.map(move_one, plan) if j]
+
+    path_remap, old_folders, times_moves = {}, set(), {}
+    for it, new_key in done:
+        old = dict(it)
+        path_remap[it["path"]] = new_key
+        old_folders.add((old["date"], old["location"], (old.get("last_name") or old.get("group") or "").strip()))
+        times_moves.setdefault((old["date"], old["location"]), []).append(os.path.basename(new_key))
+        it["path"], it["date"], it["location"] = new_key, new_date, new_location
+        if is_portrait:
+            it["last_name"], it["group"] = new_folder, ""
+        else:
+            it["group"], it["last_name"] = new_folder, ""
+    if not done:
+        return {"moved": 0, "skipped": skipped, "failed": len(plan)}
+    main._save_photo_list()
+
+    # Capture times (the time filter), carried to the new date and location
+    dest_times = _times_of(new_date, new_location)
+    changed = False
+    for (d, loc), names in times_moves.items():
+        if (d, loc.strip().lower()) == (new_date, new_location.strip().lower()):
+            continue
+        src = _times_of(d, loc)
+        for n in names:
+            if n in src:
+                dest_times[n] = src[n]; changed = True
+    if changed:
+        _save_times(new_date, new_location, dest_times)
+
+    # Portrait poses: out of their old pose; in the new family, a pose of their own
+    try:
+        moved_names = {os.path.basename(k) for k in path_remap.values()}
+        fm = main._load_folder_meta()
+        for d, loc, folder in old_folders:
+            entry = fm.get(_folder_key(d, loc, folder))
+            if entry and entry.get("poses"):
+                for pose in entry["poses"]:
+                    pose["files"] = [f for f in pose.get("files", []) if f not in moved_names]
+                entry["poses"] = [p for p in entry["poses"] if p.get("files")]
+        if is_portrait:
+            dest = fm.get(_folder_key(new_date, new_location, new_folder))
+            if dest and dest.get("poses"):
+                dest["poses"].append({"color": "", "label": f"Pose {len(dest['poses']) + 1}", "files": sorted(moved_names)})
+        main._save_folder_meta(fm)
+    except Exception as e:
+        print(f"[move] poses not updated: {e}")
+
+    main._remap_unlimited_paths_soon(path_remap)          # Unlimited packages keep their photos
+    main._queue_new_photo_thumbs(list(path_remap.values()))
+    return {"moved": len(done), "skipped": skipped, "failed": len(plan) - len(done)}
+
+
+@router.post("/api/admin/photos/move")
+async def admin_photos_move(request: Request):
+    """Move the photos selected in the studio to another date, location and folder."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    body = await request.json()
+    paths = [p for p in (body.get("paths") or []) if isinstance(p, str)]
+    new_date = str(body.get("new_date") or "").strip()
+    new_location = clean_location(str(body.get("new_location") or "").strip())
+    new_folder = " ".join(str(body.get("new_folder") or "").split())
+    if not paths:
+        return JSONResponse(status_code=400, content={"error": "Select some photos first"})
+    if not new_date or not new_location:
+        return JSONResponse(status_code=400, content={"error": "Choose a date and location"})
+    if main._is_portrait_location(new_location) and not new_folder:
+        return JSONResponse(status_code=400, content={"error": "Enter the family name for a portrait location"})
+    problem = _upload_names_problem(new_date, new_location, new_folder)
+    if problem:
+        return JSONResponse(status_code=400, content={"error": problem})
+    return await run_in_threadpool(_move_photos, paths, new_date, new_location, new_folder)
+
+
 @router.post("/api/admin/folder/rename")
 async def admin_folder_rename(request: Request):
     if not main._admin_authed(request):
