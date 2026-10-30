@@ -30,6 +30,10 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .dropdown-content { display:none; position:absolute; right:0; background:#ffffff; min-width:200px; box-shadow:0 10px 25px rgba(0,0,0,0.2); z-index:10001; }
 .dropdown-content a { display:block; padding:10px; color:#333; text-decoration:none; font-size:14px; }
 .dropdown-content a:hover { background:#f5f5f5; }
+/* Phone menu: the same groups as the menu bar (and the WordPress site); each group's links indented under it */
+.dropdown-content .dd-group { border-top:1px solid #eee; font-weight:600; }
+.dropdown-content span.dd-group { display:block; padding:10px; color:#333; font-size:14px; cursor:default; }
+.dropdown-content .dd-sub { padding-left:24px; }
 .dropdown:hover .dropdown-content { display:block; }
 @media(max-width:900px){ .nav-center { display:none; } }
 
@@ -1042,7 +1046,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
           </div>
         </li>
         <li>
-          <span class="nav-title">Services</span>
+          <a href="https://bigskyphotos.com/services/">Services</a>
           <div class="submenu">
             <a href="https://bigskyphotos.com/action-photos/">Action Photos</a>
             <a href="https://bigskyphotos.com/on-mountain-portraits/">On Mountain Portraits</a>
@@ -1077,20 +1081,22 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
         <div class="dropdown-content">
           <a href="https://bigskyphotos.com/">Home</a>
           <a href="https://bigskyphotos.com/daily-photo-spots/">Where We Are</a>
-          <a href="javascript:void(0)" onclick="navigate({view:'days'})">Find Your Photos</a>
-          <a href="javascript:void(0)" onclick="navigate({view:'days'})">— Summer 2026</a>
-          <a href="https://crystalimages.zenfoliosite.com/big-sky-resort-winter-2025-2026" target="_blank" rel="noopener">— Winter 25–26</a>
-          <a href="/eaglemount">— Eagle Mount Families</a>
-          <a href="https://bigskyphotos.com/action-photos/">— Action Photos</a>
-          <a href="https://bigskyphotos.com/on-mountain-portraits/">— On Mountain Portraits</a>
-          <a href="https://bigskyphotos.com/base-area-sessions/">— Base Area Sessions</a>
-          <a href="https://bigskyphotos.com/proposals/">— Proposals</a>
-          <a href="https://bigskyphotos.com/family-portraits/">— Family Portrait Sessions</a>
-          <a href="https://bigskyphotos.com/events/">— Events</a>
-          <a href="javascript:void(0)" onclick="navigate({view:'days'})">Shop — Big Sky Resort Photos</a>
-          <a href="javascript:void(0)" onclick="showFramesView()">Shop — Frames</a>
-          <a href="https://bigskyphotos.com/About-us/">About Us</a>
-          <a href="https://bigskyphotos.com/frequently-asked-questions/">— FAQ</a>
+          <a href="javascript:void(0)" onclick="navigate({view:'days'})" class="dd-group">Find Your Photos</a>
+          <a href="javascript:void(0)" onclick="navigate({view:'days'})" class="dd-sub">Summer 2026</a>
+          <a href="https://crystalimages.zenfoliosite.com/big-sky-resort-winter-2025-2026" target="_blank" rel="noopener" class="dd-sub">Winter 25–26</a>
+          <a href="/eaglemount" class="dd-sub">Eagle Mount Families</a>
+          <a href="https://bigskyphotos.com/services/" class="dd-group">Services</a>
+          <a href="https://bigskyphotos.com/action-photos/" class="dd-sub">Action Photos</a>
+          <a href="https://bigskyphotos.com/on-mountain-portraits/" class="dd-sub">On Mountain Portraits</a>
+          <a href="https://bigskyphotos.com/base-area-sessions/" class="dd-sub">Base Area Sessions</a>
+          <a href="https://bigskyphotos.com/proposals/" class="dd-sub">Proposals</a>
+          <a href="https://bigskyphotos.com/family-portraits/" class="dd-sub">Family Portrait Sessions</a>
+          <a href="https://bigskyphotos.com/events/" class="dd-sub">Events</a>
+          <span class="dd-group">Shop</span>
+          <a href="javascript:void(0)" onclick="navigate({view:'days'})" class="dd-sub">Big Sky Resort Photos</a>
+          <a href="javascript:void(0)" onclick="showFramesView()" class="dd-sub">Frames</a>
+          <a href="https://bigskyphotos.com/About-us/" class="dd-group">About Us</a>
+          <a href="https://bigskyphotos.com/frequently-asked-questions/" class="dd-sub">FAQ</a>
         </div>
       </div>
     </div>
