@@ -15,7 +15,8 @@ def _p(n, sport, jackets, pants, instructor=False):
 PHOTOS = [_p(1, "ski", ["red"], ["black"]), _p(2, "ski", ["red", "white"], ["black"]),
           _p(3, "snowboard", ["blue"], ["black"]), _p(4, "snowboard", ["navy"], ["gray"]),   # navy counts as blue
           _p(5, "ski", ["green"], ["green"], instructor=True), _p(6, "unclear", ["red"], ["gray"]),
-          _p(7, "ski", ["camo"], ["camo"])]                                  # camo counts as green
+          _p(7, "ski", ["camo"], ["camo"]),                                  # camo counts as green
+          _p(8, "ski", ["tan"], ["tan"])]                                    # tan counts as brown
 
 
 @pytest.fixture()
@@ -69,3 +70,11 @@ def test_camo_is_part_of_green(client, folder, main_module):
     main_module._search_limiter._calls.clear()
     found = client.get("/api/search", params={"date": D, "location": L, "jacket_color": "green"}).json()["photos"]
     assert sorted(p["path"].rsplit("/", 1)[-1] for p in found) == ["P5.jpg", "P7.jpg"]
+
+
+def test_tan_is_part_of_brown(client, folder, main_module):
+    assert "tan" not in folder["jacket"] and "tan" not in folder["pants"] and "brown" in folder["pants"]
+    for color in ("brown", "tan"):                       # an old link asking for tan still finds them
+        main_module._search_limiter._calls.clear()
+        found = client.get("/api/search", params={"date": D, "location": L, "jacket_color": color}).json()["photos"]
+        assert [p["path"].rsplit("/", 1)[-1] for p in found] == ["P8.jpg"]

@@ -1149,9 +1149,9 @@ async function pollClassifyStatus(jobId) {
 }
 
 // ── Classified folders ────────────────────────────────────────────────────────
-const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown','tan'];
-const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00',tan:'#c8a96e'};
-const _COLOR_LABEL = {tan:'tan/khaki'};
+const _ALL_COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown'];
+const _HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',white:'#eee',black:'#333',gray:'#888',brown:'#964B00'};
+const _COLOR_LABEL = {brown:'brown/tan'};
 let _classifiedFolders = [];
 let _folderPhotos = {};   // folderKey → photos array
 let _editState = {};      // path → {jacket, pants, sport, _folderKey, _rowId}
@@ -1172,7 +1172,7 @@ async function loadModelAccuracy() {
     return;
   }
   const pct = v => v == null ? '–' : v.toFixed(1) + '%';
-  const color = c => `${esc(c.part)} ${esc(c.color === 'tan' ? 'tan/khaki' : c.color)}`;
+  const color = c => `${esc(c.part)} ${esc(c.color === 'brown' ? 'brown/tan' : c.color)}`;
   el.innerHTML = wait + d.models.map(m => {
     const weakest = m.colors.filter(c => c.photos >= 5).slice().sort((a, b) => a.pct - b.pct).slice(0, 10);
     const mist = (part) => (m.mistakes[part] || []).slice(0, 8).map(x =>

@@ -371,7 +371,7 @@ def _apply_labels(item: dict, colors: dict | None) -> None:
 # the labels are checked, so comparing the two shows what the model got right and what had to be
 # fixed, per model version. Shades are grouped the way training groups them (the model can't say
 # teal or navy), so only real mistakes count.
-_SAME_SHADE = {"navy": "blue", "teal": "blue", "maroon": "red", "violet": "purple", "camo": "green"}
+_SAME_SHADE = {"navy": "blue", "teal": "blue", "maroon": "red", "violet": "purple", "camo": "green", "tan": "brown"}
 
 
 def _shade_set(colors) -> frozenset:

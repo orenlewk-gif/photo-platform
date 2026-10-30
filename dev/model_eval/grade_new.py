@@ -24,7 +24,7 @@ COMBOS = {"v5b jacket+sport, v5a pants": {"jacket": "model_v5b", "pants": "model
 OUT = os.path.join(HERE, "results_new.jsonl")
 MEAN = np.array([0.48145466, 0.4578275, 0.40821073], np.float32).reshape(3, 1, 1)
 STD = np.array([0.26862954, 0.26130258, 0.27577711], np.float32).reshape(3, 1, 1)
-SAME = {"navy": "blue", "teal": "blue", "maroon": "red", "violet": "purple", "camo": "green"}
+SAME = {"navy": "blue", "teal": "blue", "maroon": "red", "violet": "purple", "camo": "green", "tan": "brown"}
 RULE = (0.50, 0.15)                                   # the site's second-jacket-color rule
 MARGIN_X, MARGIN_Y = 0.12, 0.08                       # the v5b crop (as in the training notebook)
 

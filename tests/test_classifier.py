@@ -65,6 +65,12 @@ def test_camo_reads_as_green(model):
     assert out["jacket_colors"] == ["green"] and out["pants_colors"] == ["green"]      # one green, not two
 
 
+def test_tan_reads_as_brown(model, main_module):
+    out = model(jacket={"tan": 0.8, "brown": 0.75}, pants={"tan": 0.9})
+    assert out["jacket_colors"] == ["brown"] and out["pants_colors"] == ["brown"]      # one brown, not two
+    assert main_module._shade_set(["tan"]) == {"brown"}                               # old model answers count as brown
+
+
 def test_studio_shows_and_saves_camo_as_green(admin_client, live_photos, main_module):
     path = "images/2026-12-20/el-dorado-action/C1.jpg"
     live_photos([{"path": path, "date": "2026-12-20", "location": "El Dorado Action", "group": "", "last_name": "",
@@ -74,6 +80,8 @@ def test_studio_shows_and_saves_camo_as_green(admin_client, live_photos, main_mo
     admin_client.post("/api/admin/set-photo-colors", json={"path": path, "jacket_colors": ["camo"], "pants_colors": ["camo", "green"]})
     item = next(i for i in main_module.data if i["path"] == path)
     assert item["jacket_colors"] == ["green"] and item["pants_colors"] == ["green"]
+    admin_client.post("/api/admin/set-photo-colors", json={"path": path, "jacket_colors": ["tan", "brown"], "pants_colors": ["tan"]})
+    assert item["jacket_colors"] == ["brown"] and item["pants_colors"] == ["brown"]
 
 
 def test_the_models_own_answer_is_kept_through_corrections(main_module, admin_client, live_photos):

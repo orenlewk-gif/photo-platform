@@ -345,7 +345,7 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         profiles[key] = profiles.get(key, 0) + 1
         photo_keys.append((os.path.basename(item.get("path", "")), key))
     profile_no = {k: i for i, k in enumerate(profiles)}
-    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","tan","teal"]
+    order = ["red","orange","yellow","green","blue","purple","pink","white","black","gray","brown","teal"]
     def sort_colors(s):
         return sorted(s, key=lambda c: order.index(c) if c in order else 99)
     return {

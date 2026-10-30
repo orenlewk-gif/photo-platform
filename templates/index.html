@@ -1038,7 +1038,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
           <div class="submenu">
             <a href="javascript:void(0)" onclick="navigate({view:'days'})">Summer 2026</a>
             <a href="https://crystalimages.zenfoliosite.com/big-sky-resort-winter-2025-2026" target="_blank" rel="noopener">Winter 25–26</a>
-            <a href="/eaglemount">Eagle Mount</a>
+            <a href="/eaglemount">Eagle Mount Families</a>
           </div>
         </li>
         <li>
@@ -1080,7 +1080,7 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
           <a href="javascript:void(0)" onclick="navigate({view:'days'})">Find Your Photos</a>
           <a href="javascript:void(0)" onclick="navigate({view:'days'})">— Summer 2026</a>
           <a href="https://crystalimages.zenfoliosite.com/big-sky-resort-winter-2025-2026" target="_blank" rel="noopener">— Winter 25–26</a>
-          <a href="/eaglemount">— Eagle Mount</a>
+          <a href="/eaglemount">— Eagle Mount Families</a>
           <a href="https://bigskyphotos.com/action-photos/">— Action Photos</a>
           <a href="https://bigskyphotos.com/on-mountain-portraits/">— On Mountain Portraits</a>
           <a href="https://bigskyphotos.com/base-area-sessions/">— Base Area Sessions</a>
@@ -2223,8 +2223,7 @@ const _CHIP_COLORS = [
   { name:'white',  hex:'#e8e8e8' },
   { name:'black',  hex:'#202020' },
   { name:'gray',   hex:'#808080' },
-  { name:'brown',  hex:'#7a4820' },
-  { name:'tan',    hex:'#c8a96e', label:'tan/khaki' },
+  { name:'brown',  hex:'#7a4820', label:'brown/tan' },
   { name:'teal',   hex:'#0f8080' },
 ];
 
@@ -2375,8 +2374,8 @@ function _updateTimeChoices(cur) {
 // Colors that look alike on camera, in the order to suggest them
 const _SIMILAR_COLORS = {
   red: ['pink', 'orange'], pink: ['red', 'purple'], orange: ['red', 'yellow'], yellow: ['orange', 'green'],
-  green: ['blue', 'yellow'], blue: ['purple', 'black'], purple: ['blue', 'pink'], white: ['gray', 'tan'],
-  black: ['gray', 'blue'], gray: ['black', 'white'], brown: ['tan', 'black'], tan: ['brown', 'white'],
+  green: ['blue', 'yellow'], blue: ['purple', 'black'], purple: ['blue', 'pink'], white: ['gray', 'yellow'],
+  black: ['gray', 'blue'], gray: ['black', 'white'], brown: ['black', 'gray'],
 };
 const _colorLabel = c => ((_CHIP_COLORS.find(x => x.name === c) || {}).label || c).toLowerCase();
 

@@ -137,7 +137,7 @@ def main():
     for item in exportable:
         rows.append({
             "r2_key":             item["path"],
-            "jacket_colors":      "|".join(merged_colors(item.get("jacket_colors") or [])),   # camo -> green
+            "jacket_colors":      "|".join(merged_colors(item.get("jacket_colors") or [])),   # camo -> green, tan -> brown
             "pants_colors":       "|".join(merged_colors(item.get("pants_colors") or [])),
             "sport":              item.get("sport") or "",
             "classifier":         item.get("classifier") or "haiku",

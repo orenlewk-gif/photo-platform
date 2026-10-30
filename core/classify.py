@@ -65,7 +65,7 @@ def decide(j_logits, p_logits, s_logits, meta: dict) -> dict:
         jacket.append(colors[j_sorted[1]])
     pants = [colors[int(np.argmax(p_prob))]]
     sport = sports[int(np.argmax(s_logits))]
-    remap = lambda cs: merged_colors(['blue' if c == 'teal' else c for c in cs])    # camo -> green
+    remap = lambda cs: merged_colors(['blue' if c == 'teal' else c for c in cs])    # camo -> green, tan -> brown
     return {"sport": sport, "jacket_colors": remap(jacket), "pants_colors": remap(pants)}
 
 
