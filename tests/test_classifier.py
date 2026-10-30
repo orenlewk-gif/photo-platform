@@ -74,3 +74,13 @@ def test_studio_shows_and_saves_camo_as_green(admin_client, live_photos, main_mo
     admin_client.post("/api/admin/set-photo-colors", json={"path": path, "jacket_colors": ["camo"], "pants_colors": ["camo", "green"]})
     item = next(i for i in main_module.data if i["path"] == path)
     assert item["jacket_colors"] == ["green"] and item["pants_colors"] == ["green"]
+
+
+def test_the_models_own_answer_is_kept_through_corrections(main_module, admin_client, live_photos):
+    path = "images/2026-12-20/el-dorado-action/K1.jpg"
+    live_photos([{"path": path, "date": "2026-12-20", "location": "El Dorado Action", "group": "", "last_name": ""}])
+    item = next(i for i in main_module.data if i["path"] == path)
+    main_module._apply_labels(item, {"sport": "ski", "jacket_colors": ["black"], "pants_colors": ["gray"]})
+    admin_client.post("/api/admin/set-photo-colors", json={"path": path, "jacket_colors": ["blue"], "pants_colors": ["gray"]})
+    assert item["jacket_colors"] == ["blue"]                                          # corrected
+    assert item["model_labels"] == {"model": main_module.MODEL_LABEL, "sport": "ski", "jacket": ["black"], "pants": ["gray"]}

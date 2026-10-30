@@ -359,6 +359,10 @@ def _apply_labels(item: dict, colors: dict | None) -> None:
         item["jacket_colors"] = colors.get("jacket_colors", [])
         item["pants_colors"]  = colors.get("pants_colors", [])
         item["classifier"]    = MODEL_LABEL
+        # The model's own answer, kept as it was: corrections change the labels above, so the
+        # accuracy report can compare what the model said with what the photo really shows
+        item["model_labels"]  = {"model": MODEL_LABEL, "sport": item["sport"],
+                                 "jacket": list(item["jacket_colors"]), "pants": list(item["pants_colors"])}
         print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
 
 
