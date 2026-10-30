@@ -68,3 +68,36 @@ def test_purging_deletes_the_files_but_never_a_photo_uploaded_again(admin_client
 
 def test_trash_needs_the_studio(client):
     assert client.post("/api/admin/photo/trash", json={"paths": [BASE + "T0.jpg"]}).status_code == 401
+
+
+def test_a_photo_on_an_active_download_link_is_never_purged(admin_client, main_module, live_photos):
+    from datetime import datetime, timedelta, timezone
+    paths = _setup(main_module, live_photos, 3)
+    soon, past = (datetime.now(timezone.utc) + timedelta(days=20)).isoformat(), (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    S3.put_object(Bucket=B, Key="downloads/tok1.json", Body=json.dumps({"paths": [paths[0]], "expires": soon}).encode())
+    S3.put_object(Bucket=B, Key="packages/pkg1/meta.json", Body=json.dumps({"paths": [paths[1]], "expires": soon}).encode())
+    S3.put_object(Bucket=B, Key="downloads/old.json", Body=json.dumps({"paths": [paths[2]], "expires": past}).encode())
+    admin_client.post("/api/admin/photo/trash", json={"paths": paths})
+    held = main_module._purge_trash_entries(_trash())
+    assert sorted(t["original_key"] for t in held) == [paths[0], paths[1]] and all(t["held"] for t in held)
+    left = _keys(BASE)
+    assert paths[0] in left and paths[1] in left and paths[2] not in left       # the expired link's photo goes
+    for k in ("downloads/tok1.json", "packages/pkg1/meta.json", "downloads/old.json"):
+        S3.delete_object(Bucket=B, Key=k)
+
+
+def test_emptying_the_trash_keeps_photos_on_active_links(admin_client, main_module, live_photos):
+    import time
+    from datetime import datetime, timedelta, timezone
+    paths = _setup(main_module, live_photos, 2)
+    S3.put_object(Bucket=B, Key="downloads/tok2.json", Body=json.dumps(
+        {"paths": [paths[0]], "expires": (datetime.now(timezone.utc) + timedelta(days=5)).isoformat()}).encode())
+    admin_client.post("/api/admin/photo/trash", json={"paths": paths})
+    assert admin_client.post("/api/trash/empty").json() == {"emptied": 2}
+    for _ in range(50):
+        if _trash():
+            break
+        time.sleep(0.05)
+    assert [t["original_key"] for t in _trash()] == [paths[0]]                   # back in the trash, marked held
+    assert paths[0] in _keys(BASE) and paths[1] not in _keys(BASE)
+    S3.delete_object(Bucket=B, Key="downloads/tok2.json")

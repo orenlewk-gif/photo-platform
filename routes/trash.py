@@ -83,7 +83,14 @@ async def trash_empty(request: Request):
         return {"emptied": 0}
     count = len(trash)
     main._save_trash_meta([])   # clear meta immediately so UI updates fast
-    threading.Thread(target=main._purge_trash_entries, args=(trash,), daemon=True).start()
+
+    def purge():
+        try:
+            main._add_to_trash_meta(main._purge_trash_entries(trash))   # photos on active download links stay
+        except Exception as e:
+            print(f"[trash] empty stopped, nothing deleted: {e}")
+            main._add_to_trash_meta(trash)                            # put the list back as it was
+    threading.Thread(target=purge, daemon=True).start()
     return {"emptied": count}
 
 

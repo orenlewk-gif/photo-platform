@@ -194,7 +194,8 @@ function render() {
     html += '<div class="photo-grid">';
     cullItems.forEach(item => {
       const daysClass = item.days_left <= 1 ? 'days-danger' : item.days_left <= 3 ? 'days-warn' : 'days-ok';
-      const daysText  = item.days_left === 0 ? 'Purging today' : `${item.days_left}d remaining`;
+      // Kept past its 7 days: a customer's download link that hasn't expired still has this photo
+      const daysText  = item.held ? 'Kept: on an active download link' : item.days_left === 0 ? 'Purging today' : `${item.days_left}d remaining`;
       html += `
         <div class="photo-card" id="photo_${item.key.replace(/[^a-z0-9]/gi,'_')}">
           <img class="photo-thumb" src="${item.thumb_url}" loading="lazy">

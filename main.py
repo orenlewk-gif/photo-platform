@@ -709,8 +709,12 @@ def _autopurge_loop():
             keep  = [t for t in trash if datetime.fromisoformat(t["purge_at"]) > now]
             purge = [t for t in trash if datetime.fromisoformat(t["purge_at"]) <= now]
             if purge:
-                _save_trash_meta(keep)
-                _purge_trash_entries(purge)
+                held = _purge_trash_entries(purge)   # (raises, leaving the trash as it is, if links can't be read)
+                with _trash_meta_lock:
+                    due = {t["key"] for t in purge}
+                    _save_trash_meta([t for t in _load_trash_meta() if t["key"] not in due] + held)
+                print(f"[autopurge] removed {len(purge) - len(held)} expired trash items"
+                      + (f", kept {len(held)} on active download links" if held else ""))
                 print(f"[autopurge] removed {len(purge)} expired trash items")
         except Exception as e:
             print(f"[autopurge] error: {e}")
@@ -3830,20 +3834,59 @@ def _bulk_trash(to_trash: list) -> tuple[list, int]:
     return entries, len(entries)
 
 
-def _purge_trash_entries(entries: list) -> None:
-    """Delete trashed photos for good. A photo back on the site under the same name (uploaded
-    again while its old copy was in the trash) is left alone."""
-    live = {it["path"] for it in data}
+def _paths_on_active_links() -> set:
+    """Every photo on a download link that hasn't expired: order downloads (downloads/<token>.json)
+    and packages (POS sales, studio links, partner links, Unlimited; packages/<token>/meta.json).
+    A trashed photo on one of these is never purged, so nobody loses a photo they were given."""
+    now = datetime.now(timezone.utc).isoformat()
     keys = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="downloads/"):
+        keys += [o["Key"] for o in page.get("Contents", [])
+                 if o["Key"].endswith(".json") and not o["Key"].startswith("downloads/by_order/")]
+    for page in paginator.paginate(Bucket=R2_BUCKET, Prefix="packages/"):
+        keys += [o["Key"] for o in page.get("Contents", []) if o["Key"].endswith("/meta.json")]
+
+    def paths_of(key):
+        try:
+            rec = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=key)["Body"].read())
+        except Exception:
+            return None                                       # unreadable: treated as "can't tell" below
+        if not isinstance(rec, dict) or str(rec.get("expires") or "") <= now:
+            return []
+        return [to_r2_key(p) for p in (rec.get("paths") or []) if isinstance(p, str)]
+
+    protected = set()
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        for got in ex.map(paths_of, keys):
+            if got is None:
+                raise RuntimeError("a download link couldn't be read")   # never purge on a guess
+            protected.update(got)
+    return protected
+
+
+def _purge_trash_entries(entries: list) -> list:
+    """Delete trashed photos for good. Left alone: a photo back on the site under the same name
+    (uploaded again while its old copy was in the trash), and a photo on a download link that
+    hasn't expired (it stays in the trash and is purged once the link expires). Returns the
+    entries kept that way, to stay in the trash."""
+    live = {it["path"] for it in data}
+    in_place = [t for t in entries if t.get("in_place")]
+    protected = _paths_on_active_links() if in_place else set()
+    keys, kept = [], []
     for t in entries:
         if not t.get("in_place"):
             keys.append(t["key"])                             # trashed before 2026-10-29: a copy in studio_trash/
             continue
         if t["original_key"] in live:
             continue
+        if t["original_key"] in protected:
+            kept.append({**t, "held": "on a download link that hasn't expired"})
+            continue
         keys.append(t["original_key"])
         keys += [fn(t["original_key"]) for fn, *_ in _THUMB_VARIANTS.values()]
     _batch_delete_keys(keys)
+    return kept
 
 
 import copy as _copy
