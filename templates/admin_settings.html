@@ -36,6 +36,20 @@ html,body{height:100%;font-family:'Segoe UI',sans-serif;background:#0c2336;color
 .settings-section{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;
   padding:1.5rem;max-width:720px;margin-bottom:1.5rem}
 .section-title{font-size:1rem;font-weight:700;color:rgba(255,255,255,.9);margin-bottom:.3rem}
+.ma-lbl{font-size:.78rem;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:.4rem}
+.ma-date{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:.35rem .5rem;color:#fff;font-family:inherit;color-scheme:dark}
+.ma-model{border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:1rem;margin-bottom:1rem}
+.ma-head{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;margin-bottom:.8rem}
+.ma-name{font-weight:700;color:#F5C518}
+.ma-sub{font-size:.78rem;color:rgba(255,255,255,.45)}
+.ma-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.5rem;margin-bottom:1rem}
+.ma-stat{background:rgba(255,255,255,.04);border-radius:8px;padding:.6rem .7rem}
+.ma-stat b{display:block;font-size:1.35rem;color:#fff}
+.ma-stat span{font-size:.72rem;color:rgba(255,255,255,.5)}
+.ma-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+.ma-cols h4{font-size:.78rem;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.6px;margin:0 0 .4rem}
+.ma-row{display:flex;justify-content:space-between;gap:.6rem;font-size:.8rem;padding:.22rem 0;border-bottom:1px solid rgba(255,255,255,.05);color:rgba(255,255,255,.8)}
+.ma-row .ma-bad{color:#ff8a80}
 .section-desc{font-size:.78rem;color:rgba(255,255,255,.38);margin-bottom:1.2rem;line-height:1.5}
 
 /* field rows */
@@ -466,6 +480,19 @@ html.embedded #layout{height:100vh}
 
     <!-- ── COLOR LABELS TAB ── -->
     <div id="tab-classify" class="tab-panel">
+      <div class="settings-section" style="margin-bottom:1.5rem">
+        <div class="section-title">Model accuracy on real uploads</div>
+        <div class="section-desc">How the labeling model did on photos you uploaded: its own answer compared with the labels after your check.
+          Only folders marked done count (in a folder you haven't checked, a photo you didn't change may just be one you didn't look at).
+          Shades the model can't tell apart are grouped (navy and teal count as blue, camo as green).</div>
+        <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem">
+          <label class="ma-lbl">From <input type="date" id="ma-from" class="ma-date"></label>
+          <label class="ma-lbl">To <input type="date" id="ma-to" class="ma-date"></label>
+          <button class="btn-save" style="padding:.45rem 1rem" onclick="loadModelAccuracy()">Show</button>
+        </div>
+        <div id="model-accuracy"></div>
+      </div>
+
       <div class="settings-section">
         <div class="section-title">Color Label Backfill</div>
         <div class="section-desc">Run Haiku vision classification on indexed photos that don't yet have clothing color labels. Haiku reads each photo and records jacket and pants colors. Use the location filter to process only winter action folders — leave blank to process everything. Progress saves every 16 photos.</div>
@@ -1131,6 +1158,44 @@ let _editState = {};      // path → {jacket, pants, sport, _folderKey, _rowId}
 let _cfSelected = {};     // folderKey → Set of paths
 let _cfClipboard = null;  // {jacket, pants, sport}
 
+// ── Model accuracy on real uploads ──
+async function loadModelAccuracy() {
+  const el = document.getElementById('model-accuracy');
+  el.innerHTML = '<div class="ma-sub">Loading…</div>';
+  const p = new URLSearchParams({date_from: document.getElementById('ma-from').value, date_to: document.getElementById('ma-to').value});
+  let d;
+  try { d = await (await fetch('/api/admin/model-accuracy?' + p)).json(); } catch (e) { el.innerHTML = '<div class="ma-sub">Could not load</div>'; return; }
+  const waiting = Object.entries(d.waiting || {}).map(([m, n]) => `${n} photo${n === 1 ? '' : 's'} labeled by ${esc(m)}`).join(', ');
+  const wait = waiting ? `<div class="ma-sub" style="margin-bottom:.8rem">Waiting for their folders to be marked done: ${waiting}.</div>` : '';
+  if (!(d.models || []).length) {
+    el.innerHTML = wait + '<div class="ma-sub">No checked folders with model labels yet. Labels are kept from uploads made after Oct 29, 2026; mark a folder done once you have checked it.</div>';
+    return;
+  }
+  const pct = v => v == null ? '–' : v.toFixed(1) + '%';
+  const color = c => `${esc(c.part)} ${esc(c.color === 'tan' ? 'tan/khaki' : c.color)}`;
+  el.innerHTML = wait + d.models.map(m => {
+    const weakest = m.colors.filter(c => c.photos >= 5).slice().sort((a, b) => a.pct - b.pct).slice(0, 10);
+    const mist = (part) => (m.mistakes[part] || []).slice(0, 8).map(x =>
+      `<div class="ma-row"><span>said <span class="ma-bad">${esc(x.said)}</span>, was ${esc(x.was)}</span><span>${x.photos}</span></div>`).join('') || '<div class="ma-sub">None</div>';
+    return `<div class="ma-model">
+      <div class="ma-head"><span class="ma-name">${esc(m.model)}</span><span class="ma-sub">${m.photos} photos in ${m.folders} checked folder${m.folders === 1 ? '' : 's'}</span></div>
+      <div class="ma-stats">
+        <div class="ma-stat"><b>${pct(m.no_fix)}</b><span>photos needing no fix</span></div>
+        <div class="ma-stat"><b>${pct(m.jacket)}</b><span>jacket right</span></div>
+        <div class="ma-stat"><b>${pct(m.pants)}</b><span>pants right</span></div>
+        <div class="ma-stat"><b>${pct(m.sport)}</b><span>ski / snowboard right</span></div>
+      </div>
+      <div class="ma-cols">
+        <div><h4>Colors it misses most</h4>${weakest.map(c =>
+          `<div class="ma-row"><span>${color(c)}</span><span>${pct(c.pct)} of ${c.photos}</span></div>`).join('') || '<div class="ma-sub">Not enough photos yet</div>'}</div>
+        <div><h4>Jacket mistakes</h4>${mist('jacket')}</div>
+        <div><h4>Pants mistakes</h4>${mist('pants')}</div>
+        <div><h4>Ski / snowboard mistakes</h4>${mist('sport')}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function loadClassifiedFolders() {
   const el = document.getElementById('classified-folders-list');
   if (!el) return;
@@ -1612,7 +1677,7 @@ async function saveCFEdit(folderKey, path, rowId, btn) {
 const _origSwitchTab = window.switchTab;
 window.switchTab = function(tab, el) {
   _origSwitchTab && _origSwitchTab(tab, el);
-  if (tab === 'classify') loadClassifiedFolders();
+  if (tab === 'classify') { loadClassifiedFolders(); loadModelAccuracy(); }
   if (tab === 'email')    etLoad();
 };
 </script>

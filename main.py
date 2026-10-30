@@ -366,6 +366,67 @@ def _apply_labels(item: dict, colors: dict | None) -> None:
         print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
 
 
+# ── How the labeling model does on real uploads ───────────────────────────────
+# Each photo keeps the model's own answer (model_labels). In folders marked done in Label Photos,
+# the labels are checked, so comparing the two shows what the model got right and what had to be
+# fixed, per model version. Shades are grouped the way training groups them (the model can't say
+# teal or navy), so only real mistakes count.
+_SAME_SHADE = {"navy": "blue", "teal": "blue", "maroon": "red", "violet": "purple", "camo": "green"}
+
+
+def _shade_set(colors) -> frozenset:
+    return frozenset(_SAME_SHADE.get(c, c) for c in (colors or []) if c)
+
+
+def _model_accuracy(date_from: str = "", date_to: str = "") -> dict:
+    reviewed = {k for k, v in _load_folder_meta().items() if isinstance(v, dict) and v.get("reviewed")}
+    models: dict = {}
+    waiting = Counter()                  # model-labeled photos in folders not marked done yet
+    for item in data:
+        ml = item.get("model_labels")
+        if not ml or item.get("draft"):
+            continue
+        if (date_from and item.get("date", "") < date_from) or (date_to and item.get("date", "") > date_to):
+            continue
+        fk = _folder_key(item.get("date", ""), item.get("location", "").strip(),
+                         (item.get("last_name") or item.get("group") or "").strip())
+        name = ml.get("model", "?")
+        if fk not in reviewed:
+            waiting[name] += 1
+            continue
+        m = models.setdefault(name, {"photos": 0, "folders": set(), "no_fix": 0, "jacket": 0, "pants": 0, "sport": 0,
+                                     "colors": {}, "mistakes": {"jacket": Counter(), "pants": Counter(), "sport": Counter()}})
+        m["photos"] += 1
+        m["folders"].add(fk)
+        said_j, was_j = _shade_set(ml.get("jacket")), _shade_set(item.get("jacket_colors"))
+        said_p, was_p = _shade_set(ml.get("pants")), _shade_set(item.get("pants_colors"))
+        said_s, was_s = ml.get("sport") or "", item.get("sport") or ""
+        ok_j, ok_p, ok_s = said_j == was_j, said_p == was_p, said_s == was_s
+        m["jacket"] += ok_j; m["pants"] += ok_p; m["sport"] += ok_s; m["no_fix"] += ok_j and ok_p and ok_s
+        for part, said, was in (("jacket", said_j, was_j), ("pants", said_p, was_p)):
+            for c in was:                # each real color: did the model see it?
+                rec = m["colors"].setdefault((part, c), [0, 0])
+                rec[0] += 1
+                rec[1] += c in said
+            if said != was:
+                m["mistakes"][part][(" + ".join(sorted(said)) or "nothing", " + ".join(sorted(was)) or "nothing")] += 1
+        if not ok_s:
+            m["mistakes"]["sport"][(said_s or "nothing", was_s or "nothing")] += 1
+    pct = lambda n, d: round(n / d * 100, 1) if d else None
+    out = []
+    for name, m in sorted(models.items()):
+        n = m["photos"]
+        colors = [{"part": part, "color": c, "photos": t, "right": r, "pct": pct(r, t)}
+                  for (part, c), (t, r) in m["colors"].items()]
+        out.append({"model": name, "photos": n, "folders": len(m["folders"]),
+                    "no_fix": pct(m["no_fix"], n), "jacket": pct(m["jacket"], n), "pants": pct(m["pants"], n),
+                    "sport": pct(m["sport"], n),
+                    "colors": sorted(colors, key=lambda x: (x["part"], x["pct"] if x["pct"] is not None else 101)),
+                    "mistakes": {part: [{"said": a, "was": b, "photos": k} for (a, b), k in cnt.most_common(12)]
+                                 for part, cnt in m["mistakes"].items()}})
+    return {"models": out, "waiting": dict(waiting)}
+
+
 def _needs_labels(item: dict) -> bool:
     """A winter action (non-portrait) photo the labeling model hasn't labeled yet."""
     return item.get("jacket_colors") is None and not _is_portrait_location(item.get("location", ""))

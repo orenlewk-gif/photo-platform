@@ -84,3 +84,31 @@ def test_the_models_own_answer_is_kept_through_corrections(main_module, admin_cl
     admin_client.post("/api/admin/set-photo-colors", json={"path": path, "jacket_colors": ["blue"], "pants_colors": ["gray"]})
     assert item["jacket_colors"] == ["blue"]                                          # corrected
     assert item["model_labels"] == {"model": main_module.MODEL_LABEL, "sport": "ski", "jacket": ["black"], "pants": ["gray"]}
+
+
+def test_accuracy_on_real_uploads_counts_checked_folders(main_module, admin_client, client, live_photos):
+    D, L = "2026-12-21", "El Dorado Action"
+    def p(n, said, was, folder_done=True):
+        item = {"path": f"images/{D}/el-dorado-action/A{n}.jpg", "date": D, "location": L, "group": "", "last_name": "",
+                "sport": was[0], "jacket_colors": was[1], "pants_colors": was[2],
+                "model_labels": {"model": "model_v5a", "sport": said[0], "jacket": said[1], "pants": said[2]}}
+        return item
+    photos = [p(1, ("ski", ["red"], ["black"]), ("ski", ["red"], ["black"])),            # right
+              p(2, ("ski", ["black"], ["black"]), ("ski", ["blue"], ["black"])),         # jacket fixed
+              p(3, ("ski", ["teal"], ["camo"]), ("ski", ["blue"], ["green"])),           # same shades: right
+              p(4, ("ski", ["red"], ["gray"]), ("snowboard", ["red"], ["black"]))]       # sport + pants fixed
+    live_photos(photos)
+    fm = main_module._load_folder_meta()
+    fk = main_module._folder_key(D, L, "")
+    assert client.get("/api/admin/model-accuracy").status_code == 401
+    fm.pop(fk, None); main_module._save_folder_meta(fm)
+    d = admin_client.get("/api/admin/model-accuracy").json()
+    assert d["models"] == [] and d["waiting"] == {"model_v5a": 4}                         # not checked yet
+    fm[fk] = {"reviewed": True}; main_module._save_folder_meta(fm)
+    m = admin_client.get("/api/admin/model-accuracy").json()["models"][0]
+    assert (m["model"], m["photos"], m["no_fix"], m["jacket"], m["pants"], m["sport"]) == ("model_v5a", 4, 50.0, 75.0, 75.0, 75.0)
+    assert {"said": "black", "was": "blue", "photos": 1} in m["mistakes"]["jacket"]
+    assert m["mistakes"]["sport"] == [{"said": "ski", "was": "snowboard", "photos": 1}]
+    blue = next(c for c in m["colors"] if c["part"] == "jacket" and c["color"] == "blue")
+    assert (blue["photos"], blue["right"]) == (2, 1)
+    fm.pop(fk, None); main_module._save_folder_meta(fm)

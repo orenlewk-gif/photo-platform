@@ -26,3 +26,6 @@ dev/model_eval/results_retry.jsonl
 model_v4*.onnx
 model_v4*.onnx.data
 model_v4*_meta.json
+model_v5*.onnx
+model_v5*.onnx.data
+model_v5*_meta.json

@@ -1066,6 +1066,14 @@ def api_admin_folders(request: Request):
     return {"folders": result}
 
 
+@router.get("/api/admin/model-accuracy")
+def api_model_accuracy(request: Request, date_from: str = Query(""), date_to: str = Query("")):
+    """How each labeling model did on real uploads, in folders marked done (Settings > Color Labels)."""
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return main._model_accuracy(date_from.strip(), date_to.strip())
+
+
 @router.post("/api/admin/toggle-folder-reviewed")
 async def api_toggle_folder_reviewed(request: Request):
     if not main._admin_authed(request):
