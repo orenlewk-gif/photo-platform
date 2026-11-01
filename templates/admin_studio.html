@@ -37,7 +37,9 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .nav-children{display:none}
 .nav-children.open{display:block}
 .nav-section-label{padding:.65rem .65rem .2rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
-#date-tree{flex:1;overflow-y:auto;padding:.4rem 0}
+/* Below the menu: partners, races and dates scroll together (Trash stays at the bottom) */
+#sidebar-scroll{flex:1;min-height:0;overflow-y:auto}
+#date-tree{padding:.4rem 0}
 
 /* ── Tree nodes ── */
 .tree-date{padding:.42rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.42rem;
@@ -330,9 +332,11 @@ input[type=file]{display:none}
       <a onclick="openLinksView()" class="nav-link" id="nav-links" style="cursor:pointer">Links</a>
       <a onclick="openSettingsView()" class="nav-link" id="nav-settings" style="cursor:pointer">Settings</a>
     </div>
-    <div id="partner-tree"></div>
-    <div id="race-tree"></div>
-    <div id="date-tree"><div class="loading-text">Loading…</div></div>
+    <div id="sidebar-scroll">
+      <div id="partner-tree"></div>
+      <div id="race-tree"></div>
+      <div id="date-tree"><div class="loading-text">Loading…</div></div>
+    </div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
       <a onclick="openTrashView()" class="nav-link" id="nav-trash" style="cursor:pointer">Trash</a>
     </div>
