@@ -36,6 +36,7 @@ body { background: #0c2336; font-family: 'DM Sans', sans-serif; color: #fff; min
 .dropdown-content .dd-sub { padding-left:24px; }
 .dropdown:hover .dropdown-content { display:block; }
 @media(max-width:900px){ .nav-center { display:none; } }
+.custom-header.nav-tight .nav-center { display:none; }
 
 /* Last name bar */
 .ln-bar { display:flex; gap:0.75rem; align-items:flex-end; margin-bottom:2rem; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:1rem 1.2rem; }
@@ -1102,6 +1103,34 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
     </div>
   </div>
 </div>
+
+<script>
+// The menu bar hides (the Menu button still has every link) whenever it would run into the logo or
+// the buttons beside it: text can draw larger than expected (Windows text size, zoom, other fonts).
+(function () {
+  var hdr = document.querySelector('.custom-header');
+  var nav = hdr && hdr.querySelector('.nav-center');
+  var logo = hdr && hdr.querySelector('.logo img');
+  var right = hdr && hdr.querySelector('.header-inner > div:last-child');
+  if (!nav || !logo || !right) return;
+  function fit() {
+    hdr.classList.remove('nav-tight');
+    if (getComputedStyle(nav).display === 'none') return;
+    var n = nav.getBoundingClientRect(), l = logo.getBoundingClientRect(), r = right.getBoundingClientRect();
+    if (n.left < l.right + 16 || n.right > r.left - 16) hdr.classList.add('nav-tight');
+  }
+  var queued = false;
+  function fitSoon() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; fit(); });
+  }
+  fit();
+  window.addEventListener('resize', fitSoon);
+  window.addEventListener('load', fitSoon);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
+})();
+</script>
 
 <div class="container" id="main-container">
 

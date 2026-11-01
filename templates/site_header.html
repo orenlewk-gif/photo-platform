@@ -24,6 +24,7 @@
 .dropdown-content .dd-sub { padding-left:24px; }
 .dropdown:hover .dropdown-content { display:block; }
 @media(max-width:900px){ .nav-center { display:none; } }
+.custom-header.nav-tight .nav-center { display:none; }
 </style>
 <div class="custom-header">
   <div class="header-inner">
@@ -95,3 +96,30 @@
     </div>
   </div>
 </div>
+<script>
+// The menu bar hides (the Menu button still has every link) whenever it would run into the logo or
+// the buttons beside it: text can draw larger than expected (Windows text size, zoom, other fonts).
+(function () {
+  var hdr = document.querySelector('.custom-header');
+  var nav = hdr && hdr.querySelector('.nav-center');
+  var logo = hdr && hdr.querySelector('.logo img');
+  var right = hdr && hdr.querySelector('.header-inner > div:last-child');
+  if (!nav || !logo || !right) return;
+  function fit() {
+    hdr.classList.remove('nav-tight');
+    if (getComputedStyle(nav).display === 'none') return;
+    var n = nav.getBoundingClientRect(), l = logo.getBoundingClientRect(), r = right.getBoundingClientRect();
+    if (n.left < l.right + 16 || n.right > r.left - 16) hdr.classList.add('nav-tight');
+  }
+  var queued = false;
+  function fitSoon() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; fit(); });
+  }
+  fit();
+  window.addEventListener('resize', fitSoon);
+  window.addEventListener('load', fitSoon);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
+})();
+</script>
