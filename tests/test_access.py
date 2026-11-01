@@ -40,6 +40,9 @@ PUBLIC = {
     ("POST", "/api/pos-unlock"),
     # A store screen asking for access: it emails the owner a code (limited per address), and the code approves it
     ("POST", "/api/store/request"), ("POST", "/api/store/verify"),
+    # The Upload Station's page and app manifest live at a random address (any other is "not found");
+    # its access request needs that address too, and only emails the owner a code (limited per address)
+    ("GET", "/u/{path}"), ("GET", "/u/{path}/manifest.json"), ("POST", "/api/station/request"),
     # Signed or secret-link addresses: the link, payment or WooCommerce signature is the key
     ("POST", "/webhook"), ("GET", "/api/saved-cart/link"), ("GET", "/api/pos/download-qr"),
     ("POST", "/api/pos/square-complete"), ("POST", "/api/pos/square-pending"), ("POST", "/api/pos/device-verify"),

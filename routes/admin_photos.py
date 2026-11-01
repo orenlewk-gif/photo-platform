@@ -206,6 +206,11 @@ def admin_get_photo(request: Request, path: str, size: str = Query("thumb")):
     """Admin-only photo endpoint — no watermark. Caches to admin_thumbs/ in R2."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return _studio_photo(path, size)
+
+
+def _studio_photo(path: str, size: str = "thumb"):
+    """A photo without a watermark, for the studio (and the Upload Station's own photos)."""
     from fastapi.responses import StreamingResponse as SR
     SIZE_MAP = {"thumb": (450, 72), "medium": (1800, 90)}
     max_px, quality = SIZE_MAP.get(size, SIZE_MAP["thumb"])
@@ -378,7 +383,7 @@ def _is_upload_photo(name: str) -> bool:
 
 @router.post("/api/admin/upload/presign")
 async def admin_upload_presign(request: Request):
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body     = await request.json()
     date     = body.get("date", "")
@@ -433,7 +438,7 @@ async def admin_upload_presign(request: Request):
 
 @router.post("/api/admin/upload/index")
 async def admin_upload_index(request: Request):
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body     = await request.json()
     date     = body.get("date", "")
@@ -485,6 +490,7 @@ async def admin_upload_index(request: Request):
     # batches, instead of each batch waiting on a save of the whole list. Push-live saves it too.
     thumbs_job = main._queue_new_photo_thumbs(keys)
     main._save_photo_list_soon()
+    main._note_upload(main._uploader(request), date, location, folder, keys)   # "Today's uploads"
     if is_portrait and folder and keys:
         if poses is not None:
             main._write_folder_poses_from_ui(date, location, folder, poses)
@@ -567,7 +573,7 @@ async def admin_reindex_folder(request: Request):
 
 @router.post("/api/admin/push-live")
 async def admin_push_live(request: Request):
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body     = await request.json()
     date     = body.get("date", "")
@@ -652,7 +658,7 @@ def admin_pos_thumbs(request: Request, body: dict = Body(...)):
 @router.get("/api/admin/embed-status")
 def admin_embed_status(request: Request, job_id: str = Query(...)):
     """Return progress for a background labeling / thumbnail job (studio only)."""
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     job = main._embed_jobs.get(job_id)
     if not job:
@@ -1198,21 +1204,20 @@ async def admin_photo_trash(request: Request):
     paths      = body.get("paths", [])
     if not paths:
         return JSONResponse(status_code=400, content={"error": "No paths"})
+    return await run_in_threadpool(_trash_photos, paths)
+
+
+def _trash_photos(paths: list) -> dict:
+    """Put these photos in the trash (the studio's, kept 7 days): they leave the site now."""
     paths_set  = set(paths)
     to_trash   = [item for item in main.data if item["path"] in paths_set]
-
-    # Storage work runs off the main loop (visitors aren't held up), several photos at a time
-    def move_to_trash():
-        new_meta, _ = main._bulk_trash(to_trash)            # thumbnails go in one batch there
-        main._add_to_trash_meta(new_meta)
-        return new_meta
-
-    new_meta = await run_in_threadpool(move_to_trash)
+    new_meta, _ = main._bulk_trash(to_trash)                # thumbnails go in one batch there
+    main._add_to_trash_meta(new_meta)
     # Only photos that reached the trash leave the site (one that couldn't be copied stays)
     gone = {e["image_entry"]["path"] for e in new_meta}
     if gone:
         main.data = [item for item in main.data if item["path"] not in gone]
-        await run_in_threadpool(main._save_photo_list)
+        main._save_photo_list()
     return {"trashed": len(gone), "failed": len(to_trash) - len(gone)}
 
 
@@ -1336,7 +1341,7 @@ def _save_times(date: str, location: str, times: dict) -> None:
         print(f"[move] times not saved for {date} {location}: {e}")
 
 
-def _move_photos(paths: list, new_date: str, new_location: str, new_folder: str) -> dict:
+def _move_photos(paths: list, new_date: str, new_location: str, new_folder: str, remap_out: dict | None = None) -> dict:
     """Move photos (any folders) into one folder: originals and thumbnails to the new place, the
     photo records with them (labels, partner marks, model answers kept), capture times for the
     time filter, portrait poses (out of the old pose; a pose of their own in the new family) and
@@ -1426,6 +1431,8 @@ def _move_photos(paths: list, new_date: str, new_location: str, new_folder: str)
         print(f"[move] poses not updated: {e}")
 
     main._remap_unlimited_paths_soon(path_remap)          # Unlimited packages keep their photos
+    if remap_out is not None:
+        remap_out.update(path_remap)                      # old address -> new (the Upload Station's log)
     main._queue_new_photo_thumbs(list(path_remap.values()))
     return {"moved": len(done), "skipped": skipped, "failed": len(plan) - len(done)}
 
@@ -1436,6 +1443,14 @@ async def admin_photos_move(request: Request):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body = await request.json()
+    move = _move_request(body)
+    if isinstance(move, JSONResponse):
+        return move
+    return await run_in_threadpool(_move_photos, *move)
+
+
+def _move_request(body: dict):
+    """(paths, date, location, folder) from a Move request, or the error to answer with."""
     paths = [p for p in (body.get("paths") or []) if isinstance(p, str)]
     new_date = str(body.get("new_date") or "").strip()
     new_location = clean_location(str(body.get("new_location") or "").strip())
@@ -1449,7 +1464,7 @@ async def admin_photos_move(request: Request):
     problem = _upload_names_problem(new_date, new_location, new_folder)
     if problem:
         return JSONResponse(status_code=400, content={"error": problem})
-    return await run_in_threadpool(_move_photos, paths, new_date, new_location, new_folder)
+    return paths, new_date, new_location, new_folder
 
 
 @router.post("/api/admin/folder/rename")
@@ -1578,7 +1593,7 @@ async def api_rebuild_poses(request: Request):
 @router.get("/api/admin/partners")
 def admin_partners(request: Request):
     """Partner programs and the color label photographers use to mark their photos."""
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     # Only what the studio needs (never the page password), with how many photos each has
     counts = {}

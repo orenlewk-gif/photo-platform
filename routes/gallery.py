@@ -531,7 +531,7 @@ def index_head():
 
 @router.get("/api/zip-pricing")
 def api_get_zip_pricing(request: Request):
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     return main._load_zip_pricing()
 
@@ -609,7 +609,7 @@ def api_get_zip_folders(request: Request):
 
 @router.post("/api/zip-folder/set-group-size")
 async def api_set_group_size(request: Request):
-    if not main._admin_authed(request):
+    if not main._upload_allowed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     body = await request.json()
     fk = body.get("folder_key")

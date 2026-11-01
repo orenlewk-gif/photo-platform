@@ -402,6 +402,19 @@ html.embedded #layout{height:100vh}
       <div id="sec-store-screens" style="font-size:.85rem;line-height:1.7">Loading…</div>
     </div>
 
+    <!-- UPLOAD STATIONS -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Security — upload stations</div>
+      <div class="section-desc">The store computers' upload page: the upload form and today's uploads, nothing else of the studio. Its address is random so nobody stumbles on it; open it on each computer (in Chrome, install it as an app for a Dock icon). The first time, the computer is given a name and asks for a code, which is emailed to you; it's typed on that computer once. Remove a computer if it's lost or replaced: it will need a new code. "New link" changes the address if the old one got out (approved computers stay approved; open the new link on each).</div>
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem">
+        <input id="station-link" readonly aria-label="Upload station link" style="flex:1;min-width:260px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#fff;padding:.4rem .6rem;font-size:.82rem" value="Loading…">
+        <button type="button" onclick="copyStationLink()" style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer">Copy</button>
+        <a id="station-open" href="#" target="_blank" rel="noopener" style="color:#F5C518;font-size:.82rem">Open</a>
+        <button type="button" onclick="newStationLink()" style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer">New link</button>
+      </div>
+      <div id="sec-upload-stations" style="font-size:.85rem;line-height:1.7">Loading…</div>
+    </div>
+
     <!-- SQUARE -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Square (POS payments)</div>
@@ -1790,6 +1803,48 @@ async function removeStoreScreen(id) {
   loadStoreScreens();
 }
 loadStoreScreens();
+
+async function loadUploadStations() {
+  const el = document.getElementById('sec-upload-stations');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/upload-stations')).json();
+    document.getElementById('station-link').value = d.link || '';
+    document.getElementById('station-open').href = d.link || '#';
+    const btn = 'background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.15rem .6rem;font-size:.78rem;cursor:pointer';
+    const rows = (d.stations || []).map(v => `<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <span><strong>${_secEsc(v.name || 'Upload station')}</strong><span style="color:rgba(255,255,255,.45)"> · ${_secEsc(v.describe || 'Device')} · approved ${_secDate(v.approved)} · last used ${_secDate(v.last_used)} · ${_secEsc(v.ip)}</span></span>
+      <button onclick="renameUploadStation('${_secEsc(v.id)}', this.dataset.name)" data-name="${_secEsc(v.name)}" style="${btn}">Rename</button>
+      <button onclick="removeUploadStation('${_secEsc(v.id)}')" style="${btn}">Remove</button></div>`).join('');
+    el.innerHTML = rows || '<div style="color:rgba(255,255,255,.45)">No approved upload stations yet.</div>';
+  } catch (e) { el.textContent = 'Could not load upload stations'; }
+}
+async function copyStationLink() {
+  const box = document.getElementById('station-link');
+  box.select();
+  try { await navigator.clipboard.writeText(box.value); } catch (e) { document.execCommand('copy'); }
+}
+async function newStationLink() {
+  if (!confirm('Make a new upload station link? The old link stops working. Approved computers stay approved; open the new link on each one.')) return;
+  const r = await fetch('/api/admin/upload-stations/new-link', {method: 'POST'});
+  if (!r.ok) alert('Could not make a new link');
+  loadUploadStations();
+}
+async function renameUploadStation(id, current) {
+  const name = (prompt('Name for this computer:', current || '') || '').trim();
+  if (!name) return;
+  const r = await fetch('/api/admin/upload-stations/' + encodeURIComponent(id), {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})});
+  if (!r.ok) alert((await r.json().catch(() => ({}))).error || 'Could not rename the computer');
+  loadUploadStations();
+}
+async function removeUploadStation(id) {
+  if (!confirm('Remove this upload station? It will be locked out until it is approved with a new code.')) return;
+  const r = await fetch('/api/admin/upload-stations/' + encodeURIComponent(id), {method: 'DELETE'});
+  if (!r.ok) alert('Could not remove the computer');
+  loadUploadStations();
+}
+loadUploadStations();
 
 async function testSquare() {
   const btn = document.getElementById('btn-square-test');

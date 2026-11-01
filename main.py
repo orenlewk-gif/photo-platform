@@ -1310,6 +1310,208 @@ def _note_blocked_store_visit(info: dict) -> None:
         _send_store_screen_email(info)
 
 
+# ── Upload stations ──────────────────────────────────────────────────────────
+# The store desktops' upload page: the upload form and nothing else of the studio. It lives at a
+# random address (/u/<random>, shown in Settings > Security, changeable there) so it can't be
+# stumbled on; any other address under /u/ is a plain "not found". A computer opening it is
+# approved once like a store screen: it's given a name, the owner is emailed a 6-digit code, it's
+# typed on that computer, and it's remembered (two years, or until removed in Settings). Its own
+# list, separate from the store screens: a customer's screen can never upload.
+UPLOAD_STATION_COOKIE = "ci_upload_station"
+UPLOAD_STATION_DAYS   = 730
+_station_challenges: dict = {}    # challenge id -> pending code (in memory, 10 minutes)
+_station_request_limiter = _RateLimiter(max_calls=3, window=3600)     # access requests per address
+
+
+def _upload_station(request: Request) -> tuple[str, dict] | None:
+    """(id hash, record) of this computer's approved upload station, or None."""
+    token = request.cookies.get(UPLOAD_STATION_COOKIE, "")
+    if not token:
+        return None
+    h = _token_hash(token)
+    rec = _load_admin_auth()["upload_stations"].get(h)
+    return (h, rec) if rec and rec.get("expires", "") > _now_iso() else None
+
+
+def _uploader(request: Request) -> tuple[str, str] | None:
+    """Who is uploading: (station id, its name) for an upload station, ("studio", "Studio") for the
+    owner signed in to the studio, None for anyone else."""
+    station = _upload_station(request)
+    if station:
+        return station[0][:16], station[1].get("name", "") or "Upload station"
+    return ("studio", "Studio") if _admin_authed(request) else None
+
+
+def _upload_allowed(request: Request) -> bool:
+    """The upload steps (send photos, add them to the site, follow their labeling) are open to the
+    studio and to approved upload stations; everything else in the studio stays studio-only."""
+    return _uploader(request) is not None
+
+
+def _upload_station_path() -> str:
+    """The random part of the station's address (/u/<this>), made the first time it's needed."""
+    d = _load_admin_auth()
+    if d.get("upload_station_path"):
+        return d["upload_station_path"]
+    return _new_upload_station_path()
+
+
+def _new_upload_station_path() -> str:
+    """A new random address for the station; the old one stops working (approved computers stay
+    approved, they just need the new link)."""
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["upload_station_path"] = secrets.token_urlsafe(18)
+        _save_admin_auth(d)
+    return d["upload_station_path"]
+
+
+def _is_upload_station_path(slug: str) -> bool:
+    return hmac.compare_digest(str(slug or "").encode(), _upload_station_path().encode())
+
+
+def _approve_upload_station(name: str, info: dict) -> str:
+    """Remember a newly approved upload station. Returns the token for its cookie."""
+    token = secrets.token_urlsafe(32)
+    now = _now_iso()
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        d["upload_stations"][_token_hash(token)] = {
+            "name": name, "approved": now, "last_used": now,
+            "describe": info.get("device", ""), "ip": info.get("ip", ""),
+            "expires": (datetime.now(timezone.utc) + timedelta(days=UPLOAD_STATION_DAYS)).isoformat()}
+        _save_admin_auth(d)
+    return token
+
+
+def _touch_upload_station(station_id: str) -> None:
+    """Note when a station was last used (saved at most once an hour)."""
+    d = _load_admin_auth()
+    with _admin_auth_lock:
+        rec = d["upload_stations"].get(station_id)
+        if not rec:
+            return
+        an_hour_ago = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        if rec.get("last_used", "") < an_hour_ago:
+            rec["last_used"] = _now_iso()
+            _save_admin_auth(d)
+
+
+def _send_upload_station_email(info: dict, name: str, code: str) -> bool:
+    """To the owner: a computer asking to be an upload station, with its code."""
+    if not RESEND_API_KEY:
+        print(f"[Upload station] code {code} ({name}, {info.get('device', '')}, {info.get('ip', '')}) "
+              f"— RESEND_API_KEY not set, so it wasn't emailed")
+        return False
+    try:
+        when = datetime.now(ZoneInfo("America/Denver")).strftime("%b %d, %Y at %I:%M %p").replace(" 0", " ")
+    except Exception:
+        when = datetime.now(timezone.utc).strftime("%b %d, %Y %H:%M UTC")
+    where = (f'<p style="margin:0 0 1rem;color:#555">{_html_escape(info.get("device", ""))} &middot; '
+             f'internet address {_html_escape(info.get("ip", ""))} &middot; {when} (Mountain)</p>')
+    body_html = (
+        f'<p>A computer asked to be an <strong>upload station</strong> as '
+        f'<strong>{_html_escape(name)}</strong>:</p>{where}'
+        f'<p>The code to approve it:</p>'
+        f'<p style="font-size:2rem;font-weight:700;letter-spacing:.3rem;margin:.5rem 0 1rem">{code}</p>'
+        f'<p style="color:#555">It works for {LOGIN_CODE_MINUTES} minutes. After that, the computer can upload '
+        f'photos until you remove it in Settings &gt; Security.</p>'
+        f'<p style="color:#b91c1c"><strong>If this isn\'t one of the shop\'s computers,</strong> don\'t share the code.</p>')
+    text = (f"Upload station code: {code} ({name} on {info.get('device', '')}, {info.get('ip', '')}, {when}). "
+            f"If this isn't one of the shop's computers, don't share the code.")
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [OWNER_EMAIL], "subject": f"Upload station code: {code}",
+                                     "html": _wrap_email_html(body_html), "text": text},
+                               timeout=10)
+        if not r.ok:
+            print(f"Upload station email failed: {r.text}")
+        return r.ok
+    except Exception as e:
+        print(f"Upload station email failed: {e}")
+        return False
+
+
+# ── Upload log: what was uploaded each day, and from where ──────────────────────────────────────
+# Every batch added to the site is noted under the day it was uploaded (Big Sky time): who sent it
+# (an upload station's name, or the studio), where it went and its photos. The Upload Station's
+# "Today's uploads" is read from it, and stations may move or trash only the photos in today's log
+# (so nobody needs to upload again, and nothing older can be touched from there).
+UPLOAD_LOG_PREFIX = "upload_log/"
+_upload_logs: dict = {}            # day -> list of batches (the days in use, kept in memory)
+_upload_log_lock = threading.Lock()
+_upload_log_dirty: set = set()     # days with changes not saved yet
+_upload_log_save = {"pending": False}
+
+
+def _upload_log_key(day: str) -> str:
+    return f"{UPLOAD_LOG_PREFIX}{day}.json"
+
+
+def _upload_log(day: str) -> list:
+    """The batches uploaded that day (caller holds _upload_log_lock)."""
+    if day not in _upload_logs:
+        _upload_logs[day] = _r2_json_load(_upload_log_key(day), [])
+        for old in [d for d in _upload_logs if d < day]:          # yesterday's isn't needed in memory
+            if old not in _upload_log_dirty:
+                _upload_logs.pop(old, None)
+    return _upload_logs[day]
+
+
+def _save_upload_logs_soon() -> None:
+    """Save the changed days shortly, in the background (batches arriving together share a save).
+    Caller holds _upload_log_lock."""
+    if _upload_log_save["pending"]:
+        return
+    _upload_log_save["pending"] = True
+
+    def run():
+        _time.sleep(_SAVE_SOON_DELAY)
+        with _upload_log_lock:
+            _upload_log_save["pending"] = False
+            payloads = {d: list(_upload_logs.get(d, [])) for d in _upload_log_dirty}
+            _upload_log_dirty.clear()
+        for d, batches in payloads.items():
+            try:
+                _r2_json_save(_upload_log_key(d), batches)
+            except Exception as e:
+                print(f"[upload log] save failed for {d}: {e}")
+                with _upload_log_lock:
+                    _upload_log_dirty.add(d)
+                    _save_upload_logs_soon()
+    threading.Thread(target=run, daemon=True).start()
+
+
+def _note_upload(who: tuple[str, str], date: str, location: str, folder: str, paths: list) -> None:
+    """Add a batch to today's log (saved a moment later)."""
+    if not paths:
+        return
+    day = _mountain_today()
+    with _upload_log_lock:
+        _upload_log(day).append({"at": _now_iso(), "station": who[0], "by": who[1], "date": date,
+                                 "location": location, "folder": folder, "paths": list(paths)})
+        _upload_log_dirty.add(day)
+        _save_upload_logs_soon()
+
+
+def _todays_upload_paths() -> set:
+    with _upload_log_lock:
+        return {p for b in _upload_log(_mountain_today()) for p in b.get("paths", [])}
+
+
+def _remap_upload_log(remap: dict) -> None:
+    """Photos moved from the station keep their place in today's log under their new address."""
+    if not remap:
+        return
+    day = _mountain_today()
+    with _upload_log_lock:
+        for b in _upload_log(day):
+            b["paths"] = [remap.get(p, p) for p in b.get("paths", [])]
+        _upload_log_dirty.add(day)
+        _save_upload_logs_soon()
+
+
 # Prints of photos also bought as digital files are this much off (online checkout; the POS's
 # print window starts at half price too). Store screens advertise it from here.
 PRINT_WITH_DIGITAL_PCT = 50
@@ -2968,6 +3170,7 @@ def _load_admin_auth() -> dict:
             d.setdefault("devices", {})
             d.setdefault("pos_devices", {})
             d.setdefault("store_screens", {})
+            d.setdefault("upload_stations", {})
             _admin_auth_cache["data"] = d
         return _admin_auth_cache["data"]
 
@@ -2979,6 +3182,7 @@ def _save_admin_auth(d: dict):
     d["devices"] = {k: v for k, v in d["devices"].items() if v.get("expires", "") > now}
     d["pos_devices"] = {k: v for k, v in d.get("pos_devices", {}).items() if v.get("expires", "") > now}
     d["store_screens"] = {k: v for k, v in d.get("store_screens", {}).items() if v.get("expires", "") > now}
+    d["upload_stations"] = {k: v for k, v in d.get("upload_stations", {}).items() if v.get("expires", "") > now}
     s3.put_object(Bucket=R2_BUCKET, Key=ADMIN_AUTH_KEY, Body=json.dumps(d, indent=1).encode(),
                   ContentType="application/json")
     _admin_auth_cache["data"] = d
@@ -5679,6 +5883,9 @@ app.include_router(_routes_qr_codes.router)
 
 from routes import store as _routes_store  # noqa: E402
 app.include_router(_routes_store.router)
+
+from routes import upload_station as _routes_upload_station  # noqa: E402
+app.include_router(_routes_upload_station.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

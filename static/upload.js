@@ -232,6 +232,9 @@ function resetUploadForm() {
   document.getElementById('drop-zone').style.display='';
   uploadFolders=[]; looseFiles=[]; _uploadLabels = new Map();
   clearPoseState();
+  document.getElementById('detected-folders').style.display='';
+  document.getElementById('folder-name-field').style.display='none';
+  document.getElementById('upload-folder-name').value='';
   renderDetectedFolders(); updateUploadBtn();
   const ps = document.getElementById('partner-summary'); if (ps) ps.innerHTML = '';
 }
@@ -886,12 +889,8 @@ async function uploadAllFamilies() {
   }
   label.textContent=`All ${families} famil${families===1?'y':'ies'} uploaded — ${photos} photos`+(failedPhotos?`, ${failedPhotos} failed`:'');
   showToast(failedPhotos ? `${failedPhotos} photos failed — Retry sends just those` : `All ${families} ${families===1?'family':'families'} uploaded — live on the site`, failedPhotos ? 'error' : undefined);
-  _batchQueue=[]; _batchCursor=-1;
-  document.getElementById('batch-header').style.display='none';
-  document.getElementById('drop-zone').style.display='';
-  clearPoseState();
-  uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
-  btn.disabled=false; allBtn.disabled=false;
+  allBtn.disabled=false;
+  resetUploadForm();                                          // ready for the next folder
   setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
 }
 
@@ -945,20 +944,12 @@ async function startUpload() {
         const total = _batchQueue.length;
         label.textContent = `All ${total} ${total===1?'family':'families'} uploaded`;
         showToast(`All ${total} ${total===1?'family':'families'} uploaded — live on the site`);
-        _batchQueue=[]; _batchCursor=-1;
-        document.getElementById('batch-header').style.display='none';
-        document.getElementById('drop-zone').style.display='';
-        clearPoseState();
-        uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
-        btn.disabled=false;
+        resetUploadForm();                                    // ready for the next folder
         setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
       }
     } else {
       const capturedFolder=folder;
-      clearPoseState();
-      document.getElementById('detected-folders').style.display='';
-      uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
-      btn.disabled=false;
+      resetUploadForm();                                      // ready for the next folder
       uploadDone(date, location, capturedFolder);
       setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
     }

@@ -32,8 +32,12 @@ def get_trash_ep(request: Request):
 async def trash_restore(request: Request):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    body      = await request.json()
-    trash_key = body.get("key", "")
+    body = await request.json()
+    return _restore(body.get("key", ""))
+
+
+def _restore(trash_key: str):
+    """Put one photo from the trash back where it was."""
     trash     = main._load_trash_meta()
     item      = next((t for t in trash if t["key"] == trash_key), None)
     if not item:
