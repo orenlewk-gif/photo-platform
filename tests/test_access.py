@@ -20,7 +20,7 @@ PUBLIC = {
     # Pages anyone can open (the studio, POS and clock-in pages are sign-in screens; their data needs a sign-in)
     ("GET", "/"), ("GET", "/checkout"), ("GET", "/admin"),
     ("GET", "/clockin"), ("GET", "/privacy"), ("GET", "/terms"), ("GET", "/refunds"), ("GET", "/photo-removal"),
-    ("GET", "/healthz"), ("GET", "/healthz/storage"),
+    ("GET", "/healthz"), ("GET", "/healthz/storage"), ("GET", "/favicon.ico"),
     # The public gallery: published photos only (Eagle Mount and unpublished folders are left out)
     ("GET", "/api/days"), ("GET", "/api/dates"), ("GET", "/api/locations"), ("GET", "/api/subfolders"),
     ("GET", "/api/browse"), ("GET", "/api/search"), ("GET", "/api/last-name-search"), ("GET", "/api/photo"),

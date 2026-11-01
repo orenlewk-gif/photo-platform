@@ -518,6 +518,13 @@ def api_upload_locations():
     }
 
 
+@router.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """The Crystal Images logo for browser tabs (pages name it too; this is for the browser's own look)."""
+    from fastapi.responses import FileResponse
+    return FileResponse("static/favicon.ico", media_type="image/x-icon", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @router.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(open("templates/index.html").read())
