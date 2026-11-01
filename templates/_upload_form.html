@@ -1,0 +1,63 @@
+<!-- The upload form (static/upload.js + upload.css), put into the studio's New Upload view and the
+     store's Upload Station where each page marks the spot (core/pages.with_upload_form). -->
+<div class="upload-card">
+  <h2>Upload Photos</h2>
+  <div class="form-grid">
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="upload-date">
+    </div>
+    <div class="field">
+      <label>Activity Group</label>
+      <select id="upload-category" onchange="onUploadCategoryChange()">
+        <option value="">Select group…</option>
+      </select>
+    </div>
+  </div>
+  <div class="field" id="upload-location-wrap" style="display:none;margin-top:.6rem">
+    <label>Location</label>
+    <select id="upload-location" onchange="renderDetectedFolders();updateUploadBtn();scanUploadLabels()">
+      <option value="">Select location…</option>
+    </select>
+  </div>
+  <div id="folder-name-field" style="display:none" class="field">
+    <label>Folder Name (last name / group)</label>
+    <input id="upload-folder-name" placeholder="e.g. Smith" autocomplete="off">
+  </div>
+
+  <div id="drop-zone">
+    <div class="dz-icon"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.2l2 2.2h8.8A1.5 1.5 0 0 1 21 8.7v9.8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></svg></div>
+    <div>Drop folders or photos here</div>
+    <div class="dz-hint">
+      <span class="dz-link" onclick="event.stopPropagation();browseFolder()">Browse folder</span>
+      &nbsp;·&nbsp;
+      <span class="dz-link" onclick="event.stopPropagation();browseFiles()">Browse files</span>
+    </div>
+  </div>
+  <input id="folder-input" type="file" webkitdirectory multiple style="display:none"
+    onchange="handleFolderInput(this.files);this.value=''">
+  <input id="file-input" type="file" multiple accept="image/*" style="display:none"
+    onchange="handleFileInput(this.files);this.value=''">
+
+  <div id="detected-folders"></div>
+  <div id="partner-summary"></div>
+
+  <div id="batch-header" style="display:none"></div>
+
+  <div id="pose-assign-panel" style="display:none"></div>
+
+  <div id="upload-progress">
+    <div class="prog-bar-wrap"><div class="prog-bar-fill" id="prog-fill"></div></div>
+    <div class="prog-label-row">
+      <div class="prog-label" id="prog-label">Uploading…</div>
+      <button id="upload-cancel-btn" onclick="cancelUpload()" style="display:none">Cancel</button>
+    </div>
+  </div>
+  <div id="upload-retry" role="alert">
+    <div class="ur-text" id="upload-retry-text"></div>
+    <button type="button" id="upload-retry-btn" onclick="retryFailedUploads()">Retry</button>
+  </div>
+
+  <button id="upload-action-btn" onclick="startUpload()" disabled>Upload</button>
+  <button id="upload-all-btn" onclick="uploadAllFamilies()" style="display:none;margin-top:.5rem">Upload all families</button>
+</div>

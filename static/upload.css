@@ -1,0 +1,88 @@
+/* The upload form (static/upload.js): the studio's New Upload and the store's Upload Station.
+   The page around it sets the background (the studio's dark blue) and the font. */
+.upload-card{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:14px;
+  padding:1.75rem;width:100%;max-width:820px;margin:0 auto}
+.upload-card h2{color:#F5C518;font-size:1.05rem;margin-bottom:1.2rem}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:.7rem;margin-bottom:.85rem}
+.field label{display:block;font-size:.72rem;color:rgba(255,255,255,.4);margin-bottom:.32rem;letter-spacing:.5px;text-transform:uppercase}
+.field input,.field select{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
+  border-radius:8px;padding:.58rem .82rem;color:#fff;font-size:.88rem;outline:none}
+.field input:focus,.field select:focus{border-color:#F5C518}
+.field select option{background:#0c2336}
+#drop-zone{border:2px dashed rgba(255,255,255,.14);border-radius:10px;padding:2.25rem 1rem;
+  text-align:center;cursor:pointer;transition:.2s;margin-bottom:.85rem;color:rgba(255,255,255,.38)}
+#drop-zone:hover,#drop-zone.drag-over{border-color:#F5C518;color:rgba(255,255,255,.7);background:rgba(245,197,24,.04)}
+#drop-zone .dz-icon{font-size:1.8rem;margin-bottom:.45rem}
+#drop-zone .dz-hint{font-size:.8rem;margin-top:.3rem}
+.dz-link{color:#F5C518;cursor:pointer;text-decoration:underline}
+#detected-folders{margin-bottom:.85rem}
+.det-folder{display:flex;align-items:center;justify-content:space-between;
+  background:rgba(255,255,255,.04);border-radius:8px;padding:.45rem .82rem;margin-bottom:.38rem;font-size:.82rem}
+.det-folder .fname{color:rgba(255,255,255,.8);font-weight:500}
+.det-folder .fcount{color:rgba(255,255,255,.32);font-size:.73rem}
+.det-remove{background:none;border:none;color:rgba(255,255,255,.22);cursor:pointer;font-size:.88rem}
+.det-remove:hover{color:#e53e3e}
+.det-gs{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);border-radius:6px;color:#fff;font-family:inherit;font-size:.78rem;padding:.22rem .45rem;cursor:pointer;outline:none}
+.det-gs option{background:#091928}
+#folder-name-field{margin-bottom:.85rem}
+#upload-progress{display:none;margin-bottom:.85rem}
+.prog-bar-wrap{background:rgba(255,255,255,.08);border-radius:100px;height:5px;overflow:hidden;margin-bottom:.32rem}
+.prog-bar-fill{height:100%;background:#F5C518;border-radius:100px;transition:width .25s;width:0}
+.prog-label-row{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.prog-label{font-size:.75rem;color:rgba(255,255,255,.4)}
+/* Photos that didn't upload: listed, with a button to send just those again */
+#upload-retry{display:none;margin:.2rem 0 .85rem;padding:.6rem .75rem;border-radius:8px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4)}
+#upload-retry .ur-text{font-size:.78rem;color:#fca5a5;line-height:1.5;margin-bottom:.5rem;word-break:break-word}
+#upload-retry button{background:#F5C518;color:#07151f;border:none;border-radius:7px;font-weight:700;font-size:.82rem;padding:.45rem .9rem;cursor:pointer;font-family:inherit}
+#upload-retry button:disabled{opacity:.5;cursor:default}
+#upload-cancel-btn{font-size:.7rem;color:rgba(255,255,255,.35);background:none;border:none;cursor:pointer;padding:0;line-height:1;white-space:nowrap}
+#upload-cancel-btn:hover{color:rgba(255,255,255,.7)}
+#upload-action-btn{width:100%;background:#F5C518;color:#07151f;border:none;border-radius:8px;
+  padding:.68rem;font-weight:700;font-size:.92rem;cursor:pointer}
+#upload-action-btn:disabled{opacity:.45;cursor:not-allowed}
+#upload-action-btn:hover:not(:disabled){background:#f0bc00}
+#upload-all-btn{width:100%;background:transparent;color:#F5C518;border:1px solid rgba(245,197,24,.55);border-radius:8px;
+  padding:.6rem;font-weight:700;font-size:.88rem;cursor:pointer}
+#upload-all-btn:disabled{opacity:.45;cursor:not-allowed}
+#upload-all-btn:hover:not(:disabled){background:rgba(245,197,24,.08)}
+
+/* ── Pose Assignment Panel ── */
+#batch-header{margin-bottom:.75rem}
+.batch-progress-label{font-size:.7rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:.35rem}
+.batch-family-name{font-size:1.15rem;font-weight:700;color:#e8eaf0;margin-bottom:.6rem}
+.batch-family-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem}
+.batch-fam-chip{font-size:.7rem;padding:.2rem .5rem;border-radius:4px;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.38);background:rgba(255,255,255,.04)}
+.batch-fam-chip.done{background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.25);color:rgba(74,222,128,.75)}
+.batch-fam-chip.current{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.35);color:#f5c518;font-weight:700}
+#pose-assign-panel{margin-bottom:.85rem}
+.pose-header-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:.55rem}
+.pose-header-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.38)}
+.pose-header-meta{font-size:.72rem;color:rgba(255,255,255,.3)}
+.pose-toolbar{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:.55rem}
+.pose-tbtn{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);border-radius:6px;color:rgba(255,255,255,.75);font-size:.76rem;padding:.28rem .65rem;cursor:pointer;font-family:inherit;white-space:nowrap}
+.pose-tbtn:hover:not(:disabled){background:rgba(255,255,255,.13)}
+.pose-tbtn:disabled{opacity:.4;cursor:not-allowed}
+.pose-tbtn.primary{background:#F5C518;color:#07151f;border-color:transparent;font-weight:700}
+.pose-tbtn.primary:hover:not(:disabled){background:#f0bc00}
+.pose-legend{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.6rem;min-height:1.2rem}
+.pose-pill{display:inline-flex;align-items:center;gap:.3rem;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:100px;padding:.18rem .5rem .18rem .32rem;font-size:.7rem;cursor:pointer}
+.pose-pill:hover{background:rgba(255,255,255,.1)}
+.pose-pill .pp-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.pose-pill .pp-label{color:rgba(255,255,255,.8)}
+.pose-pill .pp-count{color:rgba(255,255,255,.35)}
+.pose-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px;max-height:520px;overflow-y:auto;padding-right:2px}
+.pose-thumb{position:relative;aspect-ratio:3/2;border-radius:5px;overflow:hidden;cursor:pointer;user-select:none;border:2.5px solid transparent}
+.pose-thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;border-radius:3px}
+.pose-thumb.pt-selected{border-color:#fff}
+.pose-thumb .pt-badge{position:absolute;top:3px;right:3px;width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(0,0,0,.5);display:none}
+.pose-thumb.pt-assigned .pt-badge{display:block}
+.pose-thumb .pt-num{position:absolute;bottom:2px;left:4px;font-size:.52rem;color:rgba(255,255,255,.55);text-shadow:0 1px 2px rgba(0,0,0,.8);line-height:1}
+/* Photos with no color label (from culling): flagged before upload */
+.pose-thumb .pt-nolabel{display:none;position:absolute;bottom:2px;right:3px;background:#e07a1f;color:#fff;font-size:.5rem;font-weight:700;border-radius:3px;padding:1px 4px;line-height:1.3}
+.pose-thumb.pt-unlabeled .pt-nolabel{display:block}
+.pose-warn{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.6rem;padding:.5rem .7rem;border-radius:7px;
+  background:rgba(224,122,31,.12);border:1px solid rgba(224,122,31,.45);color:#f5b26b;font-size:.76rem;line-height:1.45}
+.pose-warn .pose-tbtn{margin-left:auto}
+.choice-list{margin:.2rem 0 0;padding-left:1.1rem;font-size:.82rem;color:rgba(255,255,255,.75);line-height:1.6;max-height:40vh;overflow:auto}
+.choice-text{font-size:.86rem;color:rgba(255,255,255,.8);line-height:1.5}
+.pose-empty-hint{font-size:.76rem;color:rgba(255,255,255,.28);text-align:center;padding:.75rem 0}

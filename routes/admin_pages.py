@@ -7,7 +7,7 @@ from html import escape as _html_escape
 from fastapi import APIRouter
 
 import main
-from core.pages import render_page
+from core.pages import render_page, with_upload_form
 
 router = APIRouter()
 
@@ -89,18 +89,22 @@ def admin_folders_page(request: Request):
     return HTMLResponse(open("templates/admin_folders.html").read())
 
 
+def _studio_page() -> str:
+    return with_upload_form(open("templates/admin_studio.html").read())
+
+
 @router.get("/admin/dashboard", response_class=HTMLResponse)
 def admin_dashboard_page(request: Request):
     if not main._admin_authed(request):
         return RedirectResponse("/admin?next=/admin/dashboard")
-    return HTMLResponse(open("templates/admin_studio.html").read())
+    return HTMLResponse(_studio_page())
 
 
 @router.get("/admin/dashboard/{section}", response_class=HTMLResponse)
 def admin_dashboard_section(request: Request, section: str):
     if not main._admin_authed(request):
         return RedirectResponse(f"/admin?next=/admin/dashboard/{section}")
-    return HTMLResponse(open("templates/admin_studio.html").read())
+    return HTMLResponse(_studio_page())
 
 
 @router.get("/admin/studio")
