@@ -742,7 +742,25 @@ function renderRaceTree() {
   }
   el.innerHTML = html;
 }
-function toggleRace(id) { treeExpanded['race:' + id] = !treeExpanded['race:' + id]; renderRaceTree(); }
+// Clicking a race opens its list in the sidebar and shows its racer folders as cards on the right
+// (clicking it again while those cards are showing closes the list)
+let _raceOverview = null;          // id of the race whose cards are showing
+function toggleRace(id) {
+  const r = RACES.find(x => x.id === id); if (!r) return;
+  const showing = _raceOverview === id && document.getElementById('location-view').style.display !== 'none';
+  if (showing && treeExpanded['race:' + id]) { treeExpanded['race:' + id] = false; renderRaceTree(); return; }
+  treeExpanded['race:' + id] = true;
+  const folders = allFolders.filter(f => f.name && raceOfFolder(f) === r).sort((a, b) => a.name.localeCompare(b.name));
+  currentFolder = null;
+  currentLocation = folders.length ? {date: folders[0].date, location: folders[0].location} : null;
+  renderTree();
+  showLocationOverview(folders.length ? folders[0].date : r.date, folders.length ? folders[0].location : r.name, folders);
+  document.getElementById('location-view-title').textContent = r.name;
+  document.getElementById('location-view-sub').textContent =
+    `${r.date} · ${folders.length} racer${folders.length === 1 ? '' : 's'}${r.live ? '' : ' · hidden from the website until the race is live'}`;
+  if (!folders.length) document.getElementById('location-cards').innerHTML = '<div class="loading-text">No photos yet</div>';
+  _raceOverview = id;
+}
 
 // ── Partner folders (Eagle Mount) ──
 // Photos marked for a partner are hidden from the public gallery and shown free on the
