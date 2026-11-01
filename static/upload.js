@@ -1204,7 +1204,7 @@ async function startUpload() {
 // the next racer). Bursts go to the racers in start order; a racer marked "didn't race" is skipped
 // (everyone after moves up one), and a burst set aside ("not a racer": a forerunner, a warm-up)
 // goes to nobody. Long pauses are only pointed out: the photographer decides. Each racer's photos
-// upload to their own folder under the race (its own place), e.g. "Allmacher Michael Bib 12", and
+// upload to their own folder under the race (its own place), e.g. "Allmacher Michael", and
 // stay hidden (drafts) until the race is put live.
 let RACES = [];               // [{id, name, date, live, runs: [{n, title, file, racers}]}] from /api/races
 let raceMode = false;
@@ -1395,18 +1395,16 @@ function _raceBase(r) {
   const parts = r.name.includes(',') ? r.name.split(',').map(s => s.trim()) : [r.display];
   return parts.filter(Boolean).join(' ').replace(/[\/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
-// The racer's folder: the one this race already has for exactly this name (bibs can change
-// between start lists; the spelling of first and last name must match), otherwise a new one,
-// e.g. "Allmacher Michael Bib 12". Two racers with the same name on one list keep their own by bib.
+// The racer's folder: first and last name, e.g. "Allmacher Michael" (bibs can change between start
+// lists, so the name is what ties a racer's runs together; it must be spelled the same). A folder
+// this race already has for that name is used as it is (earlier ones may end in " Bib N"). Two
+// racers with exactly the same name on one list are told apart by their bib.
 function raceFolderName(r) {
   const base = _raceBase(r), low = base.toLowerCase();
-  const sameName = raceRacers.filter(x => _raceBase(x).toLowerCase() === low).length > 1;
-  if (!sameName) {
-    const re = new RegExp('^' + low.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( bib \\w+)?$');
-    const existing = (currentRace()?.folders || []).find(f => re.test(f.toLowerCase()));
-    if (existing) return existing;
-  }
-  return `${base}${r.bib ? ' Bib ' + r.bib : ''}`.slice(0, 80);
+  if (raceRacers.filter(x => _raceBase(x).toLowerCase() === low).length > 1)
+    return `${base}${r.bib ? ' Bib ' + r.bib : ''}`.slice(0, 80);
+  const re = new RegExp('^' + low.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( bib \\w+)?$');
+  return (currentRace()?.folders || []).find(f => re.test(f.toLowerCase())) || base.slice(0, 80);
 }
 function raceFolders() {
   const {byRacer} = raceAssign();
@@ -1470,7 +1468,7 @@ function renderRace() {
       <span class="race-st">${r.order}</span>
       <span class="race-who"><b>${esc(r.display)}</b><span>Bib ${esc(r.bib)}${r.cls ? ' · ' + esc(r.cls) : ''}</span>${(() => {
         const f = raceFolderName(r);
-        return f !== `${_raceBase(r)}${r.bib ? ' Bib ' + r.bib : ''}`.slice(0, 80) ? `<span class="race-joins">Joins their folder: ${esc(f)}</span>` : '';
+        return (currentRace()?.folders || []).includes(f) ? `<span class="race-joins">Joins their folder: ${esc(f)}</span>` : '';
       })()}</span>
       <span class="race-photos">${dns ? '<span class="race-dim">Didn\'t race</span>'
         : b ? `${pauseBefore[bi] ? `<span class="race-pause">Longer pause before (${_fmtPause(pauseBefore[bi])}). If someone didn't race, mark them.</span>` : ''}${_burstThumbs(b, bi)}<span class="race-meta">${b.files.length} photo${b.files.length === 1 ? '' : 's'} · ${_fmtClock(b.start)} <button type="button" class="race-link" onclick="raceSetAside(${bi})">Not a racer</button></span>`
