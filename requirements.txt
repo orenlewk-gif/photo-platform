@@ -9,3 +9,4 @@ python-multipart
 numpy
 onnxruntime
 segno==1.6.1
+pypdf==5.1.0

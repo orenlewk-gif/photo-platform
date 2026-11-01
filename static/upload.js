@@ -202,7 +202,7 @@ function onUploadCategoryChange() {
   const wrap = document.getElementById('upload-location-wrap');
   const locSel = document.getElementById('upload-location');
   locSel.innerHTML = '<option value="">Select location…</option>';
-  if (!cat) { wrap.style.display = 'none'; clearPoseState(); renderDetectedFolders(); updateUploadBtn(); return; }
+  if (!cat) { wrap.style.display = 'none'; clearPoseState(); updateRaceToggle(); renderDetectedFolders(); updateUploadBtn(); return; }
   for (const loc of (cat.acts || [])) {
     const opt = document.createElement('option');
     opt.value = loc; opt.textContent = loc;
@@ -210,7 +210,7 @@ function onUploadCategoryChange() {
   }
   if (cat.acts?.length === 1) locSel.value = cat.acts[0];
   wrap.style.display = '';
-  clearPoseState(); renderDetectedFolders(); updateUploadBtn();
+  clearPoseState(); updateRaceToggle(); renderDetectedFolders(); updateUploadBtn();
 }
 
 // ── Zip tiers ──
@@ -235,6 +235,7 @@ function resetUploadForm() {
   document.getElementById('detected-folders').style.display='';
   document.getElementById('folder-name-field').style.display='none';
   document.getElementById('upload-folder-name').value='';
+  clearRacePhotos();
   renderDetectedFolders(); updateUploadBtn();
   const ps = document.getElementById('partner-summary'); if (ps) ps.innerHTML = '';
 }
@@ -265,6 +266,7 @@ function handleFolderInput(files) {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
     renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
+    if (raceMode) prepareRace();
   }
 }
 function handleFileInput(files) {
@@ -276,6 +278,7 @@ function handleFileInput(files) {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
     renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
+    if (raceMode) prepareRace();
   }
 }
 
@@ -299,6 +302,7 @@ async function handleDrop(e) {
     clearPoseState();
     document.getElementById('detected-folders').style.display = '';
     renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
+    if (raceMode) prepareRace();
   }
 }
 
@@ -690,6 +694,7 @@ function getPoseGroupsForUpload() {
 async function renderDetectedFolders() {
   const el = document.getElementById('detected-folders');
   const fnField = document.getElementById('folder-name-field');
+  if (_raceOn()) { el.innerHTML = ''; fnField.style.display = 'none'; return; }   // the race review lists them
   const isZip = _isZipUpload();
   let gsOpts = '';
   if (isZip) {
@@ -718,6 +723,13 @@ function removeDetected(i) { uploadFolders.splice(i,1); renderDetectedFolders();
 function updateUploadBtn() {
   const btn = document.getElementById('upload-action-btn');
   const allBtn = document.getElementById('upload-all-btn');
+  if (_raceOn()) {
+    const n = raceAssign().byRacer.size;
+    if (allBtn) allBtn.style.display = 'none';
+    btn.textContent = n ? `Upload ${n} racer${n === 1 ? '' : 's'}` : 'Upload';
+    btn.disabled = !n || !raceRacers.length;
+    return;
+  }
   if (allBtn) allBtn.style.display = _isPoseMode() && _batchCursor >= 0 && _batchQueue.length - _batchCursor > 1 ? '' : 'none';
   if (_isPoseMode()) {
     btn.disabled = poseGroups.length === 0;
@@ -958,8 +970,13 @@ async function startUpload() {
 
   // ── Standard (non-portrait) upload ──
   const _isPortraitLoc = PORTRAIT_LOCS.has(location.trim().toLowerCase());
+  const isRace = _raceOn();                   // a race: one folder per racer, from the start list
+  if (isRace && raceBursts.length) {
+    uploadFolders = raceFolders(); looseFiles = [];
+    if (!uploadFolders.length) { showToast('No racer has photos yet', 'error'); return; }
+  }
   let batches = uploadFolders.length
-    ? [...uploadFolders.map(f=>({folder: _isPortraitLoc ? f.name : '', files:f.files})), ...(looseFiles.length?[{folder:'',files:looseFiles}]:[]) ]
+    ? [...uploadFolders.map(f=>({folder: _isPortraitLoc || isRace ? f.name : '', files:f.files})), ...(looseFiles.length?[{folder:'',files:looseFiles}]:[]) ]
     : [{folder: _isPortraitLoc ? document.getElementById('upload-folder-name').value.trim() : '', files:looseFiles}];
   let totalFiles=batches.reduce((a,b)=>a+b.files.length,0);
   if (!totalFiles) { showToast('No photos to upload','error'); return; }
@@ -1008,7 +1025,7 @@ async function startUpload() {
   const allItems=[]; // {url,key,filename,folder,file,ok}
   for (const [folder, t] of targets) {
     const pr=await fetch('/api/admin/upload/presign',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({date,location,folder,files:t.files.map(f=>({name:f.name,type:f.type||'image/jpeg',size:f.size}))})});
+      body:JSON.stringify({date,location,folder,race:isRace,files:t.files.map(f=>({name:f.name,type:f.type||'image/jpeg',size:f.size}))})});
     if (!pr.ok) { showToast(`Presign failed for ${folder||'files'}`,'error'); continue; }
     const {urls}=await pr.json();
     urls.forEach((u,i)=>allItems.push({...u,folder,file:t.files[i]}));
@@ -1058,7 +1075,7 @@ async function startUpload() {
         const files = items.map(it => it.file);
         const times = await readExifTimes(files);     // reads file headers already in memory — fast
         const ir = await fetch('/api/admin/upload/index',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({date,location,folder,keys:items.map(it=>it.key),times,
+          body:JSON.stringify({date,location,folder,race:isRace,keys:items.map(it=>it.key),times,
                                partner_files: _isPortraitLoc ? {} : partnerFilesFor(files)})}).catch(()=>null);
         if (!ir?.ok) notIndexed.add(folder || location);
         else { const d = await ir.json().catch(() => ({})); if (d.thumbs_job_id) labelJobs.push({id: d.thumbs_job_id, done: 0, finished: false}); }
@@ -1141,8 +1158,11 @@ async function startUpload() {
     if (document.getElementById('upload-location').value !== location) {
       showToast(`Set the location back to ${location} to retry`, 'error'); showRetry(retryNames, retryRun); return;
     }
+    if (isRace !== _raceOn()) {
+      showToast(`Turn Race ${isRace ? 'back on' : 'off'} to retry`, 'error'); showRetry(retryNames, retryRun); return;
+    }
     document.getElementById('upload-date').value = date;
-    if (_isPortraitLoc) { uploadFolders = retryBatches.filter(b => b.name); looseFiles = retryBatches.filter(b => !b.name).flatMap(b => b.files); }
+    if (_isPortraitLoc || isRace) { uploadFolders = retryBatches.filter(b => b.name); looseFiles = retryBatches.filter(b => !b.name).flatMap(b => b.files); }
     else { uploadFolders = []; looseFiles = retryItems.map(it => it.file); }
     await startUpload();
   };
@@ -1166,6 +1186,282 @@ async function startUpload() {
   await uploadRefresh();
   const firstBatch=batches[0];
   if (firstBatch) uploadDone(date, location, firstBatch.folder||'');
-  btn.disabled=false; uploadFolders=[]; looseFiles=[]; renderDetectedFolders(); updateUploadBtn();
+  btn.disabled=false; uploadFolders=[]; looseFiles=[];
+  if (isRace) clearRacePhotos();              // ready for the next run (the start list stays)
+  renderDetectedFolders(); updateUploadBtn();
   setTimeout(()=>{ progWrap.style.display='none'; fill.style.width='0'; },2200);
+}
+
+// ── Race: one folder per racer, by the start list ───────────────────────────────────────────────
+// The start list (timing PDF or pasted) gives the racers in start order. The run's photos are put
+// in the order they were taken and grouped into bursts (a pause longer than raceGap seconds starts
+// the next racer). Bursts go to the racers in start order; a racer marked "didn't race" is skipped
+// (everyone after moves up one), and a burst set aside ("not a racer": a forerunner, a warm-up)
+// goes to nobody. Long pauses are only pointed out: the photographer decides. Each racer's photos
+// upload to their own folder in the chosen location, e.g. "Allmacher Michael Bib 12".
+let raceMode = false;
+let raceRacers = [];          // [{order, bib, name, display, cls}] in start order
+let raceTitle = '';
+let raceBursts = [];          // [{files: [File], start, end}] in the order taken
+let raceUntimed = [];         // photos with no capture time (not sorted; left out)
+let raceDns = new Set();      // start numbers marked "didn't race"
+let raceSkip = new Set();     // burst numbers set aside
+let raceGap = 8;              // seconds between photos that start a new racer
+let _raceUrls = new Map();    // File -> preview URL
+let _raceReading = 0;         // which read is current (a newer drop replaces an older one)
+
+function _raceOn() { return raceMode && !_currentLocationIsPortrait(); }
+
+function updateRaceToggle() {
+  const loc = (document.getElementById('upload-location').value || '').trim();
+  const show = !!loc && !_currentLocationIsPortrait();
+  document.getElementById('race-toggle-wrap').style.display = show ? '' : 'none';
+  document.getElementById('race-panel').style.display = show && raceMode ? '' : 'none';
+}
+
+function setRaceMode(on) {
+  raceMode = on;
+  updateRaceToggle();
+  if (on && (uploadFolders.length || looseFiles.length)) prepareRace();
+  else { renderRace(); }
+  document.getElementById('detected-folders').style.display = '';
+  renderDetectedFolders(); updateUploadBtn();
+}
+
+function toggleRacePaste() {
+  const w = document.getElementById('race-paste-wrap');
+  w.style.display = w.style.display === 'none' ? '' : 'none';
+  if (w.style.display === '') document.getElementById('race-paste').focus();
+}
+
+async function _sendStartList(body, type) {
+  const sum = document.getElementById('race-list-summary');
+  sum.textContent = 'Reading the start list…';
+  try {
+    const r = await fetch('/api/admin/upload/start-list', {method: 'POST', headers: {'Content-Type': type}, body});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { sum.textContent = d.error || "Couldn't read that start list"; showToast(d.error || "Couldn't read that start list", 'error'); return; }
+    raceRacers = d.racers; raceTitle = d.title || '';
+    raceDns = new Set();
+    document.getElementById('race-paste-wrap').style.display = 'none';
+    renderRace(); updateUploadBtn();
+  } catch (e) { sum.textContent = "Couldn't reach the site — check the connection and try again"; }
+}
+async function loadStartListFile(f) {
+  if (!f) return;
+  const pdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
+  await _sendStartList(await f.arrayBuffer(), pdf ? 'application/pdf' : 'text/plain');
+}
+async function loadStartListText() {
+  const text = document.getElementById('race-paste').value;
+  if (!text.trim()) { showToast('Paste the start list first', 'error'); return; }
+  await _sendStartList(text, 'text/plain');
+}
+
+// When the photo was taken, to a tenth of a second: EXIF DateTimeOriginal + SubSecTimeOriginal
+// (the camera's clock; only the gaps between photos matter). null when the file has none.
+async function readCaptureTime(f) {
+  try {
+    const v = new DataView(await f.slice(0, 262144).arrayBuffer());
+    if (v.byteLength < 4 || v.getUint16(0) !== 0xFFD8) return null;
+    let off = 2;
+    while (off + 4 <= v.byteLength && v.getUint8(off) === 0xFF) {
+      const marker = v.getUint8(off + 1), len = v.getUint16(off + 2);
+      if (marker === 0xE1 && off + 10 <= v.byteLength && v.getUint32(off + 4) === 0x45786966) return _exifTime(v, off + 10);
+      if (marker === 0xDA) break;
+      off += 2 + len;
+    }
+  } catch (e) {}
+  return null;
+}
+function _exifTime(v, tiff) {
+  const le = v.getUint16(tiff) === 0x4949;
+  const u16 = o => v.getUint16(o, le), u32 = o => v.getUint32(o, le);
+  const ascii = (entry) => {
+    const n = u32(entry + 4), at = n <= 4 ? entry + 8 : tiff + u32(entry + 8);
+    let s = '';
+    for (let i = 0; i < n && at + i < v.byteLength; i++) { const c = v.getUint8(at + i); if (!c) break; s += String.fromCharCode(c); }
+    return s;
+  };
+  const tags = (ifd) => {
+    const out = {};
+    if (ifd + 2 > v.byteLength) return out;
+    const n = u16(ifd);
+    for (let i = 0; i < n; i++) {
+      const e = ifd + 2 + i * 12;
+      if (e + 12 > v.byteLength) break;
+      out[u16(e)] = e;
+    }
+    return out;
+  };
+  const ifd0 = tags(tiff + u32(tiff + 4));
+  const exif = ifd0[0x8769] ? tags(tiff + u32(ifd0[0x8769] + 8)) : {};
+  const when = exif[0x9003] ? ascii(exif[0x9003]) : ifd0[0x0132] ? ascii(ifd0[0x0132]) : '';
+  const m = when.match(/(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const sub = exif[0x9291] ? ascii(exif[0x9291]).trim() : '';
+  const frac = /^\d+$/.test(sub) ? parseInt(sub, 10) / Math.pow(10, sub.length) : 0;
+  return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + Math.round(frac * 1000);
+}
+
+function clearRacePhotos() {
+  _raceUrls.forEach(u => URL.revokeObjectURL(u)); _raceUrls = new Map();
+  raceBursts = []; raceUntimed = []; raceDns = new Set(); raceSkip = new Set();
+  _raceReading++;
+  if (document.getElementById('race-review')) renderRace();
+}
+
+let _racePhotos = [];         // [{file, t}] of the photos dropped, in the order taken
+async function prepareRace() {
+  const files = [...uploadFolders.flatMap(f => f.files), ...looseFiles];
+  const reading = ++_raceReading;
+  _raceUrls.forEach(u => URL.revokeObjectURL(u)); _raceUrls = new Map();
+  raceBursts = []; raceUntimed = []; raceDns = new Set(); raceSkip = new Set();
+  const rv = document.getElementById('race-review');
+  rv.innerHTML = files.length ? `<div class="race-note">Reading when ${files.length} photos were taken…</div>` : '';
+  const timed = [];
+  for (let i = 0; i < files.length; i += 24) {
+    const part = files.slice(i, i + 24);
+    const ts = await Promise.all(part.map(readCaptureTime));
+    if (reading !== _raceReading) return;                   // another drop replaced these
+    part.forEach((f, k) => ts[k] === null ? raceUntimed.push(f) : timed.push({file: f, t: ts[k]}));
+  }
+  timed.sort((a, b) => a.t - b.t || a.file.name.localeCompare(b.file.name, undefined, {numeric: true}));
+  _racePhotos = timed;
+  groupRaceBursts();
+  renderRace(); updateUploadBtn();
+}
+
+function groupRaceBursts() {
+  raceBursts = [];
+  for (const p of _racePhotos) {
+    const last = raceBursts[raceBursts.length - 1];
+    if (last && p.t - last.end <= raceGap * 1000) { last.files.push(p.file); last.end = p.t; }
+    else raceBursts.push({files: [p.file], start: p.t, end: p.t});
+  }
+  raceSkip = new Set([...raceSkip].filter(i => i < raceBursts.length));
+}
+function setRaceGap(v) {
+  const n = Math.max(1, Math.min(120, parseFloat(v) || 8));
+  if (n === raceGap) return;
+  raceGap = n; raceSkip = new Set();
+  groupRaceBursts(); renderRace(); updateUploadBtn();
+}
+
+// Bursts to racers: in order, skipping racers who didn't race and bursts set aside
+function raceAssign() {
+  const active = raceRacers.filter(r => !raceDns.has(r.order));
+  const byRacer = new Map(), extra = [];
+  let k = 0;
+  raceBursts.forEach((b, i) => {
+    if (raceSkip.has(i)) return;
+    if (k < active.length) byRacer.set(active[k].order, i); else extra.push(i);
+    k++;
+  });
+  return {byRacer, extra};
+}
+
+function raceFolderName(r) {
+  // "Allmacher, Michael" + bib 12 -> "Allmacher Michael Bib 12" (sorts by last name in the studio and gallery)
+  const parts = r.name.includes(',') ? r.name.split(',').map(s => s.trim()) : [r.display];
+  const name = parts.filter(Boolean).join(' ').replace(/[\/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return `${name}${r.bib ? ' Bib ' + r.bib : ''}`.slice(0, 80);
+}
+function raceFolders() {
+  const {byRacer} = raceAssign();
+  return raceRacers.filter(r => byRacer.has(r.order))
+    .map(r => ({name: raceFolderName(r), files: raceBursts[byRacer.get(r.order)].files}));
+}
+
+function _raceThumb(f) {
+  if (!_raceUrls.has(f)) _raceUrls.set(f, URL.createObjectURL(f));
+  return _raceUrls.get(f);
+}
+function _fmtClock(ms) {
+  const d = new Date(ms);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:${String(d.getUTCSeconds()).padStart(2, '0')}`;
+}
+function _fmtPause(ms) { const s = Math.round(ms / 1000); return s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`; }
+
+function _burstThumbs(b, i) {
+  const show = b.files.slice(0, 4);
+  return `<div class="race-thumbs">${show.map(f => `<img src="${_raceThumb(f)}" alt="${esc(f.name)}" title="${esc(f.name)} (click to see it bigger)" onclick="raceViewBurst(${i}, ${b.files.indexOf(f)})">`).join('')}`
+    + `${b.files.length > 4 ? `<span class="race-more">+${b.files.length - 4}</span>` : ''}</div>`;
+}
+
+function renderRace() {
+  const sum = document.getElementById('race-list-summary');
+  const rv = document.getElementById('race-review');
+  if (!sum || !rv) return;
+  if (raceRacers.length) {
+    sum.innerHTML = `<b>${raceRacers.length} racers</b>${raceTitle ? ' · ' + esc(raceTitle) : ''} · first: #${esc(raceRacers[0].bib)} ${esc(raceRacers[0].display)}`;
+  } else {
+    sum.textContent = 'Choose the start list from the timing company (PDF), or paste one racer a line.';
+  }
+  if (!raceBursts.length && !raceUntimed.length) { rv.innerHTML = ''; return; }
+  if (!raceRacers.length) { rv.innerHTML = `<div class="race-warn">${raceBursts.length} bursts of photos found. Add the start list above to sort them.</div>`; return; }
+  const {byRacer, extra} = raceAssign();
+  const used = raceBursts.map((b, i) => i).filter(i => !raceSkip.has(i));
+  // A pause much longer than usual is pointed out (someone may not have raced, or the course was held)
+  const gaps = used.slice(1).map((i, k) => raceBursts[i].start - raceBursts[used[k]].start).sort((a, b) => a - b);
+  const typical = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 0;
+  const pauseBefore = {};
+  used.forEach((i, k) => { if (k) { const g = raceBursts[i].start - raceBursts[used[k - 1]].start; if (typical && g > typical * 1.6 && g - typical > 15000) pauseBefore[i] = g; } });
+  const photos = raceBursts.reduce((a, b) => a + b.files.length, 0);
+  const lastWith = Math.max(-1, ...raceRacers.map((r, n) => byRacer.has(r.order) ? n : -1));
+  const showTo = Math.min(raceRacers.length, Math.max(lastWith + 3, Math.min(raceRacers.length, 10)));
+  const nDns = raceDns.size;
+  let html = `<div class="race-head">
+      <span><b>${photos} photos</b> in <b>${raceBursts.length} bursts</b>${raceSkip.size ? ` · ${raceSkip.size} set aside` : ''}${nDns ? ` · ${nDns} didn't race` : ''}</span>
+      <label class="race-gap">New racer after a pause of <input type="number" id="race-gap" min="1" max="120" step="1" value="${raceGap}" onchange="setRaceGap(this.value)"> seconds</label>
+    </div>`;
+  if (raceUntimed.length) html += `<div class="race-warn">${raceUntimed.length} photo${raceUntimed.length === 1 ? ' has' : 's have'} no time it was taken, so ${raceUntimed.length === 1 ? "it isn't" : "they aren't"} sorted or uploaded: ${raceUntimed.slice(0, 6).map(f => esc(f.name)).join(', ')}${raceUntimed.length > 6 ? '…' : ''}</div>`;
+  if (extra.length) html += `<div class="race-warn">${extra.length} burst${extra.length === 1 ? '' : 's'} more than racers left on the list. ${extra.length === 1 ? "It's" : "They're"} at the bottom and won't upload. If the start list is right, check for a burst that isn't a racer (set it aside) or a racer marked "didn't race" by mistake.</div>`;
+  html += '<div class="race-rows">';
+  raceRacers.slice(0, showTo).forEach(r => {
+    const dns = raceDns.has(r.order), bi = byRacer.get(r.order);
+    const b = bi !== undefined ? raceBursts[bi] : null;
+    html += `<div class="race-row${dns ? ' dns' : ''}${b ? '' : ' empty'}">
+      <span class="race-st">${r.order}</span>
+      <span class="race-who"><b>${esc(r.display)}</b><span>Bib ${esc(r.bib)}${r.cls ? ' · ' + esc(r.cls) : ''}</span></span>
+      <span class="race-photos">${dns ? '<span class="race-dim">Didn\'t race</span>'
+        : b ? `${pauseBefore[bi] ? `<span class="race-pause">Longer pause before (${_fmtPause(pauseBefore[bi])}). If someone didn't race, mark them.</span>` : ''}${_burstThumbs(b, bi)}<span class="race-meta">${b.files.length} photo${b.files.length === 1 ? '' : 's'} · ${_fmtClock(b.start)} <button type="button" class="race-link" onclick="raceSetAside(${bi})">Not a racer</button></span>`
+        : '<span class="race-dim">No photos</span>'}</span>
+      <button type="button" class="pose-tbtn race-dns-btn" onclick="raceToggleDns(${r.order})" aria-pressed="${dns}">${dns ? 'Raced after all' : "Didn't race"}</button>
+    </div>`;
+  });
+  html += '</div>';
+  if (showTo < raceRacers.length) html += `<div class="race-note">${raceRacers.length - showTo} more racers on the list after this.</div>`;
+  if (extra.length) {
+    html += `<div class="race-sub">No racer left (not uploaded)</div><div class="race-aside">${extra.map(i => `<div class="race-aside-item">${_burstThumbs(raceBursts[i], i)}<span class="race-meta">${raceBursts[i].files.length} photos · ${_fmtClock(raceBursts[i].start)}</span></div>`).join('')}</div>`;
+  }
+  if (raceSkip.size) {
+    html += `<div class="race-sub">Set aside: not a racer (not uploaded)</div><div class="race-aside">${[...raceSkip].sort((a, b) => a - b).map(i => `<div class="race-aside-item">${_burstThumbs(raceBursts[i], i)}<span class="race-meta">${raceBursts[i].files.length} photos · ${_fmtClock(raceBursts[i].start)} <button type="button" class="race-link" onclick="racePutBack(${i})">Put back</button></span></div>`).join('')}</div>`;
+  }
+  rv.innerHTML = html;
+}
+
+function raceToggleDns(order) { raceDns.has(order) ? raceDns.delete(order) : raceDns.add(order); renderRace(); updateUploadBtn(); }
+function raceSetAside(i) { raceSkip.add(i); renderRace(); updateUploadBtn(); }
+function racePutBack(i) { raceSkip.delete(i); renderRace(); updateUploadBtn(); }
+
+// A bigger look at a burst's photos (to check a bib or a suit): click to go through them
+function raceViewBurst(i, k) {
+  const b = raceBursts[i]; if (!b) return;
+  let el = document.getElementById('race-view');
+  if (!el) {
+    el = document.createElement('div'); el.id = 'race-view'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true');
+    el.innerHTML = '<img alt=""><div class="race-view-cap"></div><button type="button" class="race-view-close" aria-label="Close">Close</button>';
+    document.body.appendChild(el);
+    el.addEventListener('click', e => { if (e.target === el || e.target.classList.contains('race-view-close')) el.classList.remove('open'); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') el.classList.remove('open'); });
+  }
+  const show = n => {
+    const f = b.files[(n + b.files.length) % b.files.length];
+    el.querySelector('img').src = _raceThumb(f);
+    el.querySelector('.race-view-cap').textContent = `${f.name} · photo ${(n + b.files.length) % b.files.length + 1} of ${b.files.length} · click the photo for the next`;
+    el.querySelector('img').onclick = () => show(n + 1);
+  };
+  show(k);
+  el.classList.add('open');
 }

@@ -356,7 +356,8 @@ async def api_set_folder_item_list(request: Request):
 # Studio uploads: only photo files, and the date, location and family folder name can only
 # name a folder (no slashes), so every upload lands in images/<date>/<location>[/<family>]/.
 # Winter action photos ignore the folder (the location is chosen at upload); portrait families
-# each get their own folder. File names are kept exactly as they are: poses are matched by them.
+# each get their own folder, and so does each racer of a race (sorted by the start list).
+# File names are kept exactly as they are: poses are matched by them.
 UPLOAD_EXTENSIONS = (".jpg", ".jpeg", ".png")
 _UPLOAD_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
@@ -381,6 +382,29 @@ def _is_upload_photo(name: str) -> bool:
     return name.lower().endswith(UPLOAD_EXTENSIONS)
 
 
+@router.post("/api/admin/upload/start-list")
+async def admin_upload_start_list(request: Request):
+    """A race's start list (the timing PDF, or pasted / text-file racers): the racers in start order."""
+    if not main._upload_allowed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    from core.race import parse_start_list, pdf_text, title_of
+    data = await request.body()
+    if len(data) > 8 * 1024 * 1024:
+        return JSONResponse(status_code=413, content={"error": "That file is too big for a start list"})
+    if data[:5] == b"%PDF-":
+        try:
+            text = await run_in_threadpool(pdf_text, data)
+        except Exception:
+            return JSONResponse(status_code=400, content={"error": "Couldn't read that PDF"})
+    else:
+        text = data.decode("utf-8", errors="replace")
+    racers = parse_start_list(text)
+    if not racers:
+        return JSONResponse(status_code=400, content={
+            "error": "No racers found. Use the timing company's start list PDF, or paste one racer a line (bib and name)."})
+    return {"title": title_of(text) if data[:5] == b"%PDF-" else "", "racers": racers}
+
+
 @router.post("/api/admin/upload/presign")
 async def admin_upload_presign(request: Request):
     if not main._upload_allowed(request):
@@ -392,7 +416,7 @@ async def admin_upload_presign(request: Request):
     if not date or not location or not files:
         return JSONResponse(status_code=400, content={"error": "Missing date, location, or files"})
     is_portrait = main._is_portrait_location(location)
-    folder      = body.get("folder", "").strip() if is_portrait else ""
+    folder      = body.get("folder", "").strip() if is_portrait or body.get("race") else ""
     problem = _upload_names_problem(date, location, folder)
     if problem:
         return JSONResponse(status_code=400, content={"error": problem})
@@ -449,7 +473,8 @@ async def admin_upload_index(request: Request):
     if not date or not location or not keys:
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
     is_portrait = main._is_portrait_location(location)
-    folder   = body.get("folder", "").strip() if is_portrait else ""
+    # A race keeps a folder per racer (sorted by the start list); other action photos go by location
+    folder   = body.get("folder", "").strip() if is_portrait or body.get("race") else ""
     problem = _upload_names_problem(date, location, folder)
     if problem:
         return JSONResponse(status_code=400, content={"error": problem})

@@ -16,10 +16,37 @@
   </div>
   <div class="field" id="upload-location-wrap" style="display:none;margin-top:.6rem">
     <label>Location</label>
-    <select id="upload-location" onchange="renderDetectedFolders();updateUploadBtn();scanUploadLabels()">
+    <select id="upload-location" onchange="updateRaceToggle();renderDetectedFolders();updateUploadBtn();scanUploadLabels()">
       <option value="">Select location…</option>
     </select>
   </div>
+  <!-- Race: the photos go into one folder per racer, by the start list (static/upload.js "Race") -->
+  <label id="race-toggle-wrap" class="race-toggle" style="display:none">
+    <input type="checkbox" id="race-toggle" onchange="setRaceMode(this.checked)">
+    <span><b>Race</b>: sort the photos into a folder for each racer, using the start list</span>
+  </label>
+  <div id="race-panel" style="display:none">
+    <div class="race-step">
+      <div class="race-step-title">Start list</div>
+      <div id="race-list-summary" class="race-note">Choose the start list from the timing company (PDF), or paste one racer a line.</div>
+      <div class="race-list-row">
+        <button type="button" class="pose-tbtn primary" onclick="document.getElementById('race-file').click()">Choose start list</button>
+        <button type="button" class="pose-tbtn" onclick="toggleRacePaste()">Paste a list</button>
+      </div>
+      <input type="file" id="race-file" accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv" style="display:none"
+        onchange="loadStartListFile(this.files[0]);this.value=''">
+      <div id="race-paste-wrap" style="display:none">
+        <textarea id="race-paste" rows="5" aria-label="Start list" placeholder="One racer a line, in start order: bib and name&#10;12 Allmacher, Michael&#10;3 Talla, Russell"></textarea>
+        <button type="button" class="pose-tbtn primary" onclick="loadStartListText()">Use this list</button>
+      </div>
+    </div>
+    <div class="race-step">
+      <div class="race-step-title">Photos (one run at a time)</div>
+      <div class="race-note">Drop the run's photos below. They're put in the order they were taken, and each burst goes to the next racer on the list. Mark anyone who didn't race, and everyone after them moves up one.</div>
+    </div>
+    <div id="race-review"></div>
+  </div>
+
   <div id="folder-name-field" style="display:none" class="field">
     <label>Folder Name (last name / group)</label>
     <input id="upload-folder-name" placeholder="e.g. Smith" autocomplete="off">

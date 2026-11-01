@@ -86,3 +86,52 @@
 .choice-list{margin:.2rem 0 0;padding-left:1.1rem;font-size:.82rem;color:rgba(255,255,255,.75);line-height:1.6;max-height:40vh;overflow:auto}
 .choice-text{font-size:.86rem;color:rgba(255,255,255,.8);line-height:1.5}
 .pose-empty-hint{font-size:.76rem;color:rgba(255,255,255,.28);text-align:center;padding:.75rem 0}
+
+/* Race: start list, then each racer's burst of photos */
+.race-toggle{display:flex;align-items:flex-start;gap:.55rem;margin:.7rem 0 .2rem;font-size:.84rem;color:rgba(255,255,255,.8);cursor:pointer;line-height:1.4}
+.race-toggle input{margin-top:.2rem;accent-color:#F5C518;width:15px;height:15px;flex-shrink:0}
+.race-toggle b{color:#F5C518}
+#race-panel{margin:.6rem 0 .9rem;padding:.9rem 1rem;border:1px solid rgba(245,197,24,.28);border-radius:10px;background:rgba(245,197,24,.035)}
+.race-step{margin-bottom:.85rem}
+.race-step-title{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:.35rem}
+.race-note{font-size:.78rem;color:rgba(255,255,255,.5);line-height:1.5;margin-bottom:.45rem}
+.race-note b{color:rgba(255,255,255,.85)}
+.race-list-row{display:flex;gap:.45rem;flex-wrap:wrap}
+#race-paste-wrap{margin-top:.5rem;display:flex;flex-direction:column;gap:.45rem;align-items:flex-start}
+#race-paste{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:#fff;
+  font-family:inherit;font-size:.84rem;padding:.55rem .7rem;outline:none;resize:vertical}
+#race-paste:focus{border-color:#F5C518}
+.race-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;font-size:.8rem;color:rgba(255,255,255,.65);margin:.2rem 0 .55rem}
+.race-head b{color:#fff}
+.race-gap{font-size:.76rem;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:.35rem}
+.race-gap input{width:3.4rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.16);border-radius:6px;color:#fff;padding:.2rem .35rem;font-size:.8rem}
+.race-warn{font-size:.78rem;line-height:1.5;color:#f5b26b;background:rgba(224,122,31,.12);border:1px solid rgba(224,122,31,.45);border-radius:7px;padding:.45rem .65rem;margin-bottom:.55rem}
+.race-rows{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.07)}
+.race-row{display:grid;grid-template-columns:2rem minmax(8rem,12rem) minmax(0,1fr) auto;gap:.65rem;align-items:center;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.07)}
+.race-row.dns{opacity:.55}
+.race-st{font-size:.8rem;color:rgba(255,255,255,.4);text-align:right;font-variant-numeric:tabular-nums}
+.race-who{display:flex;flex-direction:column;font-size:.85rem;color:#fff;min-width:0}
+.race-who span{font-size:.72rem;color:rgba(255,255,255,.45)}
+.race-photos{display:flex;flex-direction:column;gap:.3rem;min-width:0}
+.race-thumbs{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.race-thumbs img{width:78px;height:52px;object-fit:cover;border-radius:4px;cursor:zoom-in;background:#111;display:block}
+.race-more{font-size:.72rem;color:rgba(255,255,255,.5);padding:0 .2rem}
+.race-meta{font-size:.72rem;color:rgba(255,255,255,.45)}
+.race-dim{font-size:.78rem;color:rgba(255,255,255,.35)}
+.race-pause{font-size:.72rem;color:#f5b26b}
+.race-link{background:none;border:none;color:rgba(255,255,255,.55);text-decoration:underline;font-size:.72rem;cursor:pointer;padding:0;margin-left:.4rem;font-family:inherit}
+.race-link:hover{color:#fff}
+.race-dns-btn{white-space:nowrap}
+.race-row.dns .race-dns-btn{opacity:1}
+.race-sub{font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:.9rem 0 .4rem}
+.race-aside{display:flex;flex-wrap:wrap;gap:.8rem}
+.race-aside-item{display:flex;flex-direction:column;gap:.25rem}
+#race-view{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:900;display:none;flex-direction:column;align-items:center;justify-content:center;gap:.6rem;padding:1rem}
+#race-view.open{display:flex}
+#race-view img{max-width:94vw;max-height:84vh;object-fit:contain;border-radius:4px;cursor:pointer}
+.race-view-cap{font-size:.8rem;color:rgba(255,255,255,.7)}
+.race-view-close{position:absolute;top:1rem;right:1rem;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:7px;padding:.35rem .8rem;cursor:pointer;font-family:inherit}
+@media (max-width:640px){
+  .race-row{grid-template-columns:1.6rem minmax(0,1fr);}
+  .race-photos,.race-dns-btn{grid-column:2}
+}
