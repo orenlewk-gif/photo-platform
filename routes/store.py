@@ -1,4 +1,4 @@
-"""Routes: store mode (/store), the in-store screens where customers browse the gallery and heart
+"""Routes: store mode (/s/<random>), the in-store screens where customers browse the gallery and heart
 their favorite photos. The same gallery page as the website, with no prices, shop or watermarks.
 
 Only approved store screens get in (see "Store screens" in main.py): any other device sees a
@@ -19,45 +19,61 @@ router = APIRouter()
 _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
-_STORE_ASSETS = ('<link rel="manifest" href="/store/manifest.json">\n'
-                 '<link rel="stylesheet" href="/static/store-mode.css?v=10">\n'
-                 '<script src="/static/store-mode.js?v=10"></script>')
+_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=11">\n'
+                 '<script src="/static/store-mode.js?v=11"></script>')
+
+
+def _not_found():
+    # The same answer as any address that doesn't exist (store mode's address is random)
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 
 def _store_page() -> str:
     html = open("templates/index.html").read()
     if _STORE_MARK not in html:
         raise RuntimeError("templates/index.html is missing the store-mode mark")
+    home = main._device_home("store")
     # The promo lines' numbers come from the same settings the sale uses, so they stay true;
     # partner programs with an open page (Eagle Mount) get a header button to their store page
     promo = {"print_off": main.PRINT_WITH_DIGITAL_PCT,
              "partners": [{"name": p["name"], "slug": p["slug"]} for p in main._load_partners()
                           if p.get("slug") and p.get("password")]}
-    additions = f'<script>window.STORE_MODE = true; window.STORE_PROMO = {json.dumps(promo)};</script>\n' + _STORE_ASSETS
+    additions = (f'<script>window.STORE_MODE = true; window.STORE_HOME = {json.dumps(home)}; '
+                 f'window.STORE_PROMO = {json.dumps(promo)};</script>\n'
+                 f'<link rel="manifest" href="{home}/manifest.json">\n' + _STORE_ASSETS)
     return html.replace(_STORE_MARK, additions, 1)
 
 
-@router.get("/store", response_class=HTMLResponse)
-def store_page(request: Request, background: BackgroundTasks):
+def _store_locked(request: Request, background: BackgroundTasks):
+    background.add_task(main._note_blocked_store_visit, main._request_info(request))
+    return HTMLResponse(open("templates/store_locked.html").read(), status_code=403, headers=_NO_INDEX)
+
+
+@router.get("/s/{path}", response_class=HTMLResponse)
+def store_page(path: str, request: Request, background: BackgroundTasks):
+    if not main._is_device_path("store", path):
+        return _not_found()
     screen = main._store_screen(request)
     if screen:
         background.add_task(main._touch_store_screen, screen[0])
         return HTMLResponse(_store_page(), headers=_NO_INDEX)
     if main._admin_authed(request):
         return HTMLResponse(_store_page(), headers=_NO_INDEX)
-    background.add_task(main._note_blocked_store_visit, main._request_info(request))
-    return HTMLResponse(open("templates/store_locked.html").read(), status_code=403, headers=_NO_INDEX)
+    return _store_locked(request, background)
 
 
-@router.get("/store/manifest.json")
-def store_manifest():
+@router.get("/s/{path}/manifest.json")
+def store_manifest(path: str):
     """Lets Chrome install store mode as an app (its own window and Dock icon), like the POS and the
-    Upload Station. Registered before /store/<partner> so this address isn't taken for a partner."""
+    Upload Station. Registered before /s/<path>/<partner> so this address isn't taken for a partner."""
+    if not main._is_device_path("store", path):
+        return _not_found()
+    home = main._device_home("store")
     return JSONResponse({
         "name": "Crystal Images Store",
         "short_name": "CI Store",
-        "start_url": "/store",
-        "scope": "/store",
+        "start_url": home,
+        "scope": home,
         "display": "standalone",
         "background_color": "#093A52",
         "theme_color": "#093A52",
@@ -74,20 +90,23 @@ def store_manifest():
 # No downloads on the store screen itself and no checkout; prints are bought at the counter.
 
 def _store_partner_header(p: dict) -> str:
-    return """<header class="st-head">
-  <a class="st-logo" href="/store" aria-label="Back to the store photos"><img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="Crystal Images"></a>
+    home = main._device_home("store")
+    return f"""<header class="st-head">
+  <a class="st-logo" href="{home}" aria-label="Back to the store photos"><img src="https://bigskyphotos.com/wp-content/uploads/2026/05/New-Logo-Transparent.png" alt="Crystal Images"></a>
   <div class="st-title"></div>
   <nav class="st-tools" aria-label="Store">
-    <a class="st-btn" href="/store">All photos</a>
+    <a class="st-btn" href="{home}">All photos</a>
     <button type="button" class="st-btn" onclick="storeStartOver()">Start over</button>
   </nav>
 </header>"""
 
 
-@router.get("/store/{slug}", response_class=HTMLResponse)
-def store_partner_page(slug: str, request: Request, background: BackgroundTasks):
+@router.get("/s/{path}/{slug}", response_class=HTMLResponse)
+def store_partner_page(path: str, slug: str, request: Request, background: BackgroundTasks):
+    if not main._is_device_path("store", path):
+        return _not_found()
     if not main._store_page_allowed(request):
-        return store_page(request, background)                  # the locked screen (and the owner is told)
+        return _store_locked(request, background)               # the locked screen (and the owner is told)
     p = main._partner_by_slug(slug)
     if not p or not p.get("password"):                          # the program's page is closed
         return HTMLResponse(main._pkg_error("This page isn't available.", 404), status_code=404, headers=_NO_INDEX)
@@ -126,7 +145,10 @@ def store_partner_send(slug: str, request: Request, background: BackgroundTasks,
 
 @router.post("/api/store/request")
 def store_request(request: Request, body: dict = Body(...)):
-    """A screen that isn't approved asks for access: the owner is emailed a code for it."""
+    """A screen that isn't approved asks for access: the owner is emailed a code for it. Only from
+    store mode's own address (anyone else can't even ask)."""
+    if not main._is_device_path("store", str(body.get("path") or "")):
+        return _not_found()
     if main._store_page_allowed(request):
         return {"approved": True}
     name = " ".join(str(body.get("name") or "").split())

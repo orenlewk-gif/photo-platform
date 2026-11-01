@@ -52,8 +52,17 @@ def photos(main_module, live_photos):
     main_module._preview_ip_limiter._calls.clear()
 
 
+def _home(main_module):
+    return main_module._device_home("store")
+
+
+def _path(main_module):
+    return main_module._device_path("store")
+
+
 def _approve(c, emails, name="Front counter iMac"):
-    r = c.post("/api/store/request", json={"name": name})
+    import main as main_module
+    r = c.post("/api/store/request", json={"name": name, "path": _path(main_module)})
     assert r.status_code == 200 and r.json()["challenge"], r.text
     assert emails[-1][0] == name and len(emails[-1][1]) == 6
     return c.post("/api/store/verify", json={"challenge": r.json()["challenge"], "code": emails[-1][1]})
@@ -61,18 +70,18 @@ def _approve(c, emails, name="Front counter iMac"):
 
 def test_a_device_that_isnt_approved_sees_the_locked_screen_and_the_owner_is_told(main_module, emails):
     c = TestClient(main_module.app)
-    r = c.get("/store")
+    r = c.get(_home(main_module))
     assert r.status_code == 403 and "isn't approved for store mode" in r.text
     assert "STORE_MODE" not in r.text and r.headers["x-robots-tag"].startswith("noindex")
     assert emails == [("", "")]
-    c.get("/store")                                      # one email per address an hour
+    c.get(_home(main_module))                                      # one email per address an hour
     assert emails == [("", "")]
 
 
 def test_asking_for_access_needs_a_name(main_module, emails):
     c = TestClient(main_module.app)
-    assert c.post("/api/store/request", json={"name": "  "}).status_code == 400
-    assert c.post("/api/store/request", json={"name": "x" * 41}).status_code == 400
+    assert c.post("/api/store/request", json={"name": "  ", "path": _path(main_module)}).status_code == 400
+    assert c.post("/api/store/request", json={"name": "x" * 41, "path": _path(main_module)}).status_code == 400
     assert emails == []
 
 
@@ -81,7 +90,7 @@ def test_the_emailed_code_approves_the_screen_under_its_name(main_module, emails
     r = _approve(c, emails)
     assert r.status_code == 200 and r.json()["name"] == "Front counter iMac"
     assert main_module.STORE_SCREEN_COOKIE in c.cookies
-    page = c.get("/store")
+    page = c.get(_home(main_module))
     assert page.status_code == 200 and "window.STORE_MODE = true" in page.text and "/static/store-mode.js" in page.text
     screens = admin_client.get("/api/admin/store-screens").json()["screens"]
     assert [s["name"] for s in screens] == ["Front counter iMac"] and screens[0]["last_used"]
@@ -89,7 +98,7 @@ def test_the_emailed_code_approves_the_screen_under_its_name(main_module, emails
 
 def test_wrong_codes_run_out(main_module, emails):
     c = TestClient(main_module.app)
-    challenge = c.post("/api/store/request", json={"name": "Kiosk"}).json()["challenge"]
+    challenge = c.post("/api/store/request", json={"name": "Kiosk", "path": _path(main_module)}).json()["challenge"]
     wrong = "000000" if emails[-1][1] != "000000" else "111111"
     for _ in range(main_module.LOGIN_CODE_TRIES - 1):
         assert c.post("/api/store/verify", json={"challenge": challenge, "code": wrong}).json()["error"] == "Incorrect code"
@@ -102,12 +111,12 @@ def test_wrong_codes_run_out(main_module, emails):
 
 def test_asking_for_codes_is_limited(main_module, emails):
     c = TestClient(main_module.app)
-    codes = [c.post("/api/store/request", json={"name": "Kiosk"}).status_code for _ in range(4)]
+    codes = [c.post("/api/store/request", json={"name": "Kiosk", "path": _path(main_module)}).status_code for _ in range(4)]
     assert codes == [200, 200, 200, 429] and len(emails) == 3
 
 
-def test_the_owner_signed_in_to_the_studio_can_look_at_store_mode(admin_client, emails):
-    r = admin_client.get("/store")
+def test_the_owner_signed_in_to_the_studio_can_look_at_store_mode(admin_client, emails, main_module):
+    r = admin_client.get(_home(main_module))
     assert r.status_code == 200 and "window.STORE_MODE = true" in r.text
     assert emails == []
 
@@ -125,7 +134,7 @@ def test_renaming_and_removing_a_screen(main_module, emails, admin_client):
     assert admin_client.put(f"/api/admin/store-screens/{sid}", json={"name": "Back wall"}).status_code == 200
     assert admin_client.get("/api/admin/store-screens").json()["screens"][0]["name"] == "Back wall"
     assert admin_client.delete(f"/api/admin/store-screens/{sid}").status_code == 200
-    assert c.get("/store").status_code == 403                # locked out again
+    assert c.get(_home(main_module)).status_code == 403                # locked out again
     assert TestClient(main_module.app).get("/api/admin/store-screens").status_code == 401
 
 
@@ -289,13 +298,27 @@ def test_codes_last_until_the_end_of_the_day(main_module, emails, sends, client)
 
 def test_the_promo_number_is_the_one_checkout_uses(admin_client, main_module, monkeypatch):
     # The page says what the sale does: change the setting and the promo follows
-    assert 'window.STORE_PROMO = {"print_off": 50,' in admin_client.get("/store").text
+    assert 'window.STORE_PROMO = {"print_off": 50,' in admin_client.get(_home(main_module)).text
     monkeypatch.setattr(main_module, "PRINT_WITH_DIGITAL_PCT", 40)
-    assert 'window.STORE_PROMO = {"print_off": 40,' in admin_client.get("/store").text
+    assert 'window.STORE_PROMO = {"print_off": 40,' in admin_client.get(_home(main_module)).text
 
 
 def test_store_mode_can_be_installed_as_an_app(main_module, emails, admin_client, client):
-    m = client.get("/store/manifest.json").json()
-    assert m["start_url"] == "/store" and m["display"] == "standalone" and m["icons"]
-    assert '<link rel="manifest" href="/store/manifest.json">' in admin_client.get("/store").text
-    assert "manifest" not in client.get("/store").text          # the locked screen gives nothing away
+    home = _home(main_module)
+    m = client.get(f"{home}/manifest.json").json()
+    assert m["start_url"] == home and m["display"] == "standalone" and m["icons"]
+    assert f'<link rel="manifest" href="{home}/manifest.json">' in admin_client.get(home).text
+    assert "manifest" not in client.get(_home(main_module)).text          # the locked screen gives nothing away
+
+
+
+def test_store_mode_lives_at_its_random_address(main_module, emails, admin_client, client):
+    assert client.get("/store").status_code == 404 and client.get("/s/guess").status_code == 404
+    assert client.get("/s/guess").json() == client.get("/no-such-page/at-all").json()
+    assert emails == []                                          # wrong addresses don't email the owner
+    assert client.post("/api/store/request", json={"name": "Kiosk", "path": "guess"}).status_code == 404
+    page = admin_client.get(_home(main_module)).text
+    assert f'window.STORE_HOME = "{_home(main_module)}"' in page
+    old = _home(main_module)
+    admin_client.post("/api/admin/device-links/store/new")
+    assert admin_client.get(old).status_code == 404 and admin_client.get(_home(main_module)).status_code == 200

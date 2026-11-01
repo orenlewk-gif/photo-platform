@@ -1348,26 +1348,46 @@ def _upload_allowed(request: Request) -> bool:
     return _uploader(request) is not None
 
 
-def _upload_station_path() -> str:
-    """The random part of the station's address (/u/<this>), made the first time it's needed."""
+# ── Device links: the random addresses of the shop's own pages ─────────────────────────────────
+# The Upload Station (/u/), store mode (/s/) and the POS (/p/) each live at a random address, made
+# the first time it's needed and changeable in Settings > Security ("New link": the old one stops
+# working, approved devices stay approved). Any other address under them is a plain "not found",
+# so the pages can't be stumbled on. Approval (codes emailed to the owner, PINs) still guards them.
+DEVICE_LINKS = {"station": ("upload_station_path", "/u/"),
+                "store":   ("store_path", "/s/"),
+                "pos":     ("pos_path", "/p/")}
+
+
+def _device_path(kind: str) -> str:
+    """The random part of a device page's address (/u/<this>, /s/<this>, /p/<this>)."""
+    key = DEVICE_LINKS[kind][0]
     d = _load_admin_auth()
-    if d.get("upload_station_path"):
-        return d["upload_station_path"]
-    return _new_upload_station_path()
+    if d.get(key):
+        return d[key]
+    return _new_device_path(kind)
 
 
-def _new_upload_station_path() -> str:
-    """A new random address for the station; the old one stops working (approved computers stay
-    approved, they just need the new link)."""
+def _new_device_path(kind: str) -> str:
+    """A new random address for that page; the old one stops working."""
+    key = DEVICE_LINKS[kind][0]
     d = _load_admin_auth()
     with _admin_auth_lock:
-        d["upload_station_path"] = secrets.token_urlsafe(18)
+        d[key] = secrets.token_urlsafe(18)
         _save_admin_auth(d)
-    return d["upload_station_path"]
+    return d[key]
 
 
-def _is_upload_station_path(slug: str) -> bool:
-    return hmac.compare_digest(str(slug or "").encode(), _upload_station_path().encode())
+def _is_device_path(kind: str, slug: str) -> bool:
+    return hmac.compare_digest(str(slug or "").encode(), _device_path(kind).encode())
+
+
+def _device_home(kind: str) -> str:
+    """The page's address on this site, e.g. /s/<random>."""
+    return DEVICE_LINKS[kind][1] + _device_path(kind)
+
+
+def _device_link(kind: str) -> str:
+    return SITE_URL + _device_home(kind)
 
 
 def _approve_upload_station(name: str, info: dict) -> str:
@@ -5926,6 +5946,9 @@ app.include_router(_routes_upload_station.router)
 
 from routes import races as _routes_races  # noqa: E402
 app.include_router(_routes_races.router)
+
+from routes import device_links as _routes_device_links  # noqa: E402
+app.include_router(_routes_device_links.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

@@ -1,5 +1,6 @@
 """Routes: pos. Moved from main.py unchanged; shared helpers still live in main.py."""
 import hmac
+import json
 import secrets
 import time as _time
 from datetime import datetime
@@ -300,17 +301,53 @@ async def api_pos_unlock(request: Request):
     return JSONResponse(status_code=401, content={"ok": False, "error": "Incorrect passcode"})
 
 
+# The POS lives at a random address (/p/<random>, Settings > Security), like the store screens and
+# the Upload Station. Square still sends finished card payments back to /pos (the address
+# registered with Square), so /pos opens the POS only for that return (Square's `data` or `sq`);
+# anything else there is a plain "not found". The return page learns the POS's own address only on
+# an approved POS device (Square often finishes the sale in Safari, which works without it).
+_POS_MANIFEST_LINK = '<link rel="manifest" href="/pos/manifest.json">'
+
+
+def _pos_page(home: str) -> str:
+    html = open("templates/pos.html").read()
+    if _POS_MANIFEST_LINK not in html:
+        raise RuntimeError("templates/pos.html is missing its manifest link")
+    head = (f'<link rel="manifest" href="{home}/manifest.json">\n'
+            f'<script>window.POS_HOME = {json.dumps(home)};</script>') if home else ""
+    return html.replace(_POS_MANIFEST_LINK, head, 1)
+
+
+def _not_found():
+    return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+
+@router.get("/p/{path}", response_class=HTMLResponse)
+def pos_page(path: str):
+    if not main._is_device_path("pos", path):
+        return _not_found()
+    return HTMLResponse(_pos_page(main._device_home("pos")), headers={"X-Robots-Tag": "noindex, nofollow"})
+
+
 @router.get("/pos", response_class=HTMLResponse)
-def pos_page():
-    return HTMLResponse(open("templates/pos.html").read())
+def pos_square_return(request: Request):
+    """Square's return after a card payment (the address registered with Square)."""
+    if "data" not in request.query_params and "sq" not in request.query_params:
+        return _not_found()
+    home = main._device_home("pos") if main._pos_device_approved(request) else ""
+    return HTMLResponse(_pos_page(home), headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
 
 
-@router.get("/pos/manifest.json")
-def pos_manifest():
+@router.get("/p/{path}/manifest.json")
+def pos_manifest(path: str):
+    if not main._is_device_path("pos", path):
+        return _not_found()
+    home = main._device_home("pos")
     return JSONResponse({
         "name": "Crystal Images POS",
         "short_name": "CI POS",
-        "start_url": "/pos",
+        "start_url": home,
+        "scope": home,
         "display": "standalone",
         "background_color": "#082f44",
         "theme_color": "#082f44",

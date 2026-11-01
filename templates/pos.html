@@ -4978,7 +4978,8 @@ function buildReceiptNotes(){
 }
 
 // Square Point of Sale API (iOS web): the sale is handed to the Square app, which takes
-// the tip and payment, then returns to /pos with the result in a `data` parameter.
+// the tip and payment, then returns to /pos with the result in a `data` parameter (/pos only
+// answers that return; the POS itself lives at its random address, routes/pos.py).
 const SQUARE_MIN_CHARGE = 1.00;      // Square rejects smaller amounts — use Comp instead
 let _squareSkipCustomer = false;     // set when Square couldn't attach the customer last time
 
@@ -5134,7 +5135,7 @@ function readSquareResult(params){
 function checkSquareReturn(){
   const params = new URLSearchParams(window.location.search);
   if(!params.has('data') && !params.has('sq')) return false;
-  window.history.replaceState({}, '', '/pos');
+  window.history.replaceState({}, '', window.POS_HOME || '/pos');   // back to the POS's own address
 
   const result = readSquareResult(params);
   let saved = null;

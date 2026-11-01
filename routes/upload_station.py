@@ -38,7 +38,7 @@ def _station_page(path: str, name: str) -> str:
 
 @router.get("/u/{path}", response_class=HTMLResponse)
 def station_page(path: str, request: Request, background: BackgroundTasks):
-    if not main._is_upload_station_path(path):
+    if not main._is_device_path("station", path):
         return _not_found()
     station = main._upload_station(request)
     if station:
@@ -52,7 +52,7 @@ def station_page(path: str, request: Request, background: BackgroundTasks):
 @router.get("/u/{path}/manifest.json")
 def station_manifest(path: str):
     """Lets Chrome install the station as an app (its own window and Dock icon), like the POS."""
-    if not main._is_upload_station_path(path):
+    if not main._is_device_path("station", path):
         return _not_found()
     return JSONResponse({
         "name": "Crystal Images Upload Station",
@@ -75,7 +75,7 @@ def station_manifest(path: str):
 def station_request(request: Request, body: dict = Body(...)):
     """A computer that isn't approved asks for access: the owner is emailed a code for it.
     Only from the station's own address (anyone else can't even ask)."""
-    if not main._is_upload_station_path(str(body.get("path") or "")):
+    if not main._is_device_path("station", str(body.get("path") or "")):
         return _not_found()
     if main._upload_station(request):
         return {"approved": True}
@@ -249,17 +249,7 @@ def admin_upload_stations(request: Request):
     stations = [{"id": k[:16], "name": v.get("name", ""), "describe": v.get("describe", ""),
                  "approved": v.get("approved", ""), "last_used": v.get("last_used", ""), "ip": v.get("ip", "")}
                 for k, v in main._load_admin_auth()["upload_stations"].items() if v.get("expires", "") > now]
-    return {"stations": sorted(stations, key=lambda x: x["approved"], reverse=True),
-            "link": f"{main.SITE_URL}/u/{main._upload_station_path()}"}
-
-
-@router.post("/api/admin/upload-stations/new-link")
-def admin_upload_station_new_link(request: Request):
-    """A new random address for the station (if the old link got out). Approved computers stay
-    approved; they open the new link once."""
-    if not main._admin_authed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    return {"link": f"{main.SITE_URL}/u/{main._new_upload_station_path()}"}
+    return {"stations": sorted(stations, key=lambda x: x["approved"], reverse=True)}
 
 
 def _station_key(d: dict, station_id: str) -> str | None:

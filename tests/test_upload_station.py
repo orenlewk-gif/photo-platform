@@ -53,7 +53,7 @@ def fresh_list(live_photos):
 
 
 def _path(main_module):
-    return main_module._upload_station_path()
+    return main_module._device_path("station")
 
 
 def _approve(c, main_module, emails, name="Office iMac"):
@@ -103,7 +103,8 @@ def test_the_emailed_code_approves_the_computer(main_module, emails, admin_clien
     assert "<!--upload-form-->" not in page.text
     listed = admin_client.get("/api/admin/upload-stations").json()
     assert [s["name"] for s in listed["stations"]] == ["Office iMac"]
-    assert listed["link"].endswith(f"/u/{_path(main_module)}")
+    links = {l["kind"]: l["link"] for l in admin_client.get("/api/admin/device-links").json()["links"]}
+    assert links["station"].endswith(f"/u/{_path(main_module)}")
 
 
 def test_wrong_codes_run_out(main_module, emails):
@@ -199,7 +200,7 @@ def test_todays_photos_go_to_the_trash_and_come_back(main_module, emails):
 def test_a_new_link_retires_the_old_one(main_module, emails, admin_client):
     c = _approve(TestClient(main_module.app), main_module, emails)
     old = _path(main_module)
-    new = admin_client.post("/api/admin/upload-stations/new-link").json()["link"]
+    new = admin_client.post("/api/admin/device-links/station/new").json()["link"]
     assert c.get(f"/u/{old}").status_code == 404
     assert new.endswith(f"/u/{_path(main_module)}") and c.get(f"/u/{_path(main_module)}").status_code == 200
 

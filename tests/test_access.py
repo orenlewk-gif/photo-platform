@@ -18,7 +18,7 @@ BUCKET = "test-bucket"
 # test_every_other_address_refuses_visitors until it's added here on purpose.
 PUBLIC = {
     # Pages anyone can open (the studio, POS and clock-in pages are sign-in screens; their data needs a sign-in)
-    ("GET", "/"), ("GET", "/checkout"), ("GET", "/admin"), ("GET", "/pos"), ("GET", "/pos/manifest.json"),
+    ("GET", "/"), ("GET", "/checkout"), ("GET", "/admin"),
     ("GET", "/clockin"), ("GET", "/privacy"), ("GET", "/terms"), ("GET", "/refunds"), ("GET", "/photo-removal"),
     ("GET", "/healthz"), ("GET", "/healthz/storage"),
     # The public gallery: published photos only (Eagle Mount and unpublished folders are left out)
@@ -40,8 +40,11 @@ PUBLIC = {
     ("POST", "/api/pos-unlock"),
     # A store screen asking for access: it emails the owner a code (limited per address), and the code approves it
     ("POST", "/api/store/request"), ("POST", "/api/store/verify"),
-    # Store mode's app file (name and icon for installing it, like the POS's); the page itself stays locked
-    ("GET", "/store/manifest.json"),
+    # The shop's own pages at their random addresses (any other address is "not found"): the POS page
+    # (a PIN pad; everything after needs a PIN), store mode (locked screen) and their app files,
+    # and /pos, which only answers Square's return after a card payment
+    ("GET", "/p/{path}"), ("GET", "/p/{path}/manifest.json"), ("GET", "/pos"),
+    ("GET", "/s/{path}"), ("GET", "/s/{path}/manifest.json"), ("GET", "/s/{path}/{slug}"),
     # The Upload Station's page and app manifest live at a random address (any other is "not found");
     # its access request needs that address too, and only emails the owner a code (limited per address)
     ("GET", "/u/{path}"), ("GET", "/u/{path}/manifest.json"), ("POST", "/api/station/request"),

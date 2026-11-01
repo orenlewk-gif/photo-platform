@@ -564,9 +564,9 @@ def sent(main_module, monkeypatch):
 
 def test_a_store_screen_sees_eagle_mount_photos_without_the_password(screen, client, main_module, monkeypatch):
     monkeypatch.setattr(main_module, "_note_blocked_store_visit", lambda info: None)
-    page = screen.get("/store/eaglemount")
+    page = screen.get(main_module._device_home("store") + "/eaglemount")
     assert page.status_code == 200 and "const STORE = true;" in page.text and "Start over" in page.text
-    assert 'href="/store"' in page.text and "site-footer" not in page.text
+    assert f'href="{main_module._device_home("store")}"' in page.text and "site-footer" not in page.text
     days = screen.get("/api/partner/eaglemount/photos").json()["days"]
     assert [d["date"] for d in days] == ["2026-12-07", DAY2, DAY1]
     assert screen.get("/partner/eaglemount/thumb", params={"path": PHOTOS[1]["path"]}, follow_redirects=False).status_code in (200, 302, 307)
@@ -575,17 +575,17 @@ def test_a_store_screen_sees_eagle_mount_photos_without_the_password(screen, cli
     assert screen.post("/partner/eaglemount/zip", data={"date": DAY2}).status_code == 401
     assert screen.post("/partner/eaglemount/links", json={"paths": [PHOTOS[1]["path"]]}).status_code == 401
     # Anyone else gets the locked store screen; the partner's own page still wants its password
-    assert client.get("/store/eaglemount").status_code == 403
+    assert client.get(main_module._device_home("store") + "/eaglemount").status_code == 403
     assert client.get("/api/partner/eaglemount/photos").status_code == 401
     assert "const STORE = false;" not in client.get("/eaglemount").text
 
 
 def test_the_store_header_links_to_open_partner_pages(screen, main_module):
-    assert '"partners": [{"name": "Eagle Mount", "slug": "eaglemount"}]' in screen.get("/store").text
+    assert '"partners": [{"name": "Eagle Mount", "slug": "eaglemount"}]' in screen.get(main_module._device_home("store")).text
     _partners(password="")
     main_module._partners_doc.cache["data"] = None
-    assert '"partners": []' in screen.get("/store").text
-    assert screen.get("/store/eaglemount").status_code == 404                  # closed while it has no password
+    assert '"partners": []' in screen.get(main_module._device_home("store")).text
+    assert screen.get(main_module._device_home("store") + "/eaglemount").status_code == 404                  # closed while it has no password
 
 
 def test_a_family_gets_their_photos_as_a_link_and_it_counts_as_a_donation(screen, sent, admin_client, client, main_module):

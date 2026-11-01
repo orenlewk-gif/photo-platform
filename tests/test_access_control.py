@@ -126,9 +126,24 @@ def test_removed_pages_are_gone(admin_client, method, url):
 
 
 @pytest.mark.parametrize("url", ["/clockin", "/admin/trash", "/admin/photographers", "/admin/indexing",
-                                 "/admin/dashboard", "/admin/pricing", "/pos"])
+                                 "/admin/dashboard", "/admin/pricing"])
 def test_kept_pages_still_load(admin_client, url):
     assert admin_client.get(url).status_code == 200
+
+
+def test_the_pos_lives_at_its_random_address(admin_client, client, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "POS_DEVICE_CODES_ON", True)
+    home = main_module._device_home("pos")
+    page = admin_client.get(home)
+    assert page.status_code == 200 and f'window.POS_HOME = "{home}"' in page.text
+    assert f'<link rel="manifest" href="{home}/manifest.json">' in page.text
+    assert client.get(f"{home}/manifest.json").json()["start_url"] == home
+    assert client.get("/pos").status_code == 404 and client.get("/p/guess").status_code == 404
+    # Square's return after a card payment still lands on /pos (the address registered with Square);
+    # only an approved POS device is told the POS's own address
+    back = client.get("/pos", params={"data": '{"status":"ok"}'})
+    assert back.status_code == 200 and home not in back.text and "callback_url" in back.text
+    assert f'window.POS_HOME = "{home}"' in admin_client.get("/pos", params={"data": "{}"}).text
 
 
 def test_old_zip_pricing_links_still_lead_to_pricing(admin_client):

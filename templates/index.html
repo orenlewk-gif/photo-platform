@@ -1524,13 +1524,13 @@ img { -webkit-touch-callout:none; -webkit-user-drag:none; user-select:none; -web
 
 <!--store-mode-->
 <script>
-// Store mode (/store, on the shop's approved screens) is this page with no prices, shop or
+// Store mode (/s/<random>, on the shop's approved screens) is this page with no prices, shop or
 // watermarks: customers heart their favorite photos. static/store-mode.js adds the rest.
 const STORE = window.STORE_MODE === true;
 
 // A gallery photo's address (store screens get it without the watermark)
 // The page's own address: the gallery's links stay on /store in store mode
-const PAGE_PATH = STORE ? '/store' : '/';
+const PAGE_PATH = STORE ? (window.STORE_HOME || '/') : '/';
 
 function photoSrc(path, size) {
   return `/api/photo?path=${enc(path)}&size=${size}${size === 'thumb' ? '&v=4' : ''}${STORE ? '&nowm=1' : ''}`;

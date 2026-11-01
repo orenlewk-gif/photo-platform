@@ -61,7 +61,7 @@ button:focus-visible,input:focus-visible,.link:focus-visible{outline:3px solid #
     if (!name) { say('Give this screen a name first.', true); return; }
     $('ask-btn').disabled = true; say('Sending…');
     try {
-      const [r, d] = await post('/api/store/request', {name});
+      const [r, d] = await post('/api/store/request', {name, path: location.pathname.split('/')[2] || ''});
       if (d.approved) { location.reload(); return; }
       if (!r.ok) { say(d.error || 'Something went wrong — try again', true); return; }
       challenge = d.challenge;

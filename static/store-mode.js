@@ -1,10 +1,12 @@
-/* Store mode: the gallery page on the shop's approved screens (/store). Customers heart their
+/* Store mode: the gallery page on the shop's approved screens (/s/<random>). Customers heart their
    favorite photos; there are no prices, shop or watermarks. Favorites are the gallery's own
    selection (so "Save for later" is the website's saved cart, both ways), shown as hearts.
 
    Loaded just before the gallery's script, which calls the functions below when STORE is on. */
 document.documentElement.classList.add('store-mode');
 
+// Store mode's own address (random; set by the server), e.g. /s/abc123
+const STORE_HOME = window.STORE_HOME || '/';
 const STORE_HEART = '<svg class="store-heart" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">'
   + '<path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.2 3 4.5 6.6 4.5c2.1 0 3.6 1.2 4.4 2.6.8-1.4 2.3-2.6 4.4-2.6 3.6 0 5.7 3.7 4.2 7.2C19.5 16.4 12 21 12 21z"/></svg>';
 
@@ -99,7 +101,7 @@ function storeBuildUI() {
     tools.className = 'store-head-tools';
     // Partner programs (Eagle Mount): their photos on the store's own page for them
     const partners = ((window.STORE_PROMO || {}).partners || []).map(p =>
-      `<a class="store-head-btn" href="/store/${encodeURIComponent(p.slug)}">${String(p.name).replace(/[&<>"]/g, '')} photos</a>`).join('');
+      `<a class="store-head-btn" href="${STORE_HOME}/${encodeURIComponent(p.slug)}">${String(p.name).replace(/[&<>"]/g, '')} photos</a>`).join('');
     tools.innerHTML = `${partners}
       <button type="button" class="store-head-btn" data-act="favs">${STORE_HEART} Favorites <span id="store-head-count"></span></button>
       <button type="button" class="store-head-btn" data-act="reset">Start over</button>`;
@@ -549,7 +551,7 @@ function storeStartOver(ask = true) {
   if (ask && storeCounts().total && !confirm('Clear all favorites on this screen and start over?')) return;
   try { localStorage.removeItem(CART_KEY); localStorage.removeItem(STORE_SEND_KEY); } catch (e) {}
   try { sessionStorage.clear(); } catch (e) {}
-  location.replace('/store');
+  location.replace(STORE_HOME);
 }
 
 // ── Quiet refresh: a screen nobody is using reloads itself every few minutes, so photos uploaded
@@ -562,7 +564,7 @@ let _storeLastTouch = Date.now();
 setInterval(() => {
   if (Date.now() - _storeLastTouch < STORE_IDLE_MS) return;
   if (storeCounts().total || _storeCode || document.querySelector('.store-overlay.open')) return;
-  location.replace('/store');
+  location.replace(STORE_HOME);
 }, 30000);
 
 storeBuildUI();

@@ -389,6 +389,17 @@ html.embedded #layout{height:100vh}
       <button class="btn-save" onclick="signOutEverywhere()" style="background:#b91c1c">Sign out all devices</button>
     </div>
 
+    <!-- DEVICE LINKS -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Security — device links</div>
+      <div class="section-desc">The shop's own pages live at random addresses, so nobody stumbles on them. To get one onto a computer or iPad: email them all to yourself and click the link on that device, or scan its QR code with the iPad's camera. In Chrome, Install makes it an app with its own icon; on an iPad, Share &gt; Add to Home Screen. "New link" changes an address if it got out: the old one stops working, approved devices stay approved and just open the new link. Square still returns card payments to the POS as before.</div>
+      <div id="sec-device-links" style="font-size:.85rem;line-height:1.7">Loading…</div>
+      <div style="margin-top:.9rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+        <button class="btn-save" onclick="emailDeviceLinks()">Email me these links</button>
+        <span id="device-links-status" style="font-size:.82rem"></span>
+      </div>
+    </div>
+
     <!-- POS DEVICES -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Security — POS and time clock devices</div>
@@ -399,20 +410,14 @@ html.embedded #layout{height:100vh}
     <!-- STORE SCREENS -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Security — store screens</div>
-      <div class="section-desc">Screens approved for store mode (<a href="/store" target="_blank" rel="noopener" style="color:#F5C518">/store</a>), where customers heart their favorite photos. A new screen is given a name and asks for a code, which is emailed to you; it's typed on that screen once. Any other device is blocked, and you're emailed about it. Store screens can't use the POS. Remove a screen if it's lost or replaced: it will need a new code.</div>
+      <div class="section-desc">Screens approved for store mode (its link is under Device links above), where customers heart their favorite photos. A new screen is given a name and asks for a code, which is emailed to you; it's typed on that screen once. Any other device is blocked, and you're emailed about it. Store screens can't use the POS. Remove a screen if it's lost or replaced: it will need a new code.</div>
       <div id="sec-store-screens" style="font-size:.85rem;line-height:1.7">Loading…</div>
     </div>
 
     <!-- UPLOAD STATIONS -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Security — upload stations</div>
-      <div class="section-desc">The store computers' upload page: the upload form and today's uploads, nothing else of the studio. Its address is random so nobody stumbles on it; open it on each computer (in Chrome, install it as an app for a Dock icon). The first time, the computer is given a name and asks for a code, which is emailed to you; it's typed on that computer once. Remove a computer if it's lost or replaced: it will need a new code. "New link" changes the address if the old one got out (approved computers stay approved; open the new link on each).</div>
-      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.8rem">
-        <input id="station-link" readonly aria-label="Upload station link" style="flex:1;min-width:260px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#fff;padding:.4rem .6rem;font-size:.82rem" value="Loading…">
-        <button type="button" onclick="copyStationLink()" style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer">Copy</button>
-        <a id="station-open" href="#" target="_blank" rel="noopener" style="color:#F5C518;font-size:.82rem">Open</a>
-        <button type="button" onclick="newStationLink()" style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer">New link</button>
-      </div>
+      <div class="section-desc">Computers approved for the Upload Station (its link is under Device links above): the upload form and today's uploads, nothing else of the studio. The first time, the computer is given a name and asks for a code, which is emailed to you; it's typed on that computer once. Remove a computer if it's lost or replaced: it will need a new code.</div>
       <div id="sec-upload-stations" style="font-size:.85rem;line-height:1.7">Loading…</div>
     </div>
 
@@ -1931,8 +1936,6 @@ async function loadUploadStations() {
   if (!el) return;
   try {
     const d = await (await fetch('/api/admin/upload-stations')).json();
-    document.getElementById('station-link').value = d.link || '';
-    document.getElementById('station-open').href = d.link || '#';
     const btn = 'background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.15rem .6rem;font-size:.78rem;cursor:pointer';
     const rows = (d.stations || []).map(v => `<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
       <span><strong>${_secEsc(v.name || 'Upload station')}</strong><span style="color:rgba(255,255,255,.45)"> · ${_secEsc(v.describe || 'Device')} · approved ${_secDate(v.approved)} · last used ${_secDate(v.last_used)} · ${_secEsc(v.ip)}</span></span>
@@ -1941,17 +1944,53 @@ async function loadUploadStations() {
     el.innerHTML = rows || '<div style="color:rgba(255,255,255,.45)">No approved upload stations yet.</div>';
   } catch (e) { el.textContent = 'Could not load upload stations'; }
 }
-async function copyStationLink() {
-  const box = document.getElementById('station-link');
+// ── Device links: the Upload Station, store mode and the POS (random addresses) ──
+async function loadDeviceLinks() {
+  const el = document.getElementById('sec-device-links');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/device-links')).json();
+    const btn = 'background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer';
+    el.innerHTML = d.links.map(l => `<div style="padding:.6rem 0;border-top:1px solid rgba(255,255,255,.07)">
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <strong style="min-width:8.5rem">${_secEsc(l.name)}</strong>
+        <input id="dl-${l.kind}" readonly aria-label="${_secEsc(l.name)} link" value="${_secEsc(l.link)}" style="flex:1;min-width:240px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#fff;padding:.35rem .6rem;font-size:.8rem">
+        <button type="button" style="${btn}" onclick="copyDeviceLink('${l.kind}')">Copy</button>
+        <a href="${_secEsc(l.link)}" target="_blank" rel="noopener" style="color:#F5C518;font-size:.82rem">Open</a>
+        <button type="button" style="${btn}" onclick="toggleDeviceQr('${l.kind}')">QR code</button>
+        <button type="button" style="${btn}" onclick="newDeviceLink('${l.kind}', '${_secEsc(l.name)}')">New link</button>
+      </div>
+      <div id="dlqr-${l.kind}" style="display:none;margin-top:.6rem"><img alt="QR code for the ${_secEsc(l.name)} link" style="width:180px;height:180px;background:#fff;border-radius:6px"></div>
+    </div>`).join('');
+  } catch (e) { el.textContent = 'Could not load the links'; }
+}
+async function copyDeviceLink(kind) {
+  const box = document.getElementById('dl-' + kind);
   box.select();
   try { await navigator.clipboard.writeText(box.value); } catch (e) { document.execCommand('copy'); }
 }
-async function newStationLink() {
-  if (!confirm('Make a new upload station link? The old link stops working. Approved computers stay approved; open the new link on each one.')) return;
-  const r = await fetch('/api/admin/upload-stations/new-link', {method: 'POST'});
-  if (!r.ok) alert('Could not make a new link');
-  loadUploadStations();
+function toggleDeviceQr(kind) {
+  const w = document.getElementById('dlqr-' + kind);
+  const show = w.style.display === 'none';
+  if (show) w.querySelector('img').src = `/api/admin/device-links/${kind}/qr?t=${Date.now()}`;
+  w.style.display = show ? '' : 'none';
 }
+async function newDeviceLink(kind, name) {
+  if (!confirm(`Make a new ${name} link? The old one stops working. Approved devices stay approved; open the new link on each one.`)) return;
+  const r = await fetch(`/api/admin/device-links/${kind}/new`, {method: 'POST'});
+  if (!r.ok) alert('Could not make a new link');
+  loadDeviceLinks();
+}
+async function emailDeviceLinks() {
+  const st = document.getElementById('device-links-status');
+  st.style.color = 'rgba(255,255,255,.5)'; st.textContent = 'Sending…';
+  const r = await fetch('/api/admin/device-links/email', {method: 'POST'});
+  const d = await r.json().catch(() => ({}));
+  st.style.color = r.ok ? '#4ade80' : '#f87171';
+  st.textContent = r.ok ? `Sent to ${d.email}` : (d.error || 'Could not send the email');
+}
+loadDeviceLinks();
+
 async function renameUploadStation(id, current) {
   const name = (prompt('Name for this computer:', current || '') || '').trim();
   if (!name) return;
