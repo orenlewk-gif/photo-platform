@@ -152,3 +152,15 @@ def test_race_photos_keep_the_races_exact_name_and_stay_hidden(admin_client, mai
     assert r.status_code == 400
     assert admin_client.get("/api/admin/races").json()["races"][0]["photos"] == 1
     main_module._save_races([])
+
+
+def test_the_upload_form_knows_each_races_racer_folders(admin_client, main_module, live_photos):
+    """A racer's later runs join their folder by name, even when the bib changes between lists."""
+    main_module._save_races([])
+    admin_client.post("/api/admin/races", json={"name": "Test Series SG 4", "date": DATE})
+    live_photos([{"path": f"images/{DATE}/test-series-sg-4/talla-russell-bib-3/A.JPG", "date": DATE, "location": "Test Series SG 4",
+                  "group": "Talla Russell Bib 3", "last_name": "", "draft": True},
+                 {"path": f"images/{DATE}/elsewhere/B.JPG", "date": DATE, "location": "Elsewhere", "group": "Other Folder", "last_name": ""}])
+    [race] = admin_client.get("/api/races").json()["races"]
+    assert race["folders"] == ["Talla Russell Bib 3"]
+    main_module._save_races([])

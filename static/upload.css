@@ -112,6 +112,7 @@
 .race-st{font-size:.8rem;color:rgba(255,255,255,.4);text-align:right;font-variant-numeric:tabular-nums}
 .race-who{display:flex;flex-direction:column;font-size:.85rem;color:#fff;min-width:0}
 .race-who span{font-size:.72rem;color:rgba(255,255,255,.45)}
+.race-who .race-joins{color:#7dd3a8}
 .race-photos{display:flex;flex-direction:column;gap:.3rem;min-width:0}
 .race-thumbs{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
 .race-thumbs img{width:78px;height:52px;object-fit:cover;border-radius:4px;cursor:zoom-in;background:#111;display:block}

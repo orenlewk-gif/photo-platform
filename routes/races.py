@@ -35,13 +35,20 @@ def _public(race: dict, counts: bool = False) -> dict:
     return out
 
 
+def _racer_folders(race: dict) -> list[str]:
+    """The racer folders this race already has (a racer's later runs join theirs by name)."""
+    names = {race["name"].lower(), clean_location(race["name"]).lower()}
+    return sorted({(i.get("group") or "").strip() for i in main.data
+                   if i.get("location", "").strip().lower() in names and (i.get("group") or "").strip()})
+
+
 @router.get("/api/races")
 def list_races(request: Request):
     """The races and their start lists, for the upload form (studio and upload stations)."""
     if not main._upload_allowed(request):
         return _unauthorized()
     races = sorted(main._load_races(), key=lambda r: r["date"], reverse=True)
-    return {"races": [_public(r) for r in races]}
+    return {"races": [{**_public(r), "folders": _racer_folders(r)} for r in races]}
 
 
 # ── Studio: Settings > Races ────────────────────────────────────────────────
