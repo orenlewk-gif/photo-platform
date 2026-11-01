@@ -1204,20 +1204,27 @@ async def admin_photo_trash(request: Request):
     paths      = body.get("paths", [])
     if not paths:
         return JSONResponse(status_code=400, content={"error": "No paths"})
-    return await run_in_threadpool(_trash_photos, paths)
+    return await _trash_photos(paths)
 
 
-def _trash_photos(paths: list) -> dict:
+async def _trash_photos(paths: list) -> dict:
     """Put these photos in the trash (the studio's, kept 7 days): they leave the site now."""
     paths_set  = set(paths)
     to_trash   = [item for item in main.data if item["path"] in paths_set]
-    new_meta, _ = main._bulk_trash(to_trash)                # thumbnails go in one batch there
-    main._add_to_trash_meta(new_meta)
-    # Only photos that reached the trash leave the site (one that couldn't be copied stays)
+
+    # Storage work runs off the main loop (visitors aren't held up), several photos at a time
+    def move_to_trash():
+        new_meta, _ = main._bulk_trash(to_trash)            # thumbnails go in one batch there
+        main._add_to_trash_meta(new_meta)
+        return new_meta
+
+    new_meta = await run_in_threadpool(move_to_trash)
+    # Only photos that reached the trash leave the site (one that couldn't be copied stays). The
+    # list is rebuilt here on the main loop, so a batch another computer adds meanwhile isn't lost.
     gone = {e["image_entry"]["path"] for e in new_meta}
     if gone:
         main.data = [item for item in main.data if item["path"] not in gone]
-        main._save_photo_list()
+        await run_in_threadpool(main._save_photo_list)
     return {"trashed": len(gone), "failed": len(to_trash) - len(gone)}
 
 

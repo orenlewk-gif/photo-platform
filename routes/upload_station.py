@@ -220,7 +220,7 @@ async def station_trash(request: Request, body: dict = Body(...)):
     if not paths:
         return JSONResponse(status_code=400, content={"error": "Only photos uploaded today can be trashed here"})
     from routes.admin_photos import _trash_photos
-    return await run_in_threadpool(_trash_photos, paths)
+    return await _trash_photos(paths)
 
 
 @router.post("/api/station/restore")
