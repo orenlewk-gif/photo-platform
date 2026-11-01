@@ -20,8 +20,8 @@ _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
 _STORE_ASSETS = ('<link rel="manifest" href="/store/manifest.json">\n'
-                 '<link rel="stylesheet" href="/static/store-mode.css?v=9">\n'
-                 '<script src="/static/store-mode.js?v=9"></script>')
+                 '<link rel="stylesheet" href="/static/store-mode.css?v=10">\n'
+                 '<script src="/static/store-mode.js?v=10"></script>')
 
 
 def _store_page() -> str:

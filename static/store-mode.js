@@ -552,6 +552,19 @@ function storeStartOver(ask = true) {
   location.replace('/store');
 }
 
+// ── Quiet refresh: a screen nobody is using reloads itself every few minutes, so photos uploaded
+// since (a new day included) show up without anyone pressing Start over. Never while a customer
+// has favorites, a code is waiting for the POS, or a window is open.
+const STORE_IDLE_MS = 5 * 60 * 1000;
+let _storeLastTouch = Date.now();
+['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(ev =>
+  window.addEventListener(ev, () => { _storeLastTouch = Date.now(); }, {passive: true, capture: true}));
+setInterval(() => {
+  if (Date.now() - _storeLastTouch < STORE_IDLE_MS) return;
+  if (storeCounts().total || _storeCode || document.querySelector('.store-overlay.open')) return;
+  location.replace('/store');
+}, 30000);
+
 storeBuildUI();
 document.addEventListener('DOMContentLoaded', () => {
   storeRenderBar();
