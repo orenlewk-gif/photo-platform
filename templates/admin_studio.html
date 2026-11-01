@@ -77,6 +77,20 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 .tree-partner:hover{background:rgba(237,137,54,.08)}
 .tree-partner.active{background:rgba(237,137,54,.15)}
 .tree-partner .sub-count{margin-left:auto;font-size:.68rem;font-weight:400;color:rgba(237,137,54,.65)}
+/* Races, below the partners: each race opens to its racer folders (hidden from the date list) */
+#race-tree:empty{display:none}
+#race-tree{padding:.35rem 0 .3rem;border-bottom:1px solid rgba(255,255,255,.06)}
+.tree-races-hdr{padding:.3rem .85rem .2rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(245,197,24,.6)}
+.tree-race{padding:.42rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.42rem;margin:0 .3rem;border-radius:5px;
+  font-size:.82rem;font-weight:600;color:#F5C518;user-select:none}
+.tree-race:hover{background:rgba(245,197,24,.07)}
+.tree-race .arrow{font-size:.58rem;transition:transform .15s;color:rgba(245,197,24,.45);flex-shrink:0}
+.tree-race.open .arrow{transform:rotate(90deg)}
+.tree-race .race-when{font-size:.68rem;font-weight:400;color:rgba(255,255,255,.35)}
+.tree-race .sub-count{margin-left:auto;font-size:.68rem;font-weight:400;color:rgba(245,197,24,.6)}
+.tree-race-subs{display:none}
+.tree-race.open + .tree-race-subs{display:block}
+.tree-race-empty{padding:.25rem .85rem .35rem 2.5rem;font-size:.74rem;color:rgba(255,255,255,.3)}
 .partner-tag{position:absolute;top:5px;left:26px;background:rgba(237,137,54,.92);color:#1a1000;font-size:.6rem;
   font-weight:700;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
 .sel-partner-btn{background:#ed8936;border:none;color:#1a1000;border-radius:6px;padding:.28rem .8rem;font-size:.76rem;
@@ -317,6 +331,7 @@ input[type=file]{display:none}
       <a onclick="openSettingsView()" class="nav-link" id="nav-settings" style="cursor:pointer">Settings</a>
     </div>
     <div id="partner-tree"></div>
+    <div id="race-tree"></div>
     <div id="date-tree"><div class="loading-text">Loading…</div></div>
     <div style="border-top:1px solid rgba(255,255,255,.07);padding:.3rem .5rem;flex-shrink:0">
       <a onclick="openTrashView()" class="nav-link" id="nav-trash" style="cursor:pointer">Trash</a>
@@ -679,12 +694,51 @@ async function setFolderItemList(date, location, folder, itemList) {
 
 // ── Sidebar ──
 async function loadSidebar() {
-  const [res] = await Promise.all([fetch('/api/admin/folders'), loadPartners()]);
+  const [res] = await Promise.all([fetch('/api/admin/folders'), loadPartners(), loadRaces()]);
   const d = await res.json();
   allFolders = d.folders || [];
   renderPartnerTree();
   renderTree();
 }
+
+// ── Races ──
+// Each race set up in Settings > Races is its own place; its racer folders are listed here
+// (not in the date list below), the way Eagle Mount's photos have their own spot.
+function _raceKey(name) { return String(name || '').replace(/^[\d\-_\s]+/, '').replace(/[-_]/g, ' ').trim().toLowerCase(); }
+function raceOfFolder(f) {
+  const loc = String(f.location || '').trim().toLowerCase();
+  return RACES.find(r => r.name.toLowerCase() === loc || _raceKey(r.name) === loc) || null;
+}
+function renderRaceTree() {
+  const el = document.getElementById('race-tree');
+  if (!RACES.length) { el.innerHTML = ''; return; }
+  let html = '<div class="tree-races-hdr">Races</div>';
+  for (const r of RACES) {
+    const folders = allFolders.filter(f => f.name && raceOfFolder(f) === r).sort((a, b) => a.name.localeCompare(b.name));
+    const photos = folders.reduce((a, f) => a + f.photo_count, 0);
+    if (currentFolder && folders.some(f => f.date === currentFolder.date && f.location === currentFolder.location && f.name === currentFolder.folder))
+      treeExpanded['race:' + r.id] = true;                 // the race of the folder that's open
+    const open = treeExpanded['race:' + r.id];
+    html += `<div class="tree-race ${open ? 'open' : ''}" onclick="toggleRace('${escAttr(r.id)}')" title="${r.live ? 'Live' : 'Hidden from the website until the race is put live'}">
+      <span class="arrow">▶</span><span>${esc(r.name)} <span class="race-when">${esc(r.date)}${r.live ? '' : ' · hidden'}</span></span>
+      <span class="sub-count">${photos}</span>
+    </div><div class="tree-race-subs">`;
+    if (!folders.length) html += '<div class="tree-race-empty">No photos yet</div>';
+    for (const f of folders) {
+      const isActive = currentFolder && currentFolder.date === f.date && currentFolder.location === f.location && currentFolder.folder === f.name;
+      html += `<div class="tree-sub ${isActive ? 'active' : ''}" onclick="openFolderByKey('${escAttr(f.folder_key)}')">
+        <span>${esc(f.name)}</span>
+        <span style="display:flex;align-items:center;gap:4px">
+          ${f.draft_count ? '<span class="tree-draft-dot"></span>' : ''}<span class="sub-count">${f.photo_count}</span>
+          <span class="tree-del-btn" onclick="event.stopPropagation();confirmDeleteFolder('${escAttr(f.folder_key)}')">✕</span>
+        </span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+  el.innerHTML = html;
+}
+function toggleRace(id) { treeExpanded['race:' + id] = !treeExpanded['race:' + id]; renderRaceTree(); }
 
 // ── Partner folders (Eagle Mount) ──
 // Photos marked for a partner are hidden from the public gallery and shown free on the
@@ -815,8 +869,10 @@ async function markSelected(partnerId) {
 }
 
 function renderTree() {
+  renderRaceTree();                                // races are listed on their own, above the dates
   const tree = {};
   for (const f of allFolders) {
+    if (raceOfFolder(f)) continue;                 // races have their own list above
     if (!tree[f.date]) tree[f.date] = {};
     if (!tree[f.date][f.location]) tree[f.date][f.location] = [];
     tree[f.date][f.location].push(f);
