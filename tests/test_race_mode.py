@@ -97,3 +97,58 @@ def test_a_racer_folder_name_cant_point_elsewhere(admin_client, main_module, mon
     r = admin_client.post("/api/admin/upload/presign", json={"date": DATE, "location": LOCATION, "folder": "../meta", "race": True,
                                                              "files": [{"name": "A.JPG", "type": "image/jpeg"}]})
     assert r.status_code == 400
+
+
+def test_races_are_set_up_with_a_start_list_per_run(admin_client, main_module):
+    main_module._save_races([])
+    r = admin_client.post("/api/admin/races", json={"name": "Test Series SG 2", "date": DATE})
+    assert r.status_code == 200 and r.json()["live"] is False and [x["n"] for x in r.json()["runs"]] == [1]
+    rid = r.json()["id"]
+    assert admin_client.post("/api/admin/races", json={"name": "test series sg 2", "date": DATE}).status_code == 400
+    assert admin_client.post("/api/admin/races", json={"name": "Lone Peak Portraits", "date": DATE}).status_code == 400   # a location's name
+    assert admin_client.post("/api/admin/races", json={"name": "A/B", "date": DATE}).status_code == 400
+    assert [x["n"] for x in admin_client.post(f"/api/admin/races/{rid}/runs").json()["runs"]] == [1, 2]
+    admin_client.post(f"/api/admin/races/{rid}/runs/2/start-list", content=b"5 Racer, Echo\n1 Racer, Alpha")
+    # The upload form sees the race and each run's list
+    [race] = admin_client.get("/api/races").json()["races"]
+    assert race["name"] == "Test Series SG 2" and race["runs"][1]["racers"][0]["display"] == "Echo Racer"
+    assert admin_client.put(f"/api/admin/races/{rid}", json={"name": "Test Series SG 2b"}).json()["name"] == "Test Series SG 2b"
+    assert admin_client.delete(f"/api/admin/races/{rid}/runs/2").status_code == 200
+    assert admin_client.delete(f"/api/admin/races/{rid}/runs/1").status_code == 400          # keeps at least one run
+    assert admin_client.delete(f"/api/admin/races/{rid}").status_code == 200
+    assert admin_client.get("/api/races").json()["races"] == []
+
+
+def test_a_race_with_photos_keeps_its_name_and_date(admin_client, main_module, live_photos):
+    main_module._save_races([])
+    rid = admin_client.post("/api/admin/races", json={"name": "Test Series SG 3", "date": DATE}).json()["id"]
+    live_photos([{"path": f"images/{DATE}/test-series-sg-3/racer-a-bib-1/A.JPG", "date": DATE, "location": "Test Series SG 3",
+                  "group": "Racer A Bib 1", "last_name": "", "draft": True}])
+    assert admin_client.put(f"/api/admin/races/{rid}", json={"name": "Other"}).status_code == 400
+    assert admin_client.delete(f"/api/admin/races/{rid}").status_code == 400
+    assert admin_client.get("/api/admin/races").json()["races"][0]["photos"] == 1
+    main_module._save_races([])
+
+
+def test_race_uploads_need_a_race_that_is_set_up(admin_client, main_module):
+    main_module._save_races([])
+    r = admin_client.post("/api/admin/upload/presign", json={"date": DATE, "location": "No Such Race", "folder": "X Bib 1", "race": True,
+                                                             "files": [{"name": "A.JPG", "type": "image/jpeg"}]})
+    assert r.status_code == 400 and "isn't set up" in r.json()["error"]
+
+
+def test_race_photos_keep_the_races_exact_name_and_stay_hidden(admin_client, main_module, monkeypatch):
+    main_module._save_races([])
+    monkeypatch.setattr(main_module, "_load_pricing", lambda: {"default": {"tiers": [{"count": 1, "price": 25}]}})
+    name = "2025 Lone Peak SG 3"                      # a year first and capitals, which the location cleanup would change
+    admin_client.post("/api/admin/races", json={"name": name, "date": DATE})
+    folder = "Racer Alpha Bib 1"
+    [u] = admin_client.post("/api/admin/upload/presign", json={"date": DATE, "location": name, "folder": folder, "race": True,
+                                                               "files": [{"name": "A.JPG", "type": "image/jpeg"}]}).json()["urls"]
+    admin_client.post("/api/admin/upload/index", json={"date": DATE, "location": name, "folder": folder, "race": True, "keys": [u["key"]]})
+    photo = next(i for i in main_module.data if i["path"] == u["key"])
+    assert photo["location"] == name and photo["draft"]
+    r = admin_client.post("/api/admin/push-live", json={"date": DATE, "location": name, "folder": folder})
+    assert r.status_code == 400
+    assert admin_client.get("/api/admin/races").json()["races"][0]["photos"] == 1
+    main_module._save_races([])

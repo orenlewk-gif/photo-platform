@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 import main
 from core.race import parse_start_list, pdf_text, title_of
+from core.text import clean_location
 
 router = APIRouter()
 
@@ -21,8 +22,8 @@ def _unauthorized():
 
 
 def _photo_count(race: dict) -> int:
-    name = race["name"].lower()
-    return sum(1 for i in main.data if i.get("location", "").strip().lower() == name)
+    names = {race["name"].lower(), clean_location(race["name"]).lower()}
+    return sum(1 for i in main.data if i.get("location", "").strip().lower() in names)
 
 
 def _public(race: dict, counts: bool = False) -> dict:
@@ -65,7 +66,9 @@ def _name_problem(name: str, date: str, races: list, except_id: str = "") -> str
     low = name.lower()
     if any(r["name"].lower() == low and r["id"] != except_id for r in races):
         return "There's already a race with that name"
-    places = {a.lower() for a in main._load_pricing().get("activities", {})} | {l.lower() for l in main.PORTRAIT_LOCATIONS}
+    pricing = main._load_pricing()
+    places = ({a.lower() for a in pricing.get("activities", {})} | {l.lower() for l in main.PORTRAIT_LOCATIONS}
+              | {a.lower() for c in pricing.get("activity_categories", []) for a in (c.get("acts") or []) if a})
     if low in places:
         return "That's the name of a location; give the race its own name"
     return ""

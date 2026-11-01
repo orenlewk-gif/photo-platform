@@ -1535,9 +1535,13 @@ def _save_races(races: list) -> None:
 
 
 def _race_by_location(location: str) -> dict | None:
-    """The race whose place this is (races are their own location, named after the race)."""
+    """The race whose place this is (races are their own location, named after the race). Matches
+    the name as written or as the usual location cleanup would have changed it ("SG 3" -> "Sg 3")."""
     loc = " ".join(str(location or "").split()).lower()
-    return next((r for r in _load_races() if r["name"].lower() == loc), None)
+    if not loc:
+        return None
+    return next((r for r in _load_races()
+                 if loc in (r["name"].lower(), clean_location(r["name"]).lower())), None)
 
 
 def _race_hidden(location: str) -> bool:

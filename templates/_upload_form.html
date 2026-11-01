@@ -7,7 +7,7 @@
       <label>Date</label>
       <input type="date" id="upload-date">
     </div>
-    <div class="field">
+    <div class="field" id="upload-category-field">
       <label>Activity Group</label>
       <select id="upload-category" onchange="onUploadCategoryChange()">
         <option value="">Select group…</option>
@@ -16,34 +16,34 @@
   </div>
   <div class="field" id="upload-location-wrap" style="display:none;margin-top:.6rem">
     <label>Location</label>
-    <select id="upload-location" onchange="updateRaceToggle();renderDetectedFolders();updateUploadBtn();scanUploadLabels()">
+    <select id="upload-location" onchange="renderDetectedFolders();updateUploadBtn();scanUploadLabels()">
       <option value="">Select location…</option>
     </select>
   </div>
-  <!-- Race: the photos go into one folder per racer, by the start list (static/upload.js "Race") -->
+  <!-- Race: the photos go into one folder per racer, by the run's start list (static/upload.js "Race").
+       Races and their start lists are set up in the studio's Settings > Races. -->
   <label id="race-toggle-wrap" class="race-toggle" style="display:none">
     <input type="checkbox" id="race-toggle" onchange="setRaceMode(this.checked)">
     <span><b>Race</b>: sort the photos into a folder for each racer, using the start list</span>
   </label>
   <div id="race-panel" style="display:none">
     <div class="race-step">
-      <div class="race-step-title">Start list</div>
-      <div id="race-list-summary" class="race-note">Choose the start list from the timing company (PDF), or paste one racer a line.</div>
-      <div class="race-list-row">
-        <button type="button" class="pose-tbtn primary" onclick="document.getElementById('race-file').click()">Choose start list</button>
-        <button type="button" class="pose-tbtn" onclick="toggleRacePaste()">Paste a list</button>
+      <div class="form-grid race-pick">
+        <div class="field">
+          <label for="race-select">Race</label>
+          <select id="race-select" onchange="pickRace()"></select>
+        </div>
+        <div class="field">
+          <label for="race-run">Run</label>
+          <select id="race-run" onchange="pickRun()"></select>
+        </div>
       </div>
-      <input type="file" id="race-file" accept=".pdf,.txt,.csv,application/pdf,text/plain,text/csv" style="display:none"
-        onchange="loadStartListFile(this.files[0]);this.value=''">
-      <div id="race-paste-wrap" style="display:none">
-        <textarea id="race-paste" rows="5" aria-label="Start list" placeholder="One racer a line, in start order: bib and name&#10;12 Allmacher, Michael&#10;3 Talla, Russell"></textarea>
-        <button type="button" class="pose-tbtn primary" onclick="loadStartListText()">Use this list</button>
-      </div>
+      <div id="race-list-summary" class="race-note"></div>
     </div>
     <div class="race-step">
       <div class="race-step-title">Photos (one run at a time)</div>
       <div class="race-note">Drop the run's photos below. They're put in the order they were taken, and each burst goes to the next racer on the list. Mark anyone who didn't race, and everyone after them moves up one.</div>
-      <div class="race-note">Use a location just for races: on a day a location has racer folders, the website shows only the folders there.</div>
+      <div class="race-note">Race photos stay hidden from the website and store screens until the race is put live.</div>
     </div>
     <div id="race-review"></div>
   </div>

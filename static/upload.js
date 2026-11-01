@@ -26,6 +26,7 @@ function initUploadForm() {
   document.getElementById('upload-date').value = localToday();
   loadUploadLocations();
   loadPartners();
+  loadRaces();
   setupDropZone();
 }
 
@@ -322,7 +323,7 @@ async function readDirFiles(dirEntry) {
 }
 
 function _isZipUpload() {
-  return ZIP_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
+  return !raceMode && ZIP_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
 }
 function getUploadGroupSize(i) {
   const sel = document.querySelector(`.det-gs[data-idx="${i}"]`);
@@ -330,6 +331,7 @@ function getUploadGroupSize(i) {
 }
 // ── Pose assignment functions ──
 function _currentLocationIsPortrait() {
+  if (raceMode) return false;                   // a race is its own place, never a portrait one
   return PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
 }
 
@@ -727,7 +729,7 @@ function updateUploadBtn() {
     const n = raceAssign().byRacer.size;
     if (allBtn) allBtn.style.display = 'none';
     btn.textContent = n ? `Upload ${n} racer${n === 1 ? '' : 's'}` : 'Upload';
-    btn.disabled = !n || !raceRacers.length;
+    btn.disabled = !n || !raceRacers.length || !currentRace();
     return;
   }
   if (allBtn) allBtn.style.display = _isPoseMode() && _batchCursor >= 0 && _batchQueue.length - _batchCursor > 1 ? '' : 'none';
@@ -908,7 +910,7 @@ async function uploadAllFamilies() {
 
 async function startUpload() {
   const date=document.getElementById('upload-date').value;
-  const location=document.getElementById('upload-location').value.trim();
+  const location=uploadLocation();
   if (!date||!location) { showToast('Enter date and location','error'); return; }
 
   // ── Portrait pose-mode upload ──
@@ -1088,7 +1090,7 @@ async function startUpload() {
             body:JSON.stringify({folder_key:`${date}|${location}|${folder}`,group_size:gs})}).catch(()=>{});
         }
       }
-      if (!_isPortraitLoc && !notIndexed.has(folder || location) && allItems.some(it => it.folder === folder && it.ok)) {
+      if (!_isPortraitLoc && !isRace && !notIndexed.has(folder || location) && allItems.some(it => it.folder === folder && it.ok)) {
         const lr = await fetch('/api/admin/push-live',{method:'POST',headers:{'Content-Type':'application/json'},
           body:JSON.stringify({date,location,folder})}).catch(()=>null);
         if (lr?.ok) {
@@ -1155,7 +1157,7 @@ async function startUpload() {
     ({name: folder, files: retryItems.filter(it => it.folder === folder).map(it => it.file)}));
   const retryNames = retryItems.map(it => (it.folder ? it.folder + '/' : '') + it.file.name);
   const retryRun = async () => {
-    if (document.getElementById('upload-location').value !== location) {
+    if (uploadLocation() !== location) {
       showToast(`Set the location back to ${location} to retry`, 'error'); showRetry(retryNames, retryRun); return;
     }
     if (isRace !== _raceOn()) {
@@ -1168,11 +1170,14 @@ async function startUpload() {
   };
   showRetry(retryNames, retryRun);
   const succeeded = done - failed;
-  const isPortraitUpload = PORTRAIT_LOCS.has((document.getElementById('upload-location').value||'').trim().toLowerCase());
+  const isPortraitUpload = !isRace && PORTRAIT_LOCS.has(location.trim().toLowerCase());
   const avg = sentBytes && upSecs > 3 ? ` · ${(sentBytes * 8 / upSecs / 1e6).toFixed(0)} Mbps average` : '';
   if (failed) {
     label.textContent = `Done — ${succeeded} uploaded, ${failed} failed${avg}`;
     showToast(`${succeeded} uploaded, ${failed} failed — Retry sends just those`,'error');
+  } else if (isRace) {
+    label.textContent = `Done — ${succeeded} photos uploaded, hidden until the race is live${avg}`;
+    showToast(`${succeeded} photos uploaded to ${location} (hidden until the race is live)`);
   } else if (isPortraitUpload) {
     label.textContent = `Done — ${succeeded} photos live`;
     showToast(`${succeeded} photos uploaded and live — check the poses in the folder`);
@@ -1193,12 +1198,15 @@ async function startUpload() {
 }
 
 // ── Race: one folder per racer, by the start list ───────────────────────────────────────────────
-// The start list (timing PDF or pasted) gives the racers in start order. The run's photos are put
+// Races are set up in the studio's Settings > Races: name, date and a start list for each run.
+// Here the photographer picks the race and run; the start list gives the racers in start order. The run's photos are put
 // in the order they were taken and grouped into bursts (a pause longer than raceGap seconds starts
 // the next racer). Bursts go to the racers in start order; a racer marked "didn't race" is skipped
 // (everyone after moves up one), and a burst set aside ("not a racer": a forerunner, a warm-up)
 // goes to nobody. Long pauses are only pointed out: the photographer decides. Each racer's photos
-// upload to their own folder in the chosen location, e.g. "Allmacher Michael Bib 12".
+// upload to their own folder under the race (its own place), e.g. "Allmacher Michael Bib 12", and
+// stay hidden (drafts) until the race is put live.
+let RACES = [];               // [{id, name, date, live, runs: [{n, title, file, racers}]}] from /api/races
 let raceMode = false;
 let raceRacers = [];          // [{order, bib, name, display, cls}] in start order
 let raceTitle = '';
@@ -1210,52 +1218,73 @@ let raceGap = 8;              // seconds between photos that start a new racer
 let _raceUrls = new Map();    // File -> preview URL
 let _raceReading = 0;         // which read is current (a newer drop replaces an older one)
 
-function _raceOn() { return raceMode && !_currentLocationIsPortrait(); }
+function _raceOn() { return raceMode; }
+
+function currentRace() { return RACES.find(r => r.id === document.getElementById('race-select')?.value) || null; }
+function currentRun() {
+  const race = currentRace(), n = parseInt(document.getElementById('race-run')?.value, 10);
+  return race ? race.runs.find(r => r.n === n) || null : null;
+}
+// Where the photos go: the race (its own place) in race mode, otherwise the location picked
+function uploadLocation() {
+  return raceMode ? (currentRace()?.name || '') : document.getElementById('upload-location').value.trim();
+}
+
+async function loadRaces() {
+  try {
+    const r = await fetch('/api/races');
+    if (!r.ok) return;
+    RACES = (await r.json()).races || [];
+  } catch (e) { return; }
+  const sel = document.getElementById('race-select');
+  if (!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = RACES.map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${esc(r.date)}</option>`).join('');
+  if (RACES.some(r => r.id === keep)) sel.value = keep;
+  updateRaceToggle();
+  if (RACES.length) pickRace(true);
+}
 
 function updateRaceToggle() {
-  const loc = (document.getElementById('upload-location').value || '').trim();
-  const show = !!loc && !_currentLocationIsPortrait();
-  document.getElementById('race-toggle-wrap').style.display = show ? '' : 'none';
-  document.getElementById('race-panel').style.display = show && raceMode ? '' : 'none';
+  document.getElementById('race-toggle-wrap').style.display = RACES.length || raceMode ? '' : 'none';
+  document.getElementById('race-panel').style.display = raceMode ? '' : 'none';
+  // A race is its own place: the group and location aren't used
+  document.getElementById('upload-category-field').style.display = raceMode ? 'none' : '';
+  const locWrap = document.getElementById('upload-location-wrap');
+  if (raceMode) locWrap.style.display = 'none';
+  else locWrap.style.display = document.getElementById('upload-category').value ? '' : 'none';
 }
 
 function setRaceMode(on) {
   raceMode = on;
+  clearPoseState();
+  _batchQueue = []; _batchCursor = -1;
+  document.getElementById('batch-header').style.display = 'none';
+  document.getElementById('drop-zone').style.display = '';
   updateRaceToggle();
+  if (on) pickRace(true);
   if (on && (uploadFolders.length || looseFiles.length)) prepareRace();
-  else { renderRace(); }
+  else renderRace();
   document.getElementById('detected-folders').style.display = '';
-  renderDetectedFolders(); updateUploadBtn();
+  renderDetectedFolders(); updateUploadBtn(); scanUploadLabels();
 }
 
-function toggleRacePaste() {
-  const w = document.getElementById('race-paste-wrap');
-  w.style.display = w.style.display === 'none' ? '' : 'none';
-  if (w.style.display === '') document.getElementById('race-paste').focus();
+// The race picked: its runs, its date in the date box, the run's start list
+function pickRace(keepRun) {
+  const race = currentRace();
+  const runSel = document.getElementById('race-run');
+  const keep = keepRun ? runSel.value : '';
+  runSel.innerHTML = race ? race.runs.map(r => `<option value="${r.n}">Run ${r.n}${r.racers.length ? ` · ${r.racers.length} racers` : ' · no start list yet'}</option>`).join('') : '';
+  if (race && race.runs.some(r => String(r.n) === keep)) runSel.value = keep;
+  if (race && raceMode) document.getElementById('upload-date').value = race.date;
+  pickRun();
 }
-
-async function _sendStartList(body, type) {
-  const sum = document.getElementById('race-list-summary');
-  sum.textContent = 'Reading the start list…';
-  try {
-    const r = await fetch('/api/admin/upload/start-list', {method: 'POST', headers: {'Content-Type': type}, body});
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) { sum.textContent = d.error || "Couldn't read that start list"; showToast(d.error || "Couldn't read that start list", 'error'); return; }
-    raceRacers = d.racers; raceTitle = d.title || '';
-    raceDns = new Set();
-    document.getElementById('race-paste-wrap').style.display = 'none';
-    renderRace(); updateUploadBtn();
-  } catch (e) { sum.textContent = "Couldn't reach the site — check the connection and try again"; }
-}
-async function loadStartListFile(f) {
-  if (!f) return;
-  const pdf = /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-  await _sendStartList(await f.arrayBuffer(), pdf ? 'application/pdf' : 'text/plain');
-}
-async function loadStartListText() {
-  const text = document.getElementById('race-paste').value;
-  if (!text.trim()) { showToast('Paste the start list first', 'error'); return; }
-  await _sendStartList(text, 'text/plain');
+function pickRun() {
+  const run = currentRun();
+  raceRacers = run ? run.racers : [];
+  raceTitle = run ? run.title || '' : '';
+  raceDns = new Set();
+  renderRace(); updateUploadBtn();
 }
 
 // When the photo was taken, to a tenth of a second: EXIF DateTimeOriginal + SubSecTimeOriginal
@@ -1393,13 +1422,17 @@ function renderRace() {
   const sum = document.getElementById('race-list-summary');
   const rv = document.getElementById('race-review');
   if (!sum || !rv) return;
-  if (raceRacers.length) {
-    sum.innerHTML = `<b>${raceRacers.length} racers</b>${raceTitle ? ' · ' + esc(raceTitle) : ''} · first: #${esc(raceRacers[0].bib)} ${esc(raceRacers[0].display)}`;
+  const race = currentRace(), run = currentRun();
+  if (!RACES.length) {
+    sum.textContent = 'No races are set up yet. Add the race and its start list in the studio: Settings > Races.';
+  } else if (raceRacers.length) {
+    sum.innerHTML = `<b>${raceRacers.length} racers</b> on the Run ${run.n} start list${raceTitle ? ' · ' + esc(raceTitle) : ''}${run.file ? ' · ' + esc(run.file) : ''} · first: #${esc(raceRacers[0].bib)} ${esc(raceRacers[0].display)}`
+      + (race && !race.live ? ' · <span class="race-dim">hidden until the race is live</span>' : '');
   } else {
-    sum.textContent = 'Choose the start list from the timing company (PDF), or paste one racer a line.';
+    sum.textContent = `Run ${run ? run.n : ''} has no start list yet. Add it in the studio: Settings > Races.`;
   }
   if (!raceBursts.length && !raceUntimed.length) { rv.innerHTML = ''; return; }
-  if (!raceRacers.length) { rv.innerHTML = `<div class="race-warn">${raceBursts.length} bursts of photos found. Add the start list above to sort them.</div>`; return; }
+  if (!raceRacers.length) { rv.innerHTML = `<div class="race-warn">${raceBursts.length} bursts of photos found. This run needs its start list (Settings > Races) before they can be sorted.</div>`; return; }
   const {byRacer, extra} = raceAssign();
   const used = raceBursts.map((b, i) => i).filter(i => !raceSkip.has(i));
   // A pause much longer than usual is pointed out (someone may not have raced, or the course was held)

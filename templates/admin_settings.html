@@ -234,6 +234,7 @@ html.embedded #layout{height:100vh}
       <button class="subtab" onclick="switchTab('classify',this)">Color Labels</button>
       <button class="subtab" onclick="switchTab('email',this)">Email Templates</button>
       <button class="subtab" onclick="switchTab('partners',this)">Partners</button>
+      <button class="subtab" onclick="switchTab('races',this)">Races</button>
     </div>
 
     <!-- ── GENERAL TAB ── -->
@@ -531,6 +532,22 @@ html.embedded #layout{height:100vh}
 
     <!-- ── EMAIL TEMPLATES TAB ── -->
     <!-- ── PARTNERS TAB (Eagle Mount) ── -->
+    <div id="tab-races" class="tab-panel">
+      <div class="settings-section">
+        <div class="section-title">New race</div>
+        <div class="section-desc">Set up a race before race day: its name, its date, and a start list for each run. In the upload form, tick Race and pick it: each racer's photos go into their own folder under the race. Race photos stay hidden from the website and store screens for now (race pricing isn't set up yet).</div>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end">
+          <div class="field-row" style="flex:1;min-width:240px;margin:0"><label class="field-label" for="race-new-name">Race name</label>
+            <input class="field-input" id="race-new-name" maxlength="80" placeholder="e.g. Lone Peak Speed Series SG 2"></div>
+          <div class="field-row" style="margin:0"><label class="field-label" for="race-new-date">Date</label>
+            <input class="field-input" id="race-new-date" type="date"></div>
+          <button class="btn-save" onclick="createRace()">Create race</button>
+        </div>
+        <div id="race-new-status" style="font-size:.8rem;margin-top:.6rem;min-height:1em"></div>
+      </div>
+      <div id="races-box"><div class="settings-section">Loading…</div></div>
+    </div>
+
     <div id="tab-partners" class="tab-panel">
       <div id="partners-box"><div class="settings-section">Loading…</div></div>
       <div class="save-row">
@@ -820,6 +837,111 @@ function switchTab(name, btn) {
   btn.classList.add('active');
   if (name === 'presets') loadPresetsTab();
   if (name === 'partners') loadPartners();
+  if (name === 'races') loadRaces();
+}
+
+// ── Races: name, date, a start list for each run (the upload form's race mode sorts by it) ──
+let _races = [];
+function _raceBtn(extra) { return `style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.25rem .7rem;font-size:.78rem;cursor:pointer${extra || ''}"`; }
+async function loadRaces() {
+  const box = document.getElementById('races-box');
+  try {
+    _races = (await (await fetch('/api/admin/races')).json()).races || [];
+  } catch (e) { box.innerHTML = '<div class="settings-section">Could not load races.</div>'; return; }
+  if (!_races.length) { box.innerHTML = '<div class="settings-section" style="color:rgba(255,255,255,.45)">No races yet.</div>'; return; }
+  box.innerHTML = _races.map(r => `
+    <div class="settings-section">
+      <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:.3rem">
+        <div class="section-title" style="margin:0">${esc(r.name)}</div>
+        <span style="font-size:.8rem;color:rgba(255,255,255,.5)">${esc(r.date)} · ${r.photos} photo${r.photos === 1 ? '' : 's'}</span>
+        <span style="font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.12rem .5rem;border-radius:5px;${r.live ? 'background:rgba(74,222,128,.15);color:#4ade80' : 'background:rgba(245,158,11,.15);color:#f59e0b'}">${r.live ? 'Live' : 'Hidden'}</span>
+        <span style="margin-left:auto;display:flex;gap:.4rem">
+          <button ${_raceBtn()} onclick="editRace('${escAttr(r.id)}')" ${r.photos ? 'disabled title="It has photos, filed under its name and date"' : ''}>Rename / date</button>
+          <button ${_raceBtn()} onclick="deleteRace('${escAttr(r.id)}')" ${r.photos ? 'disabled title="Move or trash its photos first"' : ''}>Delete</button>
+        </span>
+      </div>
+      <div class="section-desc" style="margin-bottom:.8rem">Pricing: not set yet, so its photos stay hidden from the website and store screens.</div>
+      ${r.runs.map(run => `
+        <div style="border-top:1px solid rgba(255,255,255,.07);padding:.7rem 0">
+          <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+            <strong style="font-size:.9rem">Run ${run.n}</strong>
+            <span style="font-size:.8rem;color:rgba(255,255,255,.5)">${run.racers.length ? `${run.racers.length} racers · ${esc(run.file || '')}${run.updated ? ' · updated ' + new Date(run.updated).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'}) : ''}` : 'No start list yet'}</span>
+            <span style="margin-left:auto;display:flex;gap:.4rem;flex-wrap:wrap">
+              <button class="btn-save" style="padding:.3rem .8rem;font-size:.8rem" onclick="chooseStartList('${escAttr(r.id)}', ${run.n})">${run.racers.length ? 'Replace start list' : 'Choose start list'}</button>
+              <button ${_raceBtn()} onclick="togglePasteList('${escAttr(r.id)}', ${run.n})">Paste a list</button>
+              ${r.runs.length > 1 ? `<button ${_raceBtn()} onclick="removeRun('${escAttr(r.id)}', ${run.n})">Remove run</button>` : ''}
+            </span>
+          </div>
+          ${run.racers.length ? `<div style="font-size:.78rem;color:rgba(255,255,255,.55);margin-top:.4rem;line-height:1.6">${esc(run.title || '')}${run.title ? '<br>' : ''}${run.racers.slice(0, 6).map(x => `${x.order}. #${esc(x.bib)} ${esc(x.display)}`).join(' &middot; ')}${run.racers.length > 6 ? ` &middot; and ${run.racers.length - 6} more` : ''}</div>` : ''}
+          <div id="paste-${escAttr(r.id)}-${run.n}" style="display:none;margin-top:.6rem">
+            <textarea class="field-input" rows="5" style="width:100%" aria-label="Start list for run ${run.n}" placeholder="One racer a line, in start order: bib and name&#10;12 Allmacher, Michael&#10;3 Talla, Russell"></textarea>
+            <button class="btn-save" style="margin-top:.4rem;padding:.3rem .8rem;font-size:.8rem" onclick="sendPastedList('${escAttr(r.id)}', ${run.n})">Use this list</button>
+          </div>
+        </div>`).join('')}
+      <button ${_raceBtn(';margin-top:.4rem')} onclick="addRun('${escAttr(r.id)}')">+ Add a run</button>
+      <div id="race-status-${escAttr(r.id)}" style="font-size:.8rem;margin-top:.5rem;min-height:1em"></div>
+    </div>`).join('');
+}
+async function _raceCall(url, opts, statusId) {
+  const el = statusId && document.getElementById(statusId);
+  if (el) { el.style.color = 'rgba(255,255,255,.5)'; el.textContent = 'Saving…'; }
+  try {
+    const r = await fetch(url, opts);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { if (el) { el.style.color = '#f87171'; el.textContent = d.error || 'Something went wrong'; } else alert(d.error || 'Something went wrong'); return null; }
+    if (el) el.textContent = '';
+    return d;
+  } catch (e) { if (el) { el.style.color = '#f87171'; el.textContent = 'Could not reach the site'; } return null; }
+}
+async function createRace() {
+  const name = document.getElementById('race-new-name').value.trim(), date = document.getElementById('race-new-date').value;
+  const d = await _raceCall('/api/admin/races', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, date})}, 'race-new-status');
+  if (!d) return;
+  document.getElementById('race-new-name').value = '';
+  const st = document.getElementById('race-new-status'); st.style.color = '#4ade80'; st.textContent = `${d.name} created. Add its start list below.`;
+  loadRaces();
+}
+async function editRace(id) {
+  const r = _races.find(x => x.id === id); if (!r) return;
+  const name = (prompt('Race name:', r.name) || '').trim(); if (!name) return;
+  const date = (prompt('Race date (YYYY-MM-DD):', r.date) || '').trim(); if (!date) return;
+  if (await _raceCall('/api/admin/races/' + encodeURIComponent(id), {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, date})}, 'race-status-' + id)) loadRaces();
+}
+async function deleteRace(id) {
+  const r = _races.find(x => x.id === id); if (!r) return;
+  if (!confirm(`Delete ${r.name} and its start lists?`)) return;
+  if (await _raceCall('/api/admin/races/' + encodeURIComponent(id), {method: 'DELETE'}, 'race-status-' + id)) loadRaces();
+}
+async function addRun(id) {
+  if (await _raceCall(`/api/admin/races/${encodeURIComponent(id)}/runs`, {method: 'POST'}, 'race-status-' + id)) loadRaces();
+}
+async function removeRun(id, n) {
+  if (!confirm(`Remove run ${n} and its start list?`)) return;
+  if (await _raceCall(`/api/admin/races/${encodeURIComponent(id)}/runs/${n}`, {method: 'DELETE'}, 'race-status-' + id)) loadRaces();
+}
+function chooseStartList(id, n) {
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.pdf,.txt,.csv,application/pdf,text/plain,text/csv';
+  input.onchange = async () => {
+    const f = input.files[0]; if (!f) return;
+    const d = await _raceCall(`/api/admin/races/${encodeURIComponent(id)}/runs/${n}/start-list`,
+      {method: 'POST', headers: {'Content-Type': f.type || 'application/octet-stream', 'X-File-Name': f.name.replace(/[^\x20-\x7e]/g, '')}, body: await f.arrayBuffer()},
+      'race-status-' + id);
+    if (d) loadRaces();
+  };
+  input.click();
+}
+function togglePasteList(id, n) {
+  const w = document.getElementById(`paste-${id}-${n}`);
+  w.style.display = w.style.display === 'none' ? '' : 'none';
+  if (w.style.display === '') w.querySelector('textarea').focus();
+}
+async function sendPastedList(id, n) {
+  const text = document.querySelector(`#paste-${CSS.escape(id)}-${n} textarea`).value;
+  if (!text.trim()) return;
+  const d = await _raceCall(`/api/admin/races/${encodeURIComponent(id)}/runs/${n}/start-list`,
+    {method: 'POST', headers: {'Content-Type': 'text/plain'}, body: text}, 'race-status-' + id);
+  if (d) loadRaces();
 }
 
 // ── Partners (Eagle Mount): free photo page settings ──

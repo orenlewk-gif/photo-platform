@@ -474,7 +474,8 @@ async def admin_upload_index(request: Request):
                 partner_of.update({str(n): pid for n in names})
     existing    = {item["path"] for item in main.data}
     added       = 0
-    location = clean_location(location)
+    race = main._race_by_location(location) if body.get("race") else None
+    location = race["name"] if race else clean_location(location)     # a race keeps its exact name
     for key in keys:
         if key not in existing:
             entry = {
