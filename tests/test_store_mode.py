@@ -307,7 +307,9 @@ def test_store_mode_can_be_installed_as_an_app(main_module, emails, admin_client
     home = _home(main_module)
     m = client.get(f"{home}/manifest.json").json()
     assert m["start_url"] == home and m["display"] == "standalone" and m["icons"]
-    assert f'<link rel="manifest" href="{home}/manifest.json">' in admin_client.get(home).text
+    page = admin_client.get(home).text
+    link = f'<link rel="manifest" href="{home}/manifest.json">'
+    assert link in page and page.index(link) < page.index("</head>")      # in the head, where Chrome looks
     assert "manifest" not in client.get(_home(main_module)).text          # the locked screen gives nothing away
 
 

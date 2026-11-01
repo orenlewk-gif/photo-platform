@@ -39,8 +39,11 @@ def _store_page() -> str:
              "partners": [{"name": p["name"], "slug": p["slug"]} for p in main._load_partners()
                           if p.get("slug") and p.get("password")]}
     additions = (f'<script>window.STORE_MODE = true; window.STORE_HOME = {json.dumps(home)}; '
-                 f'window.STORE_PROMO = {json.dumps(promo)};</script>\n'
-                 f'<link rel="manifest" href="{home}/manifest.json">\n' + _STORE_ASSETS)
+                 f'window.STORE_PROMO = {json.dumps(promo)};</script>\n' + _STORE_ASSETS)
+    # The app file goes in the page's head, where Chrome looks for it (its Install button)
+    if "</head>" not in html:
+        raise RuntimeError("templates/index.html has no </head>")
+    html = html.replace("</head>", f'<link rel="manifest" href="{home}/manifest.json">\n</head>', 1)
     return html.replace(_STORE_MARK, additions, 1)
 
 
