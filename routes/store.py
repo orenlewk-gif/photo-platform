@@ -81,8 +81,8 @@ def store_manifest(path: str):
         "background_color": "#093A52",
         "theme_color": "#093A52",
         "icons": [
-            {"src": "/static/store-icon-192.png", "sizes": "192x192", "type": "image/png"},
-            {"src": "/static/store-icon-512.png", "sizes": "512x512", "type": "image/png"},
+            {"src": "/static/store-icon-192.png?v=2", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/store-icon-512.png?v=2", "sizes": "512x512", "type": "image/png"},
         ]
     }, headers=_NO_INDEX)
 
