@@ -292,3 +292,10 @@ def test_the_promo_number_is_the_one_checkout_uses(admin_client, main_module, mo
     assert 'window.STORE_PROMO = {"print_off": 50,' in admin_client.get("/store").text
     monkeypatch.setattr(main_module, "PRINT_WITH_DIGITAL_PCT", 40)
     assert 'window.STORE_PROMO = {"print_off": 40,' in admin_client.get("/store").text
+
+
+def test_store_mode_can_be_installed_as_an_app(main_module, emails, admin_client, client):
+    m = client.get("/store/manifest.json").json()
+    assert m["start_url"] == "/store" and m["display"] == "standalone" and m["icons"]
+    assert '<link rel="manifest" href="/store/manifest.json">' in admin_client.get("/store").text
+    assert "manifest" not in client.get("/store").text          # the locked screen gives nothing away

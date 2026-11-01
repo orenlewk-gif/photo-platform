@@ -19,7 +19,8 @@ router = APIRouter()
 _NO_INDEX = {"Cache-Control": "no-store", "X-Robots-Tag": "noindex, nofollow"}
 # Store mode is the gallery page plus these, put in where the page marks the spot
 _STORE_MARK = "<!--store-mode-->"
-_STORE_ASSETS = ('<link rel="stylesheet" href="/static/store-mode.css?v=9">\n'
+_STORE_ASSETS = ('<link rel="manifest" href="/store/manifest.json">\n'
+                 '<link rel="stylesheet" href="/static/store-mode.css?v=9">\n'
                  '<script src="/static/store-mode.js?v=9"></script>')
 
 
@@ -46,6 +47,25 @@ def store_page(request: Request, background: BackgroundTasks):
         return HTMLResponse(_store_page(), headers=_NO_INDEX)
     background.add_task(main._note_blocked_store_visit, main._request_info(request))
     return HTMLResponse(open("templates/store_locked.html").read(), status_code=403, headers=_NO_INDEX)
+
+
+@router.get("/store/manifest.json")
+def store_manifest():
+    """Lets Chrome install store mode as an app (its own window and Dock icon), like the POS and the
+    Upload Station. Registered before /store/<partner> so this address isn't taken for a partner."""
+    return JSONResponse({
+        "name": "Crystal Images Store",
+        "short_name": "CI Store",
+        "start_url": "/store",
+        "scope": "/store",
+        "display": "standalone",
+        "background_color": "#093A52",
+        "theme_color": "#093A52",
+        "icons": [
+            {"src": "/static/store-icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "/static/store-icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ]
+    }, headers=_NO_INDEX)
 
 
 # ── Partner photos (Eagle Mount) on the store screens ──────────────────────

@@ -40,6 +40,8 @@ PUBLIC = {
     ("POST", "/api/pos-unlock"),
     # A store screen asking for access: it emails the owner a code (limited per address), and the code approves it
     ("POST", "/api/store/request"), ("POST", "/api/store/verify"),
+    # Store mode's app file (name and icon for installing it, like the POS's); the page itself stays locked
+    ("GET", "/store/manifest.json"),
     # The Upload Station's page and app manifest live at a random address (any other is "not found");
     # its access request needs that address too, and only emails the owner a code (limited per address)
     ("GET", "/u/{path}"), ("GET", "/u/{path}/manifest.json"), ("POST", "/api/station/request"),

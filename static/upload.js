@@ -1204,7 +1204,7 @@ async function startUpload() {
 // the next racer). Bursts go to the racers in start order; a racer marked "didn't race" is skipped
 // (everyone after moves up one), and a burst set aside ("not a racer": a forerunner, a warm-up)
 // goes to nobody. Long pauses are only pointed out: the photographer decides. Each racer's photos
-// upload to their own folder under the race (its own place), e.g. "Allmacher Michael", and
+// upload to their own folder under the race (its own place), e.g. "Michael Allmacher", and
 // stay hidden (drafts) until the race is put live.
 let RACES = [];               // [{id, name, date, live, runs: [{n, title, file, racers}]}] from /api/races
 let raceMode = false;
@@ -1390,20 +1390,26 @@ function raceAssign() {
   return {byRacer, extra};
 }
 
-// "Allmacher, Michael" -> "Allmacher Michael" (sorts by last name in the studio and gallery)
+// The racer's name as a folder: first name first, "Michael Allmacher"
 function _raceBase(r) {
-  const parts = r.name.includes(',') ? r.name.split(',').map(s => s.trim()) : [r.display];
-  return parts.filter(Boolean).join(' ').replace(/[\/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return (r.display || r.name).replace(/[\/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
-// The racer's folder: first and last name, e.g. "Allmacher Michael" (bibs can change between start
+// The same name last name first ("Allmacher Michael"), as earlier folders were named
+function _raceLastFirst(r) {
+  const parts = r.name.includes(',') ? r.name.split(',').map(s => s.trim()) : [];
+  return parts.length === 2 ? parts.join(' ').replace(/[\/\\]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
+}
+// The racer's folder: first and last name, e.g. "Michael Allmacher" (bibs can change between start
 // lists, so the name is what ties a racer's runs together; it must be spelled the same). A folder
-// this race already has for that name is used as it is (earlier ones may end in " Bib N"). Two
-// racers with exactly the same name on one list are told apart by their bib.
+// this race already has for that name is used as it is (earlier ones may be last name first or end
+// in " Bib N"). Two racers with exactly the same name on one list are told apart by their bib.
 function raceFolderName(r) {
   const base = _raceBase(r), low = base.toLowerCase();
   if (raceRacers.filter(x => _raceBase(x).toLowerCase() === low).length > 1)
     return `${base}${r.bib ? ' Bib ' + r.bib : ''}`.slice(0, 80);
-  const re = new RegExp('^' + low.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '( bib \\w+)?$');
+  const esc_ = t => t.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const names = [base, _raceLastFirst(r)].filter(Boolean).map(esc_).join('|');
+  const re = new RegExp('^(' + names + ')( bib \\w+)?$');
   return (currentRace()?.folders || []).find(f => re.test(f.toLowerCase())) || base.slice(0, 80);
 }
 function raceFolders() {
