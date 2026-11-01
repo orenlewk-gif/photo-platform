@@ -1512,6 +1512,39 @@ def _remap_upload_log(remap: dict) -> None:
         _save_upload_logs_soon()
 
 
+# ── Races ──────────────────────────────────────────────────────────────────────────────────────
+# A race is set up in Settings > Races before race day: its name, date and a start list for each
+# run (replaced whenever the timing company sends a new one). It's its own place on the site
+# (photos at images/<date>/<race>/<racer>/), one folder per racer for all runs. Race photos stay
+# hidden (drafts: not on the website or store screens) while the race isn't live; there's no race
+# pricing yet (Oren is still working out how to sell them, possibly by team).
+RACES_KEY = "meta/races.json"
+_races_doc = JsonDoc(s3, R2_BUCKET, RACES_KEY, ttl=30, indent=1, default=list,
+                     valid=lambda d: isinstance(d, list))
+_races_lock = threading.Lock()
+RACE_NAME_MAX = 80
+RACE_MAX_RUNS = 6
+
+
+def _load_races() -> list:
+    return _races_doc.load()
+
+
+def _save_races(races: list) -> None:
+    _races_doc.save(races)
+
+
+def _race_by_location(location: str) -> dict | None:
+    """The race whose place this is (races are their own location, named after the race)."""
+    loc = " ".join(str(location or "").split()).lower()
+    return next((r for r in _load_races() if r["name"].lower() == loc), None)
+
+
+def _race_hidden(location: str) -> bool:
+    r = _race_by_location(location)
+    return bool(r) and not r.get("live")
+
+
 # Prints of photos also bought as digital files are this much off (online checkout; the POS's
 # print window starts at half price too). Store screens advertise it from here.
 PRINT_WITH_DIGITAL_PCT = 50
@@ -5886,6 +5919,9 @@ app.include_router(_routes_store.router)
 
 from routes import upload_station as _routes_upload_station  # noqa: E402
 app.include_router(_routes_upload_station.router)
+
+from routes import races as _routes_races  # noqa: E402
+app.include_router(_routes_races.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

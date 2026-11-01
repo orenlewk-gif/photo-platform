@@ -44,20 +44,23 @@ def test_names_read_first_name_first():
     assert display_name("Ty Carpenter") == "Ty Carpenter"
 
 
-def test_the_start_list_address_reads_text_and_pdfs(admin_client, monkeypatch):
-    r = admin_client.post("/api/admin/upload/start-list", content=b"12 Allmacher, Michael\n3 Talla, Russell",
-                          headers={"Content-Type": "text/plain"})
-    assert r.status_code == 200 and [x["bib"] for x in r.json()["racers"]] == ["12", "3"]
-    import core.race
-    monkeypatch.setattr(core.race, "pdf_text", lambda data: PRINTOUT)
-    r = admin_client.post("/api/admin/upload/start-list", content=b"%PDF-1.4 ...", headers={"Content-Type": "application/pdf"})
-    assert r.status_code == 200 and len(r.json()["racers"]) == 5 and r.json()["title"] == "LONE PEAK TEST SERIES SG 1"
-    r = admin_client.post("/api/admin/upload/start-list", content=b"nothing useful here", headers={"Content-Type": "text/plain"})
-    assert r.status_code == 400 and "No racers" in r.json()["error"]
+def test_a_runs_start_list_is_saved_from_text_or_a_pdf(admin_client, main_module, monkeypatch):
+    main_module._save_races([])
+    race = admin_client.post("/api/admin/races", json={"name": "Test Series SG 1", "date": DATE}).json()
+    r = admin_client.post(f"/api/admin/races/{race['id']}/runs/1/start-list", content=b"12 Allmacher, Michael\n3 Talla, Russell")
+    assert r.status_code == 200 and [x["bib"] for x in r.json()["runs"][0]["racers"]] == ["12", "3"]
+    import routes.races
+    monkeypatch.setattr(routes.races, "pdf_text", lambda data: PRINTOUT)
+    r = admin_client.post(f"/api/admin/races/{race['id']}/runs/1/start-list", content=b"%PDF-1.4 ...")
+    assert r.status_code == 200 and len(r.json()["runs"][0]["racers"]) == 5
+    r = admin_client.post(f"/api/admin/races/{race['id']}/runs/1/start-list", content=b"nothing useful here")
+    assert r.status_code == 400
+    main_module._save_races([])
 
 
-def test_only_the_studio_and_upload_stations_can_read_start_lists(client):
-    assert client.post("/api/admin/upload/start-list", content=b"12 A, B").status_code == 401
+def test_only_the_studio_manages_races(client):
+    assert client.post("/api/admin/races", json={"name": "X", "date": DATE}).status_code == 401
+    assert client.get("/api/races").status_code == 401
 
 
 @pytest.fixture(autouse=True)
@@ -65,8 +68,9 @@ def fresh_list(live_photos):
     live_photos([])
 
 
-def test_a_race_keeps_a_folder_per_racer(admin_client, main_module, monkeypatch):
+def test_a_race_keeps_a_folder_per_racer_and_stays_hidden(admin_client, main_module, monkeypatch):
     monkeypatch.setattr(main_module, "_load_pricing", lambda: {"default": {"tiers": [{"count": 1, "price": 25}]}})
+    monkeypatch.setattr(main_module, "_load_races", lambda: [{"id": "r1", "name": LOCATION, "date": DATE, "runs": []}])
     folder = "Allmacher Michael Bib 12"
     r = admin_client.post("/api/admin/upload/presign", json={"date": DATE, "location": LOCATION, "folder": folder, "race": True,
                                                              "files": [{"name": "AAE_6600.JPG", "type": "image/jpeg"}]})
@@ -77,11 +81,9 @@ def test_a_race_keeps_a_folder_per_racer(admin_client, main_module, monkeypatch)
     assert r.status_code == 200 and r.json()["indexed"] == 1
     photo = next(i for i in main_module.data if i["path"] == u["key"])
     assert photo["group"] == folder and photo["last_name"] == "" and photo.get("draft")
-    # Pushed live by its folder, as the upload does when the racer's photos are in
+    # A race that isn't live stays hidden: push-live refuses it
     r = admin_client.post("/api/admin/push-live", json={"date": DATE, "location": LOCATION, "folder": folder})
-    assert r.status_code == 200 and r.json()["pushed"] == 1
-    sub = admin_client.get("/api/subfolders", params={"date": DATE, "location": LOCATION}).json()
-    assert sub["type"] == "group" and [i["name"] for i in sub["items"]] == [folder]
+    assert r.status_code == 400 and "hidden" in r.json()["error"]
 
 
 def test_other_action_photos_still_ignore_the_folder(admin_client):
@@ -90,7 +92,8 @@ def test_other_action_photos_still_ignore_the_folder(admin_client):
     assert r.json()["urls"][0]["key"] == f"images/{DATE}/big-sky-ski-school/DSC_1.JPG"
 
 
-def test_a_racer_folder_name_cant_point_elsewhere(admin_client):
+def test_a_racer_folder_name_cant_point_elsewhere(admin_client, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "_load_races", lambda: [{"id": "r1", "name": LOCATION, "date": DATE, "runs": []}])
     r = admin_client.post("/api/admin/upload/presign", json={"date": DATE, "location": LOCATION, "folder": "../meta", "race": True,
                                                              "files": [{"name": "A.JPG", "type": "image/jpeg"}]})
     assert r.status_code == 400

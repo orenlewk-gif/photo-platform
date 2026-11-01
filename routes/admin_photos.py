@@ -382,29 +382,6 @@ def _is_upload_photo(name: str) -> bool:
     return name.lower().endswith(UPLOAD_EXTENSIONS)
 
 
-@router.post("/api/admin/upload/start-list")
-async def admin_upload_start_list(request: Request):
-    """A race's start list (the timing PDF, or pasted / text-file racers): the racers in start order."""
-    if not main._upload_allowed(request):
-        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
-    from core.race import parse_start_list, pdf_text, title_of
-    data = await request.body()
-    if len(data) > 8 * 1024 * 1024:
-        return JSONResponse(status_code=413, content={"error": "That file is too big for a start list"})
-    if data[:5] == b"%PDF-":
-        try:
-            text = await run_in_threadpool(pdf_text, data)
-        except Exception:
-            return JSONResponse(status_code=400, content={"error": "Couldn't read that PDF"})
-    else:
-        text = data.decode("utf-8", errors="replace")
-    racers = parse_start_list(text)
-    if not racers:
-        return JSONResponse(status_code=400, content={
-            "error": "No racers found. Use the timing company's start list PDF, or paste one racer a line (bib and name)."})
-    return {"title": title_of(text) if data[:5] == b"%PDF-" else "", "racers": racers}
-
-
 @router.post("/api/admin/upload/presign")
 async def admin_upload_presign(request: Request):
     if not main._upload_allowed(request):
@@ -416,6 +393,8 @@ async def admin_upload_presign(request: Request):
     if not date or not location or not files:
         return JSONResponse(status_code=400, content={"error": "Missing date, location, or files"})
     is_portrait = main._is_portrait_location(location)
+    if body.get("race") and not main._race_by_location(location):
+        return JSONResponse(status_code=400, content={"error": "That race isn't set up (Settings > Races)"})
     folder      = body.get("folder", "").strip() if is_portrait or body.get("race") else ""
     problem = _upload_names_problem(date, location, folder)
     if problem:
@@ -474,6 +453,8 @@ async def admin_upload_index(request: Request):
         return JSONResponse(status_code=400, content={"error": "Missing fields"})
     is_portrait = main._is_portrait_location(location)
     # A race keeps a folder per racer (sorted by the start list); other action photos go by location
+    if body.get("race") and not main._race_by_location(location):
+        return JSONResponse(status_code=400, content={"error": "That race isn't set up (Settings > Races)"})
     folder   = body.get("folder", "").strip() if is_portrait or body.get("race") else ""
     problem = _upload_names_problem(date, location, folder)
     if problem:
@@ -604,6 +585,10 @@ async def admin_push_live(request: Request):
     date     = body.get("date", "")
     location = body.get("location", "").strip()
     folder   = body.get("folder", "").strip()
+
+    # A race stays hidden until it's live (Settings > Races); there's no race pricing yet
+    if main._race_hidden(location):
+        return JSONResponse(status_code=400, content={"error": "This race is hidden until it's put live in Settings > Races"})
 
     # ── Pricing gate ─────────────────────────────────────────────────────────
     loc_lower = location.lower()
