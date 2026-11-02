@@ -2940,8 +2940,8 @@ def _customer_admin_matches(c: dict, q: str) -> bool:
     digits = re.sub(r"\D", "", ql)
     return len(digits) >= 3 and digits in re.sub(r"\D", "", c.get("phone") or "")
 
-def _upsert_customer_from_pos(info: dict) -> None:
-    """Add a POS customer to the directory, matched by email.
+def _upsert_customer_from_pos(info: dict, source: str = "pos") -> None:
+    """Add a POS (or online, source="online") customer to the directory, matched by email.
     For an existing customer, only blank fields are filled in — nothing already on
     file is overwritten (two people can share one email address). Changes to existing
     details are made in the studio CRM. Never touches notes, tags or follow-up history."""
@@ -2963,7 +2963,7 @@ def _upsert_customer_from_pos(info: dict) -> None:
         else:
             customers.append({
                 "id": _new_customer_id(), "email": email, **fields,
-                "source": "pos", "created": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "source": source, "created": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
             })
             _save_customers(customers)
 
@@ -3131,6 +3131,19 @@ def _load_token(token: str):
     except Exception:
         return None
 
+def _add_online_customer(order: dict) -> None:
+    """A paid online order's buyer goes in the customer directory (WooCommerce's shape)."""
+    b = order.get("billing") or {}
+    street = " ".join(x for x in (str(b.get("address_1") or "").strip(), str(b.get("address_2") or "").strip()) if x)
+    try:
+        _upsert_customer_from_pos({"first": b.get("first_name", ""), "last": b.get("last_name", ""),
+                                   "email": b.get("email", ""), "phone": b.get("phone", ""), "street": street,
+                                   "city": b.get("city", ""), "state": b.get("state", ""), "zip": b.get("postcode", "")},
+                                  source="online")
+    except Exception as e:
+        print(f"Customer not added for order {order.get('id')}: {e}")
+
+
 def _handle_paid_wc_order(order: dict):
     """A paid online order: create the download link and have WooCommerce email it."""
     # Act on processing (manual/physical orders) or completed (auto-completed digital orders)
@@ -3147,6 +3160,7 @@ def _handle_paid_wc_order(order: dict):
         _log_partner_online_prints(order)
     except Exception as e:
         print(f"Partner prints not logged for order {order.get('id')}: {e}")
+    _add_online_customer(order)
     with _sale_locks.hold(f"wc:{order.get('id')}"):
         if _order_has_valid_link(order.get("id")):
             return Response(status_code=200)
@@ -3499,6 +3513,7 @@ def _complete_online_order(order_id: str, session: dict | None = None) -> dict |
             _log_partner_online_prints(order)
         except Exception as e:
             print(f"Partner prints not logged for order {order_id}: {e}")
+        _add_online_customer(order)
         made = None
         try:
             made = _make_order_download(order)

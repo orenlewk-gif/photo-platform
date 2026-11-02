@@ -327,3 +327,17 @@ def test_paid_stripe_order_logs_partner_prints_once(client, stripe, main_module,
     made = _paid_order(client, stripe)
     main_module._complete_online_order(made["order_id"])          # the thank-you page after the webhook
     assert logged == [made["order_id"]]                           # same Eagle Mount print log as WooCommerce orders
+
+
+def test_online_buyers_join_the_customer_list(client, stripe, main_module):
+    with main_module._customers_lock:
+        before = [c for c in main_module._load_customers() if c.get("email") != "ann@example.com"]
+        main_module._save_customers(before)
+    _paid_order(client, stripe, billing={"first_name": "Ann", "last_name": "Smith", "phone": "406-555-0101",
+                                         "address_1": "1 Lone Mountain Trl", "city": "Big Sky", "state": "MT", "postcode": "59716"})
+    ann = main_module._customer_by_email(main_module._load_customers(), "ann@example.com")
+    assert ann and ann["first"] == "Ann" and ann["source"] == "online" and ann["zip"] == "59716" and ann["phone"] == "406-555-0101"
+    main_module._add_online_customer({"billing": {"email": "ann@example.com", "first_name": "Annie", "city": "Bozeman"}})
+    again = main_module._customer_by_email(main_module._load_customers(), "ann@example.com")
+    assert again["first"] == "Ann" and again["city"] == "Big Sky"          # nothing on file is overwritten
+    assert len([c for c in main_module._load_customers() if c.get("email") == "ann@example.com"]) == 1
