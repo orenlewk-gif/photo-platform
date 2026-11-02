@@ -104,12 +104,12 @@ def test_wrong_codes_and_expired_codes(main_module, codes_on, monkeypatch):
     assert main_module.POS_DEVICE_COOKIE not in c.cookies
 
 
-def test_the_studio_lists_and_removes_pos_devices(main_module, codes_on, admin_client):
+def test_the_studio_lists_and_removes_pos_devices(owner_client, main_module, codes_on, admin_client):
     c = TestClient(main_module.app)
     _approve(c, codes_on)
-    devices = admin_client.get("/api/admin/pos-devices").json()["devices"]
+    devices = owner_client.get("/api/admin/pos-devices").json()["devices"]
     assert len(devices) == 1 and devices[0]["by"] == "Test Photog"
-    assert admin_client.delete(f"/api/admin/pos-devices/{devices[0]['id']}").json()["ok"]
+    assert owner_client.delete(f"/api/admin/pos-devices/{devices[0]['id']}").json()["ok"]
     assert c.get("/api/pos-dates", headers={"X-POS-PIN": "4821"}).status_code == 401
     assert _pin(c).status_code == 403                                  # a new code is needed
 

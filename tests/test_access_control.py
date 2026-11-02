@@ -327,6 +327,9 @@ def test_new_device_needs_the_emailed_code_then_only_the_password(client, mail, 
     r = client.post("/admin/verify", data={"challenge": _challenge(r.text), "code": _code_from(mail)},
                     follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/admin/orders"
+    assert client.get("/api/admin/devices").status_code == 403            # Admin > Security needs the owner PIN
+    import time
+    client.cookies.set(main_module.OWNER_COOKIE, main_module._owner_token(int(time.time()) + 600))
     devices = client.get("/api/admin/devices").json()["devices"]
     assert len(devices) == 1 and devices[0]["this_device"]
 
@@ -353,8 +356,12 @@ def test_sign_out_everywhere_ends_every_session_and_forgets_devices(client, mail
     from fastapi.testclient import TestClient
     page = _sign_in(client).text
     client.post("/admin/verify", data={"challenge": _challenge(page), "code": _code_from(mail)})
+    import time
+    owner = main_module._owner_token(int(time.time()) + 600)
+    client.cookies.set(main_module.OWNER_COOKIE, owner)
     other = TestClient(main_module.app)
     other.cookies.set(main_module.ADMIN_COOKIE, main_module._create_admin_session())
+    other.cookies.set(main_module.OWNER_COOKIE, owner)
     assert other.get("/api/admin/devices").status_code == 200
 
     assert client.post("/api/admin/sign-out-everywhere").status_code == 200

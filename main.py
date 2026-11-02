@@ -4843,7 +4843,7 @@ _EMAIL_TEMPLATE_DEFAULTS: dict = {
     },
     "online_receipt": {
         "id": "online_receipt", "name": "Online Order Receipt", "system": True,
-        "subject": "Your Crystal Images photos, order {{order_id}}",
+        "subject": "Your Crystal Images photos",
         "body": (
             "Hi {{first_name}},\n\n"
             "Thank you for your order! Here's what you bought.\n\n"
@@ -4858,7 +4858,7 @@ _EMAIL_TEMPLATE_DEFAULTS: dict = {
     },
     "order_shipped": {
         "id": "order_shipped", "name": "Order Shipped", "system": True,
-        "subject": "Your Crystal Images order {{order_id}} is on its way",
+        "subject": "Your Crystal Images order is on its way",
         "body": (
             "Hi {{first_name}},\n\n"
             "Good news: your order has shipped.\n\n"

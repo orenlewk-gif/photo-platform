@@ -245,6 +245,9 @@ async def station_restore(request: Request, body: dict = Body(...)):
 def admin_upload_stations(request: Request):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     now = main._now_iso()
     stations = [{"id": k[:16], "name": v.get("name", ""), "describe": v.get("describe", ""),
                  "approved": v.get("approved", ""), "last_used": v.get("last_used", ""), "ip": v.get("ip", "")}
@@ -261,6 +264,9 @@ def _station_key(d: dict, station_id: str) -> str | None:
 def admin_rename_upload_station(station_id: str, request: Request, body: dict = Body(...)):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     name = " ".join(str(body.get("name") or "").split())
     if not name or len(name) > main.STORE_NAME_MAX:
         return JSONResponse(status_code=400, content={"error": f"Give it a name of up to {main.STORE_NAME_MAX} letters"})
@@ -279,6 +285,9 @@ def admin_remove_upload_station(station_id: str, request: Request):
     """Forget an upload station: it's locked out until it's approved with a new code."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     d = main._load_admin_auth()
     with main._admin_auth_lock:
         key = _station_key(d, station_id)

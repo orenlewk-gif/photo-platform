@@ -21,6 +21,9 @@ def _unauthorized():
 def admin_device_links(request: Request):
     if not main._admin_authed(request):
         return _unauthorized()
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     return {"links": [{"kind": k, "name": _NAMES[k], "link": main._device_link(k)} for k in main.DEVICE_LINKS]}
 
 
@@ -30,6 +33,9 @@ def admin_new_device_link(kind: str, request: Request):
     stay approved and open the new link once."""
     if not main._admin_authed(request):
         return _unauthorized()
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     if kind not in main.DEVICE_LINKS:
         return JSONResponse(status_code=404, content={"error": "Not found"})
     main._new_device_path(kind)
@@ -41,6 +47,9 @@ def admin_device_link_qr(kind: str, request: Request):
     """The link as a QR code, to open it on an iPad or phone with the camera."""
     if not main._admin_authed(request):
         return _unauthorized()
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     if kind not in main.DEVICE_LINKS:
         return JSONResponse(status_code=404, content={"error": "Not found"})
     import segno
@@ -54,6 +63,9 @@ def admin_email_device_links(request: Request):
     """Email all the links to the owner: open the email on the store's computer and click."""
     if not main._admin_authed(request):
         return _unauthorized()
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     links = [(_NAMES[k], main._device_link(k)) for k in main.DEVICE_LINKS]
     if not main.RESEND_API_KEY:
         return JSONResponse(status_code=503, content={"error": "Email isn't set up on the server"})

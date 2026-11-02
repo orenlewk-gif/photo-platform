@@ -85,14 +85,14 @@ def test_asking_for_access_needs_a_name(main_module, emails):
     assert emails == []
 
 
-def test_the_emailed_code_approves_the_screen_under_its_name(main_module, emails, admin_client):
+def test_the_emailed_code_approves_the_screen_under_its_name(owner_client, main_module, emails, admin_client):
     c = TestClient(main_module.app)
     r = _approve(c, emails)
     assert r.status_code == 200 and r.json()["name"] == "Front counter iMac"
     assert main_module.STORE_SCREEN_COOKIE in c.cookies
     page = c.get(_home(main_module))
     assert page.status_code == 200 and "window.STORE_MODE = true" in page.text and "/static/store-mode.js" in page.text
-    screens = admin_client.get("/api/admin/store-screens").json()["screens"]
+    screens = owner_client.get("/api/admin/store-screens").json()["screens"]
     assert [s["name"] for s in screens] == ["Front counter iMac"] and screens[0]["last_used"]
 
 
@@ -127,13 +127,13 @@ def test_the_website_itself_isnt_store_mode(client):
     assert "<!--store-mode-->" in r.text
 
 
-def test_renaming_and_removing_a_screen(main_module, emails, admin_client):
+def test_renaming_and_removing_a_screen(owner_client, main_module, emails, admin_client):
     c = TestClient(main_module.app)
     _approve(c, emails)
-    sid = admin_client.get("/api/admin/store-screens").json()["screens"][0]["id"]
-    assert admin_client.put(f"/api/admin/store-screens/{sid}", json={"name": "Back wall"}).status_code == 200
-    assert admin_client.get("/api/admin/store-screens").json()["screens"][0]["name"] == "Back wall"
-    assert admin_client.delete(f"/api/admin/store-screens/{sid}").status_code == 200
+    sid = owner_client.get("/api/admin/store-screens").json()["screens"][0]["id"]
+    assert owner_client.put(f"/api/admin/store-screens/{sid}", json={"name": "Back wall"}).status_code == 200
+    assert owner_client.get("/api/admin/store-screens").json()["screens"][0]["name"] == "Back wall"
+    assert owner_client.delete(f"/api/admin/store-screens/{sid}").status_code == 200
     assert c.get(_home(main_module)).status_code == 403                # locked out again
     assert TestClient(main_module.app).get("/api/admin/store-screens").status_code == 401
 
@@ -314,7 +314,7 @@ def test_store_mode_can_be_installed_as_an_app(main_module, emails, admin_client
 
 
 
-def test_store_mode_lives_at_its_random_address(main_module, emails, admin_client, client):
+def test_store_mode_lives_at_its_random_address(owner_client, main_module, emails, admin_client, client):
     assert client.get("/store").status_code == 404 and client.get("/s/guess").status_code == 404
     assert client.get("/s/guess").json() == client.get("/no-such-page/at-all").json()
     assert emails == []                                          # wrong addresses don't email the owner
@@ -322,5 +322,5 @@ def test_store_mode_lives_at_its_random_address(main_module, emails, admin_clien
     page = admin_client.get(_home(main_module)).text
     assert f'window.STORE_HOME = "{_home(main_module)}"' in page
     old = _home(main_module)
-    admin_client.post("/api/admin/device-links/store/new")
+    owner_client.post("/api/admin/device-links/store/new")
     assert admin_client.get(old).status_code == 404 and admin_client.get(_home(main_module)).status_code == 200

@@ -95,15 +95,15 @@ def test_asking_for_a_code_needs_the_address_and_a_name(main_module, emails, cli
     assert emails == []
 
 
-def test_the_emailed_code_approves_the_computer(main_module, emails, admin_client):
+def test_the_emailed_code_approves_the_computer(owner_client, main_module, emails, admin_client):
     c = _approve(TestClient(main_module.app), main_module, emails)
     page = c.get(f"/u/{_path(main_module)}")
     assert page.status_code == 200 and "Office iMac" in page.text
     assert '<div class="upload-card">' in page.text and "/static/upload.js" in page.text
     assert "<!--upload-form-->" not in page.text
-    listed = admin_client.get("/api/admin/upload-stations").json()
+    listed = owner_client.get("/api/admin/upload-stations").json()
     assert [s["name"] for s in listed["stations"]] == ["Office iMac"]
-    links = {l["kind"]: l["link"] for l in admin_client.get("/api/admin/device-links").json()["links"]}
+    links = {l["kind"]: l["link"] for l in owner_client.get("/api/admin/device-links").json()["links"]}
     assert links["station"].endswith(f"/u/{_path(main_module)}")
 
 
@@ -197,20 +197,20 @@ def test_todays_photos_go_to_the_trash_and_come_back(main_module, emails):
     main_module._save_trash_meta([])
 
 
-def test_a_new_link_retires_the_old_one(main_module, emails, admin_client):
+def test_a_new_link_retires_the_old_one(owner_client, main_module, emails, admin_client):
     c = _approve(TestClient(main_module.app), main_module, emails)
     old = _path(main_module)
-    new = admin_client.post("/api/admin/device-links/station/new").json()["link"]
+    new = owner_client.post("/api/admin/device-links/station/new").json()["link"]
     assert c.get(f"/u/{old}").status_code == 404
     assert new.endswith(f"/u/{_path(main_module)}") and c.get(f"/u/{_path(main_module)}").status_code == 200
 
 
-def test_renaming_and_removing_a_station(main_module, emails, admin_client):
+def test_renaming_and_removing_a_station(owner_client, main_module, emails, admin_client):
     c = _approve(TestClient(main_module.app), main_module, emails)
-    sid = admin_client.get("/api/admin/upload-stations").json()["stations"][0]["id"]
-    assert admin_client.put(f"/api/admin/upload-stations/{sid}", json={"name": "Back office"}).status_code == 200
+    sid = owner_client.get("/api/admin/upload-stations").json()["stations"][0]["id"]
+    assert owner_client.put(f"/api/admin/upload-stations/{sid}", json={"name": "Back office"}).status_code == 200
     assert "Back office" in c.get(f"/u/{_path(main_module)}").text
-    assert admin_client.delete(f"/api/admin/upload-stations/{sid}").status_code == 200
+    assert owner_client.delete(f"/api/admin/upload-stations/{sid}").status_code == 200
     assert c.get(f"/u/{_path(main_module)}").status_code == 403
     assert c.post("/api/admin/upload/presign", json={"date": DATE, "location": ACTION,
                                                      "files": [{"name": "A.JPG", "type": "image/jpeg"}]}).status_code == 401

@@ -82,6 +82,9 @@ def _clean_address(a: dict, need_contact: bool = False) -> tuple[dict | None, st
 def get_shipping_settings(request: Request):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     return {**shipping_settings(), "ready": bool(main.SHIPPO_API_KEY),
             "mode": shippo_api.mode_of(main.SHIPPO_API_KEY)}
 
@@ -90,6 +93,9 @@ def get_shipping_settings(request: Request):
 def put_shipping_settings(request: Request, body: dict = Body(...)):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     frm, err = _clean_address(body.get("from") or {}, need_contact=True)
     if err:
         return JSONResponse(status_code=400, content={"error": err})

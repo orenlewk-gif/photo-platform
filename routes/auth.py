@@ -102,6 +102,9 @@ def admin_devices(request: Request):
     """Approved devices, for Settings > Security."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     mine = main._device_approved(request)
     devices = [{"describe": v.get("describe", ""), "approved": v.get("approved", ""),
                 "last_signin": v.get("last_signin", v.get("approved", "")), "ip": v.get("ip", ""),
@@ -116,6 +119,9 @@ def admin_pos_devices(request: Request):
     """Devices approved for the POS, for Settings > Security."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     now = main._now_iso()
     devices = [{"id": k[:16], "describe": v.get("describe", ""), "approved": v.get("approved", ""),
                 "by": v.get("by", ""), "ip": v.get("ip", "")}
@@ -129,6 +135,9 @@ def admin_remove_pos_device(device_id: str, request: Request):
     """Forget a POS device: it needs a new emailed code before it can use the POS again."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     d = main._load_admin_auth()
     with main._admin_auth_lock:
         keys = [k for k in d["pos_devices"] if k[:16] == device_id]
@@ -144,6 +153,9 @@ def admin_sign_out_everywhere(request: Request):
     """End every studio session and forget every approved device (each needs a code again)."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)       # Admin area: the owner's PIN
+    if denied:
+        return denied
     d = main._load_admin_auth()
     with main._admin_auth_lock:
         d["sessions"], d["devices"] = {}, {}

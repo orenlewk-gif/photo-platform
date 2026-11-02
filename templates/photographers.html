@@ -68,6 +68,12 @@ th{text-align:left;color:rgba(255,255,255,.4);font-size:.72rem;text-transform:up
 td{padding:.7rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
+.settings-section{background:#0a1e2e;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:1.5rem;max-width:820px;margin-bottom:1.5rem}
+.section-title{font-size:1rem;font-weight:700;color:rgba(255,255,255,.9);margin-bottom:.3rem}
+.section-desc{font-size:.8rem;color:rgba(255,255,255,.45);margin-bottom:1.2rem;line-height:1.55}
+.field-input{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff;padding:.5rem .7rem;font-size:.86rem;width:100%}
+.btn-save{background:#F5C518;color:#07151f;border:none;border-radius:8px;padding:.6rem 1.4rem;font-size:.86rem;font-weight:700;cursor:pointer}
+.btn-save:hover{background:#f0bc00}
 .pay-desc{font-size:.84rem;color:rgba(255,255,255,.5);line-height:1.6;margin-bottom:1rem}
 .pay-radio{display:inline-flex;align-items:center;gap:.4rem}
 .pay-radio input{width:16px;height:16px;padding:0;margin:0;-webkit-appearance:radio;appearance:auto;accent-color:#F5C518;cursor:pointer}
@@ -167,6 +173,8 @@ html.embedded #layout{height:100vh}
   <button class="admin-tab" id="tab-timecards" onclick="showSection('timecards')">Commission</button>
   <button class="admin-tab" id="tab-reports" onclick="showSection('reports')">Reports</button>
   <button class="admin-tab" id="tab-payments" onclick="showSection('payments')">Payments</button>
+  <button class="admin-tab" id="tab-shipping" onclick="showSection('shipping')">Shipping</button>
+  <button class="admin-tab" id="tab-security" onclick="showSection('security')">Security</button>
 </div>
 
 <div id="sec-photographers" class="section-pg">
@@ -266,6 +274,84 @@ html.embedded #layout{height:100vh}
   </div>
 </div><!-- /sec-payments -->
 
+<div id="sec-shipping" class="section-pg" style="display:none">
+    <!-- SHIPPING LABELS -->
+    <div class="settings-section">
+      <div class="section-title">Shipping labels</div>
+      <div class="section-desc">Print and frame orders get a "Buy label" button on the Orders page: it shows the carriers' prices for the package you pick, buys the label (a PDF to print) and emails the customer the tracking number. Labels are paid through Shippo; its key is added on Railway (SHIPPO_API_KEY), never here.</div>
+      <div id="ship-status" style="font-size:.85rem;line-height:1.9;margin-bottom:.9rem">Loading…</div>
+      <div style="font-size:.78rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem">Ship from</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;margin-bottom:.5rem">
+        <input class="field-input" id="sf-name" placeholder="Name" aria-label="Ship-from name">
+        <input class="field-input" id="sf-company" placeholder="Company" aria-label="Company">
+        <input class="field-input" id="sf-street1" placeholder="Street or PO Box" aria-label="Street or PO Box">
+        <input class="field-input" id="sf-street2" placeholder="Suite (optional)" aria-label="Suite">
+        <input class="field-input" id="sf-city" placeholder="City" aria-label="City">
+        <input class="field-input" id="sf-state" placeholder="State" aria-label="State">
+        <input class="field-input" id="sf-zip" placeholder="ZIP" aria-label="ZIP code">
+        <input class="field-input" id="sf-phone" placeholder="Phone" aria-label="Phone">
+        <input class="field-input" id="sf-email" placeholder="Email" aria-label="Email">
+      </div>
+      <div class="section-desc" style="margin-bottom:.9rem">A PO Box works for USPS labels. UPS and FedEx need a street address (the shop: 52 Big Sky Resort Rd).</div>
+      <div style="font-size:.78rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem">Your boxes and mailers</div>
+      <div class="section-desc" style="margin-bottom:.5rem">Size in inches and weight in pounds with the print or frame packed inside (a kitchen scale is fine; round up a little).</div>
+      <div id="ship-packages"></div>
+      <button class="btn-save" style="background:rgba(255,255,255,.08);color:#fff;margin:.4rem 0 .9rem" onclick="shipAddPackage()">+ Add a box</button>
+      <div style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:rgba(255,255,255,.6)">Label size
+          <select class="field-input" id="ship-format" style="width:auto;display:inline-block;margin-left:.4rem">
+            <option value="PDF_4x6">4×6 (label printer)</option><option value="PDF">8.5×11 sheet</option>
+          </select></label>
+        <button class="btn-save" onclick="saveShipSettings()">Save shipping settings</button>
+        <span id="ship-save-status" style="font-size:.82rem"></span>
+      </div>
+    </div>
+
+</div><!-- /sec-shipping -->
+
+<div id="sec-security" class="section-pg" style="display:none">
+    <!-- SECURITY -->
+    <div class="settings-section">
+      <div class="section-title">Signed-in devices</div>
+      <div class="section-desc">Devices approved to sign in to the studio. A new device needs the password plus a code emailed to <span id="sec-email"></span>; approved devices only need the password for 90 days. Use "Sign out all devices" if a computer is lost or replaced — every device (this one too) will need a code again.</div>
+      <div id="sec-devices" style="font-size:.85rem;line-height:1.7;margin-bottom:.9rem">Loading…</div>
+      <button class="btn-save" onclick="signOutEverywhere()" style="background:#b91c1c">Sign out all devices</button>
+    </div>
+
+    <!-- DEVICE LINKS -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Device links</div>
+      <div class="section-desc">The shop's own pages live at random addresses, so nobody stumbles on them. To get one onto a computer or iPad: email them all to yourself and click the link on that device, or scan its QR code with the iPad's camera. In Chrome, Install makes it an app with its own icon; on an iPad, Share &gt; Add to Home Screen. "New link" changes an address if it got out: the old one stops working, approved devices stay approved and just open the new link. Square still returns card payments to the POS as before.</div>
+      <div id="sec-device-links" style="font-size:.85rem;line-height:1.7">Loading…</div>
+      <div style="margin-top:.9rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap">
+        <button class="btn-save" onclick="emailDeviceLinks()">Email me these links</button>
+        <span id="device-links-status" style="font-size:.82rem"></span>
+      </div>
+    </div>
+
+    <!-- POS DEVICES -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">POS and time clock devices</div>
+      <div class="section-desc">Devices approved to use the POS and the time clock. The first time someone enters their PIN on a new device, you're emailed a code to approve it; after that it only needs a PIN. Remove a device if it's lost or replaced: it will need a new code.</div>
+      <div id="sec-pos-devices" style="font-size:.85rem;line-height:1.7">Loading…</div>
+    </div>
+
+    <!-- STORE SCREENS -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Store screens</div>
+      <div class="section-desc">Screens approved for store mode (its link is under Device links), where customers heart their favorite photos. A new screen is given a name and asks for a code, which is emailed to you; it's typed on that screen once. Any other device is blocked, and you're emailed about it. Store screens can't use the POS. Remove a screen if it's lost or replaced: it will need a new code.</div>
+      <div id="sec-store-screens" style="font-size:.85rem;line-height:1.7">Loading…</div>
+    </div>
+
+    <!-- UPLOAD STATIONS -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Upload stations</div>
+      <div class="section-desc">Computers approved for the Upload Station (its link is under Device links): the upload form and today's uploads, nothing else of the studio. The first time, the computer is given a name and asks for a code, which is emailed to you; it's typed on that computer once. Remove a computer if it's lost or replaced: it will need a new code.</div>
+      <div id="sec-upload-stations" style="font-size:.85rem;line-height:1.7">Loading…</div>
+    </div>
+
+</div><!-- /sec-security -->
+
 <div id="sec-reports" class="section-pg" style="display:none">
   <!-- The reports live on the Orders page (Reports tab); shown here too -->
   <iframe id="reports-frame" title="Reports" style="width:100%;height:calc(100vh - 140px);border:0;border-radius:10px;background:transparent"></iframe>
@@ -295,6 +381,8 @@ function showSection(name) {
   const rf = document.getElementById('reports-frame');
   if (name === 'reports' && rf && !rf.src) rf.src = '/admin/orders?tab=reports&solo=1';
   if (name === 'payments') loadPayStatus();
+  if (name === 'shipping') loadShipSettings();
+  if (name === 'security') { loadDevices(); loadDeviceLinks(); loadPosDevices(); loadStoreScreens(); loadUploadStations(); }
 }
 
 let photographers = [];
@@ -819,6 +907,191 @@ document.addEventListener('keydown',function(e){
 })();
 </script>
 <script>
+// ── Security: approved devices ──
+function _secEsc(t){ return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function _secDate(iso){ try { return new Date(iso).toLocaleString([], {month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit'}); } catch(e) { return iso; } }
+async function loadDevices() {
+  const el = document.getElementById('sec-devices');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/devices')).json();
+    document.getElementById('sec-email').textContent = d.email || '';
+    const rows = (d.devices || []).map(v => `<div>${_secEsc(v.describe || 'Device')}${v.this_device ? ' <strong style="color:#4ade80">(this device)</strong>' : ''}
+      <span style="color:rgba(255,255,255,.45)"> · last signed in ${_secDate(v.last_signin)} · ${_secEsc(v.ip)}</span></div>`).join('');
+    el.innerHTML = (rows || '<div style="color:rgba(255,255,255,.45)">No approved devices yet.</div>')
+      + (d.codes_on ? '' : '<div style="color:#f59e0b;margin-top:.4rem">Sign-in codes are turned OFF on the server (ADMIN_LOGIN_CODES=off).</div>');
+  } catch (e) { el.textContent = 'Could not load devices'; }
+}
+async function signOutEverywhere() {
+  if (!confirm('Sign out every device, including this one? Each will need the password and an emailed code to sign in again.')) return;
+  const r = await fetch('/api/admin/sign-out-everywhere', {method: 'POST'});
+  if (r.ok) { (window.top || window).location.href = '/admin'; } else { alert('Could not sign out all devices'); }
+}
+
+async function loadPosDevices() {
+  const el = document.getElementById('sec-pos-devices');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/pos-devices')).json();
+    const rows = (d.devices || []).map(v => `<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <span>${_secEsc(v.describe || 'Device')}<span style="color:rgba(255,255,255,.45)"> · approved ${_secDate(v.approved)}${v.by ? ' when ' + _secEsc(v.by) + ' signed in' : ''} · ${_secEsc(v.ip)}</span></span>
+      <button onclick="removePosDevice('${_secEsc(v.id)}')" style="background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.15rem .6rem;font-size:.78rem;cursor:pointer">Remove</button></div>`).join('');
+    el.innerHTML = (rows || '<div style="color:rgba(255,255,255,.45)">No approved POS devices yet.</div>')
+      + (d.codes_on ? '' : '<div style="color:#f59e0b;margin-top:.4rem">New-device codes are turned OFF on the server (POS_DEVICE_CODES=off).</div>');
+  } catch (e) { el.textContent = 'Could not load POS devices'; }
+}
+async function removePosDevice(id) {
+  if (!confirm('Remove this POS device? It will need a new emailed code before it can use the POS again.')) return;
+  const r = await fetch('/api/admin/pos-devices/' + encodeURIComponent(id), {method: 'DELETE'});
+  if (!r.ok) alert('Could not remove the device');
+  loadPosDevices();
+}
+
+async function loadStoreScreens() {
+  const el = document.getElementById('sec-store-screens');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/store-screens')).json();
+    const btn = 'background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.15rem .6rem;font-size:.78rem;cursor:pointer';
+    const rows = (d.screens || []).map(v => `<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <span><strong>${_secEsc(v.name || 'Store screen')}</strong><span style="color:rgba(255,255,255,.45)"> · ${_secEsc(v.describe || 'Device')} · approved ${_secDate(v.approved)} · last used ${_secDate(v.last_used)} · ${_secEsc(v.ip)}</span></span>
+      <button onclick="renameStoreScreen('${_secEsc(v.id)}', this.dataset.name)" data-name="${_secEsc(v.name)}" style="${btn}">Rename</button>
+      <button onclick="removeStoreScreen('${_secEsc(v.id)}')" style="${btn}">Remove</button></div>`).join('');
+    el.innerHTML = rows || '<div style="color:rgba(255,255,255,.45)">No approved store screens yet.</div>';
+  } catch (e) { el.textContent = 'Could not load store screens'; }
+}
+async function renameStoreScreen(id, current) {
+  const name = (prompt('Name for this store screen:', current || '') || '').trim();
+  if (!name) return;
+  const r = await fetch('/api/admin/store-screens/' + encodeURIComponent(id), {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})});
+  if (!r.ok) alert((await r.json().catch(() => ({}))).error || 'Could not rename the screen');
+  loadStoreScreens();
+}
+async function removeStoreScreen(id) {
+  if (!confirm('Remove this store screen? It will be locked out until it is approved with a new code.')) return;
+  const r = await fetch('/api/admin/store-screens/' + encodeURIComponent(id), {method: 'DELETE'});
+  if (!r.ok) alert('Could not remove the screen');
+  loadStoreScreens();
+}
+
+async function loadUploadStations() {
+  const el = document.getElementById('sec-upload-stations');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/upload-stations')).json();
+    const btn = 'background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.15rem .6rem;font-size:.78rem;cursor:pointer';
+    const rows = (d.stations || []).map(v => `<div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap">
+      <span><strong>${_secEsc(v.name || 'Upload station')}</strong><span style="color:rgba(255,255,255,.45)"> · ${_secEsc(v.describe || 'Device')} · approved ${_secDate(v.approved)} · last used ${_secDate(v.last_used)} · ${_secEsc(v.ip)}</span></span>
+      <button onclick="renameUploadStation('${_secEsc(v.id)}', this.dataset.name)" data-name="${_secEsc(v.name)}" style="${btn}">Rename</button>
+      <button onclick="removeUploadStation('${_secEsc(v.id)}')" style="${btn}">Remove</button></div>`).join('');
+    el.innerHTML = rows || '<div style="color:rgba(255,255,255,.45)">No approved upload stations yet.</div>';
+  } catch (e) { el.textContent = 'Could not load upload stations'; }
+}
+// ── Device links: the Upload Station, store mode and the POS (random addresses) ──
+async function loadDeviceLinks() {
+  const el = document.getElementById('sec-device-links');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/device-links')).json();
+    const btn = 'background:none;border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:6px;padding:.3rem .7rem;font-size:.8rem;cursor:pointer';
+    el.innerHTML = d.links.map(l => `<div style="padding:.6rem 0;border-top:1px solid rgba(255,255,255,.07)">
+      <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
+        <strong style="min-width:8.5rem">${_secEsc(l.name)}</strong>
+        <input id="dl-${l.kind}" readonly aria-label="${_secEsc(l.name)} link" value="${_secEsc(l.link)}" style="flex:1;min-width:240px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:6px;color:#fff;padding:.35rem .6rem;font-size:.8rem">
+        <button type="button" style="${btn}" onclick="copyDeviceLink('${l.kind}')">Copy</button>
+        <a href="${_secEsc(l.link)}" target="_blank" rel="noopener" style="color:#F5C518;font-size:.82rem">Open</a>
+        <button type="button" style="${btn}" onclick="toggleDeviceQr('${l.kind}')">QR code</button>
+        <button type="button" style="${btn}" onclick="newDeviceLink('${l.kind}', '${_secEsc(l.name)}')">New link</button>
+      </div>
+      <div id="dlqr-${l.kind}" style="display:none;margin-top:.6rem"><img alt="QR code for the ${_secEsc(l.name)} link" style="width:180px;height:180px;background:#fff;border-radius:6px"></div>
+    </div>`).join('');
+  } catch (e) { el.textContent = 'Could not load the links'; }
+}
+async function copyDeviceLink(kind) {
+  const box = document.getElementById('dl-' + kind);
+  box.select();
+  try { await navigator.clipboard.writeText(box.value); } catch (e) { document.execCommand('copy'); }
+}
+function toggleDeviceQr(kind) {
+  const w = document.getElementById('dlqr-' + kind);
+  const show = w.style.display === 'none';
+  if (show) w.querySelector('img').src = `/api/admin/device-links/${kind}/qr?t=${Date.now()}`;
+  w.style.display = show ? '' : 'none';
+}
+async function newDeviceLink(kind, name) {
+  if (!confirm(`Make a new ${name} link? The old one stops working. Approved devices stay approved; open the new link on each one.`)) return;
+  const r = await fetch(`/api/admin/device-links/${kind}/new`, {method: 'POST'});
+  if (!r.ok) alert('Could not make a new link');
+  loadDeviceLinks();
+}
+async function emailDeviceLinks() {
+  const st = document.getElementById('device-links-status');
+  st.style.color = 'rgba(255,255,255,.5)'; st.textContent = 'Sending…';
+  const r = await fetch('/api/admin/device-links/email', {method: 'POST'});
+  const d = await r.json().catch(() => ({}));
+  st.style.color = r.ok ? '#4ade80' : '#f87171';
+  st.textContent = r.ok ? `Sent to ${d.email}` : (d.error || 'Could not send the email');
+}
+
+async function renameUploadStation(id, current) {
+  const name = (prompt('Name for this computer:', current || '') || '').trim();
+  if (!name) return;
+  const r = await fetch('/api/admin/upload-stations/' + encodeURIComponent(id), {method: 'PUT',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name})});
+  if (!r.ok) alert((await r.json().catch(() => ({}))).error || 'Could not rename the computer');
+  loadUploadStations();
+}
+async function removeUploadStation(id) {
+  if (!confirm('Remove this upload station? It will be locked out until it is approved with a new code.')) return;
+  const r = await fetch('/api/admin/upload-stations/' + encodeURIComponent(id), {method: 'DELETE'});
+  if (!r.ok) alert('Could not remove the computer');
+  loadUploadStations();
+}
+
+// ── Shipping labels (Shippo) ──
+let _shipPackages = [];
+function _shipPkgRow(p, i) {
+  const f = (k, ph, w) => `<input class="field-input" style="width:${w}" placeholder="${ph}" aria-label="${ph}" value="${_secEsc(p[k] ?? '')}" oninput="_shipPackages[${i}].${k}=this.value">`;
+  return `<div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.35rem;flex-wrap:wrap">${f('name', 'Name (e.g. 8x10 mailer)', '15rem')}
+    ${f('length', 'Length in', '6rem')}${f('width', 'Width in', '6rem')}${f('height', 'Height in', '6rem')}${f('weight', 'Weight lb', '6rem')}
+    <button class="btn-save" style="background:none;color:#f87171;padding:.3rem .6rem" aria-label="Remove this box" onclick="_shipPackages.splice(${i},1);_shipRenderPkgs()">Remove</button></div>`;
+}
+function _shipRenderPkgs() {
+  document.getElementById('ship-packages').innerHTML = _shipPackages.length ? _shipPackages.map(_shipPkgRow).join('')
+    : '<div class="section-desc" style="margin:0 0 .3rem">No boxes saved yet.</div>';
+}
+function shipAddPackage() { _shipPackages.push({name: '', length: '', width: '', height: '', weight: ''}); _shipRenderPkgs(); }
+async function loadShipSettings() {
+  const el = document.getElementById('ship-status');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/shipping/settings')).json();
+    el.innerHTML = d.ready
+      ? `<span style="color:#4ade80">&#10003;</span> Shippo key on Railway (${d.mode === 'live' ? 'LIVE: labels cost real postage' : 'test mode: free sample labels'})`
+      : '<span style="color:#f87171">&#10007;</span> Shippo key not on Railway yet (SHIPPO_API_KEY). Orders can still be marked shipped by hand.';
+    for (const k of ['name', 'company', 'street1', 'street2', 'city', 'state', 'zip', 'phone', 'email'])
+      document.getElementById('sf-' + k).value = d.from[k] || '';
+    document.getElementById('ship-format').value = d.label_format;
+    _shipPackages = d.packages || [];
+    _shipRenderPkgs();
+  } catch (e) { el.textContent = 'Could not load the shipping settings'; }
+}
+async function saveShipSettings() {
+  const st = document.getElementById('ship-save-status');
+  const from = {};
+  for (const k of ['name', 'company', 'street1', 'street2', 'city', 'state', 'zip', 'phone', 'email'])
+    from[k] = document.getElementById('sf-' + k).value.trim();
+  from.country = 'US';
+  const r = await fetch('/api/admin/shipping/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({from, packages: _shipPackages, label_format: document.getElementById('ship-format').value})});
+  const d = await r.json().catch(() => ({}));
+  st.style.color = r.ok ? '#4ade80' : '#f87171';
+  st.textContent = r.ok ? 'Saved' : (d.error || 'Could not save');
+  if (r.ok) { _shipPackages = d.packages; _shipRenderPkgs(); }
+}
+
+
 // ── Online payments (Stripe): the checkout switch and the $1 test order ──
 function _payEsc(t){ return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
 async function loadPayStatus() {

@@ -66,26 +66,26 @@ def shippo(main_module, monkeypatch):
     shipping._settings_doc.cache["data"] = None
 
 
-def _save_box(admin_client, **extra):
-    s = admin_client.get("/api/admin/shipping/settings").json()
-    r = admin_client.put("/api/admin/shipping/settings", json={"from": {**s["from"], **extra}, "packages": [BOX]})
+def _save_box(owner_client, **extra):
+    s = owner_client.get("/api/admin/shipping/settings").json()
+    r = owner_client.put("/api/admin/shipping/settings", json={"from": {**s["from"], **extra}, "packages": [BOX]})
     return r
 
 
-def test_settings_start_from_the_po_box_and_check_what_is_saved(admin_client, shippo):
-    s = admin_client.get("/api/admin/shipping/settings").json()
+def test_settings_start_from_the_po_box_and_check_what_is_saved(owner_client, admin_client, shippo):
+    s = owner_client.get("/api/admin/shipping/settings").json()
     assert s["from"]["street1"] == "PO Box 162712" and s["from"]["zip"] == "59716" and s["ready"] and s["mode"] == "test"
-    assert _save_box(admin_client).status_code == 200
-    saved = admin_client.get("/api/admin/shipping/settings").json()["packages"]
+    assert _save_box(owner_client).status_code == 200
+    saved = owner_client.get("/api/admin/shipping/settings").json()["packages"]
     assert saved == [{"id": "8x10-mailer", **BOX}]
-    bad = admin_client.put("/api/admin/shipping/settings", json={"from": s["from"], "packages": [{"name": "x", "length": "big"}]})
+    bad = owner_client.put("/api/admin/shipping/settings", json={"from": s["from"], "packages": [{"name": "x", "length": "big"}]})
     assert bad.status_code == 400
-    no_city = admin_client.put("/api/admin/shipping/settings", json={"from": {**s["from"], "city": ""}, "packages": []})
+    no_city = owner_client.put("/api/admin/shipping/settings", json={"from": {**s["from"], "city": ""}, "packages": []})
     assert no_city.status_code == 400
 
 
-def test_buy_a_label_and_the_customer_gets_the_tracking_number(admin_client, shippo):
-    _save_box(admin_client)
+def test_buy_a_label_and_the_customer_gets_the_tracking_number(owner_client, admin_client, shippo):
+    _save_box(owner_client)
     key = "pos:pos-ship1"
     info = admin_client.get(f"/api/admin/shipping/order?key={key}").json()
     assert info["shipment"] is None and info["to"]["name"] == "Finn Hart"
@@ -112,8 +112,8 @@ def test_buy_a_label_and_the_customer_gets_the_tracking_number(admin_client, shi
     assert row["ships"] and row["shipment"]["status"] == "label"
 
 
-def test_void_then_buy_again(admin_client, shippo):
-    _save_box(admin_client)
+def test_void_then_buy_again(owner_client, admin_client, shippo):
+    _save_box(owner_client)
     key = "pos:pos-ship1"
     admin_client.post("/api/admin/shipping/rates", json={"key": key, "to": TO, "package_id": "8x10-mailer"})
     admin_client.post("/api/admin/shipping/buy", json={"key": key, "rate_id": "rate_pri", "email_customer": False})
