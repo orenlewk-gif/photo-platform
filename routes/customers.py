@@ -70,7 +70,33 @@ def api_customers_filtered(request: Request):
             total = float(order.get("net") or order.get("total") or 0)
             _upsert(email, name, "pos", total)
 
-    # ── WooCommerce orders ─────────────────────────────────────────────────────
+    # ── Online orders (WooCommerce's, then our own Stripe ones) ───────────────
+    def _cat(item_name: str) -> str:
+        n = item_name.lower()
+        if "frame" in n:
+            return "frames"
+        if "print" in n or "4x6" in n or "5x7" in n or "8x10" in n or "11x14" in n:
+            return "prints"
+        return "digital"
+
+    def _add_online(o: dict):
+        email = (o.get("billing") or {}).get("email", "").strip()
+        if not email:
+            return
+        name = f"{(o.get('billing') or {}).get('first_name','')} {(o.get('billing') or {}).get('last_name','')}".strip()
+        total = float(o.get("total") or 0)
+        line_items = o.get("line_items", [])
+        for li in line_items:
+            cat = _cat(li.get("name", ""))
+            if cat == "digital"  and not want_digital:
+                continue
+            if cat == "prints"   and not want_prints:
+                continue
+            if cat == "frames"   and not want_frames:
+                continue
+            _upsert(email, name, cat, total / max(len(line_items), 1))
+            break  # count order once per type match
+
     if want_wc and main.WC_KEY and main.WC_SECRET:
         try:
             params: dict = {"per_page": 100, "page": 1, "status": "completed"}
@@ -89,34 +115,16 @@ def api_customers_filtered(request: Request):
                 if not orders:
                     break
                 for o in orders:
-                    email = (o.get("billing") or {}).get("email", "").strip()
-                    if not email:
-                        continue
-                    name = f"{(o.get('billing') or {}).get('first_name','')} {(o.get('billing') or {}).get('last_name','')}".strip()
-                    total = float(o.get("total") or 0)
-                    line_items = o.get("line_items", [])
-                    def _cat(item_name: str) -> str:
-                        n = item_name.lower()
-                        if "frame" in n:
-                            return "frames"
-                        if "print" in n or "4x6" in n or "5x7" in n or "8x10" in n or "11x14" in n:
-                            return "prints"
-                        return "digital"
-                    for li in line_items:
-                        cat = _cat(li.get("name", ""))
-                        if cat == "digital"  and not want_digital:
-                            continue
-                        if cat == "prints"   and not want_prints:
-                            continue
-                        if cat == "frames"   and not want_frames:
-                            continue
-                        _upsert(email, name, cat, total / max(len(line_items), 1))
-                        break  # count order once per type match
+                    _add_online(o)
                 if len(orders) < 100:
                     break
                 params["page"] += 1
         except Exception as e:
             print(f"WC filtered query error: {e}")
+    if want_wc:
+        for o in main._fetch_stripe_orders(after=date_from or None, before=date_to or None):
+            if o.get("status") == "completed":
+                _add_online(o)
 
     out = []
     for r in results.values():
@@ -235,6 +243,11 @@ def api_customer_history(email: str, request: Request):
         except Exception as e:
             print(f"WC order fetch error for {email}: {e}")
 
+    # Our own online orders (paid with Stripe) with this email
+    wc_orders += [o for o in main._fetch_stripe_orders()
+                  if ((o.get("billing") or {}).get("email") or "").lower() == email]
+    wc_orders.sort(key=lambda o: str(o.get("date_created") or ""), reverse=True)
+
     orders_out = []
     for o in wc_orders:
         order_id = o.get("id")
@@ -260,7 +273,7 @@ def api_customer_history(email: str, request: Request):
             "items": items,
             "gallery_url": gallery_url,
             "gallery_expired": gallery_expired,
-            "source": "woocommerce",
+            "source": "stripe" if o.get("provider") == "stripe" else "woocommerce",
         })
 
     # POS orders filtered by email

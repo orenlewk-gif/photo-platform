@@ -68,13 +68,13 @@ def api_admin_reports(request: Request, days: int = 30,
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     from collections import defaultdict
     if all_time:
-        orders = main._fetch_wc_orders_all()
+        orders = main._fetch_online_orders()
     elif date_from and date_to:
-        orders = main._fetch_wc_orders_all(after=f"{date_from}T00:00:00",
-                                      before=f"{date_to}T23:59:59")
+        orders = main._fetch_online_orders(after=f"{date_from}T00:00:00",
+                                           before=f"{date_to}T23:59:59")
     else:
         after = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        orders = main._fetch_wc_orders_all(after=after)
+        orders = main._fetch_online_orders(after=after)
 
     rows = [main._order_row(o) for o in orders]
 
@@ -161,10 +161,10 @@ def admin_orders(request: Request, days: int = 30,
     if custom:
         after  = f"{date_from}T00:00:00"
         before = f"{date_to}T23:59:59"
-        orders = main._fetch_wc_orders(after=after, before=before)
+        orders = main._fetch_online_orders(after=after, before=before)
     else:
         after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        orders = main._fetch_wc_orders(after=after)
+        orders = main._fetch_online_orders(after=after)
     rows       = [main._order_row(o) for o in orders]
     # In-person (POS) sales in the same period, listed with online orders, newest first
     pos_rows   = [main._pos_order_row(o) for o in main._fill_pending_square_fees(
@@ -280,9 +280,9 @@ def admin_orders(request: Request, days: int = 30,
             action_btn = (f'<a href="/package/{r["package_token"]}" target="_blank" class="copy-btn" '
                           f'onclick="event.stopPropagation()">Open Link</a>') if r.get("package_token") else '—'
         elif is_recent:
-            action_btn = f'<button class="copy-btn" onclick="copyLink({r["order_id"]},event)">Copy Link</button>'
+            action_btn = f'<button class="copy-btn" onclick="copyLink(\'{E(str(r["order_id"]))}\',event)">Copy Link</button>'
         else:
-            action_btn = f'<a href="/admin/regen/{r["order_id"]}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
+            action_btn = f'<a href="/admin/regen/{E(str(r["order_id"]))}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
         trs += f"""<tr class="order-row" data-detail="{detail_data}" onclick="showDetail(this.dataset.detail)" style="cursor:pointer">
           {td(E(r['date'] or ''))}
           {td(order_cell, 'mono')}
@@ -337,10 +337,10 @@ def admin_export(request: Request, days: int = 30,
         return RedirectResponse("/admin")
     import csv, io
     if date_from and date_to:
-        orders = main._fetch_wc_orders(after=f"{date_from}T00:00:00", before=f"{date_to}T23:59:59")
+        orders = main._fetch_online_orders(after=f"{date_from}T00:00:00", before=f"{date_to}T23:59:59")
     else:
         after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        orders = main._fetch_wc_orders(after=after)
+        orders = main._fetch_online_orders(after=after)
     rows   = [main._order_row(o) for o in orders]
     rows  += [main._pos_order_row(o) for o in main._fill_pending_square_fees(main._fetch_pos_orders(
         after=(date_from if date_from and date_to else (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")),

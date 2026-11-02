@@ -407,7 +407,7 @@ def test_card_fee_square_fills_in_later_shows_up_on_the_orders_tab(admin_client,
 
     fake = square(FakeSquare())
     fake.orders = {"ORDER1": {**_paid_order(cents=2600), "tenders": [{"id": "PAY1", "type": "CARD"}]}}
-    monkeypatch.setattr(main_module, "_fetch_wc_orders", lambda *a, **kw: [])   # no online orders
+    monkeypatch.setattr(main_module, "_fetch_online_orders", lambda *a, **kw: [])   # no online orders
     html = admin_client.get("/admin/orders?days=7").text
     assert ">pending<" in html                                  # Square hasn't filled it in yet
 

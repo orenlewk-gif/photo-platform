@@ -3286,7 +3286,8 @@ def _online_order_for(order_id: str, key: str) -> dict | None:
 def _fetch_stripe_orders(after: str = None, before: str = None, paid_only: bool = True) -> list:
     """Our online orders, newest first (paid ones unless paid_only=False), optionally only those
     placed after..before (dates or ISO times, compared on the day). Orders already read are
-    remembered by their file's ETag."""
+    remembered by their file's ETag. Orders paid with Stripe's test keys are left out once the
+    site has live keys (they were never real money)."""
     listed = []
     try:
         for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=ONLINE_ORDERS_PREFIX):
@@ -3311,9 +3312,13 @@ def _fetch_stripe_orders(after: str = None, before: str = None, paid_only: bool 
     a, b = (after or "")[:10], (before or "")[:10]
     with _online_order_cache_lock:
         orders = [dict(_online_order_cache[k][1]) for k, _ in listed if k in _online_order_cache]
+    from core import stripe_api
+    show_test = stripe_api.mode_of(STRIPE_SECRET_KEY) != "live"
     out = []
     for o in orders:
-        if paid_only and o.get("status") not in ("completed", "refunded"):
+        if paid_only and o.get("status") not in ("completed", "refunded", "check"):
+            continue
+        if not show_test and (o.get("stripe") or {}).get("mode") == "test":
             continue
         day = str(o.get("date_created", ""))[:10]
         if (a and day < a) or (b and day > b):
@@ -3416,12 +3421,15 @@ def _complete_online_order(order_id: str, session: dict | None = None) -> dict |
             cents = int(round(float(order["total"]) * 100))
             if int(session.get("amount_total") or -1) != cents or str(session.get("currency", "usd")).lower() != "usd":
                 order["status"] = "check"
-                order.setdefault("stripe", {})["note"] = f"Paid {session.get('amount_total')} {session.get('currency')}, expected {cents}"
+                order.setdefault("stripe", {}).update(
+                    note=f"Paid {session.get('amount_total')} {session.get('currency')}, expected {cents}",
+                    mode="live" if session.get("livemode") else "test")
                 _save_online_order(order)
                 print(f"[stripe] AMOUNT MISMATCH on {order_id}: not delivered, check it in Stripe")
                 return order
             order.setdefault("stripe", {}).update({"session_id": session.get("id", ""),
-                                                   "payment_intent": session.get("payment_intent") or ""})
+                                                   "payment_intent": session.get("payment_intent") or "",
+                                                   "mode": "live" if session.get("livemode") else "test"})
         order["status"] = "completed"
         order["paid_at"] = _now_iso()
         order["date_paid"] = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%dT%H:%M:%S")
@@ -3870,9 +3878,12 @@ def _order_row(order) -> dict:
     what_ordered = ", ".join(li.get("name","") for li in line_items)
     coupon_lines = order.get("coupon_lines", [])
     coupon_code  = ", ".join(c.get("code","") for c in coupon_lines) if coupon_lines else meta.get("_coupon_code", "")
+    is_stripe = order.get("provider") == "stripe"
     return {
         "order_id":    order.get("id"),
-        "order_no":    f"#{order.get('number') or order.get('id')}",
+        "order_no":    order.get("id") if is_stripe else f"#{order.get('number') or order.get('id')}",
+        "provider":    "stripe" if is_stripe else "woo",
+        "status":      order.get("status", ""),
         "date":        order.get("date_created","")[:10],
         "first":       billing.get("first_name",""),
         "last":        billing.get("last_name",""),

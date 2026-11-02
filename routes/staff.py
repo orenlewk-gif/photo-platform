@@ -232,7 +232,8 @@ def photographer_commission(request: Request,
     refunds = main._load_order_refunds()
     pending_unlimited, pending_count = 0.0, 0
     try:
-        wc_orders = main._fetch_wc_orders_all(after=date_from, before=date_to)
+        # Online orders (WooCommerce's and our own Stripe ones) for the whole of each day
+        wc_orders = main._fetch_online_orders(after=f"{date_from}T00:00:00", before=f"{date_to}T23:59:59")
         pos_orders = main._fetch_pos_orders(after=date_from, before=date_to)
         for o in wc_orders:
             row = main._order_row(o)

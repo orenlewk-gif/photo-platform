@@ -25,6 +25,8 @@ from core.pages import render_page
 
 router = APIRouter()
 
+_ORDER_ID_RE = re.compile(r"^(\d{1,12}|CI-\d{1,9})$")   # WooCommerce order numbers, and our own online orders
+
 
 @router.get("/download/{token}")
 def download_page(token: str):
@@ -132,9 +134,11 @@ def download_file(token: str, idx: int):
 
 
 @router.get("/api/admin/order-link/{order_id}")
-def api_admin_order_link(request: Request, order_id: int):
+def api_admin_order_link(request: Request, order_id: str):
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    if not _ORDER_ID_RE.match(order_id):          # a WooCommerce number or one of ours (CI-1001)
+        return JSONResponse(status_code=404, content={"error": "No download record found"})
     token, rec, expires_dt = main._get_best_token_for_order(order_id)
     if not rec:
         return JSONResponse(status_code=404, content={"error": "No download record found"})
@@ -144,10 +148,14 @@ def api_admin_order_link(request: Request, order_id: int):
 
 
 @router.get("/admin/regen/{order_id}")
-def admin_regen(request: Request, order_id: int):
+def admin_regen(request: Request, order_id: str):
     if not main._admin_authed(request):
         return RedirectResponse("/admin")
-    token, rec = main._get_token_by_order_id(order_id)
+    if not _ORDER_ID_RE.match(order_id):
+        return HTMLResponse("<h2 style='font-family:sans-serif;color:#e53e3e;padding:2rem'>Order not found in download records.</h2>")
+    token, rec, _ = main._get_best_token_for_order(order_id)
+    if not rec:
+        token, rec = main._get_token_by_order_id(order_id)
     if not rec:
         return HTMLResponse("<h2 style='font-family:sans-serif;color:#e53e3e;padding:2rem'>Order not found in download records.</h2>")
     new_token  = str(uuid.uuid4()).replace("-", "")

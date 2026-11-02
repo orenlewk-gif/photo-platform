@@ -204,7 +204,8 @@ def test_paid_stripe_orders_show_with_the_online_orders(client, stripe, main_mod
     orders = main_module._fetch_online_orders()
     assert [o["id"] for o in orders] == [made["order_id"]]
     row = main_module._order_row(orders[0])
-    assert row["order_no"] == f"#{made['order_id']}" and row["email"] == "ann@example.com" and row["total"] == made["total"]
+    assert row["order_no"] == made["order_id"] and row["email"] == "ann@example.com" and row["total"] == made["total"]
+    assert row["provider"] == "stripe"
 
 
 def test_test_mode_messages_are_ignored_on_the_live_keys(client, stripe, main_module, monkeypatch):
@@ -257,3 +258,47 @@ def test_invoices_use_the_stripe_pay_page_and_can_be_cancelled(main_module, stri
     client.post("/stripe/webhook", **_signed({"type": "checkout.session.completed", "livemode": False,
                                              "data": {"object": stripe.pay(sid)}}))
     assert "already paid" in main_module._cancel_invoice(paid["order_id"])
+
+
+def _paid_order(client, stripe, **extra):
+    made = _checkout(client, **extra)
+    _, _, sid = _start_payment(client, made)
+    client.post("/stripe/webhook", **_signed({"type": "checkout.session.completed", "livemode": False,
+                                             "data": {"object": stripe.pay(sid)}}))
+    return made
+
+
+def test_studio_pages_show_stripe_orders(client, admin_client, owner_client, stripe, main_module):
+    """Orders, the spreadsheet export, Reports, a customer's history and the customer filter all
+    include our own online orders, and Copy Link finds the order's download."""
+    S3.put_object(Bucket=BUCKET, Key="meta/photographers.json", Body=json.dumps([
+        {"id": "p1", "name": "Dana Shooter", "pin": "1111", "file_prefix": "A.j"}]).encode())
+    made = _paid_order(client, stripe)
+    oid = made["order_id"]
+    html = admin_client.get("/admin/orders?days=7").text
+    assert oid in html and f"copyLink('{oid}',event)" in html
+    assert oid in admin_client.get("/admin/export?days=7").text
+    rep = admin_client.get("/api/admin/reports?days=7").json()
+    assert rep["summary"]["orders"] == 1 and rep["summary"]["revenue"] == made["total"]
+    link = admin_client.get(f"/api/admin/order-link/{oid}").json()
+    assert link["url"].startswith(f"{main_module.SITE_URL}/download/") and not link["expired"]
+    assert admin_client.get("/api/admin/order-link/CI-1001x").status_code == 404
+    hist = admin_client.get("/api/admin/customer/ann@example.com/history").json()
+    assert [o["id"] for o in hist["orders"]] == [oid] and hist["orders"][0]["source"] == "stripe"
+    assert hist["orders"][0]["gallery_url"].startswith("/download/")
+    found = admin_client.get("/api/admin/customers/filtered?types=digital").json()["customers"]
+    assert [c["email"] for c in found] == ["ann@example.com"]
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+    rows = owner_client.get(f"/api/photographers/commission?date_from={today}&date_to={today}").json()["commission"]
+    assert next(p for p in rows if p["id"] == "p1")["revenue"] == made["total"]
+    S3.delete_object(Bucket=BUCKET, Key="meta/photographers.json")
+
+
+def test_test_mode_orders_drop_out_once_live(client, stripe, main_module, monkeypatch):
+    made = _paid_order(client, stripe)
+    assert main_module._load_online_order(made["order_id"])["stripe"]["mode"] == "test"
+    assert [o["id"] for o in main_module._fetch_online_orders()] == [made["order_id"]]
+    monkeypatch.setattr(main_module, "STRIPE_SECRET_KEY", "sk_live_x")
+    assert main_module._fetch_online_orders() == []

@@ -165,7 +165,9 @@ def test_refunded_sale_earns_no_commission(admin_client, owner_client, pos_order
 
 def test_orders_page_escapes_customer_typed_text(admin_client, pos_orders, main_module, monkeypatch):
     evil = '<img src=x onerror=alert(1)>'
-    monkeypatch.setattr(main_module, "_fetch_wc_orders", lambda *a, **kw: [{
+    monkeypatch.setattr(main_module, "WC_KEY", "ck_test")
+    monkeypatch.setattr(main_module, "WC_SECRET", "cs_test")
+    monkeypatch.setattr(main_module, "_fetch_wc_orders_all", lambda *a, **kw: [{
         "id": 901, "number": "901", "status": "completed", "date_created": TODAY + "T12:00:00",
         "total": "25.00", "discount_total": "0", "coupon_lines": [{"code": evil}],
         "billing": {"first_name": evil, "last_name": "O'Brien", "email": "x@example.com",
