@@ -222,7 +222,8 @@ def admin_set_checkout_provider(request: Request, body: dict = Body(...)):
     d = dict(main._checkout_settings_doc.load())
     d.update({"provider": provider, "changed": main._now_iso()})
     main._checkout_settings_doc.save(d)
-    return {"ok": True, "provider": main._checkout_provider()}
+    resynced = main._resync_stale_codes_to_woo() if provider == "woo" else 0   # codes made while on Stripe
+    return {"ok": True, "provider": main._checkout_provider(), "codes_copied": resynced}
 
 
 @router.post("/api/admin/stripe/test-order")

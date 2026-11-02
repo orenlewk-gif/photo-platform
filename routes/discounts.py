@@ -96,12 +96,8 @@ async def api_create_discount_code(request: Request):
         "uses":                  [],
     }
 
-    # Sync to WooCommerce so native coupon_lines work in checkout
-    wc_result = main._wc_sync_coupon(new_code)
-    if "wc_id" in wc_result:
-        new_code["wc_id"] = wc_result["wc_id"]
-    else:
-        new_code["wc_sync_error"] = wc_result.get("error", "")
+    # Sync to WooCommerce so native coupon_lines work in checkout (while it's WooCommerce's)
+    main._sync_code_to_woo(new_code)
 
     codes.append(new_code)
     main._save_discount_codes(codes)
@@ -135,12 +131,7 @@ async def api_update_discount_code(cid: str, request: Request):
                 if field in body:
                     c[field] = body[field]
             if changed_wc:
-                wc_result = main._wc_sync_coupon(c)
-                if "wc_id" in wc_result:
-                    c["wc_id"] = wc_result["wc_id"]
-                    c.pop("wc_sync_error", None)
-                else:
-                    c["wc_sync_error"] = wc_result.get("error", "")
+                main._sync_code_to_woo(c)
             main._save_discount_codes(codes)
             return {"code": {k: v for k, v in c.items() if k != "uses"}}
     return JSONResponse(status_code=404, content={"error": "Not found"})
@@ -172,6 +163,7 @@ async def api_wc_sync_code(cid: str, request: Request):
     if "wc_id" in result:
         c["wc_id"] = result["wc_id"]
         c.pop("wc_sync_error", None)
+        c.pop("wc_stale", None)
         main._save_discount_codes(codes)
         return {"wc_id": result["wc_id"]}
     c["wc_sync_error"] = result.get("error", "")
@@ -208,11 +200,7 @@ async def api_generate_child_code(cid: str, request: Request):
         "usage_limit":   body.get("usage_limit") or template.get("usage_limit"),
         "description":   body.get("description") or template.get("description",""),
     })
-    wc_result = main._wc_sync_coupon(new_code)
-    if "wc_id" in wc_result:
-        new_code["wc_id"] = wc_result["wc_id"]
-    else:
-        new_code["wc_sync_error"] = wc_result.get("error", "")
+    main._sync_code_to_woo(new_code)
 
     codes.append(new_code)
     main._save_discount_codes(codes)

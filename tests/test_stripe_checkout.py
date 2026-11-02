@@ -303,3 +303,27 @@ def test_test_mode_orders_drop_out_once_live(client, stripe, main_module, monkey
     assert [o["id"] for o in main_module._fetch_online_orders()] == [made["order_id"]]
     monkeypatch.setattr(main_module, "STRIPE_SECRET_KEY", "sk_live_x")
     assert main_module._fetch_online_orders() == []
+
+
+def test_discount_codes_stay_here_while_on_stripe_and_go_back_to_woocommerce(admin_client, stripe, main_module, monkeypatch):
+    synced = []
+    monkeypatch.setattr(main_module, "_wc_sync_coupon", lambda c: synced.append(c["code"]) or {"wc_id": 77})
+    S3.put_object(Bucket=BUCKET, Key="meta/discount_codes.json", Body=b"[]")
+    r = admin_client.post("/api/admin/discount-codes", json={"code": "WINTER10", "type": "percent", "amount": 10})
+    assert r.status_code == 200, r.text
+    code = r.json()["code"]
+    assert synced == [] and code.get("wc_stale") and not code.get("wc_sync_error")
+    monkeypatch.setattr(main_module, "STRIPE_WEBHOOK_SECRET", WEBHOOK_SECRET)
+    back = admin_client.put("/api/admin/checkout-settings", json={"provider": "woo"})
+    assert back.json()["codes_copied"] == 1 and synced == ["WINTER10"]
+    saved = json.loads(S3.get_object(Bucket=BUCKET, Key="meta/discount_codes.json")["Body"].read())
+    assert saved[0]["wc_id"] == 77 and "wc_stale" not in saved[0]
+    S3.delete_object(Bucket=BUCKET, Key="meta/discount_codes.json")
+
+
+def test_paid_stripe_order_logs_partner_prints_once(client, stripe, main_module, monkeypatch):
+    logged = []
+    monkeypatch.setattr(main_module, "_log_partner_online_prints", lambda order: logged.append(order["id"]))
+    made = _paid_order(client, stripe)
+    main_module._complete_online_order(made["order_id"])          # the thank-you page after the webhook
+    assert logged == [made["order_id"]]                           # same Eagle Mount print log as WooCommerce orders

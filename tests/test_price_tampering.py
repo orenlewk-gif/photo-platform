@@ -48,6 +48,7 @@ def shop(main_module, monkeypatch, live_photos):
     for k in ("_pricing_cache", "_folder_meta_cache", "_zip_pricing_cache"):
         if hasattr(main_module, k):
             getattr(main_module, k)["data"] = None
+    S3.delete_object(Bucket="test-bucket", Key="meta/frame_prices.json")   # frame prices copied from FakeWoo
     main_module._frame_prices_cache["data"] = None
     main_module._coupon_fail_limiter._calls.clear()
     fake = FakeWoo()

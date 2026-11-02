@@ -625,7 +625,9 @@ function openDetail(id) {
   const expiresStr = c.expires ? 'Expires ' + new Date(c.expires).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'No expiry';
   const createdStr = c.created ? 'Created ' + new Date(c.created).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
   const statusStr = status.charAt(0).toUpperCase() + status.slice(1);
-  const wcSync = c.wc_id
+  const wcSync = c.wc_stale
+    ? `<span style="color:rgba(255,255,255,.4);font-size:.72rem">Only here (online checkout is Stripe; not copied to WooCommerce)</span>`
+    : c.wc_id
     ? `<span style="color:#4ade80;font-size:.72rem">✓ WooCommerce synced</span>`
     : c.wc_sync_error
       ? `<span style="color:#e87070;font-size:.72rem" title="${c.wc_sync_error}">⚠ WC sync failed — click Sync</span>`

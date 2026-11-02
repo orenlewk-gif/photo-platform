@@ -1,5 +1,4 @@
 """Routes: admin_pricing. Moved from main.py unchanged; shared helpers still live in main.py."""
-import requests as http_requests
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -12,38 +11,32 @@ router = APIRouter()
 
 @router.post("/api/admin/frames/prices")
 async def update_frame_prices(request: Request):
+    """Big Sky Rustic frame prices, one per size: {"sizes": [{"size_idx": 1, "price": "60"}, ...]}.
+    Kept in Pricing (meta/frame_prices.json); the shop, checkout and POS use them right away."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     denied = main._owner_required(request)
     if denied:
         return denied
-    if not main.WC_KEY or not main.WC_SECRET:
-        return JSONResponse(status_code=503, content={"error": "WooCommerce credentials not configured"})
     body = await request.json()
-    # body: list of {variation_id: int, price: str}
-    updates = body if isinstance(body, list) else body.get("updates", [])
-    results = []
+    updates = body.get("sizes") if isinstance(body, dict) else None
+    if not isinstance(updates, list) or not updates:
+        return JSONResponse(status_code=400, content={"error": "No prices sent"})
+    try:
+        sizes = dict(main._frame_sizes() or {})
+    except main.CheckoutError:
+        sizes = {}
     for u in updates:
-        var_id = u.get("variation_id")
-        if not var_id:
-            continue
         try:
-            price_num = float(u.get("price"))
-        except (TypeError, ValueError):
-            price_num = 0.0
-        if price_num <= 0:
-            results.append({"variation_id": var_id, "ok": False, "error": "Price must be above $0"})
-            continue
-        price = f"{price_num:.2f}"
-        resp = http_requests.put(
-            f"{main.WC_BASE}/products/{main.WC_FRAME_PARENT_ID}/variations/{var_id}",
-            json={"regular_price": price},
-            auth=(main.WC_KEY, main.WC_SECRET),
-            timeout=15,
-        )
-        results.append({"variation_id": var_id, "ok": resp.status_code in (200, 201)})
-    main._frame_prices_cache["data"] = None     # the shop and checkout see the new prices right away
-    return {"results": results}
+            idx = int(u.get("size_idx"))
+            price = round(float(u.get("price")), 2)
+        except (TypeError, ValueError, AttributeError):
+            return JSONResponse(status_code=400, content={"error": "Enter a price above $0 for each size"})
+        if not 0 <= idx < len(main._FRAME_SIZE_LABELS) or not 0 < price < 10000:
+            return JSONResponse(status_code=400, content={"error": "Enter a price above $0 for each size"})
+        sizes[str(idx)] = {"price": price}
+    main._frame_prices_doc.save({"sizes": sizes, "updated": main._now_iso()})
+    return {"ok": True, "sizes": sizes}
 
 
 @router.post("/api/admin/pos-products")

@@ -442,7 +442,7 @@ input[type="text"].full{width:100%}
     <!-- ── Big Sky Rustic Frames ── -->
     <div id="sec-big-sky-frames" class="section">
       <h1>Big Sky Rustic Frames</h1>
-      <p class="subtitle">Prices are synced to WooCommerce. Edit below and save to update. Frame photos are stored locally in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/</code>.</p>
+      <p class="subtitle">One price per size (landscape and portrait). The website, checkout and POS use these right away. Frame photos are stored locally in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/</code>.</p>
       <div class="card">
         <div id="frames-display"></div>
         <div class="btn-row" style="margin-top:1rem">
@@ -1405,39 +1405,24 @@ async function renderBigSkyFrames(){
   el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">Loading frames...</p>';
   try{
     const r=await fetch('/api/frames');
-    if(!r.ok) throw new Error('WooCommerce unavailable');
+    if(!r.ok) throw new Error('Frame prices unavailable');
     const d=await r.json();
-    _framesData=d.frames||[];
-    // Remember what WooCommerce has, so Save only sends prices that were changed
-    _framesData.forEach(f=>['landscape','portrait'].forEach(o=>{ if(f[o]) f[o]._orig=String(f[o].price??''); }));
-    if(!_framesData.length){ el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">No frames returned from WooCommerce.</p>'; return; }
+    // One row per size; both orientations share its price
+    _framesData=(d.frames||[]).map((f,i)=>({size:f.size, size_idx:i,
+      price:String((f.landscape||f.portrait||{}).price??''), _orig:String((f.landscape||f.portrait||{}).price??'')}));
+    if(!_framesData.length){ el.innerHTML='<p style="color:rgba(255,255,255,.35);font-size:13px">No frame sizes.</p>'; return; }
     el.innerHTML=`<table>
-      <thead><tr><th>Size</th><th>Price</th><th>Stock</th></tr></thead>
+      <thead><tr><th>Size</th><th>Price</th></tr></thead>
       <tbody>
-        ${_framesData.map((f,i)=>{
-          // One price per size — saved to both the landscape and portrait frame in WooCommerce
-          const lp=f.landscape?.price??'';
-          const pp=f.portrait?.price??'';
-          const price=lp!==''?lp:pp;
-          const differ=f.landscape&&f.portrait&&String(lp)!==String(pp);
-          const st=f.landscape?.stock_status||f.portrait?.stock_status||'—';
-          return `<tr>
+        ${_framesData.map((f,i)=>`<tr>
             <td>${esc(f.size)}</td>
-            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(price)}" style="width:80px" oninput="frameInputChanged(${i},this.value)">
-              ${differ?`<div style="font-size:11px;color:#f5c430;margin-top:.25rem">Landscape $${esc(lp)} / portrait $${esc(pp)} in WooCommerce — saving sets both</div>`:''}</td>
-            <td><span style="color:${st==='instock'?'#34d399':'#f87171'};font-size:12px">${esc(st)}</span></td>
-          </tr>`;
-        }).join('')}
+            <td><span class="dollar">$</span><input type="number" min="0" step="0.01" value="${esc(f.price)}" style="width:80px" aria-label="${esc(f.size)} frame price" oninput="_framesData[${i}].price=this.value"></td>
+          </tr>`).join('')}
       </tbody>
     </table>
     <p style="color:rgba(255,255,255,.35);font-size:12px;margin-top:.5rem">To update frame photos, place files in <code style="font-size:11px;background:rgba(255,255,255,.07);padding:.1rem .3rem;border-radius:3px">frames/frame_{size}_{landscape|portrait}.jpg</code>.</p>`;
     if(saveBtn) saveBtn.style.display='inline-flex';
-  }catch(e){ el.innerHTML=`<p style="color:rgba(255,255,255,.35);font-size:13px">Could not load frame data: ${esc(e.message||String(e))}</p>`; }
-}
-function frameInputChanged(i, val){
-  const f=_framesData[i];
-  if(!f) return;
-  ['landscape','portrait'].forEach(o=>{ if(f[o]) f[o].price = val; });
+  }catch(e){ el.innerHTML=`<p style="color:rgba(255,255,255,.35);font-size:13px">Could not load frame prices: ${esc(e.message||String(e))}</p>`; }
 }
 async function saveFramePrices(){
   const btn=document.getElementById('frames-save-btn');
@@ -1445,28 +1430,21 @@ async function saveFramePrices(){
   status.textContent='';
   const updates=[];
   for(const f of _framesData){
-    for(const o of ['landscape','portrait']){
-      const v=f[o];
-      if(!v?.variation_id) continue;
-      const price=String(v.price??'').trim();
-      if(price===v._orig) continue;                      // unchanged — leave WooCommerce alone
-      const n=parseFloat(price);
-      if(!price || !isFinite(n) || n<=0){ status.textContent=`${f.size}: enter a price above $0`; return; }
-      updates.push({variation_id:v.variation_id, price:n.toFixed(2), _ref:v, _size:f.size});
-    }
+    const price=String(f.price??'').trim();
+    if(price===f._orig) continue;
+    const n=parseFloat(price);
+    if(!price || !isFinite(n) || n<=0){ status.textContent=`${f.size}: enter a price above $0`; return; }
+    updates.push({size_idx:f.size_idx, price:n.toFixed(2)});
   }
   if(!updates.length){ status.textContent='No changes to save'; setTimeout(()=>{ status.textContent=''; },2500); return; }
   btn.disabled=true; btn.textContent='Saving…';
   try{
     const r=await fetch('/api/admin/frames/prices',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(updates.map(({variation_id,price})=>({variation_id,price})))});
+      body:JSON.stringify({sizes:updates})});
     const d=await r.json().catch(()=>({}));
     if(!r.ok) throw new Error(d.error || (r.status===401?'Signed out — please log in again':'HTTP '+r.status));
-    const okIds=new Set((d.results||[]).filter(x=>x.ok).map(x=>x.variation_id));
-    updates.forEach(u=>{ if(okIds.has(u.variation_id)) u._ref._orig=u.price; });
-    const failed=updates.length-okIds.size;
-    const sizes=new Set(updates.map(u=>u._size)).size;
-    status.textContent=failed?`${failed} of ${updates.length} update(s) failed — try again`:`Saved ${sizes} size${sizes!==1?'s':''}`;
+    _framesData.forEach(f=>{ f._orig=String(f.price).trim(); });
+    status.textContent=`Saved ${updates.length} size${updates.length!==1?'s':''}`;
     setTimeout(()=>{ status.textContent=''; },4000);
   }catch(e){ status.textContent='Error: '+e.message; }
   btn.disabled=false; btn.textContent='Save Prices';
@@ -1884,7 +1862,9 @@ function dcOpenDetail(id) {
   const expiresStr = c.expires ? 'Expires ' + new Date(c.expires).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : 'No expiry';
   const createdStr = c.created ? 'Created ' + new Date(c.created).toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}) : '';
   const statusStr = status.charAt(0).toUpperCase() + status.slice(1);
-  const wcSync = c.wc_id
+  const wcSync = c.wc_stale
+    ? `<span style="color:rgba(255,255,255,.4);font-size:.72rem">Only here (online checkout is Stripe; not copied to WooCommerce)</span>`
+    : c.wc_id
     ? `<span style="color:#4ade80;font-size:.72rem">WooCommerce synced</span>`
     : c.wc_sync_error
       ? `<span style="color:#e87070;font-size:.72rem" title="${esc(c.wc_sync_error)}">WC sync failed — click Sync</span>`

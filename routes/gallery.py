@@ -431,7 +431,7 @@ def get_frames():
     try:
         variations = main._frame_variations()
     except CheckoutError:
-        return JSONResponse(status_code=502, content={"error": "WooCommerce unavailable"})
+        return JSONResponse(status_code=502, content={"error": "Frame prices unavailable"})
     frames = []
     for size_idx, label in enumerate(main._FRAME_SIZE_LABELS):
         entry = {"size": label, "landscape": None, "portrait": None}
@@ -454,7 +454,7 @@ def get_frames():
 @router.get("/api/shop-prices")
 def api_shop_prices():
     """Print, frame, shipping and logo prices for the gallery and checkout pages, from
-    the Pricing settings and WooCommerce, so the pages show what checkout charges."""
+    the Pricing settings, so the pages show what checkout charges."""
     pp = main._load_print_pricing()
     sizes = pp.get("sizes", list(main._DEFAULT_PRINT_SIZES))
     try:

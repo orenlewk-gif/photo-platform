@@ -1797,6 +1797,35 @@ def _wc_sync_coupon(code_obj: dict) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+def _sync_code_to_woo(c: dict) -> None:
+    """Copy a discount code to WooCommerce while its checkout is the one customers use (its orders
+    carry the code, and WooCommerce refuses codes it doesn't have). With Stripe checkout the codes
+    stay only here; ones changed meanwhile are marked and copied again if checkout switches back."""
+    if _checkout_provider() != "woo":
+        c.pop("wc_sync_error", None)
+        c["wc_stale"] = True
+        return
+    result = _wc_sync_coupon(c)
+    if "wc_id" in result:
+        c["wc_id"] = result["wc_id"]
+        c.pop("wc_sync_error", None)
+        c.pop("wc_stale", None)
+    else:
+        c["wc_sync_error"] = result.get("error", "")
+
+
+def _resync_stale_codes_to_woo() -> int:
+    """Back on WooCommerce checkout: copy over the codes made or changed while on Stripe."""
+    with _discount_codes_lock:
+        codes = _load_discount_codes()
+        stale = [c for c in codes if c.get("wc_stale")]
+        for c in stale:
+            _sync_code_to_woo(c)
+        if stale:
+            _save_discount_codes(codes)
+    return len(stale)
+
+
 def _wc_delete_coupon(wc_id: int):
     """Permanently delete a coupon from WooCommerce."""
     if not WC_KEY or not WC_SECRET or not wc_id:
@@ -1840,17 +1869,17 @@ def _record_coupon_result(request: Request, problem: str) -> None:
 
 _FRAME_SIZE_LABELS = ["5x7", "8x10", "10x13", "16x20"]
 _FRAME_VARIATION_INFO = {vid: key for key, vid in FRAME_VARIATION_MAP.items()}   # vid -> (size_idx, orientation)
-_frame_prices_cache = {"data": None, "ts": 0.0}
-_FRAME_PRICES_TTL = 300   # seconds; saving frame prices in the studio clears it
+FRAME_PRICES_KEY = "meta/frame_prices.json"
+# One price per frame size (both orientations), set in the studio's Pricing:
+# {"sizes": {"0": {"price": 45.0}, ...}} by print size index. No price = not sold.
+_frame_prices_doc = JsonDoc(s3, R2_BUCKET, FRAME_PRICES_KEY, ttl=300, indent=1, default=dict,
+                            valid=lambda d: isinstance(d, dict))
+_frame_prices_cache = _frame_prices_doc.cache      # saving frame prices refreshes it; clearing it rereads storage
 
 
-def _frame_variations() -> dict:
-    """{variation_id: {"price": float, "stock_status": str}} for the frame product, from
-    WooCommerce (kept for a few minutes). Raises CheckoutError if WooCommerce can't say."""
-    c = _frame_prices_cache
-    now = _time.time()
-    if c["data"] is not None and now - c["ts"] < _FRAME_PRICES_TTL:
-        return c["data"]
+def _frame_prices_from_woocommerce() -> dict:
+    """The frame prices WooCommerce had (product 1034's variations), as our sizes: read once,
+    the first time, so moving the prices into Pricing changes nothing customers see."""
     try:
         r = http_requests.get(f"{WC_BASE}/products/{WC_FRAME_PARENT_ID}/variations",
                               params={"per_page": 100}, auth=(WC_KEY, WC_SECRET), timeout=15)
@@ -1858,15 +1887,41 @@ def _frame_variations() -> dict:
         raise CheckoutError("Couldn't load frame prices — please try again in a moment") from e
     if r.status_code != 200:
         raise CheckoutError("Couldn't load frame prices — please try again in a moment")
-    data = {}
+    by_vid = {}
     for v in r.json():
         try:
-            data[int(v["id"])] = {"price": float(v.get("price") or v.get("regular_price") or 0),
-                                  "stock_status": v.get("stock_status", "instock")}
+            by_vid[int(v["id"])] = float(v.get("price") or v.get("regular_price") or 0)
         except (KeyError, TypeError, ValueError):
             continue
-    c.update(data=data, ts=now)
-    return data
+    sizes = {}
+    for idx in range(len(_FRAME_SIZE_LABELS)):
+        found = [by_vid[vid] for (i, _), vid in FRAME_VARIATION_MAP.items() if i == idx and vid in by_vid]
+        if found:
+            sizes[str(idx)] = {"price": max(found)}
+    return sizes
+
+
+def _frame_sizes() -> dict:
+    """{"0": {"price"}, ...}: Pricing's frame prices (copied from WooCommerce the
+    first time). Raises CheckoutError if there are none yet and WooCommerce can't say."""
+    sizes = _frame_prices_doc.load().get("sizes")
+    if not sizes:
+        sizes = _frame_prices_from_woocommerce()
+        if sizes:
+            _frame_prices_doc.save({"sizes": sizes, "from": "woocommerce", "copied": _now_iso()})
+    return sizes
+
+
+def _frame_variations() -> dict:
+    """{variation_id: {"price": float, "stock_status": str}} for every frame (size and
+    orientation), from Pricing. The ids stay WooCommerce's so carts and old orders keep working."""
+    sizes = _frame_sizes()
+    out = {}
+    for (idx, _), vid in FRAME_VARIATION_MAP.items():
+        sz = sizes.get(str(idx))
+        if sz:
+            out[vid] = {"price": float(sz.get("price") or 0), "stock_status": "instock"}
+    return out
 
 
 def _frame_price(variation_id: int) -> float:
@@ -5714,13 +5769,8 @@ def _sync_family_code(partner: dict, old_code: str = "") -> str:
             else:
                 note = (f"A code named {code} already exists in Discounts, so its own settings there are used "
                         f"({c.get('type')}, {c.get('amount')}).")
-        for c in touched:                       # WooCommerce needs the same codes for the online checkout
-            wc = _wc_sync_coupon(c)
-            if "wc_id" in wc:
-                c["wc_id"] = wc["wc_id"]
-                c.pop("wc_sync_error", None)
-            else:
-                c["wc_sync_error"] = wc.get("error", "")
+        for c in touched:                       # WooCommerce checkout needs the same codes
+            _sync_code_to_woo(c)
         if touched:
             _save_discount_codes(codes)
         return note

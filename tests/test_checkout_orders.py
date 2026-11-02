@@ -74,8 +74,8 @@ def woo(main_module, monkeypatch, live_photos):
     ]).encode())
     for k in ("_pricing_cache", "_portrait_pricing_cache"):
         getattr(main_module, k)["data"] = None
-    if hasattr(main_module, "_frame_prices_cache"):
-        main_module._frame_prices_cache["data"] = None
+    S3.delete_object(Bucket="test-bucket", Key="meta/frame_prices.json")   # frame prices copied from FakeWoo
+    main_module._frame_prices_cache["data"] = None
     fake = FakeWoo()
     monkeypatch.setattr(main_module.http_requests, "post", fake.post)
     monkeypatch.setattr(main_module.http_requests, "get", fake.get)
@@ -205,14 +205,15 @@ def test_unknown_or_silly_frames_are_refused(client, woo):
     assert woo.created == []
 
 
-def test_frame_prices_come_from_woocommerce_and_are_kept_briefly(client, woo, main_module):
+def test_frame_prices_come_from_pricing(client, owner_client, woo, main_module):
     _order(client, woo, frames=[{"variation_id": 1059, "quantity": 1}])
     _order(client, woo, frames=[{"variation_id": 1059, "quantity": 1}])
-    assert woo.variation_calls == 1                          # second order reused the prices
-    woo.frame_prices[1059] = "45"
-    main_module._frame_prices_cache["data"] = None           # what saving prices in the studio does
+    assert woo.variation_calls == 1                          # copied from WooCommerce once, then Pricing's
+    woo.frame_prices[1059] = "99"                            # WooCommerce's price no longer matters
+    main_module._frame_prices_cache["data"] = None
+    assert owner_client.post("/api/admin/frames/prices", json={"sizes": [{"size_idx": 1, "price": "45"}]}).status_code == 200
     order = _order(client, woo, frames=[{"variation_id": 1059, "quantity": 1}])
-    assert float(order["line_items"][0]["total"]) == 45.0
+    assert float(order["line_items"][0]["total"]) == 45.0 and woo.variation_calls == 1
 
 
 def test_logo_on_digital_photos_is_charged_and_listed_by_name(client, woo):
