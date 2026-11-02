@@ -259,7 +259,7 @@ def test_photo_sale_sends_one_email_whose_link_works_right_away(client, square, 
     token = r.json()["token"]
 
     [email] = fake.emails                                   # the receipt only, no second email
-    assert email["to"] == ["ann@example.com"] and "Receipt" in email["subject"]
+    assert email["to"] == ["ann@example.com"] and email["subject"] == "Your Crystal Images receipt"
     assert f"/package/{token}" in email["html"] and "available until" in email["html"]
     assert client.get(f"/package/{token}").status_code == 200   # usable the moment it's sent
 
@@ -441,7 +441,7 @@ def test_resend_sends_the_receipt_again_with_the_download_button(client, square,
     r = client.post("/api/pos-resend", json={"pin": PIN, **ref})
     assert r.status_code == 200 and r.json()["sent_to"] == ["ann@example.com"] and r.json()["note"] == ""
     [email] = fake.emails                                       # one email: the receipt
-    assert "Receipt" in email["subject"] and f"/package/{sale['token']}" in email["html"]
+    assert email["subject"] == "Your Crystal Images receipt" and f"/package/{sale['token']}" in email["html"]
     assert "$26.00" in email["html"]                            # Square's verified total
 
     # Older POS pages send only the download token

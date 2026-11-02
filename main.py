@@ -4830,7 +4830,7 @@ _EMAIL_TEMPLATE_DEFAULTS: dict = {
     },
     "pos_receipt": {
         "id": "pos_receipt", "name": "POS Receipt", "system": True,
-        "subject": "Your Crystal Images Receipt — Order #{{order_id}}",
+        "subject": "Your Crystal Images receipt",
         "body": (
             "Hi {{first_name}},\n\n"
             "Thank you for your purchase! Here is a summary of your order.\n\n"
