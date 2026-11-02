@@ -49,6 +49,10 @@ PUBLIC = {
     # its access request needs that address too, and only emails the owner a code (limited per address)
     ("GET", "/u/{path}"), ("GET", "/u/{path}/manifest.json"), ("POST", "/api/station/request"),
     # Signed or secret-link addresses: the link, payment or WooCommerce signature is the key
+    # Online orders with Stripe: the pay and order pages need the order's secret key (k); the
+    # thank-you page checks the payment with Stripe; Stripe's webhook must carry Stripe's signature
+    ("GET", "/pay/{order_id}"), ("POST", "/api/pay/{order_id}/session"), ("GET", "/order/complete"),
+    ("GET", "/order/{order_id}"), ("POST", "/stripe/webhook"),
     ("POST", "/webhook"), ("GET", "/api/saved-cart/link"), ("GET", "/api/pos/download-qr"),
     ("POST", "/api/pos/square-complete"), ("POST", "/api/pos/square-pending"), ("POST", "/api/pos/device-verify"),
     ("GET", "/download/{token}"), ("GET", "/download/{token}/all"), ("GET", "/download/{token}/{idx}"),

@@ -2192,11 +2192,24 @@ def _studio_partner_prints(body: dict) -> dict:
 
 
 def _create_checkout(body: dict, partner_prints: dict | None = None, line_prices: list | None = None,
-                     extra_lines: list | None = None, shipping_price: float | None = None):
-    """Create the WooCommerce order. Studio invoices only: line_prices sets each line's price
-    (in the order the cart's lines are priced), extra_lines adds items the studio typed in
-    ([{"name", "price"}]) and shipping_price replaces the shipping. The checkout then lists
-    every item at its invoice price; the normal price is kept on the order for reference."""
+                     extra_lines: list | None = None, shipping_price: float | None = None, source: str = "web"):
+    """Create the online order: with Stripe (our own order record, paid on our checkout page) or,
+    until the switch in Settings is flipped, with WooCommerce. Studio invoices only: line_prices
+    sets each line's price (in the order the cart's lines are priced), extra_lines adds items the
+    studio typed in ([{"name", "price"}]) and shipping_price replaces the shipping. The checkout
+    then lists every item at its invoice price; the normal price is kept on the order for reference."""
+    parts = _order_parts(body, partner_prints, line_prices, extra_lines, shipping_price)
+    if isinstance(parts, JSONResponse):
+        return parts
+    if _checkout_provider() == "stripe":
+        return _create_stripe_order(body, parts, source)
+    return _create_wc_order(body, parts)
+
+
+def _order_parts(body: dict, partner_prints: dict | None = None, line_prices: list | None = None,
+                 extra_lines: list | None = None, shipping_price: float | None = None):
+    """The order's lines, fees, discounts and totals, worked out on the server (never from the
+    cart's own numbers). Returns {"priced", "total", "normal_total"} or the error to answer with."""
     try:
         priced = _price_order(body, partner_prints)
     except CheckoutError as e:
@@ -2220,6 +2233,12 @@ def _create_checkout(body: dict, partner_prints: dict | None = None, line_prices
         total = round(sum(float(ln["total"]) for ln in lines) + shipping, 2)
         if total != normal_total:
             priced["meta"] = priced["meta"] + [{"key": "_normal_price", "value": f"{normal_total:.2f}"}]
+    return {"priced": priced, "total": total, "normal_total": normal_total}
+
+
+def _create_wc_order(body: dict, parts: dict):
+    """The order in WooCommerce, paid on its order-pay page (bigskyphotos.com)."""
+    priced, total, normal_total = parts["priced"], parts["total"], parts["normal_total"]
     try:
         customer_email = body.get("email", "")
         billing_data = dict(body.get("billing") or {})
@@ -3090,11 +3109,39 @@ def _order_has_valid_link(order_id) -> bool:
 
 
 def _deliver_wc_order(order: dict):
+    made = _make_order_download(order)
+    if not made:
+        return Response(status_code=200)
+    download_url = made["url"]
+    order_id = order.get("id")
+
+    # Send customer note via WooCommerce (triggers email to customer)
+    note_text = (
+        f"Your photos are ready to download! Click the link below to access your download page:\n\n"
+        f"{download_url}\n\n"
+        f"Love your photos? Here's 50% off on any unframed print order! Use code PRINTS50.\n\n"
+        f"Your download link is valid for {DOWNLOAD_EXPIRE_DAYS} days. "
+        f"If it expires, just contact us at info@bigskyphotos.com and we'll resend your photos anytime."
+    )
+    http_requests.post(
+        f"{WC_BASE}/orders/{order_id}/notes",
+        json={"note": note_text, "customer_note": True},
+        auth=(WC_KEY, WC_SECRET),
+        timeout=10
+    )
+
+    return Response(status_code=200)
+
+
+def _make_order_download(order: dict) -> dict | None:
+    """A paid online order's download link (and its discount-code and bundle use, recorded).
+    The order is in WooCommerce's shape (WooCommerce's own, or a Stripe order stored that way).
+    Returns {"token", "url", "expires"}, or None when the order has no photos (prints only)."""
     # Pull stored photo paths from order meta
     meta = {m["key"]: m["value"] for m in order.get("meta_data", [])}
     paths_raw = meta.get("_photo_paths", "")
     if not paths_raw:
-        return Response(status_code=200)
+        return None
 
     photo_paths = [p for p in paths_raw.split("|") if p]
     location    = meta.get("_photo_location", "")
@@ -3156,24 +3203,395 @@ def _deliver_wc_order(order: dict):
         except Exception:
             pass
 
-    download_url = f"{SITE_URL}/download/{token}"
+    return {"token": token, "url": f"{SITE_URL}/download/{token}", "expires": expires}
 
-    # Send customer note via WooCommerce (triggers email to customer)
-    note_text = (
-        f"Your photos are ready to download! Click the link below to access your download page:\n\n"
-        f"{download_url}\n\n"
-        f"Love your photos? Here's 50% off on any unframed print order! Use code PRINTS50.\n\n"
-        f"Your download link is valid for {DOWNLOAD_EXPIRE_DAYS} days. "
-        f"If it expires, just contact us at info@bigskyphotos.com and we'll resend your photos anytime."
-    )
-    http_requests.post(
-        f"{WC_BASE}/orders/{order_id}/notes",
-        json={"note": note_text, "customer_note": True},
-        auth=(WC_KEY, WC_SECRET),
-        timeout=10
-    )
 
-    return Response(status_code=200)
+# ── Online orders with Stripe ───────────────────────────────────────────────────────────────────
+# The photo site's own online checkout (replacing WooCommerce's): the order is priced here as
+# always (_order_parts), kept as our own record in WooCommerce's shape (so the studio's Orders,
+# Reports, commission and customer history read it like the old orders), and paid on our page
+# with Stripe's embedded payment form (/pay/<order>). Stripe tells us it's paid (webhook, and the
+# thank-you page checks too); the download link and our email go out once, whichever comes first.
+# Refunds are made in the Stripe dashboard; Stripe tells us, and the order shows them.
+# Settings > Online payments switches checkout between WooCommerce and Stripe (Stripe only once
+# its keys are on Railway). Keys come from the environment and are never stored or shown.
+STRIPE_SECRET_KEY      = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
+STRIPE_WEBHOOK_SECRET  = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+CHECKOUT_SETTINGS_KEY  = "meta/checkout_settings.json"
+_checkout_settings_doc = JsonDoc(s3, R2_BUCKET, CHECKOUT_SETTINGS_KEY, ttl=30, indent=1, default=dict,
+                                 valid=lambda d: isinstance(d, dict))
+ONLINE_ORDERS_PREFIX   = "online_orders/"
+ONLINE_ORDER_SEQ_KEY   = "meta/online_order_seq.json"
+ONLINE_ORDER_FIRST     = 1001
+STRIPE_MIN_CHARGE      = 0.50          # Stripe's smallest card payment
+_online_seq_lock       = threading.Lock()
+_online_order_cache: dict = {}         # storage key -> (ETag, order)
+_online_order_cache_lock = threading.Lock()
+
+
+def _stripe_ready() -> bool:
+    return bool(STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY)
+
+
+def _checkout_provider() -> str:
+    """Which checkout customers get: 'stripe' once it's switched on in Settings (and its keys
+    are set), otherwise 'woo'."""
+    if _checkout_settings_doc.load().get("provider") == "stripe" and _stripe_ready():
+        return "stripe"
+    return "woo"
+
+
+def _next_online_order_id() -> str:
+    """CI-1001, CI-1002, ... (our own numbers; old WooCommerce orders keep theirs)."""
+    with _online_seq_lock:
+        try:
+            n = int(json.loads(s3.get_object(Bucket=R2_BUCKET, Key=ONLINE_ORDER_SEQ_KEY)["Body"].read())["next"])
+        except Exception:
+            n = ONLINE_ORDER_FIRST
+        s3.put_object(Bucket=R2_BUCKET, Key=ONLINE_ORDER_SEQ_KEY, Body=json.dumps({"next": n + 1}).encode(),
+                      ContentType="application/json")
+    return f"CI-{n}"
+
+
+_ONLINE_ID_RE = re.compile(r"^CI-\d{1,9}$")
+
+
+def _online_order_key(order_id: str) -> str:
+    return f"{ONLINE_ORDERS_PREFIX}{order_id}.json"
+
+
+def _save_online_order(order: dict) -> None:
+    s3.put_object(Bucket=R2_BUCKET, Key=_online_order_key(order["id"]), Body=json.dumps(order).encode(),
+                  ContentType="application/json")
+
+
+def _load_online_order(order_id: str) -> dict | None:
+    if not _ONLINE_ID_RE.match(str(order_id or "")):
+        return None
+    try:
+        return json.loads(s3.get_object(Bucket=R2_BUCKET, Key=_online_order_key(order_id))["Body"].read())
+    except Exception:
+        return None
+
+
+def _online_order_for(order_id: str, key: str) -> dict | None:
+    """The order, if `key` is its secret (the pay and thank-you pages' links carry it)."""
+    order = _load_online_order(order_id)
+    if order and key and hmac.compare_digest(str(order.get("order_key", "")), str(key)):
+        return order
+    return None
+
+
+def _fetch_stripe_orders(after: str = None, before: str = None, paid_only: bool = True) -> list:
+    """Our online orders, newest first (paid ones unless paid_only=False), optionally only those
+    placed after..before (dates or ISO times, compared on the day). Orders already read are
+    remembered by their file's ETag."""
+    listed = []
+    try:
+        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=R2_BUCKET, Prefix=ONLINE_ORDERS_PREFIX):
+            for obj in page.get("Contents", []):
+                listed.append((obj["Key"], obj.get("ETag", "")))
+    except Exception:
+        pass
+    with _online_order_cache_lock:
+        stale = [(k, e) for k, e in listed if _online_order_cache.get(k, ("",))[0] != e or not e]
+
+    def read(key_etag):
+        key, etag = key_etag
+        try:
+            rec = json.loads(s3.get_object(Bucket=R2_BUCKET, Key=key)["Body"].read())
+        except Exception:
+            return
+        with _online_order_cache_lock:
+            _online_order_cache[key] = (etag, rec)
+    if stale:
+        with ThreadPoolExecutor(max_workers=16) as ex:
+            list(ex.map(read, stale))
+    a, b = (after or "")[:10], (before or "")[:10]
+    with _online_order_cache_lock:
+        orders = [dict(_online_order_cache[k][1]) for k, _ in listed if k in _online_order_cache]
+    out = []
+    for o in orders:
+        if paid_only and o.get("status") not in ("completed", "refunded"):
+            continue
+        day = str(o.get("date_created", ""))[:10]
+        if (a and day < a) or (b and day > b):
+            continue
+        out.append(o)
+    return sorted(out, key=lambda o: o.get("date_created", ""), reverse=True)
+
+
+def _fetch_online_orders(after: str = None, before: str = None, wc_all_pages: bool = True) -> list:
+    """Every paid online order, newest first: WooCommerce's (until it's retired) and our own
+    Stripe ones, all in WooCommerce's shape for the studio's Orders, Reports and commission."""
+    wc = []
+    if WC_KEY and WC_SECRET:
+        wc = _fetch_wc_orders_all(after=after, before=before) if wc_all_pages else _fetch_wc_orders(after=after, before=before)
+    orders = wc + _fetch_stripe_orders(after=after, before=before)
+    return sorted(orders, key=lambda o: str(o.get("date_created", "")), reverse=True)
+
+
+def _create_stripe_order(body: dict, parts: dict, source: str = "web"):
+    """Our own order record, waiting for payment on its pay page. Returns {"checkout_url"} (the
+    page customers and invoice emails go to), or the error to answer with."""
+    priced, total, normal_total = parts["priced"], parts["total"], parts["normal_total"]
+    if 0 < total < STRIPE_MIN_CHARGE:
+        return JSONResponse(status_code=400, content={"error": f"Orders under ${STRIPE_MIN_CHARGE:.2f} can't be paid by card"})
+    summary = priced.get("summary") or {}
+    coupon = summary.get("coupon") or {}
+    discount = round(float(coupon.get("discount") or 0), 2)     # as WooCommerce counts it: the code's discount
+    email = str(body.get("email") or "").strip()
+    billing = dict(body.get("billing") or {})
+    billing["email"] = email
+    now_mt = datetime.now(ZoneInfo("America/Denver"))
+    order_id = _next_online_order_id()
+    order = {
+        "id": order_id, "number": order_id, "provider": "stripe", "source": source,
+        "status": "pending", "currency": "USD",
+        "date_created": now_mt.strftime("%Y-%m-%dT%H:%M:%S"), "created": _now_iso(),
+        "total": f"{total:.2f}", "normal_total": f"{normal_total:.2f}", "discount_total": f"{discount:.2f}",
+        "billing": billing, "shipping": dict(body.get("shipping") or {}),
+        "line_items": priced["line_items"], "fee_lines": priced["fee_lines"],
+        "coupon_lines": priced["coupon_lines"], "meta_data": priced["meta"],
+        "order_key": secrets.token_urlsafe(18), "stripe": {}, "refunded": "0.00",
+    }
+    _save_online_order(order)
+    if total == 0:                                       # fully discounted: nothing to pay
+        _complete_online_order(order_id)
+    return {"checkout_url": f"{SITE_URL}/pay/{order_id}?k={order['order_key']}", "total": total,
+            "normal_total": normal_total, "order_id": order_id}
+
+
+def _order_summary_text(order: dict) -> str:
+    """One line listing what's in the order (shown under Stripe's amount)."""
+    names = [li.get("name", "") for li in order.get("line_items") or [] if li.get("name")]
+    text = ", ".join(names)
+    return (text[:297] + "...") if len(text) > 300 else text
+
+
+def _stripe_session_for(order: dict) -> dict:
+    """A new Stripe Checkout Session (embedded) for this order's total. Raises StripeError."""
+    from core import stripe_api
+    cents = int(round(float(order["total"]) * 100))
+    attempt = int(order.get("stripe", {}).get("sessions", 0)) + 1
+    email = str((order.get("billing") or {}).get("email") or "")
+    params = {
+        "ui_mode": "embedded", "mode": "payment",
+        "return_url": f"{SITE_URL}/order/complete?session_id={{CHECKOUT_SESSION_ID}}",
+        "client_reference_id": order["id"],
+        "metadata": {"order_id": order["id"]},
+        "payment_intent_data": {"metadata": {"order_id": order["id"]},
+                                "description": f"Crystal Images order {order['id']}"},
+        "line_items": [{"quantity": 1, "price_data": {
+            "currency": "usd", "unit_amount": cents,
+            "product_data": {"name": f"Crystal Images order {order['id']}",
+                             "description": _order_summary_text(order) or "Photos"}}}],
+    }
+    if _EMAIL_RE.match(email):
+        params["customer_email"] = email
+    session = stripe_api.call("POST", "checkout/sessions", STRIPE_SECRET_KEY, params,
+                              idempotency_key=f"{order['id']}-session-{attempt}-{order['order_key'][:8]}")
+    with _sale_locks.hold(f"online:{order['id']}"):
+        fresh = _load_online_order(order["id"]) or order
+        fresh.setdefault("stripe", {})
+        fresh["stripe"].update({"session_id": session.get("id", ""), "sessions": attempt})
+        _save_online_order(fresh)
+    return session
+
+
+def _complete_online_order(order_id: str, session: dict | None = None) -> dict | None:
+    """The order is paid: mark it, make the download link and email it, once. `session` is
+    Stripe's paid Checkout Session (its amount must be the order's). Safe to call again (the
+    webhook and the thank-you page both do): a paid order is only returned."""
+    with _sale_locks.hold(f"online:{order_id}"):
+        order = _load_online_order(order_id)
+        if not order:
+            return None
+        if order.get("status") in ("completed", "refunded"):
+            return order
+        if order.get("status") == "cancelled":
+            print(f"[stripe] payment for cancelled order {order_id}: check it in Stripe")
+        if session is not None:
+            cents = int(round(float(order["total"]) * 100))
+            if int(session.get("amount_total") or -1) != cents or str(session.get("currency", "usd")).lower() != "usd":
+                order["status"] = "check"
+                order.setdefault("stripe", {})["note"] = f"Paid {session.get('amount_total')} {session.get('currency')}, expected {cents}"
+                _save_online_order(order)
+                print(f"[stripe] AMOUNT MISMATCH on {order_id}: not delivered, check it in Stripe")
+                return order
+            order.setdefault("stripe", {}).update({"session_id": session.get("id", ""),
+                                                   "payment_intent": session.get("payment_intent") or ""})
+        order["status"] = "completed"
+        order["paid_at"] = _now_iso()
+        order["date_paid"] = datetime.now(ZoneInfo("America/Denver")).strftime("%Y-%m-%dT%H:%M:%S")
+        _save_online_order(order)
+        email = (order.get("billing") or {}).get("email", "")
+        try:
+            _clear_saved_cart_for(email)
+        except Exception as e:
+            print(f"Saved cart not cleared for order {order_id}: {e}")
+        try:
+            _log_partner_online_prints(order)
+        except Exception as e:
+            print(f"Partner prints not logged for order {order_id}: {e}")
+        made = None
+        try:
+            made = _make_order_download(order)
+        except Exception as e:
+            print(f"[stripe] download link not made for {order_id}: {e}")
+        if made:
+            order["download_token"] = made["token"]
+            _save_online_order(order)
+        try:
+            _send_online_order_email(order, made)
+        except Exception as e:
+            print(f"[stripe] email not sent for {order_id}: {e}")
+    if order.get("stripe", {}).get("payment_intent"):
+        threading.Thread(target=_note_stripe_fee, args=(order_id,), daemon=True).start()
+    return order
+
+
+def _note_stripe_fee(order_id: str) -> None:
+    """Stripe's actual fee for the payment (for Reports' net), read once it's settled."""
+    from core import stripe_api
+    order = _load_online_order(order_id)
+    pi = (order or {}).get("stripe", {}).get("payment_intent")
+    if not pi:
+        return
+    try:
+        intent = stripe_api.call("GET", f"payment_intents/{pi}", STRIPE_SECRET_KEY,
+                                 {"expand": ["latest_charge.balance_transaction"]})
+        bt = ((intent.get("latest_charge") or {}).get("balance_transaction") or {})
+        fee = bt.get("fee")
+    except Exception as e:
+        print(f"[stripe] fee not read for {order_id}: {e}")
+        return
+    if fee is None:
+        return
+    with _sale_locks.hold(f"online:{order_id}"):
+        order = _load_online_order(order_id)
+        if order:
+            order.setdefault("stripe", {})["fee"] = round(int(fee) / 100, 2)
+            _save_online_order(order)
+
+
+def _record_stripe_refund(charge: dict) -> str:
+    """Stripe says a payment was (partly) refunded: the order shows it, it comes off revenue
+    and commission (the studio's refund records), and a full refund ends the download link."""
+    from core import stripe_api
+    order_id = (charge.get("metadata") or {}).get("order_id", "")
+    if not order_id and charge.get("payment_intent"):
+        try:
+            intent = stripe_api.call("GET", f"payment_intents/{charge['payment_intent']}", STRIPE_SECRET_KEY)
+            order_id = (intent.get("metadata") or {}).get("order_id", "")
+        except Exception as e:
+            print(f"[stripe] refund not matched to an order: {e}")
+            return ""
+    if not _ONLINE_ID_RE.match(order_id or ""):
+        return ""
+    amount = round(int(charge.get("amount_refunded") or 0) / 100, 2)
+    full = bool(charge.get("refunded"))
+    with _sale_locks.hold(f"online:{order_id}"):
+        order = _load_online_order(order_id)
+        if not order:
+            return ""
+        order["refunded"] = f"{amount:.2f}"
+        if full:
+            order["status"] = "refunded"
+        _save_online_order(order)
+    with _order_refunds_lock:
+        refunds = _load_order_refunds(strict=True)
+        refunds[f"wc:{order_id}"] = {"amount": amount, "full": full, "note": "Refunded in Stripe",
+                                     "date": _now_iso(), "source": "stripe"}
+        _save_order_refunds(refunds)
+    if full and order.get("download_token"):
+        rec = _load_token(order["download_token"])
+        if rec:
+            rec["expires"] = _now_iso()
+            rec["refunded"] = True
+            _store_token(order["download_token"], rec)
+    return order_id
+
+
+def _order_email_rows(order: dict) -> str:
+    rows = ""
+    for li in order.get("line_items") or []:
+        qty = int(li.get("quantity") or 1)
+        rows += (f'<tr><td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem">{_html_escape(li.get("name", "Item"))}</td>'
+                 f'<td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:center;color:#666">{qty}</td>'
+                 f'<td style="padding:.45rem .5rem;border-bottom:1px solid #eee;font-size:.88rem;text-align:right;font-weight:600">${float(li.get("total") or 0):.2f}</td></tr>')
+    for f in order.get("fee_lines") or []:
+        rows += (f'<tr><td colspan="2" style="padding:.35rem .5rem;font-size:.83rem;color:#888">{_html_escape(f.get("name", ""))}</td>'
+                 f'<td style="padding:.35rem .5rem;font-size:.83rem;text-align:right">${float(f.get("total") or 0):.2f}</td></tr>')
+    meta = {m.get("key"): m.get("value") for m in order.get("meta_data") or []}
+    code, off = str(meta.get("_coupon_code") or ""), float(meta.get("_coupon_discount") or 0)
+    if code and off:
+        rows += (f'<tr><td colspan="2" style="padding:.35rem .5rem;font-size:.83rem;color:#888">Code {_html_escape(code.upper())}</td>'
+                 f'<td style="padding:.35rem .5rem;font-size:.83rem;text-align:right;color:#e05252">-${off:.2f}</td></tr>')
+    rows += (f'<tr style="border-top:2px solid #eee"><td colspan="2" style="padding:.45rem .5rem;font-size:.95rem;font-weight:700">Total paid</td>'
+             f'<td style="padding:.45rem .5rem;font-size:.95rem;font-weight:700;text-align:right">${float(order.get("total") or 0):.2f}</td></tr>')
+    return ('<table style="width:100%;border-collapse:collapse;margin-bottom:1rem"><thead><tr style="border-bottom:2px solid #eee">'
+            '<th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:left;font-weight:500">ITEM</th>'
+            '<th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:center;font-weight:500">QTY</th>'
+            '<th style="padding:.4rem .5rem;font-size:.75rem;color:#999;text-align:right;font-weight:500">TOTAL</th>'
+            f'</tr></thead><tbody>{rows}</tbody></table>')
+
+
+def _order_has_shipping(order: dict) -> bool:
+    return any("ship" in str(f.get("name", "")).lower() for f in order.get("fee_lines") or []) or \
+        any(str(li.get("product_id")) != str(WC_DIGITAL_PRODUCT_ID) for li in order.get("line_items") or [])
+
+
+def _review_url() -> str:
+    """The Google review link saved on the Review Request email template (Settings > Email Templates)."""
+    tmpl = _load_email_templates().get("review_request") or {}
+    url = str(tmpl.get("review_url") or "").strip()
+    return url if url.startswith("https://") else ""
+
+
+def _send_online_order_email(order: dict, download: dict | None) -> bool:
+    """Our email for a paid online order: what was bought, the download button, and the
+    Google review link (Stripe's own receipt is off, so this is the only one)."""
+    email = (order.get("billing") or {}).get("email", "")
+    if not RESEND_API_KEY or not _EMAIL_RE.match(email or ""):
+        return False
+    tmpl = _load_email_templates().get("online_receipt", _EMAIL_TEMPLATE_DEFAULTS["online_receipt"])
+    first = ((order.get("billing") or {}).get("first_name") or "").strip() or "there"
+    dl_html = ""
+    if download:
+        try:
+            until = datetime.fromisoformat(download["expires"]).astimezone(ZoneInfo("America/Denver")).strftime("%B %-d, %Y")
+        except Exception:
+            until = ""
+        dl_html = (f'<p style="margin:0 0 1rem"><a href="{download["url"]}" style="background:#1a73e8;color:#fff;padding:.55rem 1.25rem;'
+                   f'border-radius:6px;font-size:.88rem;font-weight:600;text-decoration:none;display:inline-block">Download Your Photos</a></p>'
+                   + (f'<p style="margin:0 0 1rem;font-size:.8rem;color:#888">Your download link works until {until}.</p>' if until else ''))
+    ship_html = ('<p style="margin:0 0 1rem;font-size:.9rem">Your prints are being made. We\'ll email you the tracking number when they ship.</p>'
+                 if _order_has_shipping(order) else '')
+    review = _review_url()
+    review_html = _review_button_html(review) if review else ""
+    body_tmpl = tmpl["body"]
+    if dl_html and "{{download_button}}" not in body_tmpl:
+        body_tmpl += "\n\n{{download_button}}"           # the link must never be dropped by an edit
+    plain_vars = {"first_name": first, "order_id": order["id"]}
+    blocks = {"items_table": _order_email_rows(order), "download_button": dl_html,
+              "shipping_note": ship_html, "review_button": review_html}
+    subject = tmpl["subject"]
+    for k, v in plain_vars.items():
+        subject = subject.replace(f"{{{{{k}}}}}", v)
+    body_html, body_text = _render_email_body(body_tmpl, plain_vars, blocks)
+    try:
+        r = http_requests.post("https://api.resend.com/emails",
+                               headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+                               json={"from": RESEND_FROM, "to": [email], "subject": subject,
+                                     "html": _wrap_email_html(body_html), "text": body_text}, timeout=10)
+        if not r.ok:
+            print(f"Order email error ({order['id']}): {r.text}")
+        return r.ok
+    except Exception as e:
+        print(f"Order email failed ({order['id']}): {e}")
+        return False
 
 
 # ─────────────────────────────────────────
@@ -3433,7 +3851,8 @@ def _order_row(order) -> dict:
     billing    = order.get("billing", {})
     total      = float(order.get("total", 0))
     discount   = float(order.get("discount_total", 0))
-    stripe_fee = _stripe_fee(total)
+    actual_fee = (order.get("stripe") or {}).get("fee")          # our Stripe orders: Stripe's real fee
+    stripe_fee = float(actual_fee) if actual_fee is not None else _stripe_fee(total)
     fee_lines  = order.get("fee_lines", [])
     shipping   = sum(float(f.get("total", 0)) for f in fee_lines if "ship" in f.get("name","").lower())
     ship_addr  = ""
@@ -4340,6 +4759,21 @@ _EMAIL_TEMPLATE_DEFAULTS: dict = {
         ),
         "tokens": ["first_name", "order_id", "items_table", "download_button"],
     },
+    "online_receipt": {
+        "id": "online_receipt", "name": "Online Order Receipt", "system": True,
+        "subject": "Your Crystal Images photos, order {{order_id}}",
+        "body": (
+            "Hi {{first_name}},\n\n"
+            "Thank you for your order! Here's what you bought.\n\n"
+            "{{items_table}}\n\n"
+            "{{download_button}}\n\n"
+            "{{shipping_note}}\n\n"
+            "{{review_button}}\n\n"
+            "Questions? Contact us at info@bigskyphotos.com.\n\n"
+            "Photos are for personal use: print, frame, and share freely."
+        ),
+        "tokens": ["first_name", "order_id", "items_table", "download_button", "shipping_note", "review_button"],
+    },
     "review_request": {
         "id": "review_request", "name": "Review Request", "system": False,
         "subject": "We'd love your feedback — Crystal Images",
@@ -4989,7 +5423,7 @@ def _send_invoice_email(to_email: str, first_name: str, pay_url: str, total: flo
 INVOICES_PREFIX = "invoices/"
 _INVOICE_STATUS = {"pending": "Waiting for payment", "processing": "Paid", "completed": "Paid",
                    "cancelled": "Cancelled", "failed": "Payment failed", "on-hold": "On hold",
-                   "refunded": "Refunded"}
+                   "refunded": "Refunded", "check": "Paid (amount being checked)"}
 
 
 def _save_invoice(rec: dict) -> None:
@@ -5011,7 +5445,11 @@ def _load_invoices() -> list:
     with ThreadPoolExecutor(max_workers=8) as ex:
         recs = [r for r in ex.map(read, keys) if isinstance(r, dict)]
     status = {}
-    ids = [str(r["order_id"]) for r in recs]
+    for r in recs:                             # our own (Stripe) orders: their status is ours
+        if _ONLINE_ID_RE.match(str(r["order_id"])):
+            o = _load_online_order(str(r["order_id"]))
+            status[str(r["order_id"])] = (o or {}).get("status", "")
+    ids = [str(r["order_id"]) for r in recs if not _ONLINE_ID_RE.match(str(r["order_id"]))]
     for i in range(0, len(ids), 100):          # WooCommerce answers up to 100 orders per request
         try:
             resp = http_requests.get(f"{WC_BASE}/orders", params={"include": ",".join(ids[i:i + 100]), "per_page": 100},
@@ -5028,8 +5466,18 @@ def _load_invoices() -> list:
 
 
 def _cancel_invoice(order_id: str):
-    """Cancel an unpaid invoice's WooCommerce order so its Pay now link stops working.
+    """Cancel an unpaid invoice's order so its Pay now link stops working.
     Returns an error message, or '' when cancelled."""
+    if _ONLINE_ID_RE.match(str(order_id)):
+        with _sale_locks.hold(f"online:{order_id}"):
+            o = _load_online_order(str(order_id))
+            if not o:
+                return "This order wasn't found"
+            if o.get("status") in ("completed", "refunded", "check"):
+                return "This invoice is already paid, so it can't be cancelled (refund it in Stripe instead)"
+            o["status"] = "cancelled"
+            _save_online_order(o)
+        return ""
     try:
         resp = http_requests.get(f"{WC_BASE}/orders/{order_id}", auth=(WC_KEY, WC_SECRET), timeout=15)
         if not resp.ok:
@@ -5949,6 +6397,9 @@ app.include_router(_routes_races.router)
 
 from routes import device_links as _routes_device_links  # noqa: E402
 app.include_router(_routes_device_links.router)
+
+from routes import stripe_checkout as _routes_stripe_checkout  # noqa: E402
+app.include_router(_routes_stripe_checkout.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

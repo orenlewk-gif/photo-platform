@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="/static/favicon-32.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>Payment — Crystal Images</title>
+<link href="/static/fonts/fonts.css" rel="stylesheet">
+<style>
+/* The order's payment page: what's being paid for, then Stripe's payment form (card, Apple Pay,
+   Google Pay) inside the page. Same look as the checkout page. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #093A52; font-family: 'DM Sans', sans-serif; color: #e8eaf0; min-height: 100vh; }
+.co-header { background: #062b3e; border-bottom: 1px solid rgba(255,255,255,.07); padding: 0 2rem; height: 60px;
+  display: flex; align-items: center; justify-content: space-between; }
+.co-logo { color: #F5C518; font-size: 1.15rem; font-weight: 700; text-decoration: none; }
+.co-back { color: rgba(255,255,255,.75); font-size: .85rem; text-decoration: none; }
+.co-back:hover { color: #fff; }
+.pay-wrap { max-width: 1040px; margin: 0 auto; padding: 2rem 1.25rem 4rem; display: grid;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
+.card { background: #0b2f42; border: 1px solid rgba(255,255,255,.08); border-radius: 12px; padding: 1.4rem 1.5rem; }
+.card h1 { font-size: 1.05rem; color: #F5C518; margin-bottom: .2rem; }
+.order-no { font-size: .8rem; color: rgba(255,255,255,.5); margin-bottom: 1rem; }
+.line { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem 0; border-bottom: 1px solid rgba(255,255,255,.06); font-size: .88rem; }
+.line span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.line.sub { color: rgba(255,255,255,.6); font-size: .82rem; }
+.total { display: flex; justify-content: space-between; padding-top: .8rem; font-weight: 700; font-size: 1.05rem; }
+.secure { margin-top: 1rem; font-size: .76rem; color: rgba(255,255,255,.45); line-height: 1.5; }
+#stripe-checkout { background: #fff; border-radius: 12px; min-height: 420px; overflow: hidden; }
+.msg { background: #0b2f42; border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 2rem; text-align: center; line-height: 1.6; }
+.msg a { color: #F5C518; }
+.loading { color: #555; text-align: center; padding: 3rem 1rem; font-size: .9rem; }
+@media (max-width: 800px) { .pay-wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header class="co-header">
+  <a class="co-logo" href="/">Crystal Images</a>
+  <a class="co-back" href="/">Back to the photos</a>
+</header>
+
+<main class="pay-wrap">
+  <section class="card" aria-labelledby="pay-title">
+    <h1 id="pay-title">Your order</h1>
+    <p class="order-no">Order __ORDER_ID__</p>
+    __ITEMS__
+    <div class="total"><span>Total</span><span>$__TOTAL__</span></div>
+    <p class="secure">Payment is handled by Stripe. Your card details go straight to Stripe and never touch our site.</p>
+  </section>
+  <section aria-label="Payment">
+    __PAYMENT__
+  </section>
+</main>
+
+__STRIPE_SCRIPT__
+</body>
+</html>

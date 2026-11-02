@@ -244,7 +244,8 @@ def admin_send_invoice(cart_id: str, request: Request, body: dict = Body(...)):
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
     made = main._create_checkout({**order, "email": email, "billing": billing, "shipping": shipping},
-                                 main._studio_partner_prints(order), line_prices=prices, extra_lines=extra, shipping_price=ship)
+                                 main._studio_partner_prints(order), line_prices=prices, extra_lines=extra, shipping_price=ship,
+                                 source="invoice")
     if isinstance(made, JSONResponse):
         return made
     sent = main._send_invoice_email(email, first, made["checkout_url"], float(made["total"]))
