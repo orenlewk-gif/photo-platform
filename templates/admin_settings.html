@@ -439,6 +439,38 @@ html.embedded #layout{height:100vh}
       <div class="section-desc" style="margin-top:.6rem;margin-bottom:0">Opens a payment page for one photo at $1.00 through Stripe, whatever the switch says. With test keys, pay with Stripe's test card 4242 4242 4242 4242 (any future date, any 3 digits): no real money moves. You get the thank-you page and the email.</div>
     </div>
 
+    <!-- SHIPPING LABELS -->
+    <div class="settings-section" style="margin-top:1.5rem">
+      <div class="section-title">Shipping labels</div>
+      <div class="section-desc">Print and frame orders get a "Buy label" button on the Orders page: it shows the carriers' prices for the package you pick, buys the label (a PDF to print) and emails the customer the tracking number. Labels are paid through Shippo; its key is added on Railway (SHIPPO_API_KEY), never here.</div>
+      <div id="ship-status" style="font-size:.85rem;line-height:1.9;margin-bottom:.9rem">Loading…</div>
+      <div style="font-size:.78rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem">Ship from</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;margin-bottom:.5rem">
+        <input class="field-input" id="sf-name" placeholder="Name" aria-label="Ship-from name">
+        <input class="field-input" id="sf-company" placeholder="Company" aria-label="Company">
+        <input class="field-input" id="sf-street1" placeholder="Street or PO Box" aria-label="Street or PO Box">
+        <input class="field-input" id="sf-street2" placeholder="Suite (optional)" aria-label="Suite">
+        <input class="field-input" id="sf-city" placeholder="City" aria-label="City">
+        <input class="field-input" id="sf-state" placeholder="State" aria-label="State">
+        <input class="field-input" id="sf-zip" placeholder="ZIP" aria-label="ZIP code">
+        <input class="field-input" id="sf-phone" placeholder="Phone" aria-label="Phone">
+        <input class="field-input" id="sf-email" placeholder="Email" aria-label="Email">
+      </div>
+      <div class="section-desc" style="margin-bottom:.9rem">A PO Box works for USPS labels. UPS and FedEx need a street address (the shop: 52 Big Sky Resort Rd).</div>
+      <div style="font-size:.78rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:.4rem">Your boxes and mailers</div>
+      <div class="section-desc" style="margin-bottom:.5rem">Size in inches and weight in pounds with the print or frame packed inside (a kitchen scale is fine; round up a little).</div>
+      <div id="ship-packages"></div>
+      <button class="btn-save" style="background:rgba(255,255,255,.08);color:#fff;margin:.4rem 0 .9rem" onclick="shipAddPackage()">+ Add a box</button>
+      <div style="display:flex;gap:.8rem;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.85rem;color:rgba(255,255,255,.6)">Label size
+          <select class="field-input" id="ship-format" style="width:auto;display:inline-block;margin-left:.4rem">
+            <option value="PDF_4x6">4×6 (label printer)</option><option value="PDF">8.5×11 sheet</option>
+          </select></label>
+        <button class="btn-save" onclick="saveShipSettings()">Save shipping settings</button>
+        <span id="ship-save-status" style="font-size:.82rem"></span>
+      </div>
+    </div>
+
     <!-- SQUARE -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Square (POS payments)</div>
@@ -2062,6 +2094,49 @@ async function stripeTestOrder() {
   window.open(d.checkout_url, '_blank', 'noopener');
 }
 loadPayStatus();
+
+// ── Shipping labels (Shippo) ──
+let _shipPackages = [];
+function _shipPkgRow(p, i) {
+  const f = (k, ph, w) => `<input class="field-input" style="width:${w}" placeholder="${ph}" aria-label="${ph}" value="${_secEsc(p[k] ?? '')}" oninput="_shipPackages[${i}].${k}=this.value">`;
+  return `<div style="display:flex;gap:.4rem;align-items:center;margin-bottom:.35rem;flex-wrap:wrap">${f('name', 'Name (e.g. 8x10 mailer)', '15rem')}
+    ${f('length', 'Length in', '6rem')}${f('width', 'Width in', '6rem')}${f('height', 'Height in', '6rem')}${f('weight', 'Weight lb', '6rem')}
+    <button class="btn-save" style="background:none;color:#f87171;padding:.3rem .6rem" aria-label="Remove this box" onclick="_shipPackages.splice(${i},1);_shipRenderPkgs()">Remove</button></div>`;
+}
+function _shipRenderPkgs() {
+  document.getElementById('ship-packages').innerHTML = _shipPackages.length ? _shipPackages.map(_shipPkgRow).join('')
+    : '<div class="section-desc" style="margin:0 0 .3rem">No boxes saved yet.</div>';
+}
+function shipAddPackage() { _shipPackages.push({name: '', length: '', width: '', height: '', weight: ''}); _shipRenderPkgs(); }
+async function loadShipSettings() {
+  const el = document.getElementById('ship-status');
+  if (!el) return;
+  try {
+    const d = await (await fetch('/api/admin/shipping/settings')).json();
+    el.innerHTML = d.ready
+      ? `<span style="color:#4ade80">&#10003;</span> Shippo key on Railway (${d.mode === 'live' ? 'LIVE: labels cost real postage' : 'test mode: free sample labels'})`
+      : '<span style="color:#f87171">&#10007;</span> Shippo key not on Railway yet (SHIPPO_API_KEY). Orders can still be marked shipped by hand.';
+    for (const k of ['name', 'company', 'street1', 'street2', 'city', 'state', 'zip', 'phone', 'email'])
+      document.getElementById('sf-' + k).value = d.from[k] || '';
+    document.getElementById('ship-format').value = d.label_format;
+    _shipPackages = d.packages || [];
+    _shipRenderPkgs();
+  } catch (e) { el.textContent = 'Could not load the shipping settings'; }
+}
+async function saveShipSettings() {
+  const st = document.getElementById('ship-save-status');
+  const from = {};
+  for (const k of ['name', 'company', 'street1', 'street2', 'city', 'state', 'zip', 'phone', 'email'])
+    from[k] = document.getElementById('sf-' + k).value.trim();
+  from.country = 'US';
+  const r = await fetch('/api/admin/shipping/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({from, packages: _shipPackages, label_format: document.getElementById('ship-format').value})});
+  const d = await r.json().catch(() => ({}));
+  st.style.color = r.ok ? '#4ade80' : '#f87171';
+  st.textContent = r.ok ? 'Saved' : (d.error || 'Could not save');
+  if (r.ok) { _shipPackages = d.packages; _shipRenderPkgs(); }
+}
+loadShipSettings();
 
 async function testSquare() {
   const btn = document.getElementById('btn-square-test');

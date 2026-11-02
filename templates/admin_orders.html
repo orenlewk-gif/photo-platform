@@ -170,7 +170,8 @@ tr.total-row td{font-weight:700;border-top:1px solid rgba(255,255,255,.15)}
         <label>Product<select id="f-cat" onchange="refresh()"></select></label>
         <label>Code<select id="f-code" onchange="refresh()"></select></label>
         <label>Status<select id="f-status" onchange="refresh()">
-          <option value="">Any</option><option value="refunded">Refunded</option><option value="ship">Ships (prints/frames)</option>
+          <option value="">Any</option><option value="refunded">Refunded</option><option value="toship">Needs shipping</option>
+          <option value="shipped">Shipped</option>
           <option value="comp">Comps</option><option value="check">Amount being checked</option>
         </select></label>
         <button class="ghost-btn" style="align-self:flex-end" onclick="clearFilters()">Clear filters</button>
@@ -264,6 +265,8 @@ function itemsText(r) {
   const names = (r.items || []).map(i => (i.qty > 1 && !/×|\(\d/.test(i.name) ? i.qty + ' × ' : '') + i.name);
   return names.length ? names.join(', ') : (r.what || '');
 }
+function shipped(r) { return !!(r.shipment && ['label', 'shipped'].includes(r.shipment.status)); }
+function needsShipping(r) { return r.ships && !shipped(r) && !r.refund_full; }
 function custName(r) { return ((r.first || '') + ' ' + (r.last || '')).trim(); }
 
 // ── loading ──
@@ -348,7 +351,8 @@ function filtered() {
     if (code === '*' && !r.code) return false;
     if (code && code !== '*' && (r.code || '').toLowerCase() !== code) return false;
     if (st === 'refunded' && !r.refunded) return false;
-    if (st === 'ship' && !(r.ship_to || r.shipping)) return false;
+    if (st === 'toship' && !needsShipping(r)) return false;
+    if (st === 'shipped' && !shipped(r)) return false;
     if (st === 'comp' && !r.is_comp) return false;
     if (st === 'check' && r.status !== 'check') return false;
     if (q) {
@@ -415,7 +419,8 @@ function renderOrders() {
   const rows = S.shown.slice(0, S.limit);
   let h = rows.map((r, i) => {
     const flags = (r.status === 'check' ? ' <span class="badge b-warn">Check amount</span>' : '') +
-                  (r.test ? ' <span class="badge b-test">Test payment</span>' : '');
+                  (r.test ? ' <span class="badge b-test">Test payment</span>' : '') +
+                  (needsShipping(r) ? ' <span class="badge b-warn">Needs shipping</span>' : shipped(r) ? ' <span class="badge b-online">Shipped</span>' : '');
     return '<tr class="order-row" tabindex="0" onclick="openDetail(' + i + ')" onkeydown="if(event.key===\'Enter\')openDetail(' + i + ')">' +
       '<td>' + esc(r.date) + (r.time ? '<div class="dim" style="font-size:.74rem">' + esc(r.time) + '</div>' : '') + '</td>' +
       '<td class="mono">' + esc(orderNo(r) || '—') + '</td>' +
@@ -500,6 +505,8 @@ function openDetail(i) {
        mrow('Photographer', esc(r.photographer || '')) + mrow('Sold by', esc(r.seller || (r.channel === 'online' ? 'Online checkout' : ''))) +
        mrow('Files', '<span class="mono">' + esc(r.filenames || '—') + '</span>') + '</div></div>';
   h += '<div class="m-box" style="margin-top:1rem"><div class="m-title">What was bought</div><table class="m-items"><tbody>' + items + '</tbody></table></div>';
+  const hasPrints = (r.items || []).some(it => it.cat === 'prints' || it.cat === 'frames');
+  if (r.ships || hasPrints) h += '<div class="m-box" style="margin-top:1rem" id="ship-box"><div class="m-title">Shipping</div><div class="dim">Loading&hellip;</div></div>';
 
   let acts = '';
   if (r.link === 'copy') acts += '<button class="link-btn" onclick="copyLink(' + i + ',this)">Copy download link</button>';
@@ -522,6 +529,7 @@ function openDetail(i) {
   document.getElementById('detail-body').innerHTML = h;
   document.getElementById('detail').classList.add('open');
   document.querySelector('#detail .modal-close').focus();
+  if (document.getElementById('ship-box')) loadShipping(r);
 }
 function closeDetail() { document.getElementById('detail').classList.remove('open'); }
 document.addEventListener('keydown', e => {
@@ -569,6 +577,124 @@ async function undoRefund(key) {
   const res = await fetch('/api/admin/orders/refund?key=' + encodeURIComponent(key), {method: 'DELETE'});
   if (!res.ok) { toast('Couldn\'t undo the refund', 'err'); return; }
   closeDetail(); load();
+}
+
+// ── shipping labels (Shippo) ──
+const SH = {r: null, info: null, rates: []};
+function shipBox(html) { const el = document.getElementById('ship-box'); if (el) el.innerHTML = '<div class="m-title">Shipping</div>' + html; }
+async function loadShipping(r) {
+  SH.r = r; SH.rates = [];
+  try {
+    const res = await fetch('/api/admin/shipping/order?key=' + encodeURIComponent(r.refund_key));
+    SH.info = await res.json();
+    if (!res.ok) throw new Error(SH.info.error || 'error');
+  } catch (e) { shipBox('<div class="dim">Couldn\'t load the shipping details.</div>'); return; }
+  renderShipping();
+}
+function renderShipping() {
+  const info = SH.info, sh = info.shipment;
+  if (sh && (sh.status === 'label' || sh.status === 'shipped')) {
+    const track = sh.tracking_url ? '<a href="' + esc(sh.tracking_url) + '" target="_blank" rel="noopener" style="color:#63b3ed">' + esc(sh.tracking_number) + '</a>' : esc(sh.tracking_number || 'none');
+    shipBox((sh.test ? '<div class="badge b-test" style="margin-bottom:.4rem">Test label (not real postage)</div>' : '') +
+      mrow('Status', sh.manual ? 'Shipped (entered by hand)' : 'Label bought') +
+      mrow('Carrier', esc([sh.carrier, sh.service].filter(Boolean).join(' · '))) +
+      mrow('Tracking', track) +
+      (sh.label_cost ? mrow('Postage', money(sh.label_cost)) : '') +
+      (sh.package ? mrow('Package', esc(sh.package.name) + ' <span class="dim">(' + sh.package.length + '×' + sh.package.width + '×' + sh.package.height + ' in, ' + sh.package.weight + ' lb)</span>') : '') +
+      mrow('Ship to', addrShippo(sh.to)) +
+      mrow('Customer told', sh.emailed_at ? esc(sh.emailed_at.slice(0, 10)) : 'not yet') +
+      '<div class="m-actions">' + (sh.label_url ? '<a class="link-btn" href="' + esc(sh.label_url) + '" target="_blank" rel="noopener">Print label</a>' : '') +
+      '<button class="link-btn" onclick="shipEmail()">Email tracking to customer</button>' +
+      '<button class="link-btn regen" onclick="shipVoid()">' + (sh.manual ? 'Undo shipped' : 'Void label') + '</button></div>');
+    return;
+  }
+  const set = info.settings || {}, to = info.to || {};
+  const field = (id, label, val, w) => '<label style="font-size:.74rem;color:rgba(255,255,255,.5);display:flex;flex-direction:column;gap:.15rem;' +
+    (w ? 'flex:' + w : 'flex:1') + '">' + label + '<input id="sh-' + id + '" class="refund-in" value="' + esc(val || '') + '"></label>';
+  const pk = (set.packages || []).map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + ' (' + p.length + '×' + p.width + '×' + p.height + ' in, ' + p.weight + ' lb)</option>').join('');
+  let h = (sh && sh.status === 'voided' ? '<div class="dim" style="margin-bottom:.5rem">The last label was voided' + (sh.void_status ? ' (refund ' + esc(sh.void_status.toLowerCase()) + ')' : '') + '.</div>' : '');
+  if (!info.ready) h += '<div class="dim" style="margin-bottom:.6rem">Shipping labels aren\'t switched on yet (the Shippo key isn\'t on the server). You can still mark it shipped by hand below.</div>';
+  else {
+    h += (info.mode === 'test' ? '<div class="badge b-test" style="margin-bottom:.5rem">Shippo test mode: labels are free samples</div>' : '') +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap">' + field('name', 'Name', to.name, 2) + field('company', 'Company (optional)', to.company, 2) + '</div>' +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">' + field('street1', 'Street', to.street1, 3) + field('street2', 'Apt, suite', to.street2, 1) + '</div>' +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem">' + field('city', 'City', to.city, 2) + field('state', 'State', to.state, 1) + field('zip', 'ZIP', to.zip, 1) + field('country', 'Country', to.country || 'US', 1) + '</div>' +
+      '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem;align-items:flex-end">' +
+      '<label style="font-size:.74rem;color:rgba(255,255,255,.5);display:flex;flex-direction:column;gap:.15rem;flex:2">Package<select id="sh-pkg" onchange="shipPkgChanged()">' + pk + '<option value="">Other size&hellip;</option></select></label>' +
+      '<span id="sh-custom" style="display:' + (pk ? 'none' : 'flex') + ';gap:.35rem;flex:3">' + field('l', 'L in', '', 1) + field('w', 'W in', '', 1) + field('h', 'H in', '', 1) + field('lb', 'Weight lb', '', 1) + '</span>' +
+      '<button class="gold-btn" onclick="shipRates()">Get rates</button></div>' +
+      (pk ? '' : '<div class="dim" style="font-size:.76rem;margin-top:.35rem">Save your boxes in Settings &gt; Shipping labels to pick them here.</div>') +
+      '<div id="sh-rates" style="margin-top:.7rem"></div>';
+  }
+  h += '<details style="margin-top:.8rem"><summary style="cursor:pointer;font-size:.8rem;color:rgba(255,255,255,.6)">Shipped another way? Enter the tracking number</summary>' +
+    '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem;align-items:flex-end">' +
+    '<label style="font-size:.74rem;color:rgba(255,255,255,.5);display:flex;flex-direction:column;gap:.15rem">Carrier<select id="sh-mcarrier"><option>USPS</option><option>UPS</option><option>FedEx</option><option>Other</option></select></label>' +
+    field('mnum', 'Tracking number', '', 2) +
+    '<button class="link-btn" onclick="shipManual()">Mark shipped</button></div>' +
+    '<label style="font-size:.78rem;display:flex;gap:.35rem;align-items:center;margin-top:.45rem"><input type="checkbox" id="sh-memail" checked> Email the customer</label></details>';
+  shipBox(h);
+}
+function addrShippo(a) {
+  if (!a) return '';
+  return [a.name, a.company, a.street1, a.street2, [a.city, a.state, a.zip].filter(Boolean).join(' '), a.country].filter(Boolean).map(esc).join('<br>');
+}
+function shipPkgChanged() { document.getElementById('sh-custom').style.display = document.getElementById('sh-pkg').value ? 'none' : 'flex'; }
+function shVal(id) { const el = document.getElementById('sh-' + id); return el ? el.value.trim() : ''; }
+async function shipPost(path, body) {
+  const res = await fetch('/api/admin/shipping/' + path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(d.error || 'Something went wrong');
+  return d;
+}
+async function shipRates() {
+  const box = document.getElementById('sh-rates');
+  box.innerHTML = '<div class="dim">Asking the carriers&hellip;</div>';
+  const body = {key: SH.r.refund_key, package_id: shVal('pkg'),
+    to: {name: shVal('name'), company: shVal('company'), street1: shVal('street1'), street2: shVal('street2'),
+         city: shVal('city'), state: shVal('state'), zip: shVal('zip'), country: shVal('country')},
+    parcel: {length: shVal('l'), width: shVal('w'), height: shVal('h'), weight: shVal('lb')}};
+  try {
+    const d = await shipPost('rates', body);
+    SH.rates = d.rates;
+    box.innerHTML = (d.notes && d.notes.length ? '<div class="dim" style="font-size:.76rem;margin-bottom:.4rem">' + d.notes.map(esc).join('<br>') + '</div>' : '') +
+      '<div role="radiogroup" aria-label="Rates">' + d.rates.map((x, i) =>
+        '<label style="display:flex;gap:.6rem;align-items:center;padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05);font-size:.84rem">' +
+        '<input type="radio" name="sh-rate" value="' + esc(x.id) + '"' + (i === 0 ? ' checked' : '') + '>' +
+        '<span style="flex:1">' + esc(x.carrier + ' ' + x.service) + '<span class="dim"> · ' + (x.days ? x.days + ' day' + (x.days === 1 ? '' : 's') : esc(x.terms || '')) + '</span></span>' +
+        '<strong>' + money(x.amount) + '</strong></label>').join('') + '</div>' +
+      '<div style="display:flex;gap:.8rem;align-items:center;margin-top:.6rem;flex-wrap:wrap"><button class="gold-btn" onclick="shipBuy()">Buy label</button>' +
+      '<label style="font-size:.8rem;display:flex;gap:.35rem;align-items:center"><input type="checkbox" id="sh-email" checked> Email the customer the tracking number</label></div>';
+  } catch (e) { box.innerHTML = '<div style="color:#f87171;font-size:.84rem">' + esc(e.message) + '</div>'; }
+}
+async function shipBuy() {
+  const sel = document.querySelector('input[name="sh-rate"]:checked');
+  if (!sel) return;
+  const rate = SH.rates.find(x => x.id === sel.value);
+  if (!confirm('Buy this label for ' + money(rate.amount) + ' (' + rate.carrier + ' ' + rate.service + ')?')) return;
+  try {
+    const d = await shipPost('buy', {key: SH.r.refund_key, rate_id: sel.value, email_customer: document.getElementById('sh-email').checked});
+    SH.info.shipment = d.shipment; toast(d.emailed ? 'Label bought and the customer emailed' : 'Label bought');
+    renderShipping(); load();
+    if (d.shipment.label_url) window.open(d.shipment.label_url, '_blank', 'noopener');
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function shipManual() {
+  try {
+    const d = await shipPost('manual', {key: SH.r.refund_key, carrier: shVal('mcarrier'), tracking_number: shVal('mnum'),
+                                        email_customer: document.getElementById('sh-memail').checked});
+    SH.info.shipment = d.shipment; toast(d.emailed ? 'Marked shipped and the customer emailed' : 'Marked shipped');
+    renderShipping(); load();
+  } catch (e) { toast(e.message, 'err'); }
+}
+async function shipVoid() {
+  const sh = SH.info.shipment;
+  if (!confirm(sh.manual ? 'Undo "shipped" on this order?' : 'Void this label? Shippo refunds the postage if the label is never used. Don\'t mail a package with it after this.')) return;
+  try { const d = await shipPost('void', {key: SH.r.refund_key}); SH.info.shipment = d.shipment; toast('Done'); renderShipping(); load(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+async function shipEmail() {
+  try { await shipPost('email', {key: SH.r.refund_key}); toast('Tracking email sent'); }
+  catch (e) { toast(e.message, 'err'); }
 }
 
 // ── spreadsheets ──

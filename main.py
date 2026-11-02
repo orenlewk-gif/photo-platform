@@ -3218,6 +3218,7 @@ def _make_order_download(order: dict) -> dict | None:
 STRIPE_SECRET_KEY      = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_PUBLISHABLE_KEY = os.getenv("STRIPE_PUBLISHABLE_KEY", "")
 STRIPE_WEBHOOK_SECRET  = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+SHIPPO_API_KEY         = os.getenv("SHIPPO_API_KEY", "")      # shipping labels (routes/shipping.py)
 CHECKOUT_SETTINGS_KEY  = "meta/checkout_settings.json"
 _checkout_settings_doc = JsonDoc(s3, R2_BUCKET, CHECKOUT_SETTINGS_KEY, ttl=30, indent=1, default=dict,
                                  valid=lambda d: isinstance(d, dict))
@@ -4784,6 +4785,18 @@ _EMAIL_TEMPLATE_DEFAULTS: dict = {
             "Photos are for personal use: print, frame, and share freely."
         ),
         "tokens": ["first_name", "order_id", "items_table", "download_button", "shipping_note", "review_button"],
+    },
+    "order_shipped": {
+        "id": "order_shipped", "name": "Order Shipped", "system": True,
+        "subject": "Your Crystal Images order {{order_id}} is on its way",
+        "body": (
+            "Hi {{first_name}},\n\n"
+            "Good news: your order has shipped.\n\n"
+            "Carrier: {{carrier}}\nTracking number: {{tracking_number}}\n\n"
+            "{{tracking_button}}\n\n"
+            "Questions? Contact us at info@bigskyphotos.com."
+        ),
+        "tokens": ["first_name", "order_id", "carrier", "tracking_number", "tracking_button"],
     },
     "review_request": {
         "id": "review_request", "name": "Review Request", "system": False,
@@ -6411,6 +6424,8 @@ app.include_router(_routes_device_links.router)
 
 from routes import stripe_checkout as _routes_stripe_checkout  # noqa: E402
 app.include_router(_routes_stripe_checkout.router)
+from routes import shipping as _routes_shipping  # noqa: E402
+app.include_router(_routes_shipping.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

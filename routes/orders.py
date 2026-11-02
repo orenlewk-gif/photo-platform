@@ -17,6 +17,7 @@ from fastapi import APIRouter
 
 import main
 from core import stripe_api
+from routes import shipping
 from core.pages import render_page
 
 router = APIRouter()
@@ -273,7 +274,7 @@ def _sale_from_online(o: dict) -> dict:
             "bundle_savings": round(float(meta.get("_bundle_savings") or 0), 2),
             "ship_to": {k: sa.get(k, "") for k in ("first_name", "last_name", "address_1", "address_2",
                                                      "city", "state", "postcode", "country")} if sa.get("address_1") else None,
-            "shipment": o.get("shipment") or None, "status": r.get("status") or o.get("status", ""),
+            "status": r.get("status") or o.get("status", ""),
             "status_note": (o.get("stripe") or {}).get("note", ""),
             "test": (o.get("stripe") or {}).get("mode") == "test", "is_comp": False, "unlimited": False}
 
@@ -299,7 +300,7 @@ def _sale_from_pos(o: dict) -> dict:
     return {**r, "channel": "store", "provider": "comp" if r["is_comp"] else "square",
             "time": time_str, "phone": o.get("phone", ""), "seller": o.get("photographer_name", ""),
             "items": items, "shipping": round(shipping, 2), "bundle_savings": 0.0,
-            "ship_to": None, "shipment": None, "status": "comp" if r["is_comp"] else "paid",
+            "ship_to": None, "status": "comp" if r["is_comp"] else "paid",
             "address": o.get("address", ""), "tenders": o.get("square_tenders") or []}
 
 
@@ -326,8 +327,11 @@ def _sales_between(date_from: str = "", date_to: str = "") -> list:
     if any(r.get("unlimited") for r in rows):
         main._close_due_unlimited()
         unl = main._unlimited_records()
+    shipments = shipping.all_shipments()
     now = datetime.now(timezone.utc)
     for r in rows:
+        r["shipment"] = shipments.get(r["refund_key"])
+        r["ships"] = bool(r.get("ship_to") or r.get("shipping") or r["shipment"])
         r["photographer"] = (main._unlimited_photog_label(r, photogs, unl)
                              or _photographer_by_files(r.get("filenames"), prefix_map))
         r["location"] = r.get("location") or ""
