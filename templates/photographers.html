@@ -68,6 +68,10 @@ th{text-align:left;color:rgba(255,255,255,.4);font-size:.72rem;text-transform:up
 td{padding:.7rem .75rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(255,255,255,.02)}
+.pay-desc{font-size:.84rem;color:rgba(255,255,255,.5);line-height:1.6;margin-bottom:1rem}
+.pay-radio{display:inline-flex;align-items:center;gap:.4rem}
+.pay-radio input{width:16px;height:16px;padding:0;margin:0;-webkit-appearance:radio;appearance:auto;accent-color:#F5C518;cursor:pointer}
+.pay-radio label{display:inline;margin:0;text-transform:none;letter-spacing:0;font-size:.9rem;color:#e8eaf0;cursor:pointer}
 .pin-cell{font-family:monospace;letter-spacing:.1em;color:#F5C518}
 .actions{display:flex;gap:.4rem}
 /* Commission */
@@ -162,6 +166,7 @@ html.embedded #layout{height:100vh}
   <button class="admin-tab active" id="tab-photographers" onclick="showSection('photographers')">Photographers</button>
   <button class="admin-tab" id="tab-timecards" onclick="showSection('timecards')">Commission</button>
   <button class="admin-tab" id="tab-reports" onclick="showSection('reports')">Reports</button>
+  <button class="admin-tab" id="tab-payments" onclick="showSection('payments')">Payments</button>
 </div>
 
 <div id="sec-photographers" class="section-pg">
@@ -243,6 +248,24 @@ html.embedded #layout{height:100vh}
   </div>
 </div><!-- /sec-timecards -->
 
+<div id="sec-payments" class="section-pg" style="display:none">
+  <div class="section">
+    <h2>Online payments</h2>
+    <p class="pay-desc">Which checkout online customers use: WooCommerce (the old one, on bigskyphotos.com) or Stripe (paid right on this site, with card, Apple Pay and Google Pay). Switch back any time. Stripe's keys are added on Railway, never here; this only shows whether they're there.</p>
+    <div id="pay-status" style="font-size:.88rem;line-height:1.9;margin-bottom:1.1rem">Loading…</div>
+    <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center;margin-bottom:1.2rem">
+      <span style="font-size:.88rem;color:rgba(255,255,255,.6)">Online checkout:</span>
+      <span class="pay-radio"><input type="radio" name="pay-provider" value="woo" id="pay-woo"><label for="pay-woo">WooCommerce</label></span>
+      <span class="pay-radio"><input type="radio" name="pay-provider" value="stripe" id="pay-stripe"><label for="pay-stripe">Stripe</label></span>
+      <button class="btn btn-add" onclick="savePayProvider()">Save</button>
+      <span id="pay-save-status" style="font-size:.84rem"></span>
+    </div>
+    <button class="btn btn-edit" onclick="stripeTestOrder()" id="btn-stripe-test">Make a $1 test order</button>
+    <span id="stripe-test-status" style="font-size:.84rem;margin-left:.6rem"></span>
+    <p class="pay-desc" style="margin-top:.7rem;margin-bottom:0">Opens a payment page for one photo at $1.00 through Stripe, whatever the switch says. With test keys, pay with Stripe's test card 4242 4242 4242 4242 (any future date, any 3 digits): no real money moves. You get the thank-you page and the email, and it shows in Orders as a test payment.</p>
+  </div>
+</div><!-- /sec-payments -->
+
 <div id="sec-reports" class="section-pg" style="display:none">
   <!-- The reports live on the Orders page (Reports tab); shown here too -->
   <iframe id="reports-frame" title="Reports" style="width:100%;height:calc(100vh - 140px);border:0;border-radius:10px;background:transparent"></iframe>
@@ -271,6 +294,7 @@ function showSection(name) {
   if (tab) tab.classList.add('active');
   const rf = document.getElementById('reports-frame');
   if (name === 'reports' && rf && !rf.src) rf.src = '/admin/orders?tab=reports&solo=1';
+  if (name === 'payments') loadPayStatus();
 }
 
 let photographers = [];
@@ -793,6 +817,44 @@ document.addEventListener('keydown',function(e){
   const g=document.getElementById('pin-gate');
   if(g&&g.style.display!=='none'){g.setAttribute('tabindex','-1');g.focus();}
 })();
+</script>
+<script>
+// ── Online payments (Stripe): the checkout switch and the $1 test order ──
+function _payEsc(t){ return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+async function loadPayStatus() {
+  const el = document.getElementById('pay-status');
+  try {
+    const d = await (await fetch('/api/admin/checkout-settings')).json();
+    const ok = (yes, text, no) => `<div>${yes ? '<span style="color:#4ade80">&#10003;</span>' : '<span style="color:#f87171">&#10007;</span>'} ${yes ? text : no}</div>`;
+    const st = d.stripe;
+    el.innerHTML =
+      ok(st.secret_key && st.publishable_key, `Stripe keys on Railway (${st.mode === 'live' ? 'LIVE: real payments' : 'test mode: no real money'})`, 'Stripe keys not on Railway yet (STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY)')
+      + (st.secret_key && st.publishable_key && !st.keys_match ? ok(false, '', 'The two keys are from different modes (one test, one live)') : '')
+      + ok(st.webhook_secret, 'Webhook secret on Railway', `Webhook secret not on Railway yet (STRIPE_WEBHOOK_SECRET). Webhook address for Stripe: <code style="user-select:all">${_payEsc(d.webhook_url)}</code>`)
+      + `<div style="margin-top:.3rem">Customers are using: <strong>${d.provider === 'stripe' ? 'Stripe' : 'WooCommerce'}</strong></div>`;
+    document.getElementById(d.chosen === 'stripe' ? 'pay-stripe' : 'pay-woo').checked = true;
+  } catch (e) { el.textContent = 'Could not load the payment settings'; }
+}
+async function savePayProvider() {
+  const v = document.querySelector('input[name="pay-provider"]:checked')?.value;
+  const st = document.getElementById('pay-save-status');
+  if (!v) return;
+  if (v === 'stripe' && !confirm('Switch online checkout to Stripe? New orders will be paid on this site. You can switch back any time.')) return;
+  const r = await fetch('/api/admin/checkout-settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider: v})});
+  const d = await r.json().catch(() => ({}));
+  st.style.color = r.ok ? '#4ade80' : '#f87171';
+  st.textContent = r.ok ? `Saved: customers now use ${d.provider === 'stripe' ? 'Stripe' : 'WooCommerce'}` : (d.error || 'Could not save');
+  loadPayStatus();
+}
+async function stripeTestOrder() {
+  const st = document.getElementById('stripe-test-status');
+  st.style.color = 'rgba(255,255,255,.5)'; st.textContent = 'Making the test order…';
+  const r = await fetch('/api/admin/stripe/test-order', {method: 'POST'});
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { st.style.color = '#f87171'; st.textContent = d.error || 'Could not make a test order'; return; }
+  st.style.color = '#4ade80'; st.innerHTML = `Test order ${_payEsc(d.order_id)}: <a href="${_payEsc(d.checkout_url)}" target="_blank" rel="noopener" style="color:#F5C518">open its payment page</a>`;
+  window.open(d.checkout_url, '_blank', 'noopener');
+}
 </script>
 <script>
 if (window.parent !== window) document.documentElement.classList.add('embedded');

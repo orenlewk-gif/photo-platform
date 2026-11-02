@@ -217,23 +217,25 @@ def test_test_mode_messages_are_ignored_on_the_live_keys(client, stripe, main_mo
     assert main_module._load_online_order(made["order_id"])["status"] == "pending"
 
 
-def test_the_switch(admin_client, client, stripe, main_module, monkeypatch):
+def test_the_switch(admin_client, owner_client, client, stripe, main_module, monkeypatch):
     s = admin_client.get("/api/admin/checkout-settings").json()
+    assert admin_client.put("/api/admin/checkout-settings", json={"provider": "woo"}).status_code == 403   # owner PIN
     assert s["provider"] == "stripe" and s["stripe"]["mode"] == "test" and s["webhook_url"].endswith("/stripe/webhook")
-    assert admin_client.put("/api/admin/checkout-settings", json={"provider": "woo"}).json()["provider"] == "woo"
+    assert owner_client.put("/api/admin/checkout-settings", json={"provider": "woo"}).json()["provider"] == "woo"
     assert main_module._checkout_provider() == "woo"
     monkeypatch.setattr(main_module, "STRIPE_WEBHOOK_SECRET", "")
-    assert admin_client.put("/api/admin/checkout-settings", json={"provider": "stripe"}).status_code == 400
+    assert owner_client.put("/api/admin/checkout-settings", json={"provider": "stripe"}).status_code == 400
     assert client.get("/api/admin/checkout-settings").status_code == 401
 
 
-def test_a_test_order_from_settings(admin_client, client, stripe, main_module):
+def test_a_test_order_from_admin_payments(admin_client, owner_client, client, stripe, main_module):
     main_module._checkout_settings_doc.save({"provider": "woo"})            # works whatever the switch says
-    r = admin_client.post("/api/admin/stripe/test-order")
+    r = owner_client.post("/api/admin/stripe/test-order")
     assert r.status_code == 200 and "/pay/CI-" in r.json()["checkout_url"]
     order = main_module._load_online_order(r.json()["order_id"])
     assert order["total"] == "1.00" and order["source"] == "test"
     assert client.post("/api/admin/stripe/test-order").status_code == 401
+    assert admin_client.post("/api/admin/stripe/test-order").status_code == 403
 
 
 def test_stripe_signatures_and_fields():
@@ -305,7 +307,7 @@ def test_test_mode_orders_drop_out_once_live(client, stripe, main_module, monkey
     assert main_module._fetch_online_orders() == []
 
 
-def test_discount_codes_stay_here_while_on_stripe_and_go_back_to_woocommerce(admin_client, stripe, main_module, monkeypatch):
+def test_discount_codes_stay_here_while_on_stripe_and_go_back_to_woocommerce(admin_client, owner_client, stripe, main_module, monkeypatch):
     synced = []
     monkeypatch.setattr(main_module, "_wc_sync_coupon", lambda c: synced.append(c["code"]) or {"wc_id": 77})
     S3.put_object(Bucket=BUCKET, Key="meta/discount_codes.json", Body=b"[]")
@@ -314,7 +316,7 @@ def test_discount_codes_stay_here_while_on_stripe_and_go_back_to_woocommerce(adm
     code = r.json()["code"]
     assert synced == [] and code.get("wc_stale") and not code.get("wc_sync_error")
     monkeypatch.setattr(main_module, "STRIPE_WEBHOOK_SECRET", WEBHOOK_SECRET)
-    back = admin_client.put("/api/admin/checkout-settings", json={"provider": "woo"})
+    back = owner_client.put("/api/admin/checkout-settings", json={"provider": "woo"})
     assert back.json()["codes_copied"] == 1 and synced == ["WINTER10"]
     saved = json.loads(S3.get_object(Bucket=BUCKET, Key="meta/discount_codes.json")["Body"].read())
     assert saved[0]["wc_id"] == 77 and "wc_stale" not in saved[0]

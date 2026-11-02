@@ -422,23 +422,6 @@ html.embedded #layout{height:100vh}
       <div id="sec-upload-stations" style="font-size:.85rem;line-height:1.7">Loading…</div>
     </div>
 
-    <!-- ONLINE PAYMENTS (Stripe) -->
-    <div class="settings-section" style="margin-top:1.5rem">
-      <div class="section-title">Online payments</div>
-      <div class="section-desc">Which checkout online customers use: WooCommerce (the old one, on bigskyphotos.com) or Stripe (paid right on this site, with card, Apple Pay and Google Pay). Switch back any time. Stripe's keys are added on Railway, never here; this only shows whether they're there.</div>
-      <div id="pay-status" style="font-size:.85rem;line-height:1.9;margin-bottom:1rem">Loading…</div>
-      <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.9rem">
-        <span style="font-size:.85rem;color:rgba(255,255,255,.6)">Online checkout:</span>
-        <label style="font-size:.88rem;display:flex;align-items:center;gap:.35rem;cursor:pointer"><input type="radio" name="pay-provider" value="woo" id="pay-woo"> WooCommerce</label>
-        <label style="font-size:.88rem;display:flex;align-items:center;gap:.35rem;cursor:pointer"><input type="radio" name="pay-provider" value="stripe" id="pay-stripe"> Stripe</label>
-        <button class="btn-save" onclick="savePayProvider()" style="padding:.4rem 1rem">Save</button>
-        <span id="pay-save-status" style="font-size:.82rem"></span>
-      </div>
-      <button class="btn-save" onclick="stripeTestOrder()" id="btn-stripe-test" style="background:#635bff">Make a $1 test order</button>
-      <span id="stripe-test-status" style="font-size:.82rem;margin-left:.6rem"></span>
-      <div class="section-desc" style="margin-top:.6rem;margin-bottom:0">Opens a payment page for one photo at $1.00 through Stripe, whatever the switch says. With test keys, pay with Stripe's test card 4242 4242 4242 4242 (any future date, any 3 digits): no real money moves. You get the thank-you page and the email.</div>
-    </div>
-
     <!-- SHIPPING LABELS -->
     <div class="settings-section" style="margin-top:1.5rem">
       <div class="section-title">Shipping labels</div>
@@ -2056,44 +2039,6 @@ async function removeUploadStation(id) {
   loadUploadStations();
 }
 loadUploadStations();
-
-// ── Online payments (Stripe) ──
-async function loadPayStatus() {
-  const el = document.getElementById('pay-status');
-  if (!el) return;
-  try {
-    const d = await (await fetch('/api/admin/checkout-settings')).json();
-    const ok = (yes, text, no) => `<div>${yes ? '<span style="color:#4ade80">&#10003;</span>' : '<span style="color:#f87171">&#10007;</span>'} ${yes ? text : no}</div>`;
-    const st = d.stripe;
-    el.innerHTML =
-      ok(st.secret_key && st.publishable_key, `Stripe keys on Railway (${st.mode === 'live' ? 'LIVE: real payments' : 'test mode: no real money'})`, 'Stripe keys not on Railway yet (STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY)')
-      + (st.secret_key && st.publishable_key && !st.keys_match ? ok(false, '', 'The two keys are from different modes (one test, one live)') : '')
-      + ok(st.webhook_secret, 'Webhook secret on Railway', `Webhook secret not on Railway yet (STRIPE_WEBHOOK_SECRET). Webhook address for Stripe: <code style="user-select:all">${_secEsc(d.webhook_url)}</code>`)
-      + `<div style="margin-top:.3rem">Customers are using: <strong>${d.provider === 'stripe' ? 'Stripe' : 'WooCommerce'}</strong></div>`;
-    document.getElementById(d.chosen === 'stripe' ? 'pay-stripe' : 'pay-woo').checked = true;
-  } catch (e) { el.textContent = 'Could not load the payment settings'; }
-}
-async function savePayProvider() {
-  const v = document.querySelector('input[name="pay-provider"]:checked')?.value;
-  const st = document.getElementById('pay-save-status');
-  if (!v) return;
-  if (v === 'stripe' && !confirm('Switch online checkout to Stripe? New orders will be paid on this site. You can switch back any time.')) return;
-  const r = await fetch('/api/admin/checkout-settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({provider: v})});
-  const d = await r.json().catch(() => ({}));
-  st.style.color = r.ok ? '#4ade80' : '#f87171';
-  st.textContent = r.ok ? `Saved: customers now use ${d.provider === 'stripe' ? 'Stripe' : 'WooCommerce'}` : (d.error || 'Could not save');
-  loadPayStatus();
-}
-async function stripeTestOrder() {
-  const st = document.getElementById('stripe-test-status');
-  st.style.color = 'rgba(255,255,255,.5)'; st.textContent = 'Making the test order…';
-  const r = await fetch('/api/admin/stripe/test-order', {method: 'POST'});
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) { st.style.color = '#f87171'; st.textContent = d.error || 'Could not make a test order'; return; }
-  st.style.color = '#4ade80'; st.innerHTML = `Test order ${_secEsc(d.order_id)}: <a href="${_secEsc(d.checkout_url)}" target="_blank" rel="noopener" style="color:#F5C518">open its payment page</a>`;
-  window.open(d.checkout_url, '_blank', 'noopener');
-}
-loadPayStatus();
 
 // ── Shipping labels (Shippo) ──
 let _shipPackages = [];

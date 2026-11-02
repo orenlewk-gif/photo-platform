@@ -214,6 +214,9 @@ def admin_set_checkout_provider(request: Request, body: dict = Body(...)):
     """The switch: online checkout with WooCommerce or with Stripe (flip back any time)."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)          # Admin > Payments: the owner's PIN
+    if denied:
+        return denied
     provider = str(body.get("provider") or "")
     if provider not in ("woo", "stripe"):
         return JSONResponse(status_code=400, content={"error": "Choose WooCommerce or Stripe"})
@@ -232,6 +235,9 @@ def admin_stripe_test_order(request: Request):
     whole flow: payment form, thank-you page, email and download."""
     if not main._admin_authed(request):
         return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    denied = main._owner_required(request)
+    if denied:
+        return denied
     if not main._stripe_ready():
         return JSONResponse(status_code=400, content={"error": "Stripe's keys aren't on Railway yet"})
     photo = next((i for i in reversed(main.data) if not i.get("draft") and not i.get("partner")), None)
