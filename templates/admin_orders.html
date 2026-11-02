@@ -2,6 +2,10 @@
 <html><head>
 <link rel="icon" type="image/png" href="/static/favicon-32.png"><meta charset="UTF-8"><title>Orders — Crystal Images</title>
 <style>
+/* Orders: every sale (online and in the store) for a period, filtered any way, each with all its
+   details; Reports: the same sales added up by day/week/month/season, location, product, photographer,
+   seller, code, refunds, tax and tips, online vs in store, and partners. Built in the page from
+   /api/admin/sales, so the list and the reports always agree. */
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-height:100vh;display:flex;flex-direction:column}
 #topbar{height:52px;background:#0a1320;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;padding:0 1.4rem;flex-shrink:0}
@@ -10,122 +14,107 @@ body{background:#0f1117;font-family:'Segoe UI',sans-serif;color:#e8eaf0;min-heig
 #topbar a:hover{color:rgba(255,255,255,.65);background:rgba(255,255,255,.05)}
 #layout{display:flex;flex:1;height:calc(100vh - 52px);overflow:hidden}
 #sidebar{width:240px;flex-shrink:0;background:#0a1320;border-right:1px solid rgba(255,255,255,.07);overflow-y:auto}
-#sidebar-tree{padding:.4rem 0}
-.st-date{padding:.38rem .85rem;cursor:pointer;display:flex;align-items:center;gap:.4rem;font-size:.79rem;font-weight:600;color:rgba(255,255,255,.5);user-select:none}
-.st-date:hover{background:rgba(255,255,255,.04);color:#fff}
-.st-arr{font-size:.55rem;transition:transform .15s;color:rgba(255,255,255,.22);flex-shrink:0}
-.st-date.st-open .st-arr{transform:rotate(90deg)}
-.st-locs{display:none}
-.st-date.st-open+.st-locs{display:block}
-.st-loc{padding:.3rem .85rem .3rem 1.5rem;font-size:.76rem;color:rgba(255,255,255,.42);cursor:pointer;display:flex;align-items:center;gap:.35rem}
-.st-loc:hover{background:rgba(255,255,255,.04);color:rgba(255,255,255,.8)}
-.st-loc.st-open .st-arr{transform:rotate(90deg)}
-.st-subs{display:none}
-.st-loc.st-open+.st-subs{display:block}
-.st-sub{padding:.27rem .85rem .27rem 2.5rem;font-size:.75rem;color:rgba(255,255,255,.35);cursor:pointer;display:flex;align-items:center;justify-content:space-between;border-radius:4px;margin:0 .3rem}
-.st-sub:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.7)}
-.st-cnt{font-size:.66rem;color:rgba(255,255,255,.22)}
-.nav-sec-label{padding:.85rem .9rem .3rem;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,.22)}
-.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.55);text-decoration:none;transition:background .12s,color .12s}
+.nav-link{display:block;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.55);text-decoration:none}
 .nav-link:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
 .nav-link.active{background:rgba(245,197,24,.09);color:#F5C430;box-shadow:inset 3px 0 0 #F5C430}
-.nav-sub{padding-left:1.4rem!important;font-size:14px}
-.nav-group-hdr{display:flex;align-items:center;justify-content:space-between;padding:.52rem .9rem;border-radius:6px;margin:.05rem .45rem;font-size:16px;color:rgba(255,255,255,.5);cursor:pointer;user-select:none;transition:background .12s,color .12s}
-.nav-group-hdr:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.85)}
-.nav-group-hdr.open{color:#e8eaf0}
-.ng-arr{font-size:10px;color:rgba(255,255,255,.3);transition:transform .15s;flex-shrink:0}
-.ng-arr.open{transform:rotate(90deg)}
-.nav-children{display:none}
-.nav-children.open{display:block}
-#main{flex:1;overflow-y:auto;padding:1.75rem 2rem}
-.stats{display:flex;gap:1rem;margin-bottom:1.5rem;flex-wrap:wrap}
-.stat{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.9rem 1.25rem;flex:1;min-width:130px}
-.stat .label{font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px}
-.stat .val{font-size:1.35rem;font-weight:700;color:#F5C518}
-.controls{display:flex;gap:.75rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap}
-select{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.45rem .8rem;border-radius:8px;font-size:.85rem;cursor:pointer}
-input[type=date]{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.42rem .7rem;border-radius:8px;font-size:.85rem}
-.export-btn{background:#F5C518;color:#0f1117;border:none;border-radius:8px;padding:.45rem 1.1rem;font-weight:700;cursor:pointer;font-size:.85rem;text-decoration:none}
-.wrap{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:.82rem;min-width:1100px}
-th{background:#1a1d27;color:rgba(255,255,255,.45);font-weight:600;font-size:.7rem;letter-spacing:.8px;text-transform:uppercase;padding:.55rem .7rem;text-align:left;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}
-td{padding:.6rem .7rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
-.mono{font-family:monospace;font-size:.75rem;color:rgba(255,255,255,.55);max-width:200px;word-break:break-all;white-space:normal}
-.fee{color:#f87171}
-.net{color:#4ade80;font-weight:600}
-.empty{text-align:center;padding:3rem;color:rgba(255,255,255,.3)}
-.order-row:hover td{background:rgba(255,255,255,.04);cursor:pointer}
-.copy-btn{background:rgba(99,179,237,.12);border:1px solid rgba(99,179,237,.3);color:#63b3ed;padding:.28rem .75rem;border-radius:6px;font-size:.78rem;cursor:pointer;white-space:nowrap}
-.copy-btn:hover{background:rgba(99,179,237,.22)}
-.regen-btn{background:rgba(245,197,24,.1);border:1px solid rgba(245,197,24,.25);color:#F5C518;padding:.28rem .75rem;border-radius:6px;font-size:.78rem;text-decoration:none;white-space:nowrap;display:inline-block}
-.regen-btn:hover{background:rgba(245,197,24,.2)}
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}
-.modal-overlay.open{display:flex}
-.modal{background:#1a1d27;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.5rem;width:90%;max-height:90vh;overflow-y:auto;transition:max-width .2s}
-.modal.narrow{max-width:560px}
-.modal.wide{max-width:980px}
-.modal h2{color:#F5C518;font-size:1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.6rem}
-.modal-row{display:flex;gap:1rem;padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:.85rem}
-.modal-row:last-child{border-bottom:none}
-.modal-label{color:rgba(255,255,255,.4);min-width:110px;flex-shrink:0}
-.modal-val{color:#fff;word-break:break-word}
-.refund-box{margin-top:1.1rem;padding:.8rem 1rem;border:1px solid rgba(248,113,113,.25);border-radius:8px;
-  display:flex;align-items:center;justify-content:space-between;gap:1rem;font-size:.85rem}
-.refund-in{background:#0f1117;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .55rem;font-size:.82rem}
-.modal-close{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.4);font-size:1.2rem;cursor:pointer}
-.modal-close:hover{color:#fff}
-.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.5rem;margin-top:1rem}
-.photo-grid img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;cursor:pointer;transition:opacity .15s}
-.photo-grid img:hover{opacity:.85}
-.photo-grid-lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;align-items:center;justify-content:center}
-.photo-grid-lb.open{display:flex}
-.photo-grid-lb img{max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain}
-.loc-breakdown{margin-bottom:1.5rem}
-.loc-breakdown-title{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.6rem}
-.loc-bars{display:flex;flex-direction:column;gap:.45rem}
-.loc-bar-row{display:flex;align-items:center;gap:.75rem;font-size:.82rem}
-.loc-bar-label{width:160px;flex-shrink:0;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.loc-bar-track{flex:1;background:rgba(255,255,255,.06);border-radius:4px;height:8px;overflow:hidden}
-.loc-bar-fill{height:100%;background:#F5C518;border-radius:4px;transition:width .3s}
-.loc-bar-stats{width:200px;flex-shrink:0;display:flex;gap:.75rem;color:rgba(255,255,255,.5);white-space:nowrap;font-size:.78rem}
-.loc-bar-pct{color:#F5C518;font-weight:700;min-width:38px;text-align:right}
-.loc-bar-rev{color:#e2e8f0}
-.loc-bar-cnt{color:rgba(255,255,255,.35)}
-#toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;font-weight:500;opacity:0;transition:opacity .25s;z-index:9999;pointer-events:none}
-#toast.show{opacity:1;background:#16a34a;color:#fff}
-#toast.err{opacity:1;background:#dc2626;color:#fff}
-.tab-bar{display:flex;gap:.5rem;margin-bottom:1.25rem}
-.tab-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:8px;padding:.42rem 1.1rem;font-size:.85rem;cursor:pointer;transition:all .15s}
-.tab-btn:hover{background:rgba(255,255,255,.1);color:#fff}
-.tab-btn.active{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.3);color:#F5C518}
-.rpt-section{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1.1rem 1.25rem;margin-bottom:1.25rem}
-.rpt-title{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:.9rem}
-.rpt-bar-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.55rem;font-size:.82rem}
-.rpt-bar-label{width:180px;flex-shrink:0;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rpt-bar-track{flex:1;background:rgba(255,255,255,.06);border-radius:4px;height:10px;overflow:hidden}
-.rpt-bar-fill{height:100%;background:#F5C518;border-radius:4px}
-.rpt-bar-val{width:160px;flex-shrink:0;color:#e2e8f0;text-align:right}
-.rpt-bar-cnt{color:rgba(255,255,255,.35);font-size:.75rem;margin-left:.5rem}
-.rpt-chart-empty{color:rgba(255,255,255,.3);font-size:.85rem;padding:1rem 0}
-.rpt-controls{display:flex;gap:1rem;align-items:center;margin-bottom:1.25rem;flex-wrap:wrap}
-.rpt-qbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.5);border-radius:6px;padding:.38rem .85rem;font-size:.82rem;cursor:pointer;transition:all .15s}
-.rpt-qbtn:hover{background:rgba(255,255,255,.1);color:#fff}
-.rpt-qbtn.active{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.3);color:#F5C518}
-.rpt-custom{display:flex;gap:.5rem;align-items:center}
-.rpt-custom input[type=date]{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.36rem .65rem;border-radius:6px;font-size:.82rem}
-.rpt-custom button{background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.25);color:#F5C518;padding:.36rem .85rem;border-radius:6px;font-size:.82rem;cursor:pointer}
-.rpt-custom button:hover{background:rgba(245,197,24,.22)}
-.rpt-sum{display:flex;gap:.85rem;margin-bottom:1.25rem;flex-wrap:wrap}
-.rpt-stat{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.85rem 1.1rem;flex:1;min-width:120px}
-.rpl{font-size:10px;color:rgba(255,255,255,.38);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
-.rpv{font-size:1.22rem;font-weight:700;color:#F5C518}
-.rpv-red{color:#f87171}
-.rpv-grn{color:#4ade80}
-.rp-sub{font-size:.75rem;color:rgba(255,255,255,.3);margin-top:2px}
-.rpt-loading{padding:2.5rem;text-align:center;color:rgba(255,255,255,.35);font-size:.9rem;display:none}
-.rpt-empty{padding:1.2rem 0;color:rgba(255,255,255,.3);font-size:.85rem}
+#main{flex:1;overflow-y:auto;padding:1.5rem 2rem 3rem}
 html.embedded #topbar,html.embedded #sidebar{display:none}
 html.embedded #layout{height:100vh}
+
+.bar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.9rem}
+.qbtn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.6);border-radius:6px;padding:.38rem .8rem;font-size:.82rem;cursor:pointer}
+.qbtn:hover{background:rgba(255,255,255,.1);color:#fff}
+.qbtn.active{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.35);color:#F5C518}
+.qbtn:focus-visible,.tab-btn:focus-visible,.gold-btn:focus-visible,.link-btn:focus-visible{outline:2px solid #F5C518;outline-offset:2px}
+input[type=date],input[type=search],select{background:#1a1d27;border:1px solid rgba(255,255,255,.15);color:#fff;padding:.38rem .6rem;border-radius:6px;font-size:.82rem;font-family:inherit}
+input[type=search]{min-width:220px}
+select{max-width:200px;cursor:pointer}
+.sep{color:rgba(255,255,255,.3);font-size:.8rem}
+.gold-btn{background:#F5C518;color:#0f1117;border:none;border-radius:7px;padding:.42rem 1rem;font-weight:700;cursor:pointer;font-size:.82rem}
+.ghost-btn{background:none;border:1px solid rgba(255,255,255,.15);color:rgba(255,255,255,.6);border-radius:6px;padding:.36rem .75rem;font-size:.8rem;cursor:pointer}
+.ghost-btn:hover{color:#fff;border-color:rgba(255,255,255,.35)}
+.tab-bar{display:flex;gap:.5rem;margin:.2rem 0 1rem}
+.tab-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.55);border-radius:8px;padding:.45rem 1.2rem;font-size:.88rem;cursor:pointer}
+.tab-btn:hover{color:#fff}
+.tab-btn.active{background:rgba(245,197,24,.12);border-color:rgba(245,197,24,.3);color:#F5C518}
+html.solo .tab-bar{display:none}
+.filters{background:#151923;border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:.75rem .85rem;margin-bottom:1rem}
+.filters .bar{margin:0}
+.filters label{font-size:.72rem;color:rgba(255,255,255,.45);display:flex;flex-direction:column;gap:.2rem}
+.filt-note{font-size:.78rem;color:#F5C518;margin-top:.55rem;display:none}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:.7rem;margin-bottom:1.1rem}
+.stat{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:.75rem 1rem}
+.stat .label{font-size:10.5px;color:rgba(255,255,255,.42);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.stat .val{font-size:1.2rem;font-weight:700;color:#F5C518}
+.stat .val.red{color:#f87171}.stat .val.grn{color:#4ade80}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+#orders-table{min-width:1080px}
+th{background:#1a1d27;color:rgba(255,255,255,.45);font-weight:600;font-size:.68rem;letter-spacing:.8px;text-transform:uppercase;padding:.55rem .65rem;text-align:left;border-bottom:1px solid rgba(255,255,255,.08);white-space:nowrap}
+th.num,td.num{text-align:right}
+td{padding:.55rem .65rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+tbody tr.order-row{cursor:pointer}
+tbody tr.order-row:hover td{background:rgba(255,255,255,.04)}
+tbody tr.order-row:focus-visible td{background:rgba(245,197,24,.08)}
+.mono{font-family:ui-monospace,monospace;font-size:.76rem;color:rgba(255,255,255,.65)}
+.dim{color:rgba(255,255,255,.4)}
+.fee{color:#f87171}.net{color:#4ade80;font-weight:600}
+.what{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.empty{text-align:center;padding:2.5rem;color:rgba(255,255,255,.35)}
+.badge{display:inline-block;font-size:.68rem;font-weight:700;letter-spacing:.4px;border-radius:4px;padding:.1rem .4rem;white-space:nowrap}
+.b-online{background:rgba(99,179,237,.15);color:#63b3ed}
+.b-store{background:rgba(74,222,128,.13);color:#4ade80}
+.b-ref{background:rgba(248,113,113,.15);color:#f87171}
+.b-warn{background:rgba(245,197,24,.15);color:#F5C518}
+.b-test{background:rgba(192,132,252,.15);color:#c084fc}
+.link-btn{background:rgba(99,179,237,.12);border:1px solid rgba(99,179,237,.3);color:#63b3ed;padding:.25rem .65rem;border-radius:6px;font-size:.76rem;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block}
+.link-btn:hover{background:rgba(99,179,237,.22)}
+.link-btn.regen{background:rgba(245,197,24,.1);border-color:rgba(245,197,24,.25);color:#F5C518}
+.loading{padding:2.5rem;text-align:center;color:rgba(255,255,255,.4)}
+.more-row td{text-align:center;padding:1rem}
+
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:9999;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#1a1d27;border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:1.4rem 1.5rem;width:92%;max-width:880px;max-height:92vh;overflow-y:auto}
+.modal h2{color:#F5C518;font-size:1.02rem;margin-bottom:.25rem;display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+.modal-close{margin-left:auto;background:none;border:none;color:rgba(255,255,255,.45);font-size:1.3rem;cursor:pointer;line-height:1}
+.modal-close:hover{color:#fff}
+.m-sub{font-size:.8rem;color:rgba(255,255,255,.5);margin-bottom:1rem}
+.m-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media(max-width:760px){.m-grid{grid-template-columns:1fr}}
+.m-box{background:#141822;border:1px solid rgba(255,255,255,.07);border-radius:9px;padding:.75rem .9rem}
+.m-title{font-size:10.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.35);margin-bottom:.5rem}
+.m-row{display:flex;gap:.8rem;padding:.28rem 0;font-size:.84rem}
+.m-row .k{color:rgba(255,255,255,.42);min-width:96px;flex-shrink:0}
+.m-row .v{color:#fff;word-break:break-word}
+.m-items{width:100%;font-size:.83rem;margin-top:.2rem}
+.m-items td{padding:.32rem .2rem;border-bottom:1px solid rgba(255,255,255,.05)}
+.m-items tr.tot td{font-weight:700;border-bottom:none;padding-top:.5rem}
+.m-items tr.minor td{color:rgba(255,255,255,.55)}
+.m-actions{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:1rem}
+.refund-box{margin-top:1rem;padding:.8rem 1rem;border:1px solid rgba(248,113,113,.25);border-radius:8px;font-size:.84rem}
+.refund-in{background:#0f1117;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:.4rem .55rem;font-size:.82rem}
+.photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.45rem;margin-top:.5rem}
+.photo-grid img{width:100%;aspect-ratio:3/2;object-fit:cover;border-radius:6px;cursor:pointer}
+.photo-lb{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:10000;align-items:center;justify-content:center}
+.photo-lb.open{display:flex}
+.photo-lb img{max-width:90vw;max-height:90vh;border-radius:8px;object-fit:contain}
+
+.rpt-pick{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}
+.rpt-card{background:#1a1d27;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:1rem 1.15rem;margin-bottom:1rem}
+.rpt-head{display:flex;align-items:center;gap:.6rem;margin-bottom:.8rem;flex-wrap:wrap}
+.rpt-head h3{font-size:.95rem;color:#fff;margin-right:auto}
+.rpt-note{font-size:.78rem;color:rgba(255,255,255,.45);margin:-.3rem 0 .8rem;line-height:1.5}
+.barcell{min-width:220px}
+.barwrap{display:flex;align-items:center;gap:.6rem}
+.track{flex:1;height:9px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden}
+.track div{height:100%;background:rgba(245,197,24,.55);border-radius:3px}
+.barwrap span{min-width:84px;text-align:right}
+.rpt-card td:first-child{white-space:nowrap}
+tr.total-row td{font-weight:700;border-top:1px solid rgba(255,255,255,.15)}
+#toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;z-index:10001;pointer-events:none}
+#toast.show{opacity:1;background:#16a34a;color:#fff}
+#toast.err{opacity:1;background:#dc2626;color:#fff}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head><body>
@@ -134,7 +123,7 @@ html.embedded #layout{height:100vh}
   <a href="/admin/logout">Sign out</a>
 </div>
 <div id="layout">
-  <div id="sidebar">
+  <nav id="sidebar" aria-label="Studio">
     <a href="/admin/dashboard" class="nav-link">Dashboard</a>
     <a href="/admin/pricing" class="nav-link">Pricing</a>
     <a href="/admin/photographers" class="nav-link">Admin</a>
@@ -143,473 +132,658 @@ html.embedded #layout{height:100vh}
     <a href="/admin/links" class="nav-link">Links</a>
     <a href="/admin/settings" class="nav-link">Settings</a>
     <a href="/admin/activities" class="nav-link">Activities</a>
-    <div id="sidebar-tree"></div>
-    <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0;flex-shrink:0">
+    <div style="border-top:1px solid rgba(255,255,255,.07);padding:.25rem 0">
       <a href="/admin/trash" class="nav-link">Trash</a>
     </div>
-  </div>
-  <div id="main">
-<div class="modal-overlay" id="detail-modal" onclick="closeDetail(event)">
-  <div class="modal narrow" id="detail-modal-box">
-    <h2>Order Details <button class="modal-close" onclick="document.getElementById('detail-modal').classList.remove('open')">✕</button></h2>
-    <div id="detail-body"></div>
-  </div>
+  </nav>
+  <main id="main">
+    <div class="tab-bar" role="tablist">
+      <button class="tab-btn active" id="tab-orders" role="tab" aria-selected="true" onclick="showTab('orders')">Orders</button>
+      <button class="tab-btn" id="tab-reports" role="tab" aria-selected="false" onclick="showTab('reports')">Reports</button>
+    </div>
+
+    <div class="bar" id="range-bar" aria-label="Period">
+      <button class="qbtn" data-days="1" onclick="setDays(1)">Today</button>
+      <button class="qbtn" data-days="7" onclick="setDays(7)">7 days</button>
+      <button class="qbtn active" data-days="30" onclick="setDays(30)">30 days</button>
+      <button class="qbtn" data-days="90" onclick="setDays(90)">90 days</button>
+      <button class="qbtn" data-days="season" onclick="setSeason()">This season</button>
+      <button class="qbtn" data-days="365" onclick="setDays(365)">12 months</button>
+      <button class="qbtn" data-days="all" onclick="setAll()">All time</button>
+      <span class="sep">or</span>
+      <input type="date" id="from" aria-label="From">
+      <span class="sep">to</span>
+      <input type="date" id="to" aria-label="To">
+      <button class="ghost-btn" onclick="applyCustom()">Show</button>
+      <span class="dim" id="range-label" style="font-size:.8rem;margin-left:.3rem"></span>
+    </div>
+
+    <div class="filters">
+      <div class="bar">
+        <input type="search" id="f-q" placeholder="Search name, email, order #, photo file" aria-label="Search orders" oninput="filterSoon()">
+        <label>Where<select id="f-channel" onchange="refresh()">
+          <option value="">Online and in store</option><option value="online">Online</option><option value="store">In store</option>
+        </select></label>
+        <label>Location<select id="f-loc" onchange="refresh()"></select></label>
+        <label>Photographer<select id="f-photog" onchange="refresh()"></select></label>
+        <label>Sold by<select id="f-seller" onchange="refresh()"></select></label>
+        <label>Product<select id="f-cat" onchange="refresh()"></select></label>
+        <label>Code<select id="f-code" onchange="refresh()"></select></label>
+        <label>Status<select id="f-status" onchange="refresh()">
+          <option value="">Any</option><option value="refunded">Refunded</option><option value="ship">Ships (prints/frames)</option>
+          <option value="comp">Comps</option><option value="check">Amount being checked</option>
+        </select></label>
+        <button class="ghost-btn" style="align-self:flex-end" onclick="clearFilters()">Clear filters</button>
+      </div>
+      <div class="filt-note" id="filt-note"></div>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <section id="view-orders">
+      <div class="bar" style="justify-content:flex-end">
+        <button class="gold-btn" onclick="exportOrders()">Download these orders (spreadsheet)</button>
+      </div>
+      <div class="wrap">
+        <table id="orders-table">
+          <thead><tr>
+            <th>Date</th><th>Order #</th><th>Where</th><th>Customer</th><th>Location</th><th>Ordered</th>
+            <th>Photographer</th><th class="num">Total</th><th class="num">Card fee</th><th class="num">Net</th><th>Code</th><th>Link</th>
+          </tr></thead>
+          <tbody id="orders-body"><tr><td colspan="12" class="loading">Loading orders&hellip;</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-reports" style="display:none">
+      <div class="rpt-pick" id="rpt-pick" role="tablist" aria-label="Report"></div>
+      <div id="rpt-body"></div>
+    </section>
+  </main>
 </div>
-<div class="photo-grid-lb" id="photo-lb" onclick="this.classList.remove('open')">
-  <img id="photo-lb-img" src="" alt="">
+
+<div class="modal-overlay" id="detail" onclick="if(event.target===this)closeDetail()">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="d-title"><div id="detail-body"></div></div>
 </div>
-<div id="toast"></div>
+<div class="photo-lb" id="photo-lb" onclick="this.classList.remove('open')"><img id="photo-lb-img" src="" alt="Photo, larger"></div>
+<div id="toast" role="status"></div>
+
 <script>
-window._INIT_TAB='__TAB__';
-function showDetail(encoded) {
-  try {
-    const d = JSON.parse(encoded);   // the row's data-detail attribute, already unescaped by the browser
-    const fields = [
-      ['Order #', d.receipt_url ? `<a href="${d.receipt_url}" target="_blank" style="color:inherit">${d.order_no}</a>` : d.order_no],
-      ['Name', d.name], ['Email', d.email], ['Location', d.location], ['Photographer', d.photographer], ['Ordered', d.what],
-      ['Total', d.total], ['Tip', d.tip], ['Discount', d.discount], ['Card Fee', d.fee],
-      ['Net', d.net], ['Coupon', d.coupon], ['Shipping', d.shipping],
-      ['Billing Address', d.address],
-    ];
-    let html = fields.map(([l,v]) =>
-      `<div class="modal-row"><span class="modal-label">${l}</span><span class="modal-val">${v}</span></div>`
-    ).join('');
+if (window.parent !== window) document.documentElement.classList.add('embedded');
+const QS = new URLSearchParams(location.search);
+if (QS.get('solo') === '1') document.documentElement.classList.add('solo');
+const S = {data: null, rows: [], shown: [], tab: (QS.get('tab') === 'reports' ? 'reports' : 'orders'),
+           range: {days: 30}, report: 'time', period: 'day', limit: 200, partnerCache: {}};
+const CAT = {};
 
-    const paths = (d.photo_paths || '').split('|').filter(Boolean);
-    const box = document.getElementById('detail-modal-box');
-    if (paths.length) {
-      box.classList.remove('narrow'); box.classList.add('wide');
-      html += `<div style="margin-top:1rem;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,.3)">Photos Ordered (${paths.length})</div>`;
-      html += '<div class="photo-grid">' + paths.map(p =>
-        `<img src="/api/admin/photo?path=${encodeURIComponent(p)}&amp;size=thumb" loading="lazy" onclick="openLb(this)" alt="">`
-      ).join('') + '</div>';
-    } else {
-      box.classList.remove('wide'); box.classList.add('narrow');
-    }
-    if (d.date && d.location_raw && d.last_name) {
-      const dlUrl = `/api/admin/download-folder?date=${encodeURIComponent(d.date)}&location=${encodeURIComponent(d.location_raw)}&family=${encodeURIComponent(d.last_name)}`;
-      html += `<div style="margin-top:1.2rem;text-align:right"><a href="${dlUrl}" class="copy-btn" style="display:inline-block;text-decoration:none;padding:.45rem 1rem;font-size:.82rem">⬇ Download All Folder Photos</a></div>`;
-    }
-
-    html += refundSectionHtml(d);
-    document.getElementById('detail-body').innerHTML = html;
-    document.getElementById('detail-modal').classList.add('open');
-  } catch(e) {
-    console.error('showDetail error:', e);
-  }
+// ── helpers ──
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
 }
-function escH(s) {
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+function money(n) {
+  n = Number(n) || 0;
+  return (n < 0 ? '-$' : '$') + Math.abs(n).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
-// Refunds are done in Square or WooCommerce; this records them so they come off
-// revenue, net and photographer commission.
-function refundSectionHtml(d) {
-  if (!d.refund_key || d.comp) return '';
-  if (d.refunded) {
-    return `<div class="refund-box"><div><strong style="color:#f87171">${d.refund_full ? 'Refunded' : 'Partly refunded'}</strong>
-      $${Number(d.refunded).toFixed(2)} on ${escH(d.refund_date)}${d.refund_note ? ' &middot; ' + escH(d.refund_note) : ''}</div>
-      <button class="copy-btn" onclick="undoRefund('${d.refund_key}')">Undo</button></div>`;
-  }
-  return `<div class="refund-box" style="display:block">
-    <div style="font-size:.8rem;color:rgba(255,255,255,.55)">Refunded this sale in Square or WooCommerce? Record it here so it comes off revenue and commission.</div>
-    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem">
-      <label style="font-size:.8rem">Amount $ <input id="refund-amt" class="refund-in" type="number" step="0.01" min="0.01" value="${Number(d.charged_num).toFixed(2)}" style="width:6rem"></label>
-      <input id="refund-note" class="refund-in" placeholder="Note (optional)" style="flex:1;min-width:8rem">
-      <button class="copy-btn" onclick="saveRefund('${d.refund_key}', ${Number(d.charged_num)})">Mark as Refunded</button>
-    </div></div>`;
-}
-async function saveRefund(key, full) {
-  const amt = parseFloat(document.getElementById('refund-amt').value);
-  if (!(amt > 0)) { alert('Enter the amount refunded'); return; }
-  if (amt > full + 0.005 && !confirm("That is more than this sale's total. Record it anyway?")) return;
-  const note = document.getElementById('refund-note').value.trim();
-  const r = await fetch('/api/admin/orders/refund', {method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({key, amount: amt, full: amt >= full - 0.005, note})});
-  if (!r.ok) { const e = await r.json().catch(() => ({})); alert(e.error || 'Could not save the refund'); return; }
-  location.reload();
-}
-async function undoRefund(key) {
-  if (!confirm('Remove this refund? The sale will count toward revenue and commission again.')) return;
-  const r = await fetch('/api/admin/orders/refund?key=' + encodeURIComponent(key), {method: 'DELETE'});
-  if (!r.ok) { alert('Could not undo the refund'); return; }
-  location.reload();
-}
-function closeDetail(e) {
-  if (e.target === document.getElementById('detail-modal'))
-    document.getElementById('detail-modal').classList.remove('open');
-}
-function openLb(img) {
-  document.getElementById('photo-lb-img').src = img.src.replace('size=thumb','size=medium');
-  document.getElementById('photo-lb').classList.add('open');
-}
+function r2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
 let _tt;
-function showToast(msg, type='show') {
+function toast(msg, type = 'show') {
   const t = document.getElementById('toast');
   t.textContent = msg; t.className = type;
-  clearTimeout(_tt); _tt = setTimeout(() => t.className='', 2500);
+  clearTimeout(_tt); _tt = setTimeout(() => t.className = '', 2600);
 }
-async function copyLink(orderId, e) {
-  e.stopPropagation();
-  const btn = e.currentTarget;
+function ymd(d) { return d.toLocaleDateString('en-CA', {timeZone: 'America/Denver'}); }
+function seasonOf(day) {
+  const y = +day.slice(0, 4), m = +day.slice(5, 7);
+  if (m >= 11) return 'Winter ' + y + '-' + String((y + 1) % 100).padStart(2, '0');
+  if (m <= 4) return 'Winter ' + (y - 1) + '-' + String(y % 100).padStart(2, '0');
+  return 'Summer ' + y;
+}
+function seasonStart(day) {
+  const y = +day.slice(0, 4), m = +day.slice(5, 7);
+  if (m >= 11) return y + '-11-01';
+  if (m <= 4) return (y - 1) + '-11-01';
+  return y + '-05-01';
+}
+function weekOf(day) {
+  const d = new Date(day + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  return 'Week of ' + d.toISOString().slice(0, 10);
+}
+// What a sale counts for after refunds
+function kept(r) { return r.refund_full ? 0 : Math.max(r2(r.total - (r.refunded || 0)), 0); }
+function charged(r) { return r.charged != null ? r.charged : r.total; }
+function wherePill(r) {
+  if (r.channel === 'online') return '<span class="badge b-online">Online</span>';
+  return '<span class="badge b-store">' + (r.provider === 'comp' ? 'Store · comp' : 'In store') + '</span>';
+}
+function orderNo(r) {
+  if (r.channel === 'store') return r.order_no ? 'Square ' + r.order_no : '';
+  return r.order_no || '';
+}
+function itemsText(r) {
+  const names = (r.items || []).map(i => (i.qty > 1 && !/×|\(\d/.test(i.name) ? i.qty + ' × ' : '') + i.name);
+  return names.length ? names.join(', ') : (r.what || '');
+}
+function custName(r) { return ((r.first || '') + ' ' + (r.last || '')).trim(); }
+
+// ── loading ──
+function rangeQS() {
+  const g = S.range;
+  if (g.all) return 'all_time=1';
+  if (g.from) return 'date_from=' + g.from + '&date_to=' + g.to;
+  return 'days=' + g.days;
+}
+function markRange(key) {
+  document.querySelectorAll('#range-bar .qbtn').forEach(b => b.classList.toggle('active', b.dataset.days === String(key)));
+}
+function setDays(n) { S.range = {days: n}; markRange(n); load(); }
+function setAll() { S.range = {all: true}; markRange('all'); load(); }
+function setSeason() {
+  const today = ymd(new Date());
+  S.range = {from: seasonStart(today), to: today}; markRange('season'); load();
+}
+function applyCustom() {
+  const f = document.getElementById('from').value, t = document.getElementById('to').value;
+  if (!f || !t) { toast('Pick both dates', 'err'); return; }
+  if (f > t) { toast('The first date is after the second', 'err'); return; }
+  S.range = {from: f, to: t}; markRange(''); load();
+}
+async function load() {
+  document.getElementById('orders-body').innerHTML = '<tr><td colspan="12" class="loading">Loading orders&hellip;</td></tr>';
+  if (S.tab === 'reports') document.getElementById('rpt-body').innerHTML = '<div class="loading">Loading&hellip;</div>';
+  try {
+    const res = await fetch('/api/admin/sales?' + rangeQS());
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'error');
+    S.data = await res.json();
+  } catch (e) {
+    document.getElementById('orders-body').innerHTML = '<tr><td colspan="12" class="empty">Couldn\'t load the orders. Try again in a moment.</td></tr>';
+    document.getElementById('rpt-body').innerHTML = '<div class="empty">Couldn\'t load the orders. Try again in a moment.</div>';
+    return;
+  }
+  Object.assign(CAT, S.data.categories || {});
+  S.rows = S.data.rows || [];
+  S.partnerCache = {};
+  const a = S.data.date_from, b = S.data.date_to;
+  document.getElementById('range-label').textContent = a ? (a === b ? a : a + ' to ' + b) : 'All time';
+  document.getElementById('from').value = a || '';
+  document.getElementById('to').value = b || '';
+  fillFilterOptions();
+  refresh();
+}
+
+// ── filters ──
+function setOptions(id, label, values) {
+  const el = document.getElementById(id), cur = el.value;
+  el.innerHTML = '<option value="">' + esc(label) + '</option>' +
+    values.map(v => '<option value="' + esc(v[0]) + '">' + esc(v[1]) + '</option>').join('');
+  if (values.some(v => v[0] === cur)) el.value = cur;
+}
+function uniq(list) { return [...new Set(list.filter(Boolean))].sort((a, b) => a.localeCompare(b)); }
+function fillFilterOptions() {
+  const rows = S.rows;
+  setOptions('f-loc', 'All locations', uniq(rows.map(r => r.location_clean)).map(v => [v, v]));
+  setOptions('f-photog', 'All photographers', uniq(rows.map(r => r.photographer)).map(v => [v, v]));
+  setOptions('f-seller', 'Anyone', uniq(rows.map(r => r.seller)).map(v => [v, v]));
+  const cats = uniq(rows.flatMap(r => (r.items || []).map(i => i.cat)));
+  setOptions('f-cat', 'All products', cats.map(c => [c, CAT[c] || c]));
+  const codes = uniq(rows.map(r => (r.code || '').toLowerCase()));
+  setOptions('f-code', 'Any', [['*', 'Used a code'], ...codes.map(c => [c, c])]);
+}
+let _ft;
+function filterSoon() { clearTimeout(_ft); _ft = setTimeout(refresh, 150); }
+function clearFilters() {
+  ['f-q', 'f-channel', 'f-loc', 'f-photog', 'f-seller', 'f-cat', 'f-code', 'f-status'].forEach(id => document.getElementById(id).value = '');
+  refresh();
+}
+function filtered() {
+  const v = id => document.getElementById(id).value;
+  const q = v('f-q').trim().toLowerCase(), ch = v('f-channel'), loc = v('f-loc'), ph = v('f-photog'),
+        se = v('f-seller'), cat = v('f-cat'), code = v('f-code'), st = v('f-status');
+  return S.rows.filter(r => {
+    if (ch && r.channel !== ch) return false;
+    if (loc && r.location_clean !== loc) return false;
+    if (ph && r.photographer !== ph) return false;
+    if (se && r.seller !== se) return false;
+    if (cat && !(r.items || []).some(i => i.cat === cat)) return false;
+    if (code === '*' && !r.code) return false;
+    if (code && code !== '*' && (r.code || '').toLowerCase() !== code) return false;
+    if (st === 'refunded' && !r.refunded) return false;
+    if (st === 'ship' && !(r.ship_to || r.shipping)) return false;
+    if (st === 'comp' && !r.is_comp) return false;
+    if (st === 'check' && r.status !== 'check') return false;
+    if (q) {
+      const hay = [custName(r), r.email, r.phone, r.order_no, orderNo(r), r.order_id, r.filenames, r.location, r.code].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+function refresh() {
+  S.shown = filtered();
+  S.limit = 200;
+  const active = S.shown.length !== S.rows.length;
+  const note = document.getElementById('filt-note');
+  note.style.display = active ? 'block' : 'none';
+  note.textContent = active ? 'Showing ' + S.shown.length + ' of ' + S.rows.length + ' sales (filters on). Totals and reports count only these.' : '';
+  renderStats();
+  if (S.tab === 'orders') renderOrders(); else renderReport();
+}
+
+// ── totals ──
+function totals(rows) {
+  const t = {orders: rows.length, revenue: 0, fees: 0, net: 0, tips: 0, tax: 0, refunds: 0, discounts: 0, shipping: 0};
+  rows.forEach(r => {
+    t.revenue += charged(r); t.fees += r.stripe_fee || 0; t.net += r.net || 0; t.tips += r.tip || 0;
+    t.tax += r.refund_full ? 0 : (r.tax || 0); t.refunds += r.refunded || 0;
+    t.discounts += (r.discount || 0) + (r.bundle_savings || 0); t.shipping += r.shipping || 0;
+  });
+  for (const k in t) if (k !== 'orders') t[k] = r2(t[k]);
+  return t;
+}
+function renderStats() {
+  const t = totals(S.shown);
+  const card = (l, v, cls) => '<div class="stat"><div class="label">' + l + '</div><div class="val ' + (cls || '') + '">' + v + '</div></div>';
+  document.getElementById('stats').innerHTML =
+    card('Orders', t.orders) + card('Revenue', money(t.revenue)) + card('Card fees', money(t.fees), 'red') +
+    card('Net', money(t.net), 'grn') + card('Tips', money(t.tips)) + card('Resort tax (store)', money(t.tax)) +
+    card('Discounts', money(t.discounts)) + card('Refunds', money(t.refunds), 'red');
+}
+
+// ── the order list ──
+function totalCell(r) {
+  if (r.is_comp) return 'Comp';
+  if (r.refund_full) return '<s class="dim">' + money(r.charged_original) + '</s> <span class="badge b-ref">Refunded</span>';
+  if (r.refunded) return money(charged(r)) + ' <span class="fee">(-' + money(r.refunded) + ')</span>';
+  return money(charged(r));
+}
+function feeCell(r) {
+  if (r.channel === 'store' && r.fee_pending) return 'pending';
+  return r.stripe_fee ? money(r.stripe_fee) : '—';
+}
+function linkCell(r, i) {
+  if (r.link === 'package') return '<a class="link-btn" href="/package/' + encodeURIComponent(r.package_token) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open link</a>';
+  if (r.link === 'copy') return '<button class="link-btn" onclick="event.stopPropagation();copyLink(' + i + ',this)">Copy link</button>';
+  if (r.link === 'regen') return '<a class="link-btn regen" href="/admin/regen/' + encodeURIComponent(r.order_id) + '" onclick="event.stopPropagation()">Regen link</a>';
+  return '—';
+}
+function renderOrders() {
+  const body = document.getElementById('orders-body');
+  if (!S.shown.length) {
+    body.innerHTML = '<tr><td colspan="12" class="empty">' + (S.rows.length ? 'No orders match these filters.' : 'No orders in this period.') + '</td></tr>';
+    return;
+  }
+  const rows = S.shown.slice(0, S.limit);
+  let h = rows.map((r, i) => {
+    const flags = (r.status === 'check' ? ' <span class="badge b-warn">Check amount</span>' : '') +
+                  (r.test ? ' <span class="badge b-test">Test payment</span>' : '');
+    return '<tr class="order-row" tabindex="0" onclick="openDetail(' + i + ')" onkeydown="if(event.key===\'Enter\')openDetail(' + i + ')">' +
+      '<td>' + esc(r.date) + (r.time ? '<div class="dim" style="font-size:.74rem">' + esc(r.time) + '</div>' : '') + '</td>' +
+      '<td class="mono">' + esc(orderNo(r) || '—') + '</td>' +
+      '<td>' + wherePill(r) + flags + '</td>' +
+      '<td>' + esc(custName(r) || '—') + '<div class="dim" style="font-size:.74rem">' + esc(r.email || '') + '</div></td>' +
+      '<td>' + esc(r.location_clean || '—') + '</td>' +
+      '<td class="what" title="' + esc(itemsText(r)) + '">' + esc(itemsText(r) || '—') + '</td>' +
+      '<td>' + esc(r.photographer || '') + '</td>' +
+      '<td class="num">' + totalCell(r) + (r.tip ? '<div class="dim" style="font-size:.74rem">tip ' + money(r.tip) + '</div>' : '') + '</td>' +
+      '<td class="num fee">' + feeCell(r) + '</td>' +
+      '<td class="num net">' + money(r.net) + '</td>' +
+      '<td>' + esc(r.code || '—') + '</td>' +
+      '<td>' + linkCell(r, i) + '</td></tr>';
+  }).join('');
+  if (S.shown.length > S.limit) {
+    h += '<tr class="more-row"><td colspan="12"><button class="ghost-btn" onclick="S.limit+=300;renderOrders()">Show more (' +
+         (S.shown.length - S.limit) + ' more)</button></td></tr>';
+  }
+  body.innerHTML = h;
+}
+async function copyLink(i, btn) {
+  const r = S.shown[i];
   const orig = btn.textContent;
   btn.textContent = '…';
   try {
-    const res = await fetch(`/api/admin/order-link/${orderId}`);
+    const res = await fetch('/api/admin/order-link/' + encodeURIComponent(r.order_id));
     const d = await res.json();
     if (!d.url || d.expired) {
-      btn.textContent = '↺ Regen Link';
-      btn.className = 'regen-btn';
-      btn.onclick = ev => { ev.stopPropagation(); location.href = `/admin/regen/${orderId}`; };
-      showToast('Link expired — click Regen Link to renew', 'err');
+      btn.outerHTML = '<a class="link-btn regen" href="/admin/regen/' + encodeURIComponent(r.order_id) + '">Regen link</a>';
+      toast('That link has expired. Use Regen link to make a new one.', 'err');
       return;
     }
-    try {
-      await navigator.clipboard.writeText(d.url);
-      btn.textContent = 'Copied!';
-      showToast('Download link copied to clipboard');
-    } catch(clipErr) {
-      window.prompt('Copy this download link:', d.url);
-      btn.textContent = orig;
-    }
-    setTimeout(() => { if (btn.textContent === 'Copied!') btn.textContent = orig; }, 2500);
-  } catch(err) {
-    btn.textContent = orig;
-    showToast('Copy failed', 'err');
-  }
+    try { await navigator.clipboard.writeText(d.url); btn.textContent = 'Copied'; toast('Download link copied'); }
+    catch (e) { window.prompt('Copy this download link:', d.url); btn.textContent = orig; }
+    setTimeout(() => { if (btn.textContent === 'Copied') btn.textContent = orig; }, 2500);
+  } catch (e) { btn.textContent = orig; toast('Couldn\'t get the link', 'err'); }
 }
-(async function(){
-  try{
-    var r=await fetch('/api/admin/folders');
-    var d=await r.json();
-    var folders=d.folders||[];
-    var tree={};
-    for(var i=0;i<folders.length;i++){
-      var f=folders[i];
-      if(!tree[f.date])tree[f.date]={};
-      if(!tree[f.date][f.location])tree[f.date][f.location]=[];
-      tree[f.date][f.location].push(f);
-    }
-    var dates=Object.keys(tree).sort().reverse();
-    var el=document.getElementById('sidebar-tree');
-    if(!dates.length||!el)return;
-    var h='';
-    for(var di=0;di<dates.length;di++){
-      var date=dates[di];
-      h+='<div class="st-date" onclick="location.href=\'/admin/dashboard?date=\'+encodeURIComponent(date)"><span class="st-arr">&#9654;</span>'+date+'</div><div class="st-locs">';
-      var locs=tree[date];
-      var locKeys=Object.keys(locs);
-      for(var li=0;li<locKeys.length;li++){
-        var loc=locKeys[li];
-        var subs=locs[loc];
-        var hasSubs=false;
-        for(var si=0;si<subs.length;si++){if(subs[si].name){hasSubs=true;break;}}
-        if(hasSubs){
-          h+='<div class="st-loc" onclick="this.classList.toggle(\'st-open\')"><span class="st-arr">&#9654;</span>'+loc+'</div><div class="st-subs">';
-          for(var si2=0;si2<subs.length;si2++){
-            var fs=subs[si2];
-            if(!fs.name)continue;
-            var u='/admin/dashboard?od='+encodeURIComponent(fs.date)+'&ol='+encodeURIComponent(fs.location)+'&of='+encodeURIComponent(fs.name);
-            h+='<div class="st-sub" onclick="location.href=\''+u+'\'">'+fs.name+'<span class="st-cnt">'+fs.photo_count+'</span></div>';
-          }
-          h+='</div>';
-        }else{
-          var f0=subs[0]||{};
-          var u2='/admin/dashboard?od='+encodeURIComponent(f0.date||'')+'&ol='+encodeURIComponent(loc)+'&of=';
-          h+='<div class="st-sub" style="padding-left:1.5rem" onclick="location.href=\''+u2+'\'">'+loc+'<span class="st-cnt">'+(f0.photo_count||'')+'</span></div>';
-        }
-      }
-      h+='</div>';
-    }
-    el.innerHTML=h;
-    var first=el.querySelector('.st-date');
-    if(first)first.classList.add('st-open');
-  }catch(e){}
-})();
-</script>
-  <div class="stats">
-    <div class="stat"><div class="label">Orders</div><div class="val">__ORDER_COUNT__</div></div>
-    <div class="stat"><div class="label">Revenue</div><div class="val">$__TOTAL_REV__</div></div>
-    <div class="stat"><div class="label">Card Fees</div><div class="val" style="color:#f87171">$__TOTAL_FEES__</div></div>
-    <div class="stat"><div class="label">Net</div><div class="val" style="color:#4ade80">$__TOTAL_NET__</div></div>
-    <div class="stat"><div class="label">Tips</div><div class="val">$__TOTAL_TIPS__</div></div>
-    <div class="stat"><div class="label">Refunds</div><div class="val" style="color:#f87171">$__TOTAL_REFUNDS__</div></div>
-  </div>
-  <div class="tab-bar">
-    <button class="tab-btn active" onclick="switchTab('orders',this)">Orders</button>
-  </div>
-  <div id="view-orders">
-  <div class="loc-breakdown">
-    <div class="loc-breakdown-title">Revenue by Location</div>
-    <div class="loc-bars">
-      __LOC_BARS__
-    </div>
-  </div>
-  <div class="controls">
-    <form method="get" style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
-      <select name="days" onchange="this.form.submit()">
-        __PERIOD_OPTS__
-      </select>
-      <span style="color:rgba(255,255,255,.3);font-size:.85rem;">or</span>
-      <input type="date" name="date_from" value="__DATE_FROM__" placeholder="From" />
-      <input type="date" name="date_to" value="__DATE_TO__" placeholder="To" />
-      <button type="submit" style="background:rgba(245,197,24,.12);border:1px solid rgba(245,197,24,.3);color:#F5C518;padding:.42rem .9rem;border-radius:8px;cursor:pointer;font-size:.85rem;">Apply</button>
-    </form>
-    <a class="export-btn" href="/admin/export?__EXPORT_QS__">↓ Export CSV</a>
-  </div>
-  <div class="wrap">
-  <table>
-    <thead><tr>
-      <th>Date</th><th>Order #</th><th>Name</th><th>Location</th><th>Email</th><th>Ordered</th><th>Photographer</th>
-      <th>Photo Files</th><th>Total</th><th>Tip</th><th>Discount</th><th>Card Fee</th><th>Net</th>
-      <th>Coupon</th><th>Shipping</th><th>Address</th><th>Action</th>
-    </tr></thead>
-    <tbody>__TABLE_ROWS__</tbody>
-  </table>
-  </div>
-  </div>
-  <div id="view-reports" style="display:none">
-    <div class="rpt-controls">
-      <div style="display:flex;gap:.4rem;flex-wrap:wrap">
-        <button class="rpt-qbtn active" onclick="setRptRange(7,this)">7D</button>
-        <button class="rpt-qbtn" onclick="setRptRange(30,this)">30D</button>
-        <button class="rpt-qbtn" onclick="setRptRange(90,this)">90D</button>
-        <button class="rpt-qbtn" onclick="setRptRange(365,this)">12M</button>
-        <button class="rpt-qbtn" onclick="setRptAllTime(this)">All Time</button>
-      </div>
-      <div class="rpt-custom">
-        <input type="date" id="rpt-from" />
-        <span style="color:rgba(255,255,255,.3);font-size:.82rem">to</span>
-        <input type="date" id="rpt-to" />
-        <button onclick="applyRptCustom()">Apply</button>
-      </div>
-    </div>
-    <div id="rpt-loading" class="rpt-loading">Loading&hellip;</div>
-    <div id="rpt-content" style="display:none">
-      <div id="rpt-sum" class="rpt-sum"></div>
-      <div class="rpt-section">
-        <div class="rpt-title">Revenue Over Time &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">gold&nbsp;=&nbsp;gross &nbsp; green&nbsp;=&nbsp;net</span></div>
-        <div id="chart-time"></div>
-      </div>
-      <div class="rpt-section">
-        <div class="rpt-title">Revenue by Activity &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">gold&nbsp;=&nbsp;gross &nbsp; green&nbsp;=&nbsp;net</span></div>
-        <div id="chart-act"></div>
-      </div>
-      <div class="rpt-section">
-        <div class="rpt-title">Revenue by Day of Week &mdash; <span style="font-weight:400;color:rgba(255,255,255,.4)">weekend highlighted</span></div>
-        <div id="chart-dow"></div>
-      </div>
-    </div>
-  </div>
-  </div>
-</div>
 
-<div id="rpt-pin-gate" style="position:fixed;inset:0;background:rgba(15,17,23,.97);z-index:10000;display:none;align-items:center;justify-content:center">
-  <div style="background:#1a1d27;border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:2.4rem 2.8rem;text-align:center;width:300px">
-    <div style="font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:.3rem">Crystal Images</div>
-    <div style="font-size:1.25rem;font-weight:700;color:#e8eaf0;margin-bottom:.2rem">Admin Area</div>
-    <div style="font-size:13px;color:rgba(255,255,255,.38);margin-bottom:1.6rem">Enter your PIN to view reports</div>
-    <div id="rpt-pin-dots" style="display:flex;gap:.55rem;justify-content:center;margin-bottom:.5rem">
-      <div class="rpt-pd"></div><div class="rpt-pd"></div><div class="rpt-pd"></div><div class="rpt-pd"></div>
-    </div>
-    <div id="rpt-pin-err" style="font-size:12px;color:#f87171;height:1.1rem;margin-bottom:.75rem"></div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem">
-      <button class="rpb" onclick="rptPinKey('1')">1</button><button class="rpb" onclick="rptPinKey('2')">2</button><button class="rpb" onclick="rptPinKey('3')">3</button>
-      <button class="rpb" onclick="rptPinKey('4')">4</button><button class="rpb" onclick="rptPinKey('5')">5</button><button class="rpb" onclick="rptPinKey('6')">6</button>
-      <button class="rpb" onclick="rptPinKey('7')">7</button><button class="rpb" onclick="rptPinKey('8')">8</button><button class="rpb" onclick="rptPinKey('9')">9</button>
-      <button class="rpb rpbg" onclick="rptPinClear()">Clear</button><button class="rpb" onclick="rptPinKey('0')">0</button><button class="rpb rpbg" onclick="rptPinBack()">&#9003;</button>
-    </div>
-    <button onclick="document.getElementById('rpt-pin-gate').style.display='none'" style="margin-top:1rem;background:none;border:none;color:rgba(255,255,255,.3);font-size:.8rem;cursor:pointer">Cancel</button>
-  </div>
-</div>
-<style>
-.rpt-pd{width:13px;height:13px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);transition:background .15s,border-color .15s;display:inline-block}
-.rpt-pd.filled{background:#F5C430;border-color:#F5C430}
-.rpb{background:#1e2330;border:1px solid rgba(255,255,255,.09);border-radius:9px;color:#e8eaf0;font-size:1.1rem;font-weight:500;padding:.72rem;cursor:pointer;transition:background .12s}
-.rpb:hover{background:#252d3e}
-.rpb.rpbg{background:transparent;border-color:rgba(255,255,255,.05);color:rgba(255,255,255,.4);font-size:.82rem}
-</style>
+// ── one order, everything about it ──
+function mrow(k, v) { return v ? '<div class="m-row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>' : ''; }
+function provName(r) {
+  return {woo: 'WooCommerce', stripe: 'Stripe', square: 'Square', comp: 'No charge (comp)'}[r.provider] || r.provider || '';
+}
+function addrText(a) {
+  if (!a) return '';
+  if (typeof a === 'string') return esc(a);
+  const name = ((a.first_name || '') + ' ' + (a.last_name || '')).trim();
+  return [name, a.address_1, a.address_2, [a.city, a.state, a.postcode].filter(Boolean).join(' '), a.country]
+    .filter(Boolean).map(esc).join('<br>');
+}
+function openDetail(i) {
+  const r = S.shown[i];
+  if (!r) return;
+  let items = (r.items || []).map(it =>
+    '<tr><td>' + esc(it.name) + '<div class="dim" style="font-size:.74rem">' + esc(CAT[it.cat] || it.cat) + (it.qty > 1 ? ' · ' + it.qty : '') +
+    '</div></td><td class="num">' + money(it.amount) + '</td></tr>').join('');
+  if (!items) items = '<tr><td>' + esc(r.what || '—') + '</td><td class="num">' + money(r.total) + '</td></tr>';
+  if (r.bundle_savings) items += '<tr class="minor"><td>Bundle discount</td><td class="num">-' + money(r.bundle_savings) + '</td></tr>';
+  if (r.discount) items += '<tr class="minor"><td>Code ' + esc(r.code || '') + '</td><td class="num">-' + money(r.discount) + '</td></tr>';
+  if (r.shipping) items += '<tr class="minor"><td>Shipping</td><td class="num">' + money(r.shipping) + '</td></tr>';
+  if (r.tax) items += '<tr class="minor"><td>Resort tax</td><td class="num">' + money(r.tax) + '</td></tr>';
+  if (r.tip) items += '<tr class="minor"><td>Tip</td><td class="num">' + money(r.tip) + '</td></tr>';
+  items += '<tr class="tot"><td>' + (r.is_comp ? 'Comp (no charge)' : 'Charged') + '</td><td class="num">' + money(r.charged_original) + '</td></tr>';
+  if (r.refunded) items += '<tr class="minor"><td style="color:#f87171">Refunded' + (r.refund_date ? ' ' + esc(r.refund_date) : '') + '</td><td class="num fee">-' + money(r.refunded) + '</td></tr>';
+  items += '<tr class="minor"><td>Card fee (' + esc(provName(r)) + ')</td><td class="num fee">' + (r.fee_pending ? 'pending' : '-' + money(r.stripe_fee)) + '</td></tr>';
+  items += '<tr class="tot"><td>Net</td><td class="num net">' + money(r.net) + '</td></tr>';
 
-<script>
-function toggleNg(name){
-  var el=document.getElementById('ng-'+name);
-  var arr=document.getElementById('ng-arr-'+name);
-  var hdr=arr&&arr.closest('.nav-group-hdr');
-  if(!el||!arr)return;
-  var open=el.classList.toggle('open');
-  arr.classList.toggle('open',open);
-  if(hdr)hdr.classList.toggle('open',open);
-}
-window._rptPinDone=false;window._pendingTabBtn=null;
-function switchTab(n,b){
-  if(n==='reports'&&!window._rptPinDone){
-    window._pendingTabBtn=b;
-    document.getElementById('rpt-pin-gate').style.display='flex';
-    return;
+  const status = r.status === 'check' ? '<span class="badge b-warn">Paid, amount being checked</span>'
+    : r.refund_full ? '<span class="badge b-ref">Refunded</span>' : r.refunded ? '<span class="badge b-ref">Partly refunded</span>' : '';
+  let h = '<h2 id="d-title">' + esc(orderNo(r) || 'Order') + ' ' + wherePill(r) + ' ' + status +
+          '<button class="modal-close" aria-label="Close" onclick="closeDetail()">&times;</button></h2>' +
+          '<div class="m-sub">' + esc(r.date) + (r.time ? ' at ' + esc(r.time) : '') + ' · paid with ' + esc(provName(r)) +
+          (r.status_note ? ' · ' + esc(r.status_note) : '') + '</div>';
+  h += '<div class="m-grid"><div class="m-box"><div class="m-title">Customer</div>' +
+       mrow('Name', esc(custName(r) || '—')) +
+       mrow('Email', r.email ? '<a href="mailto:' + esc(r.email) + '" style="color:#63b3ed">' + esc(r.email) + '</a>' : '') +
+       mrow('Phone', esc(r.phone || '')) +
+       mrow(r.channel === 'online' ? 'Billing' : 'Address', esc(r.address || '')) +
+       mrow('Ship to', addrText(r.ship_to)) + '</div>';
+  h += '<div class="m-box"><div class="m-title">Photos</div>' +
+       mrow('Location', esc(r.location_clean || r.location || '')) + mrow('Photo date', esc(r.photo_date || '')) +
+       mrow('Photographer', esc(r.photographer || '')) + mrow('Sold by', esc(r.seller || (r.channel === 'online' ? 'Online checkout' : ''))) +
+       mrow('Files', '<span class="mono">' + esc(r.filenames || '—') + '</span>') + '</div></div>';
+  h += '<div class="m-box" style="margin-top:1rem"><div class="m-title">What was bought</div><table class="m-items"><tbody>' + items + '</tbody></table></div>';
+
+  let acts = '';
+  if (r.link === 'copy') acts += '<button class="link-btn" onclick="copyLink(' + i + ',this)">Copy download link</button>';
+  if (r.link === 'regen') acts += '<a class="link-btn regen" href="/admin/regen/' + encodeURIComponent(r.order_id) + '">Regen download link</a>';
+  if (r.link === 'package') acts += '<a class="link-btn" href="/package/' + encodeURIComponent(r.package_token) + '" target="_blank" rel="noopener">Open download page</a>';
+  if (r.receipt_url) acts += '<a class="link-btn" href="' + esc(r.receipt_url) + '" target="_blank" rel="noopener">Square receipt</a>';
+  if (r.date && r.location && r.last) {
+    acts += '<a class="link-btn" href="/api/admin/download-folder?date=' + encodeURIComponent(r.date) + '&location=' +
+            encodeURIComponent(r.location) + '&family=' + encodeURIComponent(r.last) + '">Download the folder\'s photos</a>';
   }
-  document.querySelectorAll('.tab-btn').forEach(function(x){x.classList.remove('active');});
-  b.classList.add('active');
-  document.getElementById('view-orders').style.display=n==='orders'?'':'none';
-  var rv=document.getElementById('view-reports');
-  rv.style.display=n==='reports'?'':'none';
-  if(n==='reports'&&!window._rptLoaded)loadReports();
-}
-window._rptDays=30;window._rptFrom='';window._rptTo='';window._rptAllTime=0;window._rptLoaded=false;
-function setRptRange(days,btn){
-  document.querySelectorAll('.rpt-qbtn').forEach(function(b){b.classList.remove('active');});
-  btn.classList.add('active');
-  window._rptDays=days;window._rptFrom='';window._rptTo='';window._rptAllTime=0;
-  loadReports();
-}
-function setRptAllTime(btn){
-  document.querySelectorAll('.rpt-qbtn').forEach(function(b){b.classList.remove('active');});
-  btn.classList.add('active');
-  window._rptAllTime=1;window._rptFrom='';window._rptTo='';
-  loadReports();
-}
-function applyRptCustom(){
-  var from=document.getElementById('rpt-from').value;
-  var to=document.getElementById('rpt-to').value;
-  if(!from||!to)return;
-  document.querySelectorAll('.rpt-qbtn').forEach(function(b){b.classList.remove('active');});
-  window._rptFrom=from;window._rptTo=to;window._rptAllTime=0;
-  loadReports();
-}
-async function loadReports(){
-  window._rptLoaded=true;
-  var loading=document.getElementById('rpt-loading');
-  var content=document.getElementById('rpt-content');
-  loading.style.display='block';loading.textContent='Loading…';content.style.display='none';
-  var qs='';
-  if(window._rptAllTime)qs='all_time=1';
-  else if(window._rptFrom&&window._rptTo)qs='date_from='+window._rptFrom+'&date_to='+window._rptTo;
-  else qs='days='+window._rptDays;
-  try{
-    var res=await fetch('/api/admin/reports?'+qs);
-    if(!res.ok)throw new Error();
-    var d=await res.json();
-    loading.style.display='none';content.style.display='block';
-    renderRpt(d);
-  }catch(e){
-    loading.textContent='Failed to load reports. Please try again.';
+  if (acts) h += '<div class="m-actions">' + acts + '</div>';
+
+  const paths = (r.photo_paths || '').split('|').filter(Boolean);
+  if (paths.length) {
+    h += '<div class="m-title" style="margin-top:1.1rem">Photos ordered (' + paths.length + ')</div><div class="photo-grid">' +
+         paths.map(p => '<img src="/api/admin/photo?path=' + encodeURIComponent(p) + '&size=thumb" loading="lazy" alt="' +
+                        esc(p.split('/').pop()) + '" onclick="openLb(this)">').join('') + '</div>';
   }
+  h += refundHtml(r);
+  document.getElementById('detail-body').innerHTML = h;
+  document.getElementById('detail').classList.add('open');
+  document.querySelector('#detail .modal-close').focus();
 }
-function renderRpt(d){
-  var s=d.summary;
-  var feeRate=s.revenue>0?(s.fees/s.revenue*100).toFixed(1)+'%':'—';
-  var netMarg=s.revenue>0?(s.net/s.revenue*100).toFixed(1)+'%':'—';
-  document.getElementById('rpt-sum').innerHTML=
-    rptCard('Orders',s.orders,'','')+
-    rptCard('Gross Revenue','$'+s.revenue.toFixed(2),'','')+
-    rptCard('Stripe Fees','-$'+s.fees.toFixed(2),'rpv-red',feeRate+' of gross')+
-    rptCard('Net Revenue','$'+s.net.toFixed(2),'rpv-grn',netMarg+' margin')+
-    rptCard('Avg Order','$'+s.avg_order.toFixed(2),'','');
-  var useM=d.daily.length>60;
-  drawRevTime(document.getElementById('chart-time'),useM?d.monthly:d.daily,!useM);
-  drawActBars(document.getElementById('chart-act'),d.by_activity);
-  drawDowBars(document.getElementById('chart-dow'),d.by_dow);
+function closeDetail() { document.getElementById('detail').classList.remove('open'); }
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { document.getElementById('photo-lb').classList.remove('open'); closeDetail(); }
+});
+function openLb(img) {
+  document.getElementById('photo-lb-img').src = img.src.replace('size=thumb', 'size=medium');
+  document.getElementById('photo-lb').classList.add('open');
 }
-function rptCard(label,val,valCls,sub){
-  return '<div class="rpt-stat"><div class="rpl">'+label+'</div><div class="rpv '+(valCls||'')+'">'+val+'</div>'+(sub?'<div class="rp-sub">'+sub+'</div>':'')+'</div>';
-}
-function drawRevTime(el,data,isDaily){
-  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data for this period.</div>';return;}
-  var W=720,H=220,Pl=68,Pt=25,Pr=20,Pb=40;
-  var iW=W-Pl-Pr,iH=H-Pt-Pb;
-  var maxV=0;data.forEach(function(d){if(d.revenue>maxV)maxV=d.revenue;});
-  if(!maxV){el.innerHTML='<div class="rpt-empty">No revenue in this period.</div>';return;}
-  var n=data.length,bSlot=iW/Math.max(n,1),bW=Math.max(2,bSlot-Math.max(2,bSlot*.2));
-  var grid='',bars='',xLab='';
-  for(var i=0;i<=4;i++){
-    var v=(maxV/4)*i,y=Pt+iH-(v/maxV)*iH;
-    grid+='<line x1="'+Pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-Pr)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
-    var lbl=v>=1000?(v/1000).toFixed(v>=10000?0:1)+'k':v.toFixed(0);
-    grid+='<text x="'+(Pl-6)+'" y="'+(y+4).toFixed(1)+'" font-size="10" fill="rgba(255,255,255,.38)" text-anchor="end">$'+lbl+'</text>';
+// Stripe refunds are made in the Stripe dashboard and recorded here by themselves; Square and
+// WooCommerce refunds are recorded here by hand so they come off revenue, net and commission.
+function refundHtml(r) {
+  if (!r.refund_key || r.is_comp) return '';
+  if (r.provider === 'stripe') {
+    return '<div class="refund-box">' + (r.refunded
+      ? '<strong style="color:#f87171">' + (r.refund_full ? 'Refunded' : 'Partly refunded') + '</strong> ' + money(r.refunded) +
+        (r.refund_date ? ' on ' + esc(r.refund_date) : '') + ' in Stripe.'
+      : 'To refund this order, refund the payment in your Stripe dashboard. It shows here by itself, comes off revenue and commission, and a full refund turns off the download link.') + '</div>';
   }
-  data.forEach(function(d,i){
-    var cx=Pl+i*bSlot+bSlot/2,x=cx-bW/2;
-    var gH=(d.revenue/maxV)*iH,nH=d.net!=null?(d.net/maxV)*iH:0,base=Pt+iH;
-    bars+='<rect x="'+x.toFixed(1)+'" y="'+(base-gH).toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+gH.toFixed(1)+'" fill="rgba(245,197,24,.4)" rx="2"/>';
-    if(nH>0)bars+='<rect x="'+x.toFixed(1)+'" y="'+(base-nH).toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+nH.toFixed(1)+'" fill="#4ade80" rx="2" opacity=".75"/>';
-  });
-  var step=Math.max(1,Math.ceil(n/8));
-  data.forEach(function(d,i){
-    if(i%step===0){
-      var lbl=isDaily?(d.date||'').slice(5):(d.month||'');
-      xLab+='<text x="'+(Pl+i*bSlot+bSlot/2).toFixed(1)+'" y="'+(H-6)+'" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="middle">'+lbl+'</text>';
+  if (r.refunded) {
+    return '<div class="refund-box" style="display:flex;justify-content:space-between;gap:1rem;align-items:center"><div><strong style="color:#f87171">' +
+      (r.refund_full ? 'Refunded' : 'Partly refunded') + '</strong> ' + money(r.refunded) + ' on ' + esc(r.refund_date) +
+      (r.refund_note ? ' &middot; ' + esc(r.refund_note) : '') + '</div><button class="link-btn" onclick="undoRefund(\'' + esc(r.refund_key) + '\')">Undo</button></div>';
+  }
+  return '<div class="refund-box"><div style="font-size:.8rem;color:rgba(255,255,255,.6)">Refunded this sale in ' +
+    (r.provider === 'woo' ? 'WooCommerce' : 'Square') + '? Record it here so it comes off revenue and commission.</div>' +
+    '<div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-top:.6rem">' +
+    '<label style="font-size:.8rem">Amount $ <input id="refund-amt" class="refund-in" type="number" step="0.01" min="0.01" value="' +
+    Number(r.charged_original).toFixed(2) + '" style="width:6rem"></label>' +
+    '<input id="refund-note" class="refund-in" placeholder="Note (optional)" aria-label="Refund note" style="flex:1;min-width:8rem">' +
+    '<button class="link-btn" onclick="saveRefund(\'' + esc(r.refund_key) + '\',' + Number(r.charged_original) + ')">Mark as refunded</button></div></div>';
+}
+async function saveRefund(key, full) {
+  const amt = parseFloat(document.getElementById('refund-amt').value);
+  if (!(amt > 0)) { toast('Enter the amount refunded', 'err'); return; }
+  if (amt > full + 0.005 && !confirm('That is more than this sale\'s total. Record it anyway?')) return;
+  const note = document.getElementById('refund-note').value.trim();
+  const res = await fetch('/api/admin/orders/refund', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({key, amount: amt, full: amt >= full - 0.005, note})});
+  if (!res.ok) { const e = await res.json().catch(() => ({})); toast(e.error || 'Couldn\'t save the refund', 'err'); return; }
+  closeDetail(); toast('Refund recorded'); load();
+}
+async function undoRefund(key) {
+  if (!confirm('Remove this refund? The sale will count toward revenue and commission again.')) return;
+  const res = await fetch('/api/admin/orders/refund?key=' + encodeURIComponent(key), {method: 'DELETE'});
+  if (!res.ok) { toast('Couldn\'t undo the refund', 'err'); return; }
+  closeDetail(); load();
+}
+
+// ── spreadsheets ──
+function csvCell(v) {
+  v = v == null ? '' : String(v);
+  if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;        // a spreadsheet never runs a customer's text as a formula
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function downloadCsv(name, header, lines) {
+  const text = [header, ...lines].map(l => l.map(csvCell).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + text], {type: 'text/csv'}));
+  const range = S.data && S.data.date_from ? '-' + S.data.date_from + '-to-' + S.data.date_to : '-all-time';
+  a.download = 'crystal-images-' + name + range + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function exportOrders() {
+  const n = v => (Number(v) || 0).toFixed(2);
+  downloadCsv('orders', ['Date', 'Time', 'Order #', 'Where', 'Paid with', 'First name', 'Last name', 'Email', 'Phone',
+    'Location', 'Photo date', 'Photographer', 'Sold by', 'What was bought', 'Photo files', 'Charged', 'Tip', 'Resort tax',
+    'Code', 'Code discount', 'Bundle discount', 'Shipping', 'Card fee', 'Net', 'Refunded', 'Refund note', 'Status', 'Ship to'],
+    S.shown.map(r => [r.date, r.time, orderNo(r), r.channel === 'online' ? 'Online' : 'In store', provName(r), r.first, r.last,
+      r.email, r.phone, r.location_clean, r.photo_date, r.photographer, r.seller,
+      (r.items || []).map(i => i.name + ' (' + n(i.amount) + ')').join('; ') || r.what, r.filenames,
+      r.is_comp ? 'Comp' : n(r.charged_original), n(r.tip), n(r.tax), r.code, n(r.discount), n(r.bundle_savings), n(r.shipping),
+      r.fee_pending ? 'pending' : n(r.stripe_fee), n(r.net), r.refunded ? n(r.refunded) : '', r.refund_note || '',
+      r.status, r.ship_to ? [r.ship_to.address_1, r.ship_to.address_2, r.ship_to.city, r.ship_to.state, r.ship_to.postcode].filter(Boolean).join(', ') : '']));
+}
+
+// ── reports ──
+const REPORTS = [
+  ['time', 'Sales over time'], ['dow', 'Day of week'], ['locations', 'Locations'], ['products', 'Products'], ['photographers', 'Photographers'],
+  ['sellers', 'Sold by (store)'], ['codes', 'Codes and bundles'], ['refunds', 'Refunds'], ['tax', 'Resort tax and tips'],
+  ['channels', 'Online vs in store'], ['partners', 'Partners'],
+];
+function renderPicker() {
+  document.getElementById('rpt-pick').innerHTML = REPORTS.map(([k, l]) =>
+    '<button class="qbtn' + (S.report === k ? ' active' : '') + '" role="tab" aria-selected="' + (S.report === k) + '" onclick="S.report=\'' + k + '\';renderReport()">' + l + '</button>').join('');
+}
+// A table with an optional bar on one column; `cols` = [label, key, kind] (kind: money|int|text|bar)
+function table(cols, rows, totalRow) {
+  const barCol = cols.find(c => c[2] === 'bar');
+  const max = barCol ? Math.max(0, ...rows.map(r => Number(r[barCol[1]]) || 0)) : 0;
+  const cell = (c, r, isTotal) => {
+    const v = r[c[1]];
+    if (c[2] === 'money') return '<td class="num">' + money(v) + '</td>';
+    if (c[2] === 'int') return '<td class="num">' + (v === '' ? '' : (v || 0)) + '</td>';
+    if (c[2] === 'bar') {
+      const w = !isTotal && max > 0 ? Math.max(0.5, (Number(v) || 0) / max * 100) : 0;
+      return '<td class="num barcell"><div class="barwrap">' + (isTotal ? '<div style="flex:1"></div>' : '<div class="track">' +
+             (w ? '<div style="width:' + w.toFixed(1) + '%"></div>' : '') + '</div>') + '<span>' + money(v) + '</span></div></td>';
     }
-  });
-  var leg='<rect x="'+Pl+'" y="7" width="10" height="7" fill="rgba(245,197,24,.4)" rx="1"/><text x="'+(Pl+13)+'" y="14" font-size="9" fill="rgba(255,255,255,.45)">Gross</text><rect x="'+(Pl+50)+'" y="7" width="10" height="7" fill="#4ade80" rx="1" opacity=".75"/><text x="'+(Pl+63)+'" y="14" font-size="9" fill="rgba(255,255,255,.45)">Net</text>';
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%">'+grid+bars+leg+xLab+'</svg>';
+    return '<td>' + esc(v == null ? '' : v) + '</td>';
+  };
+  return '<div class="wrap"><table><thead><tr>' + cols.map(c => '<th' + (c[2] && c[2] !== 'text' ? ' class="num"' : '') + '>' + c[0] + '</th>').join('') +
+    '</tr></thead><tbody>' + (rows.length ? rows.map(r => '<tr>' + cols.map(c => cell(c, r)).join('') + '</tr>').join('')
+      : '<tr><td colspan="' + cols.length + '" class="empty">Nothing in this period.</td></tr>') +
+    (totalRow && rows.length ? '<tr class="total-row">' + cols.map(c => cell(c, totalRow, true)).join('') + '</tr>' : '') +
+    '</tbody></table></div>';
 }
-function drawActBars(el,data){
-  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data.</div>';return;}
-  var maxV=0;data.forEach(function(d){if(d.revenue>maxV)maxV=d.revenue;});
-  if(!maxV){el.innerHTML='<div class="rpt-empty">No revenue data.</div>';return;}
-  el.innerHTML=data.slice(0,15).map(function(d){
-    var gPct=(d.revenue/maxV*100).toFixed(1),nPct=(d.net/maxV*100).toFixed(1);
-    return '<div class="rpt-bar-row">'
-      +'<div class="rpt-bar-label">'+d.name+'</div>'
-      +'<div style="flex:1;position:relative;height:18px;background:rgba(255,255,255,.04);border-radius:4px;overflow:hidden">'
-      +'<div style="position:absolute;left:0;top:0;height:100%;width:'+gPct+'%;background:rgba(245,197,24,.4);border-radius:4px"></div>'
-      +'<div style="position:absolute;left:0;top:3px;height:calc(100% - 6px);width:'+nPct+'%;background:#4ade80;border-radius:3px;opacity:.75"></div>'
-      +'</div>'
-      +'<div class="rpt-bar-val">$'+d.revenue.toFixed(0)+'<span class="rpt-bar-cnt">'+d.orders+' order'+(d.orders!==1?'s':'')+'</span></div>'
-      +'</div>';
+function reportCard(title, note, body, csvName, cols, rows, totalRow, extra) {
+  window._rptCsv = () => downloadCsv(csvName, cols.map(c => c[0]),
+    [...rows, ...(totalRow ? [totalRow] : [])].map(r => cols.map(c => (c[2] === 'money' || c[2] === 'bar') ? (Number(r[c[1]]) || 0).toFixed(2) : r[c[1]])));
+  return '<div class="rpt-card"><div class="rpt-head"><h3>' + title + '</h3>' + (extra || '') +
+    '<button class="gold-btn" onclick="window._rptCsv()">Download (spreadsheet)</button></div>' +
+    (note ? '<div class="rpt-note">' + note + '</div>' : '') + body + '</div>';
+}
+function group(rows, keyFn) {
+  const m = new Map();
+  rows.forEach(r => {
+    const keys = [].concat(keyFn(r)).filter(k => k != null);
+    keys.forEach(k => {
+      if (!m.has(k)) m.set(k, {name: k, orders: 0, revenue: 0, kept: 0, net: 0, fees: 0, tips: 0, tax: 0, refunds: 0, discounts: 0});
+      const g = m.get(k);
+      g.orders++; g.revenue += charged(r); g.kept += kept(r); g.net += r.net || 0; g.fees += r.stripe_fee || 0;
+      g.tips += r.tip || 0; g.tax += r.refund_full ? 0 : (r.tax || 0); g.refunds += r.refunded || 0;
+      g.discounts += (r.discount || 0) + (r.bundle_savings || 0);
+    });
+  });
+  return [...m.values()].map(g => { for (const k in g) if (typeof g[k] === 'number' && k !== 'orders') g[k] = r2(g[k]); g.avg = g.orders ? r2(g.revenue / g.orders) : 0; return g; });
+}
+function sumRow(list, name) {
+  const t = {name: name || 'Total'};
+  list.forEach(g => { for (const k in g) if (typeof g[k] === 'number') t[k] = r2((t[k] || 0) + g[k]); });
+  t.avg = t.orders ? r2(t.revenue / t.orders) : 0;
+  return t;
+}
+function renderReport() {
+  renderPicker();
+  const rows = S.shown, el = document.getElementById('rpt-body');
+  const k = S.report;
+  let html = '';
+  if (k === 'time') {
+    const fn = {day: r => r.date, week: r => weekOf(r.date), month: r => r.date.slice(0, 7), season: r => seasonOf(r.date)}[S.period];
+    const list = group(rows.filter(r => r.date), fn).sort((a, b) => a.name.localeCompare(b.name));
+    const cols = [[{day: 'Day', week: 'Week', month: 'Month', season: 'Season'}[S.period], 'name'], ['Orders', 'orders', 'int'],
+      ['Revenue', 'revenue', 'bar'], ['Card fees', 'fees', 'money'], ['Net', 'net', 'money'], ['Tips', 'tips', 'money'],
+      ['Resort tax', 'tax', 'money'], ['Refunds', 'refunds', 'money'], ['Avg order', 'avg', 'money']];
+    const per = ['day', 'week', 'month', 'season'].map(p => '<button class="qbtn' + (S.period === p ? ' active' : '') +
+      '" onclick="S.period=\'' + p + '\';renderReport()">' + {day: 'By day', week: 'By week', month: 'By month', season: 'By season'}[p] + '</button>').join('');
+    html = reportCard('Sales over time', 'Seasons: winter is November through April, summer is May through October. Revenue is what customers paid (tax and tips included, refunds taken off).',
+      table(cols, list, sumRow(list)), 'sales-by-' + S.period, cols, list, sumRow(list), per);
+  } else if (k === 'dow') {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const got = group(rows.filter(r => r.date), r => days[(new Date(r.date + 'T12:00:00Z').getUTCDay() + 6) % 7]);
+    const list = days.map(d => got.find(g => g.name === d) || {name: d, orders: 0, revenue: 0, net: 0, avg: 0});
+    const cols = [['Day', 'name'], ['Orders', 'orders', 'int'], ['Revenue', 'revenue', 'bar'], ['Net', 'net', 'money'], ['Avg order', 'avg', 'money']];
+    html = reportCard('Sales by day of the week', '', table(cols, list, sumRow(list)), 'sales-by-weekday', cols, list, sumRow(list));
+  } else if (k === 'locations') {
+    const list = group(rows, r => r.location_clean || 'No location').sort((a, b) => b.revenue - a.revenue);
+    const cols = [['Location', 'name'], ['Orders', 'orders', 'int'], ['Revenue', 'revenue', 'bar'], ['Net', 'net', 'money'], ['Avg order', 'avg', 'money']];
+    html = reportCard('Sales by location', '', table(cols, list, sumRow(list)), 'sales-by-location', cols, list, sumRow(list));
+  } else if (k === 'products') {
+    const m = new Map();
+    rows.forEach(r => {
+      if (r.refund_full) return;
+      const seen = new Set();
+      (r.items || []).forEach(it => {
+        if (!m.has(it.cat)) m.set(it.cat, {name: CAT[it.cat] || it.cat, items: 0, orders: 0, amount: 0});
+        const g = m.get(it.cat); g.items += it.qty || 1; g.amount += it.amount || 0;
+        if (!seen.has(it.cat)) { g.orders++; seen.add(it.cat); }
+      });
+    });
+    const list = [...m.values()].map(g => ({...g, amount: r2(g.amount)})).sort((a, b) => b.amount - a.amount);
+    const cols = [['Product', 'name'], ['Orders', 'orders', 'int'], ['Items', 'items', 'int'], ['Sales', 'amount', 'bar']];
+    const tot = {name: 'Total', orders: '', items: list.reduce((s, g) => s + g.items, 0), amount: r2(list.reduce((s, g) => s + g.amount, 0))};
+    html = reportCard('Sales by product', 'Item prices before discount codes, shipping, tax and tips; fully refunded orders left out. Photo items count each photo.',
+      table(cols, list, tot), 'sales-by-product', cols, list, tot);
+  } else if (k === 'photographers') {
+    const list = group(rows, r => r.photographer || 'Unknown').sort((a, b) => b.kept - a.kept);
+    const cols = [['Photographer', 'name'], ['Orders', 'orders', 'int'], ['Sales (before tax and tips)', 'kept', 'bar'], ['Revenue', 'revenue', 'money']];
+    html = reportCard('Sales by photographer', 'Credited by the photo\'s JPEG code, the same way as commission (refunds taken off). Commission pay and hours are in Admin &gt; Commission.',
+      table(cols, list, sumRow(list)), 'sales-by-photographer', cols, list, sumRow(list));
+  } else if (k === 'sellers') {
+    const list = group(rows.filter(r => r.channel === 'store'), r => r.seller || 'Unknown').sort((a, b) => b.revenue - a.revenue);
+    const cols = [['Sold by', 'name'], ['Sales', 'orders', 'int'], ['Revenue', 'revenue', 'bar'], ['Tips', 'tips', 'money'], ['Avg sale', 'avg', 'money']];
+    html = reportCard('Store sales by who rang them up', 'In-store sales only (online orders have no seller).',
+      table(cols, list, sumRow(list)), 'store-sales-by-seller', cols, list, sumRow(list));
+  } else if (k === 'codes') {
+    const withCode = rows.filter(r => r.code);
+    const list = group(withCode, r => r.code.toLowerCase()).map(g => ({...g,
+      off: r2(withCode.filter(r => r.code.toLowerCase() === g.name).reduce((s, r) => s + (r.discount || 0), 0))}))
+      .sort((a, b) => b.orders - a.orders);
+    const bundles = rows.filter(r => r.bundle_savings);
+    if (bundles.length) list.push({name: 'Bundle discounts (no code)', orders: bundles.length,
+      off: r2(bundles.reduce((s, r) => s + r.bundle_savings, 0)), revenue: r2(bundles.reduce((s, r) => s + charged(r), 0))});
+    const cols = [['Code', 'name'], ['Orders', 'orders', 'int'], ['Discount given', 'off', 'bar'], ['Revenue from these orders', 'revenue', 'money']];
+    html = reportCard('Discount codes and bundles', '', table(cols, list, sumRow(list)), 'discount-codes', cols, list, sumRow(list));
+  } else if (k === 'refunds') {
+    const list = rows.filter(r => r.refunded).map(r => ({name: r.date, order: orderNo(r), where: r.channel === 'online' ? 'Online' : 'In store',
+      customer: custName(r), refunded: r.refunded, on: r.refund_date || '', kind: r.refund_full ? 'Full' : 'Partial', note: r.refund_note || ''}));
+    const cols = [['Sale date', 'name'], ['Order #', 'order'], ['Where', 'where'], ['Customer', 'customer'], ['Refunded', 'refunded', 'money'],
+      ['Refunded on', 'on'], ['Full or partial', 'kind'], ['Note', 'note']];
+    const tot = {name: 'Total', refunded: r2(list.reduce((s, r) => s + r.refunded, 0))};
+    html = reportCard('Refunds', 'Sales in this period that were refunded (Stripe refunds appear by themselves; Square and WooCommerce ones once recorded on the order).',
+      table(cols, list, tot), 'refunds', cols, list, tot);
+  } else if (k === 'tax') {
+    const store = rows.filter(r => r.channel === 'store' && !r.is_comp);
+    const list = group(store, r => r.date.slice(0, 7)).sort((a, b) => a.name.localeCompare(b.name))
+      .map(g => ({...g, before: r2(g.revenue - g.tax - g.tips)}));
+    const cols = [['Month', 'name'], ['Store sales', 'orders', 'int'], ['Sales before tax and tips', 'before', 'money'], ['Resort tax collected', 'tax', 'bar'], ['Tips', 'tips', 'money']];
+    html = reportCard('Resort tax and tips (store sales)', 'Resort tax is charged in the store through Square; online orders don\'t charge it. Fully refunded sales count no tax.',
+      table(cols, list, sumRow(list)), 'resort-tax-and-tips', cols, list, sumRow(list));
+  } else if (k === 'channels') {
+    const list = group(rows, r => (r.channel === 'online' ? 'Online' : 'In store') + ' · ' + provName(r)).sort((a, b) => b.revenue - a.revenue);
+    const cols = [['Where and how paid', 'name'], ['Orders', 'orders', 'int'], ['Revenue', 'revenue', 'bar'], ['Card fees', 'fees', 'money'], ['Net', 'net', 'money'], ['Avg order', 'avg', 'money']];
+    html = reportCard('Online vs in store', '', table(cols, list, sumRow(list)), 'online-vs-store', cols, list, sumRow(list));
+  } else if (k === 'partners') {
+    html = '<div class="loading">Loading partner reports&hellip;</div>';
+    loadPartners();
+  }
+  el.innerHTML = html;
+}
+async function loadPartners() {
+  const el = document.getElementById('rpt-body');
+  const partners = (S.data && S.data.partners) || [];
+  if (!partners.length) { el.innerHTML = '<div class="rpt-card"><div class="empty">No partners are set up (Settings).</div></div>'; return; }
+  const a = S.data.date_from || '', b = S.data.date_to || '';
+  const qs = p => 'partner=' + encodeURIComponent(p.id) + '&date_from=' + a + '&date_to=' + b;
+  const reps = await Promise.all(partners.map(async p => {
+    const key = qs(p);
+    if (!S.partnerCache[key]) {
+      try { const res = await fetch('/api/admin/partner-report?' + key); S.partnerCache[key] = res.ok ? await res.json() : null; }
+      catch (e) { S.partnerCache[key] = null; }
+    }
+    return [p, S.partnerCache[key]];
+  }));
+  if (S.report !== 'partners') return;
+  el.innerHTML = reps.map(([p, rep]) => {
+    if (!rep) return '<div class="rpt-card"><div class="rpt-head"><h3>' + esc(p.name) + '</h3></div><div class="empty">Couldn\'t load this report.</div></div>';
+    const pr = rep.prints || {};
+    return '<div class="rpt-card"><div class="rpt-head"><h3>' + esc(rep.partner) + '</h3>' +
+      '<a class="gold-btn" style="text-decoration:none" href="/admin/partner-report.csv?' + qs(p) + '">Download (spreadsheet)</a></div>' +
+      '<div class="rpt-note">Free photos downloaded (the in-kind donation) and prints of their photos sold at the partner discount, for this period. Filters don\'t apply here.</div>' +
+      '<div class="stats" style="margin:0">' +
+      '<div class="stat"><div class="label">Photos downloaded</div><div class="val">' + (rep.photos || 0) + '</div></div>' +
+      '<div class="stat"><div class="label">Donated value</div><div class="val">' + money(rep.total_value) + '</div></div>' +
+      '<div class="stat"><div class="label">Prints sold</div><div class="val">' + (pr.count || 0) + '</div></div>' +
+      '<div class="stat"><div class="label">Prints paid</div><div class="val">' + money(pr.paid) + '</div></div>' +
+      '<div class="stat"><div class="label">Print discount given</div><div class="val">' + money(pr.discount) + '</div></div></div></div>';
   }).join('');
 }
-function drawDowBars(el,data){
-  if(!data||!data.length){el.innerHTML='<div class="rpt-empty">No data.</div>';return;}
-  var maxV=0;data.forEach(function(d){if(d.revenue>maxV)maxV=d.revenue;});
-  var W=520,H=160,Pl=52,Pt=18,Pr=20,Pb=30;
-  var iW=W-Pl-Pr,iH=H-Pt-Pb,bSlot=iW/data.length,bW=Math.max(2,bSlot-8);
-  var bars='',xLab='',grid='';
-  for(var i=0;i<=3;i++){
-    var v=maxV?(maxV/3)*i:0,y=Pt+iH-(maxV&&v?v/maxV:0)*iH;
-    grid+='<line x1="'+Pl+'" y1="'+y.toFixed(1)+'" x2="'+(W-Pr)+'" y2="'+y.toFixed(1)+'" stroke="rgba(255,255,255,.05)" stroke-width="1"/>';
-    var lbl=v>=1000?(v/1000).toFixed(0)+'k':v.toFixed(0);
-    grid+='<text x="'+(Pl-4)+'" y="'+(y+4).toFixed(1)+'" font-size="9" fill="rgba(255,255,255,.35)" text-anchor="end">$'+lbl+'</text>';
-  }
-  data.forEach(function(d,i){
-    var cx=Pl+i*bSlot+bSlot/2,x=cx-bW/2;
-    var h=maxV?(d.revenue/maxV)*iH:0,y=Pt+iH-h;
-    var col=(d.day==='Sat'||d.day==='Sun')?'#F5C518':'rgba(245,197,24,.55)';
-    bars+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+bW.toFixed(1)+'" height="'+Math.max(h,0).toFixed(1)+'" fill="'+col+'" rx="2"/>';
-    if(d.orders>0)bars+='<text x="'+cx.toFixed(1)+'" y="'+(y-4).toFixed(1)+'" font-size="8" fill="rgba(255,255,255,.35)" text-anchor="middle">'+d.orders+'</text>';
-    xLab+='<text x="'+cx.toFixed(1)+'" y="'+(H-4)+'" font-size="9" fill="rgba(255,255,255,.4)" text-anchor="middle">'+d.day+'</text>';
+
+// ── tabs ──
+function showTab(t) {
+  S.tab = t;
+  ['orders', 'reports'].forEach(x => {
+    document.getElementById('view-' + x).style.display = x === t ? '' : 'none';
+    const b = document.getElementById('tab-' + x);
+    b.classList.toggle('active', x === t); b.setAttribute('aria-selected', x === t);
   });
-  el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:520px">'+grid+bars+xLab+'</svg>';
+  if (S.data) { if (t === 'orders') renderOrders(); else renderReport(); }
 }
-if(window._INIT_TAB==='reports'){var _rb=document.querySelector('.tab-btn:last-child');if(_rb)_rb.click();}
+showTab(S.tab);
+load();
 </script>
-<script>
-var _rptPinVal='';
-function rptPinKey(k){
-  if(_rptPinVal.length>=4)return;
-  _rptPinVal+=k;
-  _rptPinSync();
-  if(_rptPinVal.length===4)_rptPinSubmit();
-}
-function rptPinBack(){_rptPinVal=_rptPinVal.slice(0,-1);_rptPinSync();document.getElementById('rpt-pin-err').textContent='';}
-function rptPinClear(){_rptPinVal='';_rptPinSync();document.getElementById('rpt-pin-err').textContent='';}
-function _rptPinSync(){
-  var dots=document.querySelectorAll('#rpt-pin-dots .rpt-pd');
-  dots.forEach(function(d,i){d.classList.toggle('filled',i<_rptPinVal.length);});
-}
-async function _rptPinSubmit(){
-  try{
-    var r=await fetch('/api/photographer/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:_rptPinVal})});
-    if(r.ok){
-      document.getElementById('rpt-pin-gate').style.display='none';
-      window._rptPinDone=true;
-      if(window._pendingTabBtn){switchTab('reports',window._pendingTabBtn);window._pendingTabBtn=null;}
-    }else{document.getElementById('rpt-pin-err').textContent='Incorrect PIN';_rptPinVal='';_rptPinSync();}
-  }catch(e){document.getElementById('rpt-pin-err').textContent='Error — try again';_rptPinVal='';_rptPinSync();}
-}
-document.addEventListener('keydown',function(e){
-  if(document.getElementById('rpt-pin-gate').style.display==='none'||document.getElementById('rpt-pin-gate').style.display==='')return;
-  if(e.key>='0'&&e.key<='9')rptPinKey(e.key);
-  else if(e.key==='Backspace')rptPinBack();
-});
-</script>
-<script>if(window.parent!==window)document.documentElement.classList.add('embedded');</script>
 </body></html>

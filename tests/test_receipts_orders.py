@@ -1,12 +1,25 @@
 """Receipts show what Square really charged (tax + tip); the Orders tab lists in-person sales with tips."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import boto3
 import pytest
 
 S3 = boto3.client("s3", region_name="us-east-1")
-TODAY = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+CREATED = datetime.now(timezone.utc) - timedelta(minutes=30)   # sales made a little while ago
+TODAY = CREATED.strftime("%Y-%m-%d")                              # their (UTC) file day
+MT_TODAY = CREATED.astimezone(ZoneInfo("America/Denver")).strftime("%Y-%m-%d")
+
+
+def _sales(admin_client):
+    r = admin_client.get("/api/admin/sales?days=7")
+    assert r.status_code == 200
+    return r.json()["rows"]
+
+
+def _sale(admin_client, name):
+    return next(r for r in _sales(admin_client) if r["first"] == name)
 
 
 class _Resp:
@@ -52,11 +65,11 @@ def pos_orders(main_module):
     for o in S3.list_objects_v2(Bucket="test-bucket", Prefix="pos_orders/").get("Contents", []):
         S3.delete_object(Bucket="test-bucket", Key=o["Key"])
     orders = [
-        {"id": "pos-tip1", "date": TODAY, "created": TODAY + "T15:00:00", "name": "Ann Smith",
+        {"id": "pos-tip1", "date": TODAY, "created": CREATED.isoformat(), "name": "Ann Smith",
          "email": "ann@example.com", "location": "Mountain Biking", "total": 25.0, "coupon_discount": 0,
          "square_payment_id": "ORDER1", "square_verified": True, "square_paid": 31.0, "square_tax": 1.0,
          "square_tip": 5.0, "photographer_name": "Test Photog", "package_token": "abc123", "filenames": "IMG_1.jpg"},
-        {"id": "pos-comp1", "date": TODAY, "created": TODAY + "T16:00:00", "name": "Bob Jones",
+        {"id": "pos-comp1", "date": TODAY, "created": CREATED.isoformat(), "name": "Bob Jones",
          "email": "bob@example.com", "location": "Base Area", "total": 40.0, "coupon_discount": 0,
          "square_payment_id": "COMP", "photographer_name": "Test Photog"},
     ]
@@ -66,14 +79,15 @@ def pos_orders(main_module):
 
 
 def test_orders_tab_lists_in_person_sales_with_tips(admin_client, pos_orders):
-    html = admin_client.get("/admin/orders?days=7").text
-    assert "<th>Tip</th>" in html
-    assert "Ann Smith" in html and "In-Person — Mountain Biking" in html
-    assert "$31.00" in html and "$5.00" in html                  # whole amount charged, tip
-    assert '<div class="label">Tips</div><div class="val">$5.00</div>' in html
-    assert '<div class="label">Revenue</div><div class="val">$31.00</div>' in html   # comp adds nothing
-    assert "/package/abc123" in html
-    assert ">Comp<" in html
+    assert "Orders" in admin_client.get("/admin/orders").text
+    rows = _sales(admin_client)
+    ann = next(r for r in rows if r["first"] == "Ann")
+    assert ann["channel"] == "store" and ann["location"] == "Mountain Biking" and ann["date"] == MT_TODAY
+    assert ann["charged"] == 31.0 and ann["tip"] == 5.0 and ann["tax"] == 1.0   # whole amount charged, tip, tax
+    assert ann["link"] == "package" and ann["package_token"] == "abc123"
+    bob = next(r for r in rows if r["first"] == "Bob")
+    assert bob["is_comp"] and bob["charged"] == 0 and bob["provider"] == "comp"
+    assert sum(r["charged"] for r in rows) == 31.0                              # comp adds nothing
 
 
 def test_csv_export_includes_in_person_sales_and_tip(admin_client, pos_orders):
@@ -99,14 +113,13 @@ def test_in_person_sales_credit_the_photographer_by_jpeg_code_not_the_seller(adm
     S3.put_object(Bucket="test-bucket", Key="meta/photographers.json", Body=json.dumps([
         {"id": "p1", "name": "Owner Seller", "pin": "1111"},
         {"id": "p2", "name": "Dana Shooter", "pin": "2222", "file_prefix": "dsc"}]).encode())
-    o = {"id": "pos-dsc1", "date": TODAY, "created": TODAY + "T17:00:00", "name": "Cal Day",
+    o = {"id": "pos-dsc1", "date": TODAY, "created": CREATED.isoformat(), "name": "Cal Day",
          "email": "cal@example.com", "location": "Base Area", "total": 1.0, "coupon_discount": 0,
          "square_payment_id": "ORDER9", "square_paid": 1.04, "photographer_name": "Owner Seller",
          "filenames": "DSC_7773.JPG, DSC_7775.JPG"}
     S3.put_object(Bucket="test-bucket", Key=f"pos_orders/{TODAY}_pos-dsc1.json", Body=json.dumps(o).encode())
-    html = admin_client.get("/admin/orders?days=7").text
-    row = html[html.index("Cal Day") - 2000: html.index("Cal Day") + 2000]
-    assert "Dana Shooter" in row and "Owner Seller" not in row
+    cal = _sale(admin_client, "Cal")
+    assert cal["photographer"] == "Dana Shooter" and cal["seller"] == "Owner Seller"
     csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Cal" in l)
     assert "Dana Shooter" in csv_line and "Owner Seller" not in csv_line
 
@@ -130,24 +143,21 @@ def test_full_refund_comes_off_revenue_net_and_tips(admin_client, pos_orders, no
     r = admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 31, "full": True,
                                                             "note": "wrong photos"})
     assert r.status_code == 200
-    html = admin_client.get("/admin/orders?days=7").text
-    assert ">Refunded<" in html
-    assert '<div class="label">Revenue</div><div class="val">$0.00</div>' in html
-    assert '<div class="label">Tips</div><div class="val">$0.00</div>' in html
-    assert '<div class="label">Refunds</div><div class="val" style="color:#f87171">$31.00</div>' in html
+    ann = _sale(admin_client, "Ann")
+    assert ann["refund_full"] and ann["refunded"] == 31.0 and ann["refund_note"] == "wrong photos"
+    assert ann["charged"] == 0 and ann["tip"] == 0 and ann["net"] == 0 and ann["charged_original"] == 31.0
     csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Ann" in l)
     assert "$31.00" in csv_line and csv_line.count("$31.00") == 2           # original total + refunded
 
     assert admin_client.delete("/api/admin/orders/refund?key=pos:pos-tip1").status_code == 200
-    html = admin_client.get("/admin/orders?days=7").text
-    assert '<div class="label">Revenue</div><div class="val">$31.00</div>' in html
+    ann = _sale(admin_client, "Ann")
+    assert ann["charged"] == 31.0 and not ann["refunded"]
 
 
 def test_partial_refund_reduces_the_sale(admin_client, pos_orders, no_refunds):
     admin_client.post("/api/admin/orders/refund", json={"key": "pos:pos-tip1", "amount": 10, "full": False})
-    html = admin_client.get("/admin/orders?days=7").text
-    assert '<div class="label">Revenue</div><div class="val">$21.00</div>' in html
-    assert "(-$10.00 refunded)" in html
+    ann = _sale(admin_client, "Ann")
+    assert ann["charged"] == 21.0 and ann["refunded"] == 10.0 and not ann["refund_full"]
 
 
 def test_refunded_sale_earns_no_commission(admin_client, owner_client, pos_orders, no_refunds):
@@ -163,17 +173,22 @@ def test_refunded_sale_earns_no_commission(admin_client, owner_client, pos_order
     assert revenue() == 0.0
 
 
-def test_orders_page_escapes_customer_typed_text(admin_client, pos_orders, main_module, monkeypatch):
+def test_orders_page_carries_customer_typed_text_only_as_data(admin_client, pos_orders, main_module, monkeypatch):
+    """Customer text never goes into the page's HTML: the page loads it as JSON and escapes it
+    when it shows it (templates/admin_orders.html, esc())."""
     evil = '<img src=x onerror=alert(1)>'
     monkeypatch.setattr(main_module, "WC_KEY", "ck_test")
     monkeypatch.setattr(main_module, "WC_SECRET", "cs_test")
     monkeypatch.setattr(main_module, "_fetch_wc_orders_all", lambda *a, **kw: [{
-        "id": 901, "number": "901", "status": "completed", "date_created": TODAY + "T12:00:00",
+        "id": 901, "number": "901", "status": "completed", "date_created": MT_TODAY + "T12:00:00",
         "total": "25.00", "discount_total": "0", "coupon_lines": [{"code": evil}],
         "billing": {"first_name": evil, "last_name": "O'Brien", "email": "x@example.com",
                     "address_1": evil, "city": "", "state": "", "postcode": ""},
         "line_items": [{"name": "Photo", "meta_data": [{"key": "Location", "value": evil}]}],
         "fee_lines": [], "shipping_lines": [], "meta_data": []}])
-    html = admin_client.get("/admin/orders?days=7").text
-    assert evil not in html                                   # never raw, in cells or the detail data
-    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+    page = admin_client.get("/admin/orders?days=7").text
+    assert evil not in page and "O'Brien" not in page
+    r = admin_client.get("/api/admin/sales?days=7")
+    assert r.headers["content-type"].startswith("application/json")
+    row = next(x for x in r.json()["rows"] if x["order_id"] == 901)
+    assert row["first"] == evil and row["code"] == evil and row["channel"] == "online" and row["order_no"] == "#901"

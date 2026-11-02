@@ -408,18 +408,18 @@ def test_card_fee_square_fills_in_later_shows_up_on_the_orders_tab(admin_client,
     fake = square(FakeSquare())
     fake.orders = {"ORDER1": {**_paid_order(cents=2600), "tenders": [{"id": "PAY1", "type": "CARD"}]}}
     monkeypatch.setattr(main_module, "_fetch_online_orders", lambda *a, **kw: [])   # no online orders
-    html = admin_client.get("/admin/orders?days=7").text
-    assert ">pending<" in html                                  # Square hasn't filled it in yet
+    sale = lambda: next(r for r in admin_client.get("/api/admin/sales?days=7").json()["rows"] if r["order_id"] == "pos-fee1")
+    assert sale()["fee_pending"]                                 # Square hasn't filled it in yet
 
     fake.orders["ORDER1"]["tenders"][0]["processing_fee_money"] = {"amount": 75}
-    html = admin_client.get("/admin/orders?days=7").text
-    assert "$0.75" in html and "$24.25" in html                 # fee, and net = 25.00 - 0.75
-    assert "Kd2P" in html and "<th>Order #</th>" in html and "<th>Card Fee</th>" in html
+    row = sale()
+    assert row["stripe_fee"] == 0.75 and row["net"] == 24.25 and not row["fee_pending"]   # net = 25.00 - 0.75
+    assert "Kd2P" in row["order_no"]
     saved = json.loads(s3.get_object(Bucket="test-bucket", Key=key)["Body"].read())
     assert saved["square_fee"] == 0.75 and saved["square_fee_final"] is True
 
     calls = len(fake.calls)
-    admin_client.get("/admin/orders?days=7")                    # once final, Square isn't asked again
+    admin_client.get("/api/admin/sales?days=7")                 # once final, Square isn't asked again
     assert len(fake.calls) == calls
     csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Ann" in l)
     assert "Square Kd2P" in csv_line and "$0.75" in csv_line

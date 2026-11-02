@@ -1,4 +1,5 @@
 """Routes: orders. Moved from main.py unchanged; shared helpers still live in main.py."""
+import re
 from core.text import clean_location
 from datetime import datetime
 from datetime import timedelta
@@ -10,11 +11,12 @@ from fastapi import Response
 from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
-from html import escape as _html_escape
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 
 import main
+from core import stripe_api
 from core.pages import render_page
 
 router = APIRouter()
@@ -152,182 +154,11 @@ def api_admin_reports(request: Request, days: int = 30,
 
 
 @router.get("/admin/orders", response_class=HTMLResponse)
-def admin_orders(request: Request, days: int = 30,
-                 date_from: str = "", date_to: str = "",
-                 tab: str = ""):
+def admin_orders(request: Request):
+    """The Orders page; it loads its sales from /api/admin/sales (?tab=reports opens Reports)."""
     if not main._admin_authed(request):
         return RedirectResponse("/admin")
-    custom = bool(date_from and date_to)
-    if custom:
-        after  = f"{date_from}T00:00:00"
-        before = f"{date_to}T23:59:59"
-        orders = main._fetch_online_orders(after=after, before=before)
-    else:
-        after  = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-        orders = main._fetch_online_orders(after=after)
-    rows       = [main._order_row(o) for o in orders]
-    # In-person (POS) sales in the same period, listed with online orders, newest first
-    pos_rows   = [main._pos_order_row(o) for o in main._fill_pending_square_fees(
-        main._fetch_pos_orders(after=after[:10], before=before[:10] if custom else None))]
-    rows       = sorted(rows + pos_rows, key=lambda r: r.get("date") or "", reverse=True)
-    main._apply_refunds(rows, main._load_order_refunds())
-    total_rev  = sum(r.get("charged", r["total"]) for r in rows)
-    total_refunds = sum(r.get("refunded", 0) for r in rows)
-    total_fees = sum(r["stripe_fee"] for r in rows)
-    total_net  = sum(r["net"]        for r in rows)
-    total_tips = sum(r.get("tip", 0) for r in rows)
-
-    # Location breakdown
-    loc_stats = {}
-    for r in rows:
-        loc = r["location"] or "Unknown"
-        if loc not in loc_stats:
-            loc_stats[loc] = {"count": 0, "revenue": 0.0, "net": 0.0}
-        loc_stats[loc]["count"]   += 1
-        loc_stats[loc]["revenue"] += r.get("charged", r["total"])
-        loc_stats[loc]["net"]     += r["net"]
-    loc_stats = dict(sorted(loc_stats.items(), key=lambda x: x[1]["revenue"], reverse=True))
-    now_utc    = datetime.now(timezone.utc)
-
-    # Photographer prefix map
-    _photogs    = main._load_photographers()
-    _prefix_map = {p.get("file_prefix","").strip().lower(): p["name"]
-                   for p in _photogs if p.get("file_prefix","").strip()}
-    def _detect_photog(filenames_str):
-        if not filenames_str:
-            return "Oren Lewkowski"
-        names, seen = [], set()
-        for f in filenames_str.split(','):
-            f = f.strip()
-            if not f: continue
-            name = _prefix_map.get(f[:3].lower())
-            if name and name not in seen:
-                names.append(name); seen.add(name)
-        return " & ".join(names) if names else "Oren Lewkowski"
-
-    _unl_records = {}
-    if any(r.get("unlimited") for r in rows):
-        main._close_due_unlimited()
-        _unl_records = main._unlimited_records()
-
-    import json as _json
-    def td(v, cls=""): return f'<td class="{cls}">{v}</td>'
-    trs = ""
-    E = _html_escape
-    for r in rows:
-        # Names, emails, addresses and coupons come from customers (the online checkout
-        # is public), so they're escaped and can't inject anything into this page
-        first_file  = E((r['filenames'] or '').split(',')[0].strip() or '—')
-        is_pos      = r.get("source") == "pos"
-        photographer = (main._unlimited_photog_label(r, _photogs, _unl_records)
-                        or _detect_photog(r['filenames']))   # commission follows the photo's JPEG code, not who sold it
-        e_name, e_email = E(f"{r['first']} {r['last']}"), E(r['email'] or '')
-        e_loc, e_what   = E(r['location'] or '—'), E(r['what'] or '')
-        e_photog, e_files = E(photographer), E(r['filenames'] or '—')
-        e_coupon, e_addr  = E(r['coupon_code'] or '—'), E(r['ship_addr'] or '—')
-        charged     = r.get("charged", r["total"])
-        tip_str     = f"${r['tip']:.2f}" if r.get("tip") else '—'
-        total_str   = "Comp" if r.get("is_comp") else f"${charged:.2f}"
-        if r.get("refund_full"):
-            total_str = f'<s style="opacity:.5">${r["charged_original"]:.2f}</s> <span style="color:#f87171">Refunded</span>'
-        elif r.get("refunded"):
-            total_str = f'${charged:.2f} <span style="color:#f87171">(-${r["refunded"]:.2f} refunded)</span>'
-        if is_pos:
-            fee_str = "pending" if r.get("fee_pending") else (f"${r['stripe_fee']:.2f}" if r['stripe_fee'] else '—')
-        else:
-            fee_str = f"${r['stripe_fee']:.2f}"
-        order_no    = E(str(r.get("order_no") or '—'))
-        receipt_url = E(r.get("receipt_url") or '')
-        order_cell  = (f'<a href="{receipt_url}" target="_blank" onclick="event.stopPropagation()" '
-                       f'style="color:inherit">{order_no}</a>') if receipt_url else order_no
-        detail_data = _json.dumps({
-            "name":         e_name,
-            "email":        e_email,
-            "location":     e_loc,
-            "photographer": e_photog,
-            "what":         e_what,
-            "files":        e_files,
-            "total":        total_str,
-            "tip":          tip_str,
-            "discount":     f"-${r['discount']:.2f}" if r['discount'] else '—',
-            "fee":          fee_str,
-            "refund_key":   r["refund_key"],
-            "refunded":     r.get("refunded", 0),
-            "refund_full":  bool(r.get("refund_full")),
-            "refund_date":  r.get("refund_date", ""),
-            "refund_note":  r.get("refund_note", ""),
-            "charged_num":  round(r["charged_original"], 2),
-            "comp":         bool(r.get("is_comp")),
-            "order_no":     ("Square " + order_no) if is_pos and r.get("order_no") else order_no,
-            "receipt_url":  receipt_url,
-            "net":          f"${r['net']:.2f}",
-            "coupon":       e_coupon,
-            "shipping":     f"${r['shipping']:.2f}" if r['shipping'] else '—',
-            "address":      e_addr,
-            "photo_paths":  r['photo_paths'] or '',    # raw: only used inside encoded URLs
-            "date":         r['date'] or '',
-            "last_name":    r['last'] or '',
-            # the order list's own location filter needs the raw value too
-            "location_raw": r['location'] or '',
-        }).replace("&", "&amp;").replace('"', '&quot;').replace("<", "&lt;").replace(">", "&gt;")
-        try:
-            order_dt  = datetime.strptime(r['date'], '%Y-%m-%d').replace(tzinfo=timezone.utc)
-            is_recent = (now_utc - order_dt).days < main.DOWNLOAD_EXPIRE_DAYS
-        except Exception:
-            is_recent = False
-        if is_pos:
-            # In-person photo sales have a package download page; other POS sales have no link
-            action_btn = (f'<a href="/package/{r["package_token"]}" target="_blank" class="copy-btn" '
-                          f'onclick="event.stopPropagation()">Open Link</a>') if r.get("package_token") else '—'
-        elif is_recent:
-            action_btn = f'<button class="copy-btn" onclick="copyLink(\'{E(str(r["order_id"]))}\',event)">Copy Link</button>'
-        else:
-            action_btn = f'<a href="/admin/regen/{E(str(r["order_id"]))}" class="regen-btn" onclick="event.stopPropagation()">↺ Regen Link</a>'
-        trs += f"""<tr class="order-row" data-detail="{detail_data}" onclick="showDetail(this.dataset.detail)" style="cursor:pointer">
-          {td(E(r['date'] or ''))}
-          {td(order_cell, 'mono')}
-          {td(e_name)}
-          {td(e_loc)}
-          {td(e_email)}
-          {td(e_what)}
-          {td(e_photog)}
-          {td(first_file, 'mono')}
-          {td(total_str)}
-          {td(tip_str)}
-          {td(f"-${r['discount']:.2f}" if r['discount'] else '—', 'fee')}
-          {td(fee_str, 'fee')}
-          {td(f"${r['net']:.2f}", 'net')}
-          {td(e_coupon)}
-          {td(f"${r['shipping']:.2f}" if r['shipping'] else '—')}
-          {td(e_addr)}
-          {td(action_btn)}
-        </tr>"""
-
-    period_opts = "".join(
-        f'<option value="{d}" {"selected" if d==days else ""}>{label}</option>'
-        for d, label in [(7,"Last 7 days"),(14,"Last 14 days"),(30,"Last 30 days"),(60,"Last 60 days"),(90,"Last 90 days")]
-    )
-    export_qs = f"date_from={date_from}&date_to={date_to}" if custom else f"days={days}"
-
-    loc_bars = "".join(
-        f'<div class="loc-bar-row">'
-        f'<span class="loc-bar-label">{_html_escape(loc)}</span>'
-        f'<div class="loc-bar-track"><div class="loc-bar-fill" style="width:{(s["revenue"]/total_rev*100) if total_rev else 0:.1f}%"></div></div>'
-        f'<div class="loc-bar-stats">'
-        f'<span class="loc-bar-pct">{(s["revenue"]/total_rev*100) if total_rev else 0:.1f}%</span>'
-        f'<span class="loc-bar-rev">${s["revenue"]:.0f}</span>'
-        f'<span class="loc-bar-cnt">{s["count"]} order{"s" if s["count"]!=1 else ""}</span>'
-        f'</div></div>'
-        for loc, s in loc_stats.items()
-      ) if loc_stats else "<span style='color:rgba(255,255,255,.3);font-size:.82rem'>No orders in this period.</span>"
-    html = render_page("admin_orders.html",
-        tab=tab, order_count=len(rows),
-        total_rev=f"{total_rev:.2f}", total_fees=f"{total_fees:.2f}", total_net=f"{total_net:.2f}",
-        total_tips=f"{total_tips:.2f}", total_refunds=f"{total_refunds:.2f}",
-        loc_bars=loc_bars, period_opts=period_opts,
-        date_from=_html_escape(date_from), date_to=_html_escape(date_to), export_qs=export_qs,
-        table_rows=trs if trs else '<tr><td colspan="17" class="empty">No completed orders in this period.</td></tr>')
-    return HTMLResponse(html)
+    return HTMLResponse(render_page("admin_orders.html"))
 
 
 @router.get("/admin/export")
@@ -389,3 +220,148 @@ def admin_export(request: Request, days: int = 30,
     filename = f"crystal-images-orders-{datetime.now().strftime('%Y%m%d')}.csv"
     return Response(buf.getvalue(), media_type="text/csv",
                     headers={"Content-Disposition": f"attachment; filename={filename}"})
+
+
+# ── All sales, online and in the store, for the Orders page and its reports ──────
+# One list with everything about each sale; the page filters it and builds its reports from
+# it, so what's listed and what's totalled always agree.
+
+_MT = ZoneInfo("America/Denver")
+SALE_CATEGORIES = {"digital": "Action photos", "portrait": "Portraits", "unlimited": "Unlimited package",
+                   "prints": "Prints", "frames": "Frames", "private": "Private sessions", "other": "Other"}
+_POS_CATEGORY = {"action_photos": "digital", "portrait": "portrait", "unlimited_package": "unlimited",
+                 "prints": "prints", "frames": "frames", "private": "private", "base_area": "private"}
+
+
+def _online_line_category(li: dict) -> str:
+    pid, name = str(li.get("product_id") or ""), str(li.get("name") or "").strip().lower()
+    if pid == str(main.WC_FRAME_PARENT_ID) or name.startswith("└") or "frame" in name:
+        return "frames"
+    if pid == str(main.WC_PRINT_PRODUCT_ID) or " print" in name:
+        return "prints"
+    if name.startswith("portrait"):
+        return "portrait"
+    return "digital"
+
+
+def _photographer_by_files(filenames: str, prefix_map: dict) -> str:
+    """Who took the photos, from their JPEG codes (the first three letters); the owner otherwise."""
+    names, seen = [], set()
+    for f in (filenames or "").split(","):
+        name = prefix_map.get(f.strip()[:3].lower()) if f.strip() else None
+        if name and name not in seen:
+            names.append(name); seen.add(name)
+    return " & ".join(names) if names else "Oren Lewkowski"
+
+
+def _sale_from_online(o: dict) -> dict:
+    r = main._order_row(o)
+    meta = {m.get("key"): m.get("value") for m in o.get("meta_data", []) if isinstance(m, dict)}
+    items = []
+    for li in o.get("line_items") or []:
+        name = str(li.get("name") or "").strip()
+        items.append({"name": name.lstrip("└ ").strip() if name.startswith("└") else name,
+                      "cat": _online_line_category(li), "qty": int(li.get("quantity") or 1),
+                      "amount": round(float(li.get("total") or 0), 2)})
+    created = str(o.get("date_created") or "")
+    sa, ba = o.get("shipping") or {}, o.get("billing") or {}
+    address = ", ".join(x for x in (ba.get("address_1", ""), ba.get("address_2", ""), ba.get("city", ""),
+                                     ba.get("state", ""), ba.get("postcode", "")) if x)
+    return {**r, "channel": "online", "provider": r["provider"],
+            "time": created[11:16], "phone": (o.get("billing") or {}).get("phone", ""),
+            "seller": "", "items": items, "tax": 0.0, "tip": 0.0, "charged": r["total"], "address": address,
+            "bundle_savings": round(float(meta.get("_bundle_savings") or 0), 2),
+            "ship_to": {k: sa.get(k, "") for k in ("first_name", "last_name", "address_1", "address_2",
+                                                     "city", "state", "postcode", "country")} if sa.get("address_1") else None,
+            "shipment": o.get("shipment") or None, "status": r.get("status") or o.get("status", ""),
+            "status_note": (o.get("stripe") or {}).get("note", ""),
+            "test": (o.get("stripe") or {}).get("mode") == "test", "is_comp": False, "unlimited": False}
+
+
+def _sale_from_pos(o: dict) -> dict:
+    r = main._pos_order_row(o)
+    try:
+        created = datetime.fromisoformat(str(o.get("created")))
+        local = (created if created.tzinfo else created.replace(tzinfo=timezone.utc)).astimezone(_MT)
+        r["date"], time_str = local.strftime("%Y-%m-%d"), local.strftime("%H:%M")
+    except Exception:
+        time_str = ""
+    items, shipping = [], 0.0
+    for it in o.get("items") or []:
+        cat = str(it.get("category") or "")
+        amount = round(float(it.get("subtotal") if it.get("subtotal") is not None else it.get("price") or 0), 2)
+        if cat == "_shipping":
+            shipping += amount
+            continue
+        label = str(it.get("label") or "") + (f" ({it['detail']})" if it.get("detail") else "")
+        items.append({"name": label, "cat": _POS_CATEGORY.get(cat, "other"),
+                      "qty": int(it.get("qty") or 1), "amount": amount})
+    return {**r, "channel": "store", "provider": "comp" if r["is_comp"] else "square",
+            "time": time_str, "phone": o.get("phone", ""), "seller": o.get("photographer_name", ""),
+            "items": items, "shipping": round(shipping, 2), "bundle_savings": 0.0,
+            "ship_to": None, "shipment": None, "status": "comp" if r["is_comp"] else "paid",
+            "address": o.get("address", ""), "tenders": o.get("square_tenders") or []}
+
+
+def _shift_day(day: str, n: int) -> str:
+    return (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=n)).strftime("%Y-%m-%d")
+
+
+def _sales_between(date_from: str = "", date_to: str = "") -> list:
+    """Every sale whose (Big Sky) day is in date_from..date_to (blank = no limit), newest first,
+    refunds applied and photographers credited the same way as commission."""
+    online = main._fetch_online_orders(after=f"{date_from}T00:00:00" if date_from else None,
+                                       before=f"{date_to}T23:59:59" if date_to else None)
+    # store sales are filed by their UTC day: read a day either side, then keep Big Sky days
+    pos = main._fill_pending_square_fees(main._fetch_pos_orders(
+        after=_shift_day(date_from, -1) if date_from else None, before=_shift_day(date_to, 1) if date_to else None))
+    rows = [_sale_from_online(o) for o in online] + [_sale_from_pos(o) for o in pos]
+    rows = [r for r in rows if (not date_from or r["date"] >= date_from) and (not date_to or r["date"] <= date_to)]
+    rows.sort(key=lambda r: (r.get("date") or "", r.get("time") or ""), reverse=True)
+    main._apply_refunds(rows, main._load_order_refunds())
+    photogs = main._load_photographers()
+    prefix_map = {p.get("file_prefix", "").strip().lower(): p["name"]
+                  for p in photogs if p.get("file_prefix", "").strip()}
+    unl = {}
+    if any(r.get("unlimited") for r in rows):
+        main._close_due_unlimited()
+        unl = main._unlimited_records()
+    now = datetime.now(timezone.utc)
+    for r in rows:
+        r["photographer"] = (main._unlimited_photog_label(r, photogs, unl)
+                             or _photographer_by_files(r.get("filenames"), prefix_map))
+        r["location"] = r.get("location") or ""
+        r["location_clean"] = clean_location(r["location"]) if r["location"] else ""
+        r["code"] = r.pop("coupon_code", "") or ""
+        if r["channel"] == "online":
+            try:
+                recent = (now - datetime.strptime(r["date"], "%Y-%m-%d").replace(tzinfo=timezone.utc)).days < main.DOWNLOAD_EXPIRE_DAYS
+            except Exception:
+                recent = False
+            r["link"] = ("copy" if recent else "regen") if r.get("photo_paths") else ""   # prints only: no download
+        else:
+            r["link"] = "package" if r.get("package_token") else ""
+    return rows
+
+
+def _sales_range(days: int, date_from: str, date_to: str, all_time: int):
+    if all_time:
+        return "", ""
+    if date_from and date_to:
+        return date_from, date_to
+    today = datetime.now(_MT).strftime("%Y-%m-%d")
+    return _shift_day(today, -(max(1, min(int(days or 30), 3660)) - 1)), today
+
+
+@router.get("/api/admin/sales")
+def api_admin_sales(request: Request, days: int = 30, date_from: str = "", date_to: str = "", all_time: int = 0):
+    if not main._admin_authed(request):
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    for d in (date_from, date_to):
+        if d and not re.match(r"^\d{4}-\d{2}-\d{2}$", d):
+            return JSONResponse(status_code=400, content={"error": "Dates must be YYYY-MM-DD"})
+    start, end = _sales_range(days, date_from, date_to, all_time)
+    rows = _sales_between(start, end)
+    partners = [{"id": p.get("id"), "name": p.get("name")} for p in main._load_partners() if p.get("id")]
+    return {"date_from": start, "date_to": end, "rows": rows, "categories": SALE_CATEGORIES,
+            "partners": partners, "stripe_mode": __import__("core.stripe_api", fromlist=["mode_of"]).mode_of(main.STRIPE_SECRET_KEY)}

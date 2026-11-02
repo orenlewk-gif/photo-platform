@@ -153,7 +153,8 @@ def test_closing_splits_the_sale_by_each_photographers_share(client, owner_clien
     d = owner_client.get(f"/api/photographers/commission?date_from={_day(-1)}&date_to={_day(1)}").json()
     assert d["unlimited_pending"] == 200.0 and d["unlimited_pending_count"] == 1
     assert comm()["Dana Shooter"] == 0                         # nothing credited while open
-    assert "split when it closes" in admin_client.get("/admin/orders?days=7").text
+    sale = lambda: next(r for r in admin_client.get("/api/admin/sales?days=7").json()["rows"] if r["unlimited"])
+    assert "split when it closes" in sale()["photographer"]
 
     monkeypatch.setattr(main_module, "_mountain_today", lambda: _day(3))
     by_name = comm()
@@ -161,8 +162,7 @@ def test_closing_splits_the_sale_by_each_photographers_share(client, owner_clien
     assert by_name["Test Photog"] == 0                         # the seller isn't credited
     record = json.loads(S3.get_object(Bucket="test-bucket", Key=f"unlimited_sales/{token}.json")["Body"].read())
     assert record["status"] == "closed" and record["split"] == {"dsc": 2, "ams": 1, "xyz": 1}
-    html = admin_client.get("/admin/orders?days=7").text
-    assert "Dana Shooter 50% &amp; Alex Shooter 25% &amp; Oren Lewkowski 25%" in html
+    assert sale()["photographer"] == "Dana Shooter 50% & Alex Shooter 25% & Oren Lewkowski 25%"
     csv_line = next(l for l in admin_client.get("/admin/export?days=7").text.splitlines() if "Ann" in l)
     assert "Dana Shooter 50%" in csv_line
 

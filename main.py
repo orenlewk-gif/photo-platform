@@ -3895,7 +3895,7 @@ def _order_row(order) -> dict:
         "total":       total,
         "discount":    discount,
         "stripe_fee":  stripe_fee,
-        "net":         round(total - stripe_fee - discount, 2),
+        "net":         round(total - stripe_fee, 2),          # the total is already after any code
         "shipping":    shipping,
         "ship_addr":   ship_addr,
         "coupon_code": coupon_code,

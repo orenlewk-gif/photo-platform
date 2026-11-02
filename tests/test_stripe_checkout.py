@@ -275,8 +275,9 @@ def test_studio_pages_show_stripe_orders(client, admin_client, owner_client, str
         {"id": "p1", "name": "Dana Shooter", "pin": "1111", "file_prefix": "A.j"}]).encode())
     made = _paid_order(client, stripe)
     oid = made["order_id"]
-    html = admin_client.get("/admin/orders?days=7").text
-    assert oid in html and f"copyLink('{oid}',event)" in html
+    row = next(r for r in admin_client.get("/api/admin/sales?days=7").json()["rows"] if r["order_id"] == oid)
+    assert row["channel"] == "online" and row["provider"] == "stripe" and row["order_no"] == oid and row["link"] == "copy"
+    assert row["test"] and row["photographer"] == "Dana Shooter" and row["items"][0]["cat"] == "digital"
     assert oid in admin_client.get("/admin/export?days=7").text
     rep = admin_client.get("/api/admin/reports?days=7").json()
     assert rep["summary"]["orders"] == 1 and rep["summary"]["revenue"] == made["total"]
