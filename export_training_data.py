@@ -36,13 +36,12 @@ s3 = boto3.client(
     aws_secret_access_key=R2_SECRET_ACCESS_KEY,
 )
 
-# Exam day: these photos are kept OUT of training so every model version is graded on the
-# same never-seen photos (dev/model_eval/exam_photos.json). The whole day is skipped, not just
-# the exam photos, because burst sequences would otherwise leak near-copies into training.
-EXAM_DAYS = {"2026-06-07"}
-# Folder dates are placeholders. The exam is also kept out by REAL capture date, so photos from
-# those days labeled into other folders later can't slip into training.
-EXAM_REAL_DAYS = {"2026-02-05", "2026-03-08"}
+# Days kept OUT of training as an exam (whole folder dates, and real capture dates since folder dates
+# are placeholders). Through v5 these were 2026-06-07 and real days 2026-02-05 / 2026-03-08. From v6
+# (Oren 2026-11-03) nothing is held back: real uploads, checked in Label Photos, are the test now
+# (the export says which model labeled each one and what it said).
+EXAM_DAYS = set()
+EXAM_REAL_DAYS = set()
 CAPTURE_CACHE = Path(__file__).parent / "dev/model_eval/capture_times.json"   # path -> [capture time, camera]
 
 
@@ -144,12 +143,18 @@ def main():
             "manually_corrected": "1" if item.get("manually_corrected") else "0",
             "taken":              real_day(item),
             "camera":             (taken.get(item["path"]) or [None, ""])[1],
+            # a real upload: the model that labeled it and what it said (the labels above are the checked ones)
+            "labeled_by":         (item.get("model_labels") or {}).get("model", ""),
+            "model_jacket":       "|".join((item.get("model_labels") or {}).get("jacket") or []),
+            "model_pants":        "|".join((item.get("model_labels") or {}).get("pants") or []),
+            "model_sport":        (item.get("model_labels") or {}).get("sport", ""),
         })
 
     with open(LABELS_CSV, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=[
             "r2_key", "jacket_colors", "pants_colors",
             "sport", "classifier", "manually_corrected", "taken", "camera",
+            "labeled_by", "model_jacket", "model_pants", "model_sport",
         ])
         writer.writeheader()
         writer.writerows(rows)
@@ -160,6 +165,7 @@ def main():
     for k, v in Counter(r["classifier"] for r in rows).items():
         print(f"  {k}: {v}")
     print(f"Sports: {dict(Counter(r['sport'] for r in rows))}")
+    print(f"Real uploads by model (the check photos): {dict(Counter(r['labeled_by'] for r in rows if r['labeled_by']))}")
 
 
 if __name__ == "__main__":
