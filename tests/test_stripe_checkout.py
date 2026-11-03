@@ -82,6 +82,9 @@ def stripe(main_module, monkeypatch, live_photos):
     fake.emails = sent
     yield fake
     main_module._checkout_settings_doc.save({})
+    for o in S3.list_objects_v2(Bucket=BUCKET, Prefix="online_orders/").get("Contents", []):   # no test orders left
+        S3.delete_object(Bucket=BUCKET, Key=o["Key"])                                          # for other tests' Orders pages
+    main_module._online_order_cache.clear()
     S3.delete_object(Bucket=BUCKET, Key="meta/pricing.json")
     main_module._pricing_cache["data"] = None
 
