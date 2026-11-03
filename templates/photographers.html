@@ -96,6 +96,15 @@ tr:hover td{background:rgba(255,255,255,.02)}
 .edit-row input{padding:.35rem .6rem;font-size:.82rem;border-radius:5px}
 .section-pg{display:block}
 #admin-tabs{display:flex;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:1.5rem}
+/* Phones: the tabs scroll sideways, sections use the width, wide tables scroll inside their card */
+@media (max-width: 760px) {
+  #main{padding:1rem .75rem}
+  #admin-tabs{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  #admin-tabs::-webkit-scrollbar{display:none}
+  .admin-tab{flex-shrink:0;padding:.6rem .8rem}
+  .section,.settings-section{padding:1rem;overflow-x:auto}
+  .stats-grid{grid-template-columns:1fr}
+}
 .admin-tab{background:none;border:none;border-bottom:2px solid transparent;color:rgba(255,255,255,.45);font-size:14px;font-weight:500;padding:.6rem 1.1rem;cursor:pointer;transition:color .15s;text-decoration:none;display:inline-block;margin-bottom:-1px}
 .admin-tab:hover{color:rgba(255,255,255,.85)}
 .admin-tab.active{color:#F5C430;border-bottom-color:#F5C430}
@@ -119,6 +128,7 @@ html.embedded #topbar,html.embedded #sidebar{display:none}
 html.embedded #layout{height:100vh}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
+<link rel="stylesheet" href="/static/studio-mobile.css">
 </head>
 <body>
 <div id="pin-gate">
@@ -892,7 +902,7 @@ fetch('/api/admin/owner-status').then(r=>r.json()).then(d=>{
   const _fetch=window.fetch.bind(window);
   window.fetch=async function(...args){
     const r=await _fetch(...args);
-    if(r.status===403){ try{ const d=await r.clone().json(); if(d.pin_required) _showPinGate('Your PIN timed out — enter it, then try again'); }catch(e){} }
+    if(r.status===403){ try{ const d=await r.clone().json(); const g=document.getElementById('pin-gate'); if(d.pin_required && g && g.style.display==='none') _showPinGate('Your PIN timed out — enter it, then try again'); }catch(e){} }
     return r;
   };
 })();

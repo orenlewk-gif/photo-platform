@@ -90,6 +90,25 @@ html.embedded #inv-layout{height:calc(100vh - 40px)}
 #det-email-label{font-size:.8rem;color:rgba(255,255,255,.4)}
 #det-followup-info{font-size:.72rem;color:rgba(255,255,255,.3);margin-top:.25rem}
 #det-actions{display:flex;gap:.5rem;flex-shrink:0}
+#det-back,.mobile-back{display:none}
+/* Phones: the list takes the screen; a customer opens full-screen with a Back button */
+@media (max-width: 760px) {
+  #list-pane{width:100%;border-right:none}
+  #detail-pane{display:none}
+  body.cust-open #list-pane{display:none}
+  body.cust-open #detail-pane{display:flex}
+  #det-back,.mobile-back{display:inline-block}
+  #det-header{padding:1rem 1rem .8rem;flex-wrap:wrap}
+  #det-body{padding:1rem}
+  #det-body .field-grid{grid-template-columns:1fr}
+  #saved-list-pane{width:100%;border-right:none}
+  #saved-detail{display:none;padding:1rem}
+  body.cart-open #saved-list-pane{display:none}
+  body.cart-open #saved-detail{display:block}
+  #inv-layout{padding:1rem .75rem}
+  .inv-table{display:block;overflow-x:auto}
+  #cust-tabs{overflow-x:auto}
+}
 
 /* ── Detail body ── */
 #det-body{padding:1.5rem 2rem;display:flex;flex-direction:column;gap:1.75rem;flex:1}
@@ -203,6 +222,7 @@ select.fu-input{cursor:pointer}
 .cb-col{width:22px;flex-shrink:0;display:flex;align-items:center}
 .cb-col input[type=checkbox]{accent-color:#F5C518;cursor:pointer;width:14px;height:14px}
 </style>
+<link rel="stylesheet" href="/static/studio-mobile.css">
 </head>
 <body>
 <div id="topbar">
@@ -282,6 +302,7 @@ select.fu-input{cursor:pointer}
 
     <div id="detail-content">
       <!-- Header -->
+      <button class="btn btn-sm" id="det-back" onclick="closeCustomer()" style="margin:.8rem 1rem 0;align-self:flex-start">&larr; Customers</button>
       <div id="det-header">
         <div id="det-avatar"></div>
         <div id="det-meta">
@@ -639,14 +660,18 @@ function scThumbs(paths, caption){
   return `<div class="sc-grid">${paths.map(p => `<figure><img src="/api/admin/photo?path=${encodeURIComponent(p)}&size=thumb" loading="lazy" alt="">
     <figcaption>${esc(caption ? caption(p) : p.split('/').pop())}</figcaption></figure>`).join('')}</div>`;
 }
+function closeSavedCart(){ document.body.classList.remove('cart-open'); }
 async function openSavedCart(id){
+  document.body.classList.add('cart-open');
   _savedActive = id; renderSavedList();
   const box = document.getElementById('saved-detail');
+  box.scrollTop = 0;
   box.innerHTML = '<div style="color:rgba(255,255,255,.4)">Loading…</div>';
   const r = await fetch(`/api/admin/saved-carts/${id}`);
   if(!r.ok){ box.innerHTML = '<div style="color:#f87171">Could not load this saved cart.</div>'; return; }
   const d = await r.json();
-  let html = `<div style="display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap">
+  let html = `<button class="btn btn-sm mobile-back" onclick="closeSavedCart()" style="margin-bottom:.8rem">&larr; Saved carts</button>
+    <div style="display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap">
       <div style="margin-right:auto"><div style="font-size:1.1rem;font-weight:700">${esc(d.first_name)}</div>
         <div style="color:rgba(255,255,255,.55);font-size:.85rem">${esc(d.email)}</div>
         <div style="color:rgba(255,255,255,.4);font-size:.75rem;margin-top:.2rem">Saved ${esc(scDate(d.created))} · last changed ${esc(scDate(d.updated))} · ${esc(scCounts(d.summary || {}))}</div>
@@ -923,6 +948,13 @@ function openStub(fr) {
                 tags: [], followups: [], _stub: true, _filter: fr});
 }
 
+// Phones: back from a customer to the list (asks first if there are unsaved changes)
+function closeCustomer() {
+  if (dirty && !confirm('You have unsaved changes. Discard them?')) return;
+  dirty = false;
+  document.body.classList.remove('cust-open');
+}
+
 function openCustomer(c) {
   if (dirty && (currentId !== null) && !confirm('You have unsaved changes. Discard them?')) return;
   currentId    = c._stub ? '' : c.id;
@@ -938,6 +970,8 @@ function openCustomer(c) {
 
   document.getElementById('detail-empty').style.display   = 'none';
   document.getElementById('detail-content').style.display = 'flex';
+  document.body.classList.add('cust-open');
+  document.getElementById('detail-pane').scrollTop = 0;
   document.getElementById('det-not-saved').style.display  = c._stub ? 'block' : 'none';
 
   const name = custName(c);
@@ -1096,6 +1130,7 @@ async function doDelete() {
   currentId = null; currentEmail = null; dirty = false;
   document.getElementById('detail-empty').style.display   = 'flex';
   document.getElementById('detail-content').style.display = 'none';
+  document.body.classList.remove('cust-open');
   renderList(listItems, !_filterActive && listItems.length < listTotal);
   updateCount(_filterActive ? listItems.length : listTotal, _filterActive || !!listQuery);
   showToast('Deleted');

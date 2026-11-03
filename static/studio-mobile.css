@@ -1,0 +1,16 @@
+/* Studio pages on phones (they open inside the studio, which has its own menu button).
+   Desktop is untouched: everything here is under the phone-width media query. */
+@media (max-width: 760px) {
+  #main { padding: 1rem .75rem 2rem !important; max-width: 100% !important; }
+  .page-title { margin-bottom: 1rem !important; }
+  /* tab rows scroll sideways instead of running off the screen */
+  .subtabs, #admin-tabs, .tab-bar {
+    flex-wrap: nowrap !important; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .subtabs::-webkit-scrollbar, #admin-tabs::-webkit-scrollbar, .tab-bar::-webkit-scrollbar { display: none; }
+  .subtab, .admin-tab, .tab-btn { flex-shrink: 0; white-space: nowrap; }
+  /* cards: less padding; wide tables scroll inside their card */
+  .card, .settings-section, .section { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .card, .settings-section { overflow-x: auto; max-width: 100% !important; }
+  input, select, textarea { max-width: 100%; }
+}

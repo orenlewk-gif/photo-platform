@@ -305,13 +305,32 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',sans-serif;backgrou
 #toast.show{opacity:1}
 .loading-text{color:rgba(255,255,255,.28);font-size:.83rem;padding:2rem;text-align:center}
 input[type=file]{display:none}
+
+/* ── Phones: the menu slides in from the ☰ button, pages get the whole width ── */
+#menu-btn{display:none;background:none;border:1px solid rgba(255,255,255,.18);color:#fff;border-radius:7px;
+  font-size:1.15rem;line-height:1;padding:.32rem .55rem;cursor:pointer}
+#menu-btn:focus-visible{outline:2px solid #F5C518;outline-offset:2px}
+#nav-backdrop{display:none}
+@media (max-width: 760px) {
+  #topbar{padding:0 .75rem;gap:.7rem}
+  #topbar h1{font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #topbar h1 .dash-word{display:none}
+  #menu-btn{display:inline-block}
+  #layout{height:calc(100vh - 46px);height:calc(100dvh - 46px)}
+  #sidebar{position:fixed;top:46px;left:0;bottom:0;width:min(300px,86vw);z-index:60;
+    transform:translateX(-102%);transition:transform .2s ease;box-shadow:6px 0 24px rgba(0,0,0,.45)}
+  body.nav-open #sidebar{transform:none}
+  body.nav-open #nav-backdrop{display:block;position:fixed;inset:46px 0 0 0;background:rgba(0,0,0,.45);z-index:55}
+  #main{width:100%}
+}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
 </head>
 <body>
 
 <div id="topbar">
-  <h1>Crystal Images — Dashboard</h1>
+  <button id="menu-btn" aria-label="Menu" aria-controls="sidebar" aria-expanded="false" onclick="toggleNav()">&#9776;</button>
+  <h1>Crystal Images<span class="dash-word"> — Dashboard</span></h1>
   <a href="/admin/logout">Sign out</a>
 </div>
 
@@ -342,6 +361,8 @@ input[type=file]{display:none}
       <a onclick="openTrashView()" class="nav-link" id="nav-trash" style="cursor:pointer">Trash</a>
     </div>
   </div>
+
+  <div id="nav-backdrop" onclick="toggleNav(false)"></div>
 
   <!-- ── Main ── -->
   <div id="main">
@@ -1343,7 +1364,14 @@ function setColCount(v) {
 
 // ── View switcher ──
 const _ALL_VIEWS = ['upload','date','location','folder','partner','pricing','admin','orders','links','settings','activities','customers','trash'];
+// Phones: the menu is a drawer; it closes once a page is picked
+function toggleNav(open) {
+  const on = open === undefined ? !document.body.classList.contains('nav-open') : open;
+  document.body.classList.toggle('nav-open', on);
+  document.getElementById('menu-btn')?.setAttribute('aria-expanded', on ? 'true' : 'false');
+}
 function setView(view) {
+  toggleNav(false);
   if (view !== 'partner' && currentPartner) { currentPartner = null; renderPartnerTree(); }
   _ALL_VIEWS.forEach(v => {
     const el = document.getElementById(v + '-view');

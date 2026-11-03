@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html><head>
-<link rel="icon" type="image/png" href="/static/favicon-32.png"><meta charset="UTF-8"><title>Orders — Crystal Images</title>
+<link rel="icon" type="image/png" href="/static/favicon-32.png"><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orders — Crystal Images</title>
 <style>
 /* Orders: every sale (online and in the store) for a period, filtered any way, each with all its
    details; Reports: the same sales added up by day/week/month/season, location, product, photographer,
@@ -112,11 +112,42 @@ tbody tr.order-row:focus-visible td{background:rgba(245,197,24,.08)}
 .barwrap span{min-width:84px;text-align:right}
 .rpt-card td:first-child{white-space:nowrap}
 tr.total-row td{font-weight:700;border-top:1px solid rgba(255,255,255,.15)}
+#filt-toggle{display:none}
+/* Phones: filters behind a button, the order list shows date, where, customer and total (tap for the rest) */
+@media (max-width: 760px) {
+  #main{padding:1rem .75rem 2.5rem}
+  #filt-toggle{display:inline-block;margin-bottom:.7rem}
+  .filters{display:none}
+  .filters.show{display:block}
+  .filters .bar label{flex:1 1 45%}
+  .filters select,.filters input[type=search]{width:100%;max-width:none;min-width:0}
+  .stats{grid-template-columns:repeat(2,1fr);gap:.5rem}
+  .stat{padding:.6rem .75rem}
+  .stat .val{font-size:1.05rem}
+  #orders-table{min-width:0}
+  #orders-table th:nth-child(2),#orders-table td:nth-child(2),
+  #orders-table th:nth-child(5),#orders-table td:nth-child(5),
+  #orders-table th:nth-child(6),#orders-table td:nth-child(6),
+  #orders-table th:nth-child(7),#orders-table td:nth-child(7),
+  #orders-table th:nth-child(9),#orders-table td:nth-child(9),
+  #orders-table th:nth-child(10),#orders-table td:nth-child(10),
+  #orders-table th:nth-child(11),#orders-table td:nth-child(11),
+  #orders-table th:nth-child(12),#orders-table td:nth-child(12){display:none}
+  #orders-table{font-size:.8rem;table-layout:fixed}
+  #orders-table th:nth-child(1){width:23%} #orders-table th:nth-child(3){width:27%} #orders-table th:nth-child(8){width:22%}
+  #orders-table td,#orders-table th{padding:.55rem .35rem}
+  #orders-table td:nth-child(4){overflow-wrap:anywhere}
+  #orders-table td:nth-child(4) .dim{display:none}
+  #orders-table .badge{font-size:.62rem;white-space:normal}
+  .modal{padding:1.1rem 1rem;width:96%}
+  .rpt-card{padding:.85rem .8rem}
+}
 #toast{position:fixed;bottom:1.5rem;right:1.5rem;padding:.6rem 1.1rem;border-radius:8px;font-size:13px;opacity:0;transition:opacity .25s;z-index:10001;pointer-events:none}
 #toast.show{opacity:1;background:#16a34a;color:#fff}
 #toast.err{opacity:1;background:#dc2626;color:#fff}
 </style>
 <link rel="stylesheet" href="/static/theme-admin.css">
+<link rel="stylesheet" href="/static/studio-mobile.css">
 </head><body>
 <div id="topbar">
   <h1>Crystal Images — Admin</h1>
@@ -158,7 +189,9 @@ tr.total-row td{font-weight:700;border-top:1px solid rgba(255,255,255,.15)}
       <span class="dim" id="range-label" style="font-size:.8rem;margin-left:.3rem"></span>
     </div>
 
-    <div class="filters">
+    <button class="ghost-btn" id="filt-toggle" aria-expanded="false" aria-controls="filters"
+            onclick="const f=document.getElementById('filters');f.classList.toggle('show');this.setAttribute('aria-expanded',f.classList.contains('show'))">Filters</button>
+    <div class="filters" id="filters">
       <div class="bar">
         <input type="search" id="f-q" placeholder="Search name, email, order #, photo file" aria-label="Search orders" oninput="filterSoon()">
         <label>Where<select id="f-channel" onchange="refresh()">
@@ -368,6 +401,7 @@ function refresh() {
   const active = S.shown.length !== S.rows.length;
   const note = document.getElementById('filt-note');
   note.style.display = active ? 'block' : 'none';
+  document.getElementById('filt-toggle').textContent = active ? 'Filters (on)' : 'Filters';
   note.textContent = active ? 'Showing ' + S.shown.length + ' of ' + S.rows.length + ' sales (filters on). Totals and reports count only these.' : '';
   renderStats();
   if (S.tab === 'orders') renderOrders(); else renderReport();
