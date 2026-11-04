@@ -83,6 +83,24 @@ async def admin_verify(request: Request):
     return main._signed_in_response(pending["next"], device_token, device_hash, pending["info"])
 
 
+@router.post("/admin/resend-code")
+async def admin_resend_code(request: Request):
+    """The sign-in code page's "Email me a new code"."""
+    form = await request.form()
+    challenge = str(form.get("challenge") or "")
+    code, why = main._renew_code(main._login_challenges, challenge)
+    if code is None and challenge not in main._login_challenges:
+        return HTMLResponse(render_page("admin_login.html", error=f'<p class="err">{_html_escape(why)}</p>',
+                                        next="/admin/dashboard"), status_code=401)
+    note = '<p class="ok">We emailed you a new code.</p>'
+    if code is None:
+        note = f'<p class="err">{_html_escape(why)}</p>'
+    elif not main._send_login_code_email(code, main._login_challenges[challenge]["info"]):
+        note = '<p class="err">Couldn\'t email the code — try again in a minute.</p>'
+    return HTMLResponse(render_page("admin_code.html", email=_html_escape(main._masked_email(main.OWNER_EMAIL)),
+                                    challenge=challenge, error=note))
+
+
 @router.get("/admin/logout")
 def admin_logout(request: Request):
     token = request.cookies.get(main.ADMIN_COOKIE, "")

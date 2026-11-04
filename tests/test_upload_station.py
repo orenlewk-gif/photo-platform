@@ -107,6 +107,18 @@ def test_the_emailed_code_approves_the_computer(owner_client, main_module, email
     assert links["station"].endswith(f"/u/{_path(main_module)}")
 
 
+def test_send_a_new_code(main_module, emails, monkeypatch):
+    from fastapi.testclient import TestClient
+    c = TestClient(main_module.app)
+    ch = c.post("/api/station/request", json={"name": "Kiosk", "path": _path(main_module)}).json()["challenge"]
+    assert c.post("/api/station/resend", json={"challenge": ch}).status_code == 429          # wait 30 seconds
+    now = main_module._time.time()
+    monkeypatch.setattr(main_module._time, "time", lambda: now + 31)
+    r = c.post("/api/station/resend", json={"challenge": ch})
+    assert r.status_code == 200 and emails[-1][0] == "Kiosk"
+    assert c.post("/api/station/verify", json={"challenge": ch, "code": emails[-1][1]}).status_code == 200
+
+
 def test_wrong_codes_run_out(main_module, emails):
     c = TestClient(main_module.app)
     challenge = c.post("/api/station/request", json={"name": "Kiosk", "path": _path(main_module)}).json()["challenge"]

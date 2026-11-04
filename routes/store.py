@@ -174,6 +174,19 @@ def store_request(request: Request, body: dict = Body(...)):
             "minutes": main.LOGIN_CODE_MINUTES}
 
 
+@router.post("/api/store/resend")
+def store_resend(body: dict = Body(...)):
+    """The code screen's "Send a new code" (same request, a fresh code)."""
+    challenge = str(body.get("challenge") or "")
+    code, why = main._renew_code(main._store_challenges, challenge)
+    if code is None:
+        return JSONResponse(status_code=429 if challenge in main._store_challenges else 401,
+                            content={"error": why, "restart": challenge not in main._store_challenges})
+    pending = main._store_challenges[challenge]
+    main._send_store_screen_email(pending["info"], pending["name"], code)
+    return {"ok": True, "email": main._masked_email(main.OWNER_EMAIL), "minutes": main.LOGIN_CODE_MINUTES}
+
+
 @router.post("/api/store/verify")
 def store_verify(body: dict = Body(...)):
     """The emailed code, typed on the screen: approves it and remembers it."""

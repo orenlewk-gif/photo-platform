@@ -244,6 +244,21 @@ def _photographer_signed_in(p: dict, device_ok: bool, device_token: str = ""):
     return resp
 
 
+@router.post("/api/pos/device-resend")
+def pos_device_resend(body: dict = Body(...)):
+    """The new-device screen's "Send a new code" (same request, a fresh code)."""
+    challenge = str(body.get("challenge") or "")
+    code, why = main._renew_code(main._pos_challenges, challenge)
+    if code is None:
+        return JSONResponse(status_code=429 if challenge in main._pos_challenges else 401,
+                            content={"error": why, "restart": challenge not in main._pos_challenges})
+    pending = main._pos_challenges[challenge]
+    p = next((x for x in main._load_photographers() if x.get("id") == pending["photographer_id"]), {})
+    if not main._send_pos_device_code_email(code, pending["info"], p):
+        return JSONResponse(status_code=503, content={"error": "Couldn't email the code — try again in a minute"})
+    return {"ok": True, "email": main._masked_email(main.OWNER_EMAIL)}
+
+
 @router.post("/api/pos/device-verify")
 def pos_device_verify(request: Request, body: dict = Body(...)):
     """The code emailed for a new POS device: approves the device and signs the photographer in."""

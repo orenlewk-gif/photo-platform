@@ -99,6 +99,19 @@ def station_request(request: Request, body: dict = Body(...)):
             "minutes": main.LOGIN_CODE_MINUTES}
 
 
+@router.post("/api/station/resend")
+def station_resend(body: dict = Body(...)):
+    """The code screen's "Send a new code" (same request, a fresh code)."""
+    challenge = str(body.get("challenge") or "")
+    code, why = main._renew_code(main._station_challenges, challenge)
+    if code is None:
+        return JSONResponse(status_code=429 if challenge in main._station_challenges else 401,
+                            content={"error": why, "restart": challenge not in main._station_challenges})
+    pending = main._station_challenges[challenge]
+    main._send_upload_station_email(pending["info"], pending["name"], code)
+    return {"ok": True, "email": main._masked_email(main.OWNER_EMAIL), "minutes": main.LOGIN_CODE_MINUTES}
+
+
 @router.post("/api/station/verify")
 def station_verify(body: dict = Body(...)):
     """The emailed code, typed on the computer: approves it and remembers it."""

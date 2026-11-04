@@ -128,3 +128,19 @@ def test_codes_off_is_the_safety_valve(main_module, codes_on, monkeypatch):
     monkeypatch.setattr(main_module, "POS_DEVICE_CODES_ON", False)
     c = TestClient(main_module.app)
     assert _pin(c).status_code == 200 and codes_on == []
+
+
+def test_send_a_new_code_on_the_new_device_screen(main_module, codes_on, monkeypatch):
+    c = TestClient(main_module.app)
+    ch = _pin(c).json()["challenge"]
+    first = codes_on[-1][0]
+    r = c.post("/api/pos/device-resend", json={"challenge": ch})
+    assert r.status_code == 429 and "seconds" in r.json()["error"] and len(codes_on) == 1      # not right away
+    now = main_module._time.time()
+    monkeypatch.setattr(main_module._time, "time", lambda: now + 31)
+    r = c.post("/api/pos/device-resend", json={"challenge": ch})
+    assert r.status_code == 200 and len(codes_on) == 2 and codes_on[-1][1] == "Test Photog"
+    if codes_on[-1][0] != first:                                                               # the old one is gone
+        assert c.post("/api/pos/device-verify", json={"challenge": ch, "code": first}).status_code == 401
+    assert c.post("/api/pos/device-verify", json={"challenge": ch, "code": codes_on[-1][0]}).status_code == 200
+    assert c.post("/api/pos/device-resend", json={"challenge": "made-up"}).json()["restart"]

@@ -776,7 +776,7 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
     <div class="auth-logo-mark">CRYSTAL IMAGES<span> POS</span></div>
     <div class="auth-logo-sub">Point of Sale</div>
   </div>
-  <p class="pc-label">Enter access code to continue</p>
+  <p class="pc-label">Enter the shop's POS passcode to continue</p>
   <input type="password" id="pc-input" class="pc-text-input" placeholder="Access code"
          autocomplete="off" autocorrect="off" spellcheck="false"
          onkeydown="if(event.key==='Enter')submitPasscode()">
@@ -795,7 +795,8 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);fon
          maxlength="6" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')submitDeviceCode()">
   <button class="pc-btn" id="dev-btn" onclick="submitDeviceCode()">Approve this device</button>
   <p id="dev-error" class="pc-error"></p>
-  <button class="pc-btn" style="background:transparent;color:var(--muted);margin-top:.4rem" onclick="cancelDeviceCode()">Back</button>
+  <button class="pc-btn" id="dev-resend" style="background:transparent;color:var(--gold, #F5C518);margin-top:.4rem" onclick="resendDeviceCode()">No email? Send a new code</button>
+  <button class="pc-btn" style="background:transparent;color:var(--muted);margin-top:.2rem" onclick="cancelDeviceCode()">Back</button>
 </div>
 
 <!-- ─── PIN SCREEN ─── -->
@@ -1535,6 +1536,20 @@ async function submitDeviceCode(){
     $('dev-error').textContent = 'No connection — try again';
   }
   $('dev-btn').disabled = false;
+}
+
+async function resendDeviceCode(){
+  if(!_deviceChallenge){ cancelDeviceCode(); return; }
+  $('dev-resend').disabled = true;
+  try {
+    const res = await fetch('/api/pos/device-resend', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({challenge: _deviceChallenge.challenge})});
+    const data = await res.json().catch(() => ({}));
+    if(res.ok){ $('dev-error').textContent = ''; $('dev-label').textContent = `We emailed a new code to ${data.email}. Enter it to approve this device (only needed once).`; $('dev-input').value = ''; }
+    else if(data.restart){ cancelDeviceCode(); $('pin-error').textContent = data.error; }
+    else { $('dev-error').textContent = data.error || 'Could not send a new code'; }
+  } catch(e){ $('dev-error').textContent = 'No connection — try again'; }
+  $('dev-resend').disabled = false;
 }
 
 function cancelDeviceCode(){

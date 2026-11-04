@@ -39,7 +39,8 @@ button:focus-visible,input:focus-visible,.link:focus-visible{outline:3px solid #
     <label for="code">Code</label>
     <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code">
     <button id="verify-btn" type="button">Approve this computer</button>
-    <div style="text-align:center"><button class="link" id="restart-btn" type="button">Start over</button></div>
+    <div style="text-align:center"><button class="link" id="resend-btn" type="button">No email? Send a new code</button>
+      &middot; <button class="link" id="restart-btn" type="button">Start over</button></div>
   </div>
 
   <div class="msg" id="msg" role="status" aria-live="polite"></div>
@@ -85,6 +86,18 @@ button:focus-visible,input:focus-visible,.link:focus-visible{outline:3px solid #
   }
   $('ask-btn').addEventListener('click', ask);
   $('verify-btn').addEventListener('click', verify);
+  async function resend() {
+    if (!challenge) { showStep(false); return; }
+    $('resend-btn').disabled = true; say('Sending a new code…');
+    try {
+      const [r, d] = await post('/api/station/resend', {challenge});
+      if (r.ok) { say(`We emailed a new code to ${d.email}.`); $('code').value = ''; $('code').focus(); return; }
+      say(d.error || 'Something went wrong — try again', true);
+      if (d.restart) { challenge = ''; showStep(false); }
+    } catch (e) { say('Could not connect — check the internet connection', true); }
+    finally { $('resend-btn').disabled = false; }
+  }
+  $('resend-btn').addEventListener('click', resend);
   $('restart-btn').addEventListener('click', () => { challenge = ''; say(''); showStep(false); });
   $('screen-name').addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
   $('code').addEventListener('keydown', e => { if (e.key === 'Enter') verify(); });

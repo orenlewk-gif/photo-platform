@@ -425,3 +425,18 @@ def test_labeling_buttons_need_the_model_not_an_anthropic_key(admin_client, main
     assert r.status_code == 503 and "labeling model" in r.json()["error"]
     monkeypatch.setattr(main_module, "_load_onnx_model", lambda: True)
     assert admin_client.post(url, json=body).status_code != 503              # runs without any Anthropic key
+
+
+def test_the_code_page_can_email_a_new_code(client, mail, main_module, monkeypatch):
+    page = _sign_in(client).text
+    ch = _challenge(page)
+    n = len(mail.sent)
+    r = client.post("/admin/resend-code", data={"challenge": ch})
+    assert "seconds" in r.text and len(mail.sent) == n                                   # not right away
+    now = main_module._time.time()
+    monkeypatch.setattr(main_module._time, "time", lambda: now + 31)
+    r = client.post("/admin/resend-code", data={"challenge": ch})
+    assert "We emailed you a new code" in r.text and len(mail.sent) == n + 1 and _challenge(r.text) == ch
+    r = client.post("/admin/verify", data={"challenge": ch, "code": _code_from(mail)}, follow_redirects=False)
+    assert r.status_code == 303
+    assert "expired" in client.post("/admin/resend-code", data={"challenge": "made-up"}).text

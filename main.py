@@ -3711,6 +3711,30 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+# "Send a new code" on any code screen (studio sign-in, POS, store screens, Upload Station):
+# the same request gets a fresh code and another 10 minutes, at most every 30 seconds, 5 times.
+RESEND_WAIT_SECONDS = 30
+RESEND_MAX          = 5
+
+
+def _renew_code(challenges: dict, challenge: str) -> tuple:
+    """(new code, "") for a pending request still open, else (None, why not)."""
+    now = _time.time()
+    pending = challenges.get(challenge)
+    if not pending or pending["expires"] < now:
+        challenges.pop(challenge, None)
+        return None, "That request has expired — start again"
+    sent = pending.get("sent", pending["expires"] - LOGIN_CODE_MINUTES * 60)
+    if now - sent < RESEND_WAIT_SECONDS:
+        return None, f"Wait {int(RESEND_WAIT_SECONDS - (now - sent)) + 1} seconds, then ask again"
+    if pending.get("resends", 0) >= RESEND_MAX:
+        return None, "Too many new codes — start again"
+    code = f"{secrets.randbelow(10 ** 6):06d}"
+    pending.update(code=_token_hash(code), expires=now + LOGIN_CODE_MINUTES * 60, tries=0,
+                   resends=pending.get("resends", 0) + 1, sent=now)
+    return code, ""
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
