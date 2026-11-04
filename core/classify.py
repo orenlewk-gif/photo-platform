@@ -54,8 +54,25 @@ def _sigmoid(x: np.ndarray) -> np.ndarray:
     return 1.0 / (1.0 + np.exp(-x))
 
 
+# How sure the model was, kept with each photo it labels: its top guesses for jacket and pants
+# (each color 0-1, read on its own) and the ski/snowboard split. The search uses them to also show
+# a photo under a color the model nearly picked. Folded shades count as their color (the higher score).
+SCORES_KEPT = 3            # guesses kept per part
+SCORE_FLOOR = 0.03         # guesses below this aren't kept
+
+
+def _top_scores(prob: np.ndarray, colors: list) -> list:
+    best: dict = {}
+    for c, pr in zip(colors, prob):
+        c = merged_colors(["blue" if c == "teal" else c])[0]
+        best[c] = max(best.get(c, 0.0), float(pr))
+    ranked = sorted(best.items(), key=lambda kv: kv[1], reverse=True)[:SCORES_KEPT]
+    return [[c, round(pr, 2)] for c, pr in ranked if pr >= SCORE_FLOOR]
+
+
 def decide(j_logits, p_logits, s_logits, meta: dict) -> dict:
-    """Turn the model's scores for one photo into labels (the decision rules above)."""
+    """Turn the model's scores for one photo into labels (the decision rules above), plus how sure
+    it was ("scores")."""
     colors, sports = meta["all_colors"], meta["sports"]
     j_prob, p_prob = _sigmoid(np.asarray(j_logits)), _sigmoid(np.asarray(p_logits))
     j_sorted = np.argsort(j_prob)[::-1]
@@ -66,7 +83,11 @@ def decide(j_logits, p_logits, s_logits, meta: dict) -> dict:
     pants = [colors[int(np.argmax(p_prob))]]
     sport = sports[int(np.argmax(s_logits))]
     remap = lambda cs: merged_colors(['blue' if c == 'teal' else c for c in cs])    # camo -> green, tan -> brown
-    return {"sport": sport, "jacket_colors": remap(jacket), "pants_colors": remap(pants)}
+    s = np.asarray(s_logits, dtype=np.float64)
+    s_prob = np.exp(s - s.max()); s_prob /= s_prob.sum()
+    scores = {"jacket": _top_scores(j_prob, colors), "pants": _top_scores(p_prob, colors),
+              "sport": {sp: round(float(pr), 2) for sp, pr in zip(sports, s_prob) if pr >= SCORE_FLOOR}}
+    return {"sport": sport, "jacket_colors": remap(jacket), "pants_colors": remap(pants), "scores": scores}
 
 
 class ColorModel:

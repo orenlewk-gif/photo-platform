@@ -363,6 +363,8 @@ def _apply_labels(item: dict, colors: dict | None) -> None:
         # accuracy report can compare what the model said with what the photo really shows
         item["model_labels"]  = {"model": MODEL_LABEL, "sport": item["sport"],
                                  "jacket": list(item["jacket_colors"]), "pants": list(item["pants_colors"])}
+        if colors.get("scores"):            # how sure it was (core/classify.decide), for the forgiving search
+            item["model_labels"]["scores"] = colors["scores"]
         print(f"{MODEL_LABEL}: {item['path'].split('/')[-1]} → sport={item['sport']} jacket={item['jacket_colors']} pants={item['pants_colors']}")
 
 

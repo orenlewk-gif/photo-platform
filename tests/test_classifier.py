@@ -53,7 +53,21 @@ def test_second_jacket_color_only_when_sure_and_close(model):
 
 def test_pants_get_one_color_and_teal_reads_as_blue(model):
     out = model(jacket={"teal": 0.9}, pants={"black": 0.8, "gray": 0.75}, sport="snowboard")
-    assert out == {"sport": "snowboard", "jacket_colors": ["blue"], "pants_colors": ["black"]}
+    assert {k: out[k] for k in ("sport", "jacket_colors", "pants_colors")} == \
+        {"sport": "snowboard", "jacket_colors": ["blue"], "pants_colors": ["black"]}
+
+
+def test_how_sure_the_model_was_is_kept_with_its_answer(model, main_module, live_photos):
+    out = model(jacket={"red": 0.81, "orange": 0.42, "tan": 0.20, "brown": 0.10}, pants={"black": 0.6, "gray": 0.5})
+    assert out["jacket_colors"] == ["red"]
+    assert out["scores"]["jacket"] == [["red", 0.81], ["orange", 0.42], ["brown", 0.2]]    # tan counts as brown
+    assert out["scores"]["pants"][:2] == [["black", 0.6], ["gray", 0.5]]
+    assert out["scores"]["sport"]["ski"] > 0.9
+    path = "images/2026-12-20/el-dorado-action/S1.jpg"
+    live_photos([{"path": path, "date": "2026-12-20", "location": "El Dorado Action", "group": "", "last_name": ""}])
+    item = next(i for i in main_module.data if i["path"] == path)
+    main_module._apply_labels(item, out)
+    assert item["model_labels"]["scores"] == out["scores"] and "scores" not in item
 
 
 def test_labels_are_stamped_with_the_model_version(main_module):
