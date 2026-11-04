@@ -144,3 +144,15 @@ def test_send_a_new_code_on_the_new_device_screen(main_module, codes_on, monkeyp
         assert c.post("/api/pos/device-verify", json={"challenge": ch, "code": first}).status_code == 401
     assert c.post("/api/pos/device-verify", json={"challenge": ch, "code": codes_on[-1][0]}).status_code == 200
     assert c.post("/api/pos/device-resend", json={"challenge": "made-up"}).json()["restart"]
+
+
+def test_home_screen_icons_for_iphones_and_ipads(main_module, client):
+    """Added to an iPad's home screen, the POS, store screens and Upload Station show the logo, not a letter."""
+    pos = client.get(f"/p/{main_module._device_path('pos')}").text
+    assert '<link rel="apple-touch-icon" href="/static/pos-icon-180.png">' in pos
+    store = client.get(f"/s/{main_module._device_path('store')}").text
+    station = client.get(f"/u/{main_module._device_path('station')}").text
+    assert "store-icon-180.png" in store and "upload-icon-180.png" in station   # also on the not-yet-approved screens
+    for f in ("pos-icon-180.png", "store-icon-180.png", "upload-icon-180.png", "favicon-180.png"):
+        r = client.get(f"/static/{f}")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/png"

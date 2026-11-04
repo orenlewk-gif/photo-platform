@@ -43,7 +43,9 @@ def _store_page() -> str:
     # The app file goes in the page's head, where Chrome looks for it (its Install button)
     if "</head>" not in html:
         raise RuntimeError("templates/index.html has no </head>")
-    html = html.replace("</head>", f'<link rel="manifest" href="{home}/manifest.json">\n</head>', 1)
+    # iPhones and iPads take the home-screen icon from apple-touch-icon (without it: a letter)
+    html = html.replace("</head>", f'<link rel="manifest" href="{home}/manifest.json">\n'
+                                   '<link rel="apple-touch-icon" href="/static/store-icon-180.png?v=2">\n</head>', 1)
     return html.replace(_STORE_MARK, additions, 1)
 
 
