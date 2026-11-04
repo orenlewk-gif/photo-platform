@@ -5,7 +5,7 @@ from PIL import Image
 from core.checkout import CheckoutError
 from core.images import fix_orientation
 from core.pricing import ZIP_LOCS_SET
-from core.search import COLOR_ENUM, color_family, merged_colors
+from core.search import COLOR_ENUM, color_family, merged_colors, search_colors, search_sports
 from core.text import clean_location
 from core.text import folder_key as _folder_key
 from core.text import item_group_from_path as _item_group_from_path
@@ -321,8 +321,10 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
         if grp_lower and (item.get("group", "") or item.get("last_name", "")).strip().lower() != grp_lower:
             continue
         _valid = set(COLOR_ENUM) - {"none", "unclear"}
-        jcs = [c for c in merged_colors(item.get("jacket_colors") or []) if c in _valid]
-        pcs = [c for c in merged_colors(item.get("pants_colors")  or []) if c in _valid]
+        # what a search finds the photo under: its labels and the model's close guesses
+        item_j, item_p = search_colors(item, "jacket"), search_colors(item, "pants")
+        jcs = [c for c in merged_colors(item_j) if c in _valid]
+        pcs = [c for c in merged_colors(item_p) if c in _valid]
         for c in jcs: jacket.add(c)
         for c in pcs: pants.add(c)
         if item.get("ski_instructor"): has_instructor = True
@@ -335,10 +337,11 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
                 if jc1 != jc2:
                     j_to_j.setdefault(jc1, set()).add(jc2)
         sp = item.get("sport")
-        if sp == "ski":        has_ski = True
-        elif sp == "snowboard": has_snowboard = True
-        item_j, item_p = item.get("jacket_colors") or [], item.get("pants_colors") or []
+        sports = search_sports(item)
+        if "ski" in sports:       has_ski = True
+        if "snowboard" in sports: has_snowboard = True
         key = (sp if sp in ("ski", "snowboard") else "",
+               tuple(x for x in ("ski", "snowboard") if x in sports and x != sp),   # the other one, if the model was close
                tuple(c for c in chips if any(x in color_family(c) for x in item_j)),
                tuple(c for c in chips if any(x in color_family(c) for x in item_p)),
                bool(item.get("ski_instructor")))
@@ -357,7 +360,8 @@ def get_folder_colors(date: str = Query(""), location: str = Query(""), group: s
             "pants_to_jacket":  {pc: sort_colors(js) for pc, js in p_to_j.items()},
             "jacket_to_jacket": {jc: sort_colors(js) for jc, js in j_to_j.items()},
         },
-        "profiles": [{"s": k[0], "j": list(k[1]), "p": list(k[2]), "i": k[3], "n": n} for k, n in profiles.items()],
+        "profiles": [{"s": k[0], **({"s2": list(k[1])} if k[1] else {}), "j": list(k[2]), "p": list(k[3]), "i": k[4], "n": n}
+                     for k, n in profiles.items()],
         # each photo's profile (its number in the list above), by file name, for the time filter
         "photo_files": [fn for fn, _ in photo_keys],
         "photo_profile": [profile_no[k] for _, k in photo_keys],

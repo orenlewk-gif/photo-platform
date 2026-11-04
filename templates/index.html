@@ -2376,7 +2376,7 @@ async function selectFilterDate(date) {
 // Every filter choice (sport, jacket colors, pants, instructor) stays available only while it
 // still leads to photos together with everything else picked, whatever order they're picked in
 function _profileMatches(pr, f) {
-  if (f.sport && pr.s !== f.sport) return false;
+  if (f.sport && pr.s !== f.sport && !(pr.s2 || []).includes(f.sport)) return false;   // s2: the other sport, when the model was close
   if (f.instructor && !pr.i) return false;
   if (f.pants && !pr.p.includes(f.pants)) return false;
   return f.jackets.every(j => pr.j.includes(j));

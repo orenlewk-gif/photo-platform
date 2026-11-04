@@ -38,6 +38,32 @@ def color_family(color: str) -> set:
     return COLOR_FAMILY.get(color, {color})
 
 
+# Forgiving search: a photo also counts for a color the labeling model nearly picked. The model's
+# guesses are kept with each photo it labeled (model_labels.scores, core/classify.decide); one at
+# or above the line makes the photo show for that color too, in its usual place (shot order).
+# Photos without kept guesses (labeled before they were kept, or by hand) match their labels only.
+CLOSE_LINE = {"jacket": 0.20, "pants": 0.20, "sport": 0.20}
+
+
+def search_colors(item: dict, part: str) -> list:
+    """The colors a search finds this photo under for "jacket" or "pants": its labels, then the
+    model's close guesses."""
+    out = list(item.get(f"{part}_colors") or [])
+    for c, score in ((item.get("model_labels") or {}).get("scores") or {}).get(part) or []:
+        if score >= CLOSE_LINE[part] and c not in out:
+            out.append(c)
+    return out
+
+
+def search_sports(item: dict) -> set:
+    """The sports a search finds this photo under: its label, and the other one if the model was close."""
+    out = {item.get("sport")} if item.get("sport") else set()
+    for sp, score in (((item.get("model_labels") or {}).get("scores") or {}).get("sport") or {}).items():
+        if sp in ("ski", "snowboard") and score >= CLOSE_LINE["sport"]:
+            out.add(sp)
+    return out
+
+
 def filter_by_labels(pool, date, location, group, jacket_colors, pants_color, sport, ski_instructor) -> list:
     """Live photos matching the colour chips / sport (every chosen jacket colour must match),
     in filename order. location is the cleaned folder name."""
@@ -51,12 +77,12 @@ def filter_by_labels(pool, date, location, group, jacket_colors, pants_color, sp
             continue
         if group and item.get("group", "").strip().lower() != group.lower():
             continue
-        item_jc = item.get("jacket_colors") or []
+        item_jc = search_colors(item, "jacket")
         if jacket_colors and not all(any(c in color_family(jf) for c in item_jc) for jf in jacket_colors):
             continue
-        if pants_color and not any(c in color_family(pants_color) for c in (item.get("pants_colors") or [])):
+        if pants_color and not any(c in color_family(pants_color) for c in search_colors(item, "pants")):
             continue
-        if sport and item.get("sport") != sport:
+        if sport and sport not in search_sports(item):
             continue
         if ski_instructor and not item.get("ski_instructor"):
             continue
