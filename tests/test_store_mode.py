@@ -324,3 +324,14 @@ def test_store_mode_lives_at_its_random_address(owner_client, main_module, email
     old = _home(main_module)
     owner_client.post("/api/admin/device-links/store/new")
     assert admin_client.get(old).status_code == 404 and admin_client.get(_home(main_module)).status_code == 200
+
+
+def test_an_approved_screen_carries_its_approval_into_the_installed_app(main_module, emails):
+    import re
+    c = TestClient(main_module.app)
+    _approve(c, emails)
+    p = re.search(r"searchParams.set\('pass','([A-Za-z0-9_-]+)'\)", c.get(_home(main_module)).text).group(1)
+    app = TestClient(main_module.app)
+    r = app.get(f"{_home(main_module)}?pass={p}", follow_redirects=False)
+    assert r.status_code == 303 and main_module.STORE_SCREEN_COOKIE in app.cookies
+    assert "window.STORE_MODE = true" in app.get(_home(main_module)).text

@@ -234,3 +234,24 @@ def test_the_studio_still_uploads_and_shows_in_todays_list(main_module, emails, 
     assert g["by"] == ["Studio"] and g["photos"][0]["path"] == keys[0]
     page = admin_client.get("/admin/dashboard")
     assert page.status_code == 200 and '<div class="upload-card">' in page.text and "<!--upload-form-->" not in page.text
+
+
+def test_an_approved_computer_carries_its_approval_into_the_installed_app(main_module, emails):
+    """Safari's Add to Dock (and an iPad's Add to Home Screen) make an app with its own cookies:
+    the page's one-time pass approves the app too, once, from the same internet address."""
+    import re
+    from fastapi.testclient import TestClient
+    home = f"/u/{_path(main_module)}"
+    safari = _approve(TestClient(main_module.app), main_module, emails)
+    page = safari.get(home).text
+    p = re.search(r"searchParams.set\('pass','([A-Za-z0-9_-]+)'\)", page).group(1)
+    assert "?pass=" in safari.get(f"{home}/manifest.json").json()["start_url"]
+    elsewhere = TestClient(main_module.app, headers={"X-Forwarded-For": "203.0.113.9"})
+    assert elsewhere.get(f"{home}?pass={p}", follow_redirects=False).status_code == 403    # another address
+    app = TestClient(main_module.app)                                                          # the Dock app
+    r = app.get(f"{home}?pass={p}", follow_redirects=False)
+    assert r.status_code == 303 and main_module.UPLOAD_STATION_COOKIE in app.cookies
+    assert app.get(home).status_code == 200                                                    # approved, no code
+    again = TestClient(main_module.app)
+    assert again.get(f"{home}?pass={p}", follow_redirects=False).status_code == 403            # used once
+    assert "?pass=" not in TestClient(main_module.app).get(f"{home}/manifest.json").json()["start_url"]

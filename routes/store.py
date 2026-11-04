@@ -9,7 +9,7 @@ import secrets
 import time as _time
 
 from fastapi import APIRouter, BackgroundTasks, Body, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import main
 from core.pages import render_page
@@ -59,25 +59,34 @@ def store_page(path: str, request: Request, background: BackgroundTasks):
     if not main._is_device_path("store", path):
         return _not_found()
     screen = main._store_screen(request)
+    if not screen:
+        token = main._claim_device_pass(request, main.STORE_SCREEN_COOKIE)   # opened as an installed app
+        if token:
+            resp = RedirectResponse(f"/s/{path}", status_code=303)
+            resp.set_cookie(main.STORE_SCREEN_COOKIE, token, httponly=True, samesite="lax",
+                            max_age=main.STORE_SCREEN_DAYS * 86400)
+            return resp
     if screen:
         background.add_task(main._touch_store_screen, screen[0])
-        return HTMLResponse(_store_page(), headers=_NO_INDEX)
+        html = main._with_pass_in_address(_store_page(), main._device_pass_for(request, main.STORE_SCREEN_COOKIE))
+        return HTMLResponse(html, headers=_NO_INDEX)
     if main._admin_authed(request):
         return HTMLResponse(_store_page(), headers=_NO_INDEX)
     return _store_locked(request, background)
 
 
 @router.get("/s/{path}/manifest.json")
-def store_manifest(path: str):
+def store_manifest(path: str, request: Request):
     """Lets Chrome install store mode as an app (its own window and Dock icon), like the POS and the
     Upload Station. Registered before /s/<path>/<partner> so this address isn't taken for a partner."""
     if not main._is_device_path("store", path):
         return _not_found()
     home = main._device_home("store")
+    p = main._device_pass_for(request, main.STORE_SCREEN_COOKIE) if main._store_screen(request) else ""
     return JSONResponse({
         "name": "Crystal Images Store",
         "short_name": "CI Store",
-        "start_url": home,
+        "start_url": home + (f"?pass={p}" if p else ""),
         "scope": home,
         "display": "standalone",
         "background_color": "#093A52",

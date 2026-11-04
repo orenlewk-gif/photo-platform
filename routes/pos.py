@@ -10,6 +10,7 @@ from fastapi import Query
 from fastapi import Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.responses import JSONResponse
 
 from fastapi import APIRouter
@@ -337,11 +338,28 @@ def _not_found():
     return JSONResponse(status_code=404, content={"detail": "Not Found"})
 
 
+def _pos_device_cookie_ok(request: Request) -> bool:
+    """This browser holds an approved POS device cookie (not just a studio sign-in)."""
+    token = request.cookies.get(main.POS_DEVICE_COOKIE, "")
+    dev = main._load_admin_auth()["pos_devices"].get(main._token_hash(token)) if token else None
+    return bool(dev) and dev.get("expires", "") > main._now_iso()
+
+
 @router.get("/p/{path}", response_class=HTMLResponse)
-def pos_page(path: str):
+def pos_page(path: str, request: Request):
     if not main._is_device_path("pos", path):
         return _not_found()
-    return HTMLResponse(_pos_page(main._device_home("pos")), headers={"X-Robots-Tag": "noindex, nofollow"})
+    if not _pos_device_cookie_ok(request):
+        token = main._claim_device_pass(request, main.POS_DEVICE_COOKIE)   # opened from the home screen
+        if token:
+            resp = RedirectResponse(f"/p/{path}", status_code=303)
+            resp.set_cookie(main.POS_DEVICE_COOKIE, token, httponly=True, samesite="lax",
+                            max_age=main.POS_DEVICE_DAYS * 86400)
+            return resp
+    html = _pos_page(main._device_home("pos"))
+    if _pos_device_cookie_ok(request):
+        html = main._with_pass_in_address(html, main._device_pass_for(request, main.POS_DEVICE_COOKIE))
+    return HTMLResponse(html, headers={"X-Robots-Tag": "noindex, nofollow", "Cache-Control": "no-store"})
 
 
 @router.get("/pos", response_class=HTMLResponse)
@@ -354,14 +372,15 @@ def pos_square_return(request: Request):
 
 
 @router.get("/p/{path}/manifest.json")
-def pos_manifest(path: str):
+def pos_manifest(path: str, request: Request):
     if not main._is_device_path("pos", path):
         return _not_found()
     home = main._device_home("pos")
+    p = main._device_pass_for(request, main.POS_DEVICE_COOKIE) if _pos_device_cookie_ok(request) else ""
     return JSONResponse({
         "name": "Crystal Images POS",
         "short_name": "CI POS",
-        "start_url": home,
+        "start_url": home + (f"?pass={p}" if p else ""),
         "scope": home,
         "display": "standalone",
         "background_color": "#082f44",
@@ -370,7 +389,7 @@ def pos_manifest(path: str):
             {"src": "/static/pos-icon-192.png", "sizes": "192x192", "type": "image/png"},
             {"src": "/static/pos-icon-512.png", "sizes": "512x512", "type": "image/png"},
         ]
-    })
+    }, headers={"Cache-Control": "no-store"})            # its one-time pass is fresh each time
 
 
 @router.get("/api/pos/download-qr")

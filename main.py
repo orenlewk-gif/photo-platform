@@ -1406,6 +1406,53 @@ def _approve_upload_station(name: str, info: dict) -> str:
     return token
 
 
+# ── Carrying an approval into an installed app ─────────────────────────────────
+# Safari's "Add to Dock" on a Mac and "Add to Home Screen" on an iPad make an app with its own
+# cookies, so a computer approved in Safari looked new again inside the app. An approved page's
+# address and app file carry a one-time pass (30 minutes, same internet address, used once):
+# the app opens with it and gets the same approval, no second code.
+DEVICE_PASS_MINUTES = 30
+_device_passes: dict = {}          # pass -> {"cookie", "token", "ip", "expires"}
+_device_passes_lock = threading.Lock()
+
+
+def _device_pass_for(request: Request, cookie_name: str) -> str:
+    """A one-time pass carrying this browser's approval cookie, or "" when it has none."""
+    token = request.cookies.get(cookie_name, "")
+    if not token:
+        return ""
+    now = _time.time()
+    with _device_passes_lock:
+        for k in [k for k, v in _device_passes.items() if v["expires"] < now]:
+            _device_passes.pop(k, None)
+        p = secrets.token_urlsafe(18)
+        _device_passes[p] = {"cookie": cookie_name, "token": token, "ip": _client_ip(request),
+                             "expires": now + DEVICE_PASS_MINUTES * 60}
+    return p
+
+
+def _claim_device_pass(request: Request, cookie_name: str) -> str:
+    """The approval token a pass in the address carries (then the pass is spent), or ""."""
+    p = str(request.query_params.get("pass") or "")
+    if not p:
+        return ""
+    with _device_passes_lock:
+        rec = _device_passes.get(p)
+        if (not rec or rec["expires"] < _time.time() or rec["cookie"] != cookie_name
+                or rec["ip"] != _client_ip(request)):
+            return ""
+        _device_passes.pop(p, None)
+    return rec["token"]
+
+
+def _with_pass_in_address(html: str, p: str) -> str:
+    """The page puts its pass in the address bar, where "Add to Dock / Home Screen" picks it up."""
+    if not p or "</head>" not in html:
+        return html
+    return html.replace("</head>", "<script>try{var u=new URL(location.href);u.searchParams.set('pass','"
+                        + p + "');history.replaceState(history.state,'',u)}catch(e){}</script>\n</head>", 1)
+
+
 def _touch_upload_station(station_id: str) -> None:
     """Note when a station was last used (saved at most once an hour)."""
     d = _load_admin_auth()

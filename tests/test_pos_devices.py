@@ -156,3 +156,15 @@ def test_home_screen_icons_for_iphones_and_ipads(main_module, client):
     for f in ("pos-icon-180.png", "store-icon-180.png", "upload-icon-180.png", "favicon-180.png"):
         r = client.get(f"/static/{f}")
         assert r.status_code == 200 and r.headers["content-type"] == "image/png"
+
+
+def test_an_approved_ipad_carries_its_approval_into_the_home_screen_app(main_module, codes_on):
+    import re
+    c = TestClient(main_module.app)
+    _approve(c, codes_on)
+    home = f"/p/{main_module._device_path('pos')}"
+    p = re.search(r"searchParams.set\('pass','([A-Za-z0-9_-]+)'\)", c.get(home).text).group(1)
+    app = TestClient(main_module.app)
+    assert app.get(f"{home}?pass={p}", follow_redirects=False).status_code == 303
+    assert main_module.POS_DEVICE_COOKIE in app.cookies
+    assert _pin(app).status_code == 200 and len(codes_on) == 1                 # just the PIN, no second code

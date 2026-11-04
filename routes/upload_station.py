@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, Body, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import main
 from core.pages import render_page, with_upload_form
@@ -41,23 +41,34 @@ def station_page(path: str, request: Request, background: BackgroundTasks):
     if not main._is_device_path("station", path):
         return _not_found()
     station = main._upload_station(request)
+    if not station:
+        token = main._claim_device_pass(request, main.UPLOAD_STATION_COOKIE)   # opened as an installed app
+        if token:
+            resp = RedirectResponse(f"/u/{path}", status_code=303)
+            resp.set_cookie(main.UPLOAD_STATION_COOKIE, token, httponly=True, samesite="lax",
+                            max_age=main.UPLOAD_STATION_DAYS * 86400)
+            return resp
     if station:
         background.add_task(main._touch_upload_station, station[0])
-        return HTMLResponse(_station_page(path, station[1].get("name", "")), headers=_NO_INDEX)
+        html = _station_page(path, station[1].get("name", ""))
+        html = main._with_pass_in_address(html, main._device_pass_for(request, main.UPLOAD_STATION_COOKIE))
+        return HTMLResponse(html, headers=_NO_INDEX)
     if main._admin_authed(request):                              # the owner looking at it
         return HTMLResponse(_station_page(path, "Studio"), headers=_NO_INDEX)
     return HTMLResponse(open("templates/upload_station_locked.html").read(), status_code=403, headers=_NO_INDEX)
 
 
 @router.get("/u/{path}/manifest.json")
-def station_manifest(path: str):
-    """Lets Chrome install the station as an app (its own window and Dock icon), like the POS."""
+def station_manifest(path: str, request: Request):
+    """Lets Chrome install the station as an app (its own window and Dock icon), like the POS.
+    From an approved computer the app opens with a one-time pass (it keeps its own cookies)."""
     if not main._is_device_path("station", path):
         return _not_found()
+    p = main._device_pass_for(request, main.UPLOAD_STATION_COOKIE) if main._upload_station(request) else ""
     return JSONResponse({
         "name": "Crystal Images Upload Station",
         "short_name": "CI Upload",
-        "start_url": f"/u/{path}",
+        "start_url": f"/u/{path}" + (f"?pass={p}" if p else ""),
         "scope": f"/u/{path}",
         "display": "standalone",
         "background_color": "#0c2336",
