@@ -149,7 +149,8 @@ def test_send_a_new_code_on_the_new_device_screen(main_module, codes_on, monkeyp
 def test_home_screen_icons_for_iphones_and_ipads(main_module, client):
     """Added to an iPad's home screen, the POS, store screens and Upload Station show the logo, not a letter."""
     pos = client.get(f"/p/{main_module._device_path('pos')}").text
-    assert '<link rel="apple-touch-icon" href="/static/pos-icon-180.png">' in pos
+    assert '<link rel="apple-touch-icon" sizes="180x180" href="/static/pos-icon-180.png?v=3">' in pos
+    assert client.get("/apple-touch-icon.png").headers["content-type"] == "image/png"
     store = client.get(f"/s/{main_module._device_path('store')}").text
     station = client.get(f"/u/{main_module._device_path('station')}").text
     assert "store-icon-180.png" in store and "upload-icon-180.png" in station   # also on the not-yet-approved screens

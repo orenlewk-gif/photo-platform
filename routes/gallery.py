@@ -529,6 +529,14 @@ def favicon():
     return FileResponse("static/favicon.ico", media_type="image/x-icon", headers={"Cache-Control": "public, max-age=86400"})
 
 
+@router.get("/apple-touch-icon.png", include_in_schema=False)
+@router.get("/apple-touch-icon-precomposed.png", include_in_schema=False)
+def apple_touch_icon():
+    """Where iPhones and iPads look for a home-screen icon when a page doesn't name one: the logo."""
+    from fastapi.responses import FileResponse
+    return FileResponse("static/favicon-180.png", media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
+
+
 @router.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(open("templates/index.html").read())

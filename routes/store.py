@@ -45,7 +45,7 @@ def _store_page() -> str:
         raise RuntimeError("templates/index.html has no </head>")
     # iPhones and iPads take the home-screen icon from apple-touch-icon (without it: a letter)
     html = html.replace("</head>", f'<link rel="manifest" href="{home}/manifest.json">\n'
-                                   '<link rel="apple-touch-icon" href="/static/store-icon-180.png?v=2">\n</head>', 1)
+                                   '<link rel="apple-touch-icon" sizes="180x180" href="/static/store-icon-180.png?v=3">\n</head>', 1)
     return html.replace(_STORE_MARK, additions, 1)
 
 
