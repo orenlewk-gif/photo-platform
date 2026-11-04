@@ -1213,7 +1213,7 @@ STORE_SCREEN_COOKIE = "ci_store_screen"
 STORE_SCREEN_DAYS   = 730
 STORE_NAME_MAX      = 40
 _store_challenges: dict = {}      # challenge id -> pending code (in memory, 10 minutes)
-_store_request_limiter = _RateLimiter(max_calls=3, window=3600)      # access requests per address
+_store_request_limiter = _RateLimiter(max_calls=12, window=3600)     # access requests per address (the whole shop shares one)
 _store_notice_limiter  = _RateLimiter(max_calls=1, window=3600)      # blocked-visit emails per address
 _store_notice_daily    = _RateLimiter(max_calls=20, window=86400)    # blocked-visit emails in all, a day
 
@@ -1322,7 +1322,7 @@ def _note_blocked_store_visit(info: dict) -> None:
 UPLOAD_STATION_COOKIE = "ci_upload_station"
 UPLOAD_STATION_DAYS   = 730
 _station_challenges: dict = {}    # challenge id -> pending code (in memory, 10 minutes)
-_station_request_limiter = _RateLimiter(max_calls=3, window=3600)     # access requests per address
+_station_request_limiter = _RateLimiter(max_calls=12, window=3600)    # access requests per address (the whole shop shares one)
 
 
 def _upload_station(request: Request) -> tuple[str, dict] | None:

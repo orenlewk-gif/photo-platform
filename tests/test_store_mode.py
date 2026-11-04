@@ -111,8 +111,9 @@ def test_wrong_codes_run_out(main_module, emails):
 
 def test_asking_for_codes_is_limited(main_module, emails):
     c = TestClient(main_module.app)
-    codes = [c.post("/api/store/request", json={"name": "Kiosk", "path": _path(main_module)}).status_code for _ in range(4)]
-    assert codes == [200, 200, 200, 429] and len(emails) == 3
+    n = main_module._store_request_limiter.max_calls        # per hour, per address (the whole shop shares one)
+    codes = [c.post("/api/store/request", json={"name": "Kiosk", "path": _path(main_module)}).status_code for _ in range(n + 1)]
+    assert codes == [200] * n + [429] and len(emails) == n
 
 
 def test_the_owner_signed_in_to_the_studio_can_look_at_store_mode(admin_client, emails, main_module):
