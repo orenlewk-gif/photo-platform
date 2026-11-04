@@ -42,7 +42,7 @@ def color_family(color: str) -> set:
 # guesses are kept with each photo it labeled (model_labels.scores, core/classify.decide); one at
 # or above the line makes the photo show for that color too, in its usual place (shot order).
 # Photos without kept guesses (labeled before they were kept, or by hand) match their labels only.
-CLOSE_LINE = {"jacket": 0.20, "pants": 0.20, "sport": 0.20}
+CLOSE_LINE = {"jacket": 0.10, "pants": 0.10, "sport": 0.20}   # Oren 2026-11-04: rather more photos than a miss (the time filter narrows)
 
 
 def search_colors(item: dict, part: str) -> list:
