@@ -81,6 +81,12 @@ def stripe(main_module, monkeypatch, live_photos):
     monkeypatch.setattr(main_module, "_send_online_order_email", lambda order, made: sent.append((order["id"], made)) or True)
     fake.emails = sent
     yield fake
+    # The fee is noted in the background after a payment and saves the order again: wait for it,
+    # or it can put a deleted test order back after the clean-up below (other tests' reports see it)
+    import threading
+    for t in threading.enumerate():
+        if getattr(t, "_target", None) is main_module._note_stripe_fee:
+            t.join(10)
     main_module._checkout_settings_doc.save({})
     for o in S3.list_objects_v2(Bucket=BUCKET, Prefix="online_orders/").get("Contents", []):   # no test orders left
         S3.delete_object(Bucket=BUCKET, Key=o["Key"])                                          # for other tests' Orders pages
