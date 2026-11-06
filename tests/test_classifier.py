@@ -71,7 +71,23 @@ def test_how_sure_the_model_was_is_kept_with_its_answer(model, main_module, live
 
 
 def test_labels_are_stamped_with_the_model_version(main_module):
-    assert main_module.MODEL_LABEL == "model_v5a"
+    assert main_module.MODEL_LABEL == "model_v6"
+
+
+def test_a_model_without_a_best_score_still_labels_the_first_photo(tmp_path, monkeypatch):
+    """v6's meta file has no best_score; loading it must not fail the first photo after a restart."""
+    import json, sys, types
+    from io import BytesIO
+    from PIL import Image
+    from core.classify import ColorModel
+    fake = _FakeModel(jacket={"red": 0.9}, pants={"black": 0.9})
+    monkeypatch.setitem(sys.modules, "onnxruntime", types.SimpleNamespace(
+        SessionOptions=lambda: types.SimpleNamespace(), InferenceSession=lambda *a, **k: fake))
+    (tmp_path / "m.onnx").write_bytes(b"x")
+    (tmp_path / "m_meta.json").write_text(json.dumps({"version": "v6", "all_colors": COLORS, "sports": SPORTS}))
+    buf = BytesIO(); Image.new("RGB", (1200, 800), (200, 30, 30)).save(buf, "JPEG")
+    out = ColorModel(str(tmp_path / "m.onnx"), str(tmp_path / "m_meta.json")).classify(buf.getvalue())
+    assert out and out["jacket_colors"] == ["red"] and out["pants_colors"] == ["black"]
 
 
 def test_camo_reads_as_green(model):

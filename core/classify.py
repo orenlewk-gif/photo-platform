@@ -9,9 +9,9 @@ from PIL import Image
 from core.search import merged_colors
 
 # Which trained model labels new photos (files <name>.onnx, .onnx.data, _meta.json, kept in storage
-# under models/). Set COLOR_MODEL=model_v4a (or model_v3) on the server to go back. The name is also stamped on
+# under models/). Set COLOR_MODEL=model_v5a (or model_v4a) on the server to go back. The name is also stamped on
 # each photo the model labels, so it's always known which version labeled what.
-MODEL_LABEL = os.getenv("COLOR_MODEL", "model_v5a").strip() or "model_v5a"
+MODEL_LABEL = os.getenv("COLOR_MODEL", "model_v6").strip() or "model_v6"
 
 # Decision rules, tuned 2026-10-18 on 2,000 labeled photos v3 never trained on (6/6 + 6/7):
 # photos needing no fix went from 60.7% to 62.9%, and every folder improved.
@@ -113,7 +113,9 @@ class ColorModel:
                 self.session = ort.InferenceSession(self.onnx_path, sess_options=opts, providers=["CPUExecutionProvider"])
                 with open(self.meta_path) as f:
                     self.meta = json.load(f)
-                print(f"ONNX model loaded (best_score={self.meta.get('best_score', '?'):.3f})")
+                score = self.meta.get("best_score")      # not in every model's meta (v6 has none)
+                print(f"ONNX model loaded ({self.meta.get('version') or os.path.basename(self.onnx_path)}"
+                      + (f", best_score={score:.3f})" if isinstance(score, (int, float)) else ")"))
                 return True
             except Exception as e:
                 print(f"ONNX load failed: {e}")
