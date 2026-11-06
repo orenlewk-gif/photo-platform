@@ -59,3 +59,10 @@ def test_the_filters_offer_what_the_search_finds(client, photos):
     assert set(d["profiles"][f2]["j"]) == {"orange", "red"}
     f4 = d["photo_profile"][d["photo_files"].index("F04.jpg")]
     assert d["profiles"][f4]["s"] == "ski" and d["profiles"][f4]["s2"] == ["snowboard"]
+
+
+def test_the_line_is_15_percent_for_jackets_and_pants():
+    from core.search import search_colors
+    it = {"jacket_colors": ["red"], "pants_colors": ["black"],
+          "model_labels": {"scores": {"jacket": [["red", 0.8], ["orange", 0.15]], "pants": [["black", 0.9], ["gray", 0.14]]}}}
+    assert search_colors(it, "jacket") == ["red", "orange"] and search_colors(it, "pants") == ["black"]

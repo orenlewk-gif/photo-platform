@@ -42,13 +42,15 @@ def color_family(color: str) -> set:
 # guesses are kept with each photo it labeled (model_labels.scores, core/classify.decide); one at
 # or above the line makes the photo show for that color too, in its usual place (shot order).
 # Photos without kept guesses (labeled before they were kept, or by hand) match their labels only.
-CLOSE_LINE = {"jacket": 0.10, "pants": 0.10, "sport": 0.20}   # Oren 2026-11-04: rather more photos than a miss (the time filter narrows)
+CLOSE_LINE = {"jacket": 0.15, "pants": 0.15, "sport": 0.20}   # Oren: 10% on 2026-11-04 (rather more photos than a miss), 15% on 2026-11-05
 
 
 def search_colors(item: dict, part: str) -> list:
     """The colors a search finds this photo under for "jacket" or "pants": its labels, then the
     model's close guesses."""
     out = list(item.get(f"{part}_colors") or [])
+    if part in (item.get("sorted") or {}):       # Oren answered this close call: his answer only
+        return out
     for c, score in ((item.get("model_labels") or {}).get("scores") or {}).get(part) or []:
         if score >= CLOSE_LINE[part] and c not in out:
             out.append(c)
@@ -58,6 +60,8 @@ def search_colors(item: dict, part: str) -> list:
 def search_sports(item: dict) -> set:
     """The sports a search finds this photo under: its label, and the other one if the model was close."""
     out = {item.get("sport")} if item.get("sport") else set()
+    if "sport" in (item.get("sorted") or {}):
+        return out
     for sp, score in (((item.get("model_labels") or {}).get("scores") or {}).get("sport") or {}).items():
         if sp in ("ski", "snowboard") and score >= CLOSE_LINE["sport"]:
             out.add(sp)

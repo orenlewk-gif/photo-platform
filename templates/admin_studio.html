@@ -351,6 +351,7 @@ input[type=file]{display:none}
       <div style="border-top:1px solid rgba(255,255,255,.07);margin:.5rem 0"></div>
       <a onclick="openActivitiesView()" class="nav-link" id="nav-activities" style="cursor:pointer">Activities</a>
       <a onclick="openLinksView()" class="nav-link" id="nav-links" style="cursor:pointer">Links</a>
+      <a onclick="openSorterView()" class="nav-link" id="nav-sorter" style="cursor:pointer">Close calls</a>
       <a onclick="openSettingsView()" class="nav-link" id="nav-settings" style="cursor:pointer">Settings</a>
     </div>
     <div id="sidebar-scroll">
@@ -537,6 +538,11 @@ input[type=file]{display:none}
     <!-- Customers view (inline iframe) -->
     <div id="customers-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
       <iframe id="customers-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
+    </div>
+
+    <!-- Close calls view (inline iframe) -->
+    <div id="sorter-view" style="display:none;flex:1;overflow:hidden;flex-direction:column">
+      <iframe id="sorter-frame" src="" style="width:100%;flex:1;border:none;display:block;min-height:0"></iframe>
     </div>
 
     <!-- Trash view (inline iframe) -->
@@ -1364,7 +1370,7 @@ function setColCount(v) {
 }
 
 // ── View switcher ──
-const _ALL_VIEWS = ['upload','date','location','folder','partner','pricing','admin','orders','links','settings','activities','customers','trash'];
+const _ALL_VIEWS = ['upload','date','location','folder','partner','pricing','admin','orders','links','settings','activities','customers','sorter','trash'];
 // Phones: the menu is a drawer; it closes once a page is picked
 function toggleNav(open) {
   const on = open === undefined ? !document.body.classList.contains('nav-open') : open;
@@ -1394,6 +1400,7 @@ const _VIEW_URLS = {
   settings:  '/admin/dashboard/settings',
   activities:'/admin/dashboard/activities',
   customers: '/admin/dashboard/customers',
+  sorter:    '/admin/dashboard/sorter',
   trash:     '/admin/dashboard/trash',
 };
 function _pushState(view) {
@@ -1409,6 +1416,7 @@ function _restoreView(view) {
     case 'settings':   openSettingsView();   break;
     case 'activities': openActivitiesView(); break;
     case 'customers':  openCustomersView();  break;
+    case 'sorter':     openSorterView();     break;
     case 'trash':      openTrashView();      break;
     default:           showUploadView();     break;
   }
@@ -1460,6 +1468,13 @@ function openCustomersView() {
   _pushState('customers');
   const frame = document.getElementById('customers-frame');
   if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/customers'; }
+}
+function openSorterView() {
+  setView('sorter');
+  _pushState('sorter');
+  const frame = document.getElementById('sorter-frame');
+  if (!frame.dataset.loaded) { frame.dataset.loaded = '1'; frame.src = '/admin/sorter'; }
+  else frame.contentWindow?.focus();
 }
 function openTrashView() {
   setView('trash');

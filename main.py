@@ -6564,6 +6564,8 @@ from routes import stripe_checkout as _routes_stripe_checkout  # noqa: E402
 app.include_router(_routes_stripe_checkout.router)
 from routes import shipping as _routes_shipping  # noqa: E402
 app.include_router(_routes_shipping.router)
+from routes import sorter as _routes_sorter  # noqa: E402
+app.include_router(_routes_sorter.router)
 
 # Last on purpose: partner pages at /<slug> (e.g. /eaglemount) match any one-part address, so
 # every other page has to be registered before them

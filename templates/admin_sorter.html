@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<link rel="icon" type="image/png" href="/static/favicon-32.png">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Close Calls — Crystal Images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:#0c2336;color:#e8eaf0;font-size:14px;overflow:hidden}
+button{font-family:inherit}
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+
+#bar{display:flex;align-items:flex-end;gap:.25rem;padding:0 1rem;background:#07151f;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0;min-height:44px}
+.tab{background:none;border:none;color:rgba(255,255,255,.5);font-size:.84rem;font-weight:600;padding:.65rem .8rem;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.active{color:#F5C518;border-bottom-color:#F5C518}
+.tab .n{font-weight:500;color:rgba(255,255,255,.35);margin-left:.3rem}
+.tab.active .n{color:rgba(245,197,24,.7)}
+#bar-right{margin-left:auto;display:flex;align-items:center;gap:.75rem;padding-bottom:.45rem}
+#keys{font-size:.68rem;color:rgba(255,255,255,.28)}
+#undo{padding:.3rem .8rem;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.05);color:rgba(255,255,255,.7);font-size:.75rem;cursor:pointer}
+#undo:disabled{opacity:.3;cursor:default}
+
+#stage{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:.75rem 1rem .5rem;gap:.5rem}
+#photo-wrap{flex:1;min-height:0;width:100%;display:flex;align-items:center;justify-content:center;position:relative;touch-action:pan-y}
+#photo{max-width:100%;max-height:100%;object-fit:contain;border-radius:6px;background:#0a1f30;transition:transform .16s ease,opacity .16s ease;user-select:none;-webkit-user-drag:none}
+#photo.go-left{transform:translateX(-60px);opacity:0}
+#photo.go-right{transform:translateX(60px);opacity:0}
+#photo.go-up{transform:translateY(-40px);opacity:0}
+#loading{position:absolute;color:rgba(255,255,255,.3);font-size:.85rem}
+#info{font-size:.72rem;color:rgba(255,255,255,.4);text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#info b{color:rgba(255,255,255,.7);font-weight:600}
+#question{font-size:.95rem;font-weight:700;color:#e8eaf0}
+
+#answers{flex-shrink:0;padding:.5rem 1rem calc(.9rem + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:.5rem;align-items:center}
+#pair{display:flex;gap:.75rem;width:100%;max-width:640px}
+.pick{flex:1;display:flex;align-items:center;justify-content:center;gap:.6rem;padding:1rem .75rem;border-radius:10px;border:2px solid rgba(255,255,255,.14);background:rgba(255,255,255,.05);color:#fff;font-size:1.05rem;font-weight:700;cursor:pointer;min-height:64px}
+.pick:hover{border-color:rgba(255,255,255,.35)}
+.pick:active,.pick.flash{border-color:#F5C518;background:rgba(245,197,24,.14)}
+.pick .sw{width:22px;height:22px;border-radius:50%;border:1px solid rgba(255,255,255,.35);flex-shrink:0}
+.pick .ar{color:rgba(255,255,255,.3);font-size:.9rem;font-weight:500}
+.pick .pc{font-size:.7rem;font-weight:500;color:rgba(255,255,255,.4)}
+#more{display:flex;gap:.5rem;width:100%;max-width:640px}
+.more{flex:1;padding:.6rem .5rem;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:rgba(255,255,255,.75);font-size:.85rem;font-weight:600;cursor:pointer}
+.more:hover{border-color:rgba(255,255,255,.3)}
+.more .k{color:rgba(255,255,255,.28);font-weight:500;font-size:.72rem;margin-left:.25rem}
+
+#empty{display:none;flex:1;align-items:center;justify-content:center;flex-direction:column;gap:.6rem;color:rgba(255,255,255,.4);text-align:center;padding:2rem}
+#empty b{color:#e8eaf0;font-size:1rem}
+
+#toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom));transform:translateX(-50%);background:rgba(7,21,31,.95);border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:.45rem .9rem;font-size:.8rem;color:#e8eaf0;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+#toast.on{opacity:1}
+#toast.err{border-color:#e04;color:#f99}
+
+#picker{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:flex-end;justify-content:center}
+#picker.on{display:flex}
+#picker-box{background:#0a1e2e;border:1px solid rgba(255,255,255,.12);border-radius:14px 14px 0 0;padding:1rem 1rem calc(1rem + env(safe-area-inset-bottom));width:100%;max-width:640px}
+#picker-box h3{font-size:.9rem;margin-bottom:.2rem}
+#picker-box p{font-size:.72rem;color:rgba(255,255,255,.4);margin-bottom:.75rem}
+#chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:.45rem;margin-bottom:.85rem}
+.chip{display:flex;align-items:center;gap:.45rem;padding:.6rem .7rem;border-radius:8px;border:2px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#e8eaf0;font-size:.85rem;font-weight:600;cursor:pointer}
+.chip.on{border-color:#F5C518;background:rgba(245,197,24,.12)}
+.chip .sw{width:16px;height:16px;border-radius:50%;border:1px solid rgba(255,255,255,.35)}
+#picker-row{display:flex;gap:.5rem}
+#picker-row button{flex:1;padding:.7rem;border-radius:8px;font-weight:700;font-size:.9rem;cursor:pointer}
+#pk-cancel{border:1px solid rgba(255,255,255,.15);background:none;color:rgba(255,255,255,.7)}
+#pk-save{border:none;background:#F5C518;color:#07151f}
+#pk-save:disabled{opacity:.35;cursor:default}
+
+@media (max-width:640px){
+  #bar{padding:0 .4rem;overflow-x:auto}
+  .tab{padding:.65rem .55rem;font-size:.8rem}
+  #keys{display:none}
+  #stage{padding:.5rem .6rem .25rem}
+  #answers{padding-left:.6rem;padding-right:.6rem}
+  .pick{font-size:.98rem;min-height:58px;padding:.8rem .5rem}
+  .pick .ar{display:none}
+  .more .k{display:none}
+}
+</style>
+<link rel="stylesheet" href="/static/theme-admin.css">
+</head>
+<body>
+<div id="app">
+  <div id="bar">
+    <button class="tab active" data-part="jacket" onclick="setPart('jacket')">Jackets<span class="n" id="n-jacket"></span></button>
+    <button class="tab" data-part="pants" onclick="setPart('pants')">Pants<span class="n" id="n-pants"></span></button>
+    <button class="tab" data-part="sport" onclick="setPart('sport')">Ski or snowboard<span class="n" id="n-sport"></span></button>
+    <div id="bar-right">
+      <span id="keys">Left / Right: pick &nbsp; Up: both &nbsp; Down: neither &nbsp; S: skip &nbsp; Z: undo</span>
+      <button id="undo" onclick="undo()" disabled>Undo</button>
+    </div>
+  </div>
+
+  <div id="stage">
+    <div id="question"></div>
+    <div id="photo-wrap">
+      <div id="loading">Loading…</div>
+      <img id="photo" alt="" draggable="false">
+    </div>
+    <div id="info"></div>
+  </div>
+
+  <div id="answers">
+    <div id="pair">
+      <button class="pick" id="pick-a" onclick="pick('a')"><span class="ar">&larr;</span><span class="sw"></span><span class="nm"></span><span class="pc"></span></button>
+      <button class="pick" id="pick-b" onclick="pick('b')"><span class="sw"></span><span class="nm"></span><span class="pc"></span><span class="ar">&rarr;</span></button>
+    </div>
+    <div id="more">
+      <button class="more" id="btn-both" onclick="pick('both')">Both<span class="k">Up</span></button>
+      <button class="more" id="btn-neither" onclick="openPicker()">Neither<span class="k">Down</span></button>
+      <button class="more" onclick="skip()">Skip<span class="k">S</span></button>
+    </div>
+  </div>
+
+  <div id="empty"><b id="empty-title"></b><span id="empty-text"></span></div>
+</div>
+
+<div id="picker" onclick="if(event.target===this)closePicker()">
+  <div id="picker-box">
+    <h3 id="pk-title">What color is it?</h3>
+    <p>Pick one, or two or three for a jacket with more than one color.</p>
+    <div id="chips"></div>
+    <div id="picker-row">
+      <button id="pk-cancel" onclick="closePicker()">Cancel</button>
+      <button id="pk-save" onclick="savePicker()" disabled>Save</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+if (window.parent !== window) document.documentElement.classList.add('embedded');
+
+const HEX = {red:'#e04',orange:'#f70',yellow:'#fc0',green:'#3a5',blue:'#38f',purple:'#84c',pink:'#f6a',
+             white:'#eee',black:'#333',gray:'#888',brown:'#964B00',teal:'#0d9488'};
+const NAME = {red:'Red',orange:'Orange',yellow:'Yellow',green:'Green',blue:'Blue',purple:'Purple',pink:'Pink',
+              white:'White',black:'Black',gray:'Gray',brown:'Brown/Tan',teal:'Teal',ski:'Ski',snowboard:'Snowboard'};
+const COLORS = ['red','orange','yellow','green','blue','purple','pink','white','black','gray','brown'];
+const QUESTION = {jacket:'Which color is the jacket?', pants:'Which color are the pants?', sport:'Skiing or snowboarding?'};
+const PART_WORD = {jacket:'jackets', pants:'pants', sport:'ski or snowboard calls'};
+
+let part = 'jacket';
+let list = [];            // calls still to show for this part (first = on screen)
+let seen = new Set();     // answered or skipped this visit (not asked again until reload)
+let skipped = [];         // skipped this visit, asked again once the rest are done
+let history_ = [];        // answers, newest last, for Undo
+let counts = {};
+let loading = false, busy = false;
+const preloaded = new Map();
+
+const photoUrl = p => '/api/admin/photo?size=medium&path=' + encodeURIComponent(p);
+function preload(items) {
+  for (const it of items) {
+    if (preloaded.has(it.path)) continue;
+    const im = new Image(); im.src = photoUrl(it.path); preloaded.set(it.path, im);
+  }
+  if (preloaded.size > 40) [...preloaded.keys()].slice(0, preloaded.size - 40).forEach(k => preloaded.delete(k));
+}
+
+function toast(msg, err) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('on');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), err ? 3500 : 1300);
+}
+
+function showCounts() {
+  for (const p of ['jacket','pants','sport']) {
+    const n = counts[p];
+    document.getElementById('n-' + p).textContent = n === undefined ? '' : n;
+  }
+}
+
+async function load(reset) {
+  if (loading) return;
+  loading = true;
+  try {
+    const r = await fetch('/api/admin/close-calls?limit=40&part=' + part);
+    if (r.status === 401) { location.href = '/admin?next=/admin/dashboard'; return; }
+    const d = await r.json();
+    counts = d.counts || {};
+    const have = new Set(list.map(x => x.path));
+    const fresh = (d.photos || []).filter(x => !seen.has(x.path) && !have.has(x.path));
+    list = reset ? fresh : list.concat(fresh);
+    if (!list.length && skipped.length) { list = skipped; skipped = []; seen = new Set([...seen].filter(p => !list.some(x => x.path === p))); }
+    showCounts();
+  } catch (e) {
+    toast('Couldn\'t load the close calls. Check the connection.', true);
+  } finally { loading = false; }
+  show();
+}
+
+function setPart(p) {
+  if (p === part && list.length) return;
+  part = p; list = []; skipped = []; seen = new Set();
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.part === p));
+  document.getElementById('photo').removeAttribute('src');
+  load(true);
+}
+
+function swatch(el, c) {
+  const sw = el.querySelector('.sw');
+  if (part === 'sport') { sw.style.display = 'none'; return; }
+  sw.style.display = ''; sw.style.background = HEX[c] || '#555';
+}
+
+function show() {
+  const cur = list[0];
+  const emptyEl = document.getElementById('empty');
+  const on = !!cur;
+  document.getElementById('stage').style.display = on ? 'flex' : 'none';
+  document.getElementById('answers').style.display = on ? 'flex' : 'none';
+  emptyEl.style.display = on ? 'none' : 'flex';
+  if (!on) {
+    document.getElementById('empty-title').textContent = loading ? 'Loading…' : 'No close calls left for ' + PART_WORD[part];
+    document.getElementById('empty-text').textContent = loading ? '' :
+      'New ones show up here after the next upload: photos where the model was torn between two answers.';
+    return;
+  }
+  document.getElementById('question').textContent = QUESTION[part];
+  const img = document.getElementById('photo');
+  const url = photoUrl(cur.path);
+  if (img.getAttribute('src') !== url) {
+    document.getElementById('loading').style.display = '';
+    img.style.opacity = '0';
+    img.onload = () => { document.getElementById('loading').style.display = 'none'; img.className = ''; img.style.opacity = ''; };
+    img.onerror = () => { document.getElementById('loading').textContent = 'Photo didn\'t load'; };
+    img.src = url;
+  }
+  const pct = s => (s === null || s === undefined) ? '' : Math.round(s * 100) + '%';
+  for (const side of ['a','b']) {
+    const el = document.getElementById('pick-' + side);
+    el.querySelector('.nm').textContent = NAME[cur[side]] || cur[side];
+    el.querySelector('.pc').textContent = pct(cur[side + '_score']);
+    el.title = 'The model scored ' + (NAME[cur[side]] || cur[side]) + ' ' + pct(cur[side + '_score']);
+    swatch(el, cur[side]);
+  }
+  document.getElementById('btn-both').style.display = part === 'jacket' ? '' : 'none';
+  document.getElementById('btn-neither').style.display = part === 'sport' ? 'none' : '';
+  const where = [cur.date, cur.location, cur.group].filter(Boolean).join(' / ');
+  const left = Math.max(0, (counts[part] || 0));
+  document.getElementById('info').innerHTML = '<b>' + left + ' left</b> &nbsp; ' + esc(where) + ' &nbsp; ' + esc(cur.file);
+  preload(list.slice(1, 4));
+  if (list.length < 8 && !loading) load(false);
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function slide(dir) {
+  const img = document.getElementById('photo');
+  img.className = 'go-' + dir;
+}
+
+async function answer(value, how, dir) {
+  const cur = list[0];
+  if (!cur || busy) return;
+  busy = true;
+  slide(dir);
+  try {
+    const r = await fetch('/api/admin/close-calls/answer', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({path: cur.path, part, answer: value, how})});
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Not saved');
+    history_.push({item: cur, part});
+    document.getElementById('undo').disabled = false;
+    seen.add(cur.path);
+    list.shift();
+    counts[part] = Math.max(0, (counts[part] || 1) - 1);
+    showCounts();
+    const said = Array.isArray(value) ? value.map(c => NAME[c] || c).join(' + ') : (NAME[value] || value);
+    toast('Saved: ' + said);
+  } catch (e) {
+    document.getElementById('photo').className = '';
+    toast('Not saved: ' + e.message, true);
+  } finally { busy = false; }
+  show();
+}
+
+function pick(which) {
+  const cur = list[0];
+  if (!cur) return;
+  const btn = which === 'both' ? document.getElementById('btn-both') : document.getElementById('pick-' + which);
+  btn.classList.add('flash'); setTimeout(() => btn.classList.remove('flash'), 180);
+  if (part === 'sport') {
+    if (which === 'both') return;
+    return answer(cur[which], which, which === 'a' ? 'left' : 'right');
+  }
+  if (which === 'both') {
+    if (part !== 'jacket') return;
+    return answer([cur.a, cur.b], 'both', 'up');
+  }
+  // the photo's other labels stay (a jacket already labeled two colors keeps the second one) unless it's the one being replaced
+  const labels = (cur.labels[part] || []).filter(c => c !== cur.a && c !== cur.b);
+  const chosen = which === 'a' ? cur.a : cur.b;
+  return answer(part === 'jacket' ? [chosen, ...labels].slice(0, 3) : [chosen], which, which === 'a' ? 'left' : 'right');
+}
+
+function skip() {
+  const cur = list.shift();
+  if (!cur) return;
+  seen.add(cur.path); skipped.push(cur);
+  slide('up');
+  setTimeout(show, 120);
+}
+
+async function undo() {
+  const last = history_.pop();
+  document.getElementById('undo').disabled = !history_.length;
+  if (!last) return;
+  try {
+    const r = await fetch('/api/admin/close-calls/answer', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({path: last.item.path, part: last.part, undo: true})});
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Not undone');
+    seen.delete(last.item.path);
+    if (last.part !== part) setPart(last.part);
+    list.unshift(last.item);
+    counts[last.part] = (counts[last.part] || 0) + 1;
+    showCounts();
+    toast('Undone');
+    show();
+  } catch (e) {
+    history_.push(last); document.getElementById('undo').disabled = false;
+    toast(e.message, true);
+  }
+}
+
+// Neither: pick the real color(s)
+let picked = [];
+function openPicker() {
+  const cur = list[0];
+  if (!cur || part === 'sport') return;
+  picked = [];
+  document.getElementById('pk-title').textContent = part === 'jacket' ? 'What color is the jacket?' : 'What color are the pants?';
+  const box = document.getElementById('chips');
+  box.innerHTML = COLORS.map(c => `<button class="chip" data-c="${c}" onclick="togglePick('${c}')"><span class="sw" style="background:${HEX[c]}"></span>${NAME[c]}</button>`).join('');
+  document.getElementById('pk-save').disabled = true;
+  document.getElementById('picker').classList.add('on');
+}
+function togglePick(c) {
+  const max = part === 'jacket' ? 3 : 1;
+  if (picked.includes(c)) picked = picked.filter(x => x !== c);
+  else { picked.push(c); if (picked.length > max) picked.shift(); }
+  document.querySelectorAll('#chips .chip').forEach(el => el.classList.toggle('on', picked.includes(el.dataset.c)));
+  document.getElementById('pk-save').disabled = !picked.length;
+}
+function closePicker() { document.getElementById('picker').classList.remove('on'); }
+function savePicker() {
+  if (!picked.length) return;
+  closePicker();
+  answer(picked.slice(), 'neither', 'up');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const pickerOn = document.getElementById('picker').classList.contains('on');
+  if (pickerOn) {
+    if (e.key === 'Escape') closePicker();
+    else if (e.key === 'Enter') savePicker();
+    return;
+  }
+  if (e.key === 'ArrowLeft') { e.preventDefault(); pick('a'); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); pick('b'); }
+  else if (e.key === 'ArrowUp' || e.key === 'b') { e.preventDefault(); pick('both'); }
+  else if (e.key === 'ArrowDown' || e.key === 'n') { e.preventDefault(); openPicker(); }
+  else if (e.key === 's' || e.key === ' ') { e.preventDefault(); skip(); }
+  else if (e.key === 'z' || e.key === 'Backspace') { e.preventDefault(); undo(); }
+});
+
+// Phones and iPads: swipe the photo left or right to pick that side
+(function () {
+  const wrap = document.getElementById('photo-wrap');
+  let x0 = null, y0 = null;
+  wrap.addEventListener('touchstart', e => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; }, {passive: true});
+  wrap.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) pick(dx < 0 ? 'a' : 'b');
+  }, {passive: true});
+})();
+
+load(true);
+</script>
+</body>
+</html>
