@@ -6270,17 +6270,27 @@ def _list_unsubscribe_headers(email: str) -> dict:
     return {"List-Unsubscribe": f"<{_unsubscribe_url(email)}>, <mailto:info@bigskyphotos.com?subject=unsubscribe>",
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"}
 
+# A preview link (look only, nothing to download) gets its own wording instead of the download email's
+_PREVIEW_EMAIL = {
+    "subject": "Preview photos: {{title}} — Crystal Images",
+    "body": ("Hi {{first_name}},\n\n"
+             "Here are {{photo_count}} preview photo(s) from Crystal Images. Tap below to look through them.\n\n"
+             "{{download_button}}\n\n"
+             "This link works until {{expire_date}}. Questions? Reply to this email or contact us at info@bigskyphotos.com."),
+}
+
+
 def _send_package_email(to_emails: list, title: str, download_url: str, photo_count: int, expire_str: str,
-                        first_name: str = ""):
+                        first_name: str = "", preview: bool = False):
     if not RESEND_API_KEY:
         print("RESEND_API_KEY not set — skipping email")
         return
-    tmpl = _load_email_templates().get("package_download", _EMAIL_TEMPLATE_DEFAULTS["package_download"])
+    tmpl = _PREVIEW_EMAIL if preview else _load_email_templates().get("package_download", _EMAIL_TEMPLATE_DEFAULTS["package_download"])
     dl_btn_html = (
         f'<p style="margin:0 0 1rem"><a href="{download_url}" '
         f'style="background:#1a73e8;color:#fff;padding:.65rem 1.5rem;border-radius:6px;'
         f'font-size:.9rem;font-weight:600;text-decoration:none;display:inline-block">'
-        f'View &amp; Download Photos</a></p>'
+        f'{"View Photos" if preview else "View &amp; Download Photos"}</a></p>'
     )
     for email in to_emails:
         first = first_name or _customer_first_name(email) or "there"

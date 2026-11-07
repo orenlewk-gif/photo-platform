@@ -42,8 +42,13 @@ header .meta{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}
 #lb-close{background:rgba(255,255,255,.12);border:none;color:#fff;font-size:1.1rem;cursor:pointer;
   border-radius:6px;padding:.35rem .7rem;opacity:.8}
 #lb-close:hover{opacity:1}
+/* Preview links: the same page to look through, nothing to download */
+.preview-only{display:none}
+body.preview .preview-only{display:block}
+body.preview .dl-only,body.preview .acts,body.preview .dib,body.preview #lb-dl,body.preview #lb-save{display:none!important}
+body.preview img{-webkit-user-drag:none;-webkit-touch-callout:none}
 </style></head>
-<body>
+<body class="__BODY_CLASS__">
 <header>
   <div>
     <h1>__TITLE__</h1>
@@ -56,7 +61,11 @@ header .meta{font-size:.75rem;color:rgba(255,255,255,.38);margin-top:.2rem}
   <div id="save-hint" class="meta" style="display:none;width:100%"></div>
 </header>
 <div class="wrap">__NOTICE__
-  <div class="lic">
+  <div class="lic preview-only">
+    <strong>Preview photos</strong>, for viewing only. Tap a photo to see it larger.
+    Questions? <a href="mailto:info@bigskyphotos.com" style="color:#F2C94C">info@bigskyphotos.com</a>
+  </div>
+  <div class="lic dl-only">
     All photos are for <strong>personal use</strong> — print, frame, and share freely. We'd love a tag: @crystalimagesbigsky
     For commercial use, tag <strong>@crystalimagesbigsky</strong> on Instagram.
     Please do not resell or redistribute the original files.
@@ -108,7 +117,7 @@ document.querySelectorAll('.pi img').forEach((img,i)=>{
     if(e.target.tagName==='A')return;
     lbIdx = i;
     document.getElementById('lb-img').src='/package/__TOKEN__/medium/'+i;
-    document.getElementById('lb-dl').href='/package/__TOKEN__/file/'+i;
+    if (!PREVIEW) document.getElementById('lb-dl').href='/package/__TOKEN__/file/'+i;
     document.getElementById('lb').classList.add('open');
     prepareLbSave(i);
   });
@@ -121,7 +130,9 @@ function closeLb(){document.getElementById('lb').classList.remove('open')}
 // start from a tap, so photos are fetched first, then a second tap opens the sheet.
 const IS_MOBILE = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const SAVE_OK = IS_MOBILE && (() => {
+const PREVIEW = document.body.classList.contains('preview');
+if (PREVIEW) document.addEventListener('contextmenu', e => { if (e.target.tagName === 'IMG') e.preventDefault(); });
+const SAVE_OK = !PREVIEW && IS_MOBILE && (() => {
   try {
     const f = new File([new Blob(['x'], {type: 'image/jpeg'})], 't.jpg', {type: 'image/jpeg'});
     return !!(navigator.canShare && navigator.canShare({files: [f]}));

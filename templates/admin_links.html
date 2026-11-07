@@ -268,6 +268,10 @@ html.embedded #layout{height:100vh}
           <option value="365">1 year</option>
         </select>
       </div>
+      <label style="display:flex;align-items:flex-start;gap:.55rem;font-size:.84rem;color:rgba(255,255,255,.8);margin-bottom:.85rem;cursor:pointer">
+        <input type="checkbox" id="nl-preview" style="margin-top:.2rem">
+        <span>Preview only<br><span style="font-size:.74rem;color:rgba(255,255,255,.4)">Same page, but they can only look at the photos, not download them. Email is optional: you can copy the link instead.</span></span>
+      </label>
       <div class="modal-actions">
         <button class="modal-cancel" onclick="closeNLModal()">Cancel</button>
         <button class="modal-ok" onclick="submitNLModal()">Send Link</button>
@@ -385,9 +389,10 @@ async function loadPackages() {
     const badge = p.expired
       ? '<span class="badge-exp">Expired</span>'
       : '<span class="badge-live">Live</span>';
+    const kind = p.preview ? ' <span class="badge-live" style="background:rgba(56,136,255,.15);color:#7fb2ff;border-color:rgba(56,136,255,.35)" title="Look only: no downloads">Preview</span>' : '';
     const emails = (p.emails||[]).join('<br>');
     return `<tr>
-      <td><strong style="color:#e2e8f0">${p.title}</strong></td>
+      <td><strong style="color:#e2e8f0">${p.title}</strong>${kind}</td>
       <td><div class="emails-list">${emails || '—'}</div></td>
       <td>${p.count} photo${p.count!==1?'s':''}</td>
       <td>${fmtDate(p.created)}</td>
@@ -492,6 +497,7 @@ function openNLModal() {
   document.getElementById('nl-title').value = '';
   document.getElementById('nl-emails').value = '';
   document.getElementById('nl-days').value = '30';
+  document.getElementById('nl-preview').checked = false;
   document.getElementById('nl-file-list').innerHTML = '';
   document.getElementById('nl-form').style.display = '';
   document.getElementById('nl-sending').style.display = 'none';
@@ -535,9 +541,10 @@ async function submitNLModal() {
   const title  = document.getElementById('nl-title').value.trim();
   const emails = document.getElementById('nl-emails').value.trim();
   const days   = document.getElementById('nl-days').value;
+  const preview = document.getElementById('nl-preview').checked;
 
   if (!title)           { showToast('Please enter a title', 'error'); return; }
-  if (!emails)          { showToast('Please enter at least one email', 'error'); return; }
+  if (!emails && !preview) { showToast('Please enter at least one email', 'error'); return; }
   if (!_nlFiles.length) { showToast('Please add at least one photo', 'error'); return; }
 
   document.getElementById('nl-form').style.display = 'none';
@@ -552,6 +559,7 @@ async function submitNLModal() {
     fd.append('title', title);
     fd.append('emails', emails);
     fd.append('expire_days', days);
+    if (preview) fd.append('preview', '1');
     for (const f of _nlFiles) fd.append('photos', f);
 
     label.textContent = 'Uploading ' + _nlFiles.length + ' photo' + (_nlFiles.length !== 1 ? 's' : '') + '...';

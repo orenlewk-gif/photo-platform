@@ -177,10 +177,11 @@ async def api_create_package_upload(request: Request):
     title      = (form.get("title") or "").strip()
     emails_raw = (form.get("emails") or "").strip()
     expire_days = int(form.get("expire_days") or 30)
+    preview = str(form.get("preview") or "").lower() in ("1", "true", "on", "yes")
     files = form.getlist("photos")
 
     emails = [e.strip() for e in emails_raw.replace(",", "\n").split("\n") if e.strip()]
-    if not title or not emails or not files:
+    if not title or not (emails or preview) or not files:
         return JSONResponse(status_code=400, content={"error": "title, emails, and at least one photo required"})
 
     token = str(uuid.uuid4()).replace("-", "")
@@ -206,11 +207,13 @@ async def api_create_package_upload(request: Request):
         "token": token, "title": title, "emails": emails,
         "paths": paths, "created": now.isoformat(),
         "expires": expires, "expire_days": expire_days,
+        **({"preview": True} if preview else {}),
     }
     main._store_pkg(token, pkg)
 
     download_url = f"{main.SITE_URL}/package/{token}"
-    main._send_package_email(emails, title, download_url, len(paths), expire_str)
+    if emails:
+        main._send_package_email(emails, title, download_url, len(paths), expire_str, preview=preview)
     return {"token": token, "url": download_url}
 
 
@@ -223,8 +226,9 @@ async def api_create_package(request: Request):
     emails = [e.strip() for e in body.get("emails", []) if e.strip()]
     paths = body.get("paths", [])
     expire_days = int(body.get("expire_days", 30))
+    preview = bool(body.get("preview"))     # look only: same page, nothing to download (emails optional)
 
-    if not title or not emails or not paths:
+    if not title or not (emails or preview) or not paths:
         return JSONResponse(status_code=400, content={"error": "title, emails, and paths required"})
 
     token = str(uuid.uuid4()).replace("-", "")
@@ -240,11 +244,13 @@ async def api_create_package(request: Request):
         "created": now.isoformat(),
         "expires": expires,
         "expire_days": expire_days,
+        **({"preview": True} if preview else {}),
     }
     main._store_pkg(token, pkg)
 
     download_url = f"{main.SITE_URL}/package/{token}"
-    main._send_package_email(emails, title, download_url, len(paths), expire_str)
+    if emails:
+        main._send_package_email(emails, title, download_url, len(paths), expire_str, preview=preview)
 
     return {"token": token, "url": download_url}
 
@@ -270,6 +276,7 @@ def api_list_packages(request: Request):
             "created": p.get("created", "")[:10],
             "expires": p.get("expires", "")[:10],
             "expired": expired,
+            "preview": bool(p.get("preview")),
         })
     return {"packages": result}
 
@@ -309,7 +316,8 @@ async def api_resend_pkg_email(token: str, request: Request):
         exp_str = datetime.fromisoformat(pkg["expires"]).strftime("%B %d, %Y")
     except Exception:
         exp_str = "soon"
-    main._send_package_email(pkg.get("emails", []), pkg["title"], download_url, len(pkg.get("paths", [])), exp_str)
+    main._send_package_email(pkg.get("emails", []), pkg["title"], download_url, len(pkg.get("paths", [])), exp_str,
+                             preview=bool(pkg.get("preview")))
     return {"status": "ok"}
 
 
@@ -333,8 +341,11 @@ def package_page(token: str):
     expire_str = expires_dt.strftime("%B %d, %Y")
     title_esc = pkg["title"].replace("<", "&lt;").replace(">", "&gt;")
 
+    preview = bool(pkg.get("preview"))
     photo_items = "\n".join(
-        f'<div class="pi"><img src="/package/{token}/thumb/{i}" alt="Photo {i + 1} of {len(paths)}"><a href="/package/{token}/file/{i}" download class="dib" aria-label="Download photo {i + 1}">⬇ Download</a></div>'
+        f'<div class="pi"><img src="/package/{token}/thumb/{i}" alt="Photo {i + 1} of {len(paths)}">'
+        + ("" if preview else f'<a href="/package/{token}/file/{i}" download class="dib" aria-label="Download photo {i + 1}">⬇ Download</a>')
+        + '</div>'
         for i, _ in enumerate(paths)
     )
 
@@ -349,7 +360,8 @@ def package_page(token: str):
     return HTMLResponse(render_page("package.html", title=title_esc, photo_count=len(paths),
                                     plural="s" if len(paths) != 1 else "", expires=expire_str,
                                     token=token, photo_items=photo_items, notice=notice,
-                                    acts_hidden="" if paths else ' style="display:none"'))
+                                    body_class="preview" if preview else "",
+                                    acts_hidden="" if paths and not preview else ' style="display:none"'))
 
 
 @router.get("/package/{token}/thumb/{idx}")
@@ -413,6 +425,8 @@ def package_file(token: str, idx: int):
             return JSONResponse(status_code=410, content={"error": "Expired"})
     except Exception:
         pass
+    if pkg.get("preview"):
+        return JSONResponse(status_code=403, content={"error": "These photos are for viewing only"})
     paths = pkg.get("paths", [])
     if idx < 0 or idx >= len(paths):
         return JSONResponse(status_code=404, content={"error": "Not found"})
@@ -438,6 +452,8 @@ def package_links(token: str):
             return JSONResponse(status_code=410, content={"error": "Expired"})
     except Exception:
         return JSONResponse(status_code=404, content={"error": "Invalid"})
+    if pkg.get("preview"):
+        return JSONResponse(status_code=403, content={"error": "These photos are for viewing only"})
     files = []
     for path in pkg.get("paths", []):
         key = to_r2_key(path)
@@ -457,6 +473,8 @@ def package_all(token: str):
             return JSONResponse(status_code=410, content={"error": "Expired"})
     except Exception:
         pass
+    if pkg.get("preview"):
+        return JSONResponse(status_code=403, content={"error": "These photos are for viewing only"})
     paths = pkg.get("paths", [])
     safe_title = re.sub(r'[^\w\-_. ]', '', pkg.get("title", "photos"))[:60].strip().replace(" ", "_")
     filename = f"{safe_title}.zip"

@@ -623,6 +623,10 @@ input[type=file]{display:none}
           <option value="365">1 year</option>
         </select>
       </div>
+      <label style="display:flex;align-items:flex-start;gap:.55rem;font-size:.84rem;color:rgba(255,255,255,.8);margin-bottom:.85rem;cursor:pointer;text-transform:none">
+        <input type="checkbox" id="cl-preview" style="margin-top:.2rem">
+        <span>Preview only<br><span style="font-size:.74rem;color:rgba(255,255,255,.4)">Same page, but they can only look at the photos, not download them. Email is optional: you can copy the link instead.</span></span>
+      </label>
       <div id="cl-count" style="font-size:.78rem;color:rgba(255,255,255,.38);margin-bottom:.75rem"></div>
       <div class="modal-actions">
         <button class="modal-cancel" onclick="document.getElementById('create-link-modal').classList.remove('open')">Cancel</button>
@@ -2083,6 +2087,7 @@ function openCreateLinkModal() {
   document.getElementById('cl-title').value = '';
   document.getElementById('cl-emails').value = '';
   document.getElementById('cl-days').value = '30';
+  document.getElementById('cl-preview').checked = false;
   document.getElementById('cl-form').style.display = '';
   document.getElementById('cl-sending').style.display = 'none';
   document.getElementById('create-link-modal').classList.add('open');
@@ -2099,9 +2104,10 @@ async function submitCreateLink() {
   const emailsRaw = document.getElementById('cl-emails').value;
   const emails = emailsRaw.split(/[\n,;]+/).map(e=>e.trim()).filter(Boolean);
   const days = parseInt(document.getElementById('cl-days').value, 10);
+  const preview = document.getElementById('cl-preview').checked;
 
   if (!title) { showToast('Please enter a title', 'error'); return; }
-  if (!emails.length) { showToast('Please enter at least one email', 'error'); return; }
+  if (!emails.length && !preview) { showToast('Please enter at least one email', 'error'); return; }
 
   document.getElementById('cl-form').style.display = 'none';
   document.getElementById('cl-sending').style.display = '';
@@ -2114,7 +2120,7 @@ async function submitCreateLink() {
     const r = await fetch('/api/admin/packages', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ title, emails, paths: [...selectedPaths], expire_days: days }),
+      body: JSON.stringify({ title, emails, paths: [...selectedPaths], expire_days: days, preview }),
     });
     bar.style.width = '100%';
     await new Promise(res => setTimeout(res, 400));

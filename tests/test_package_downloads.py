@@ -74,3 +74,36 @@ def test_regenerated_link_page_escapes_the_customers_name(admin_client, main_mod
     monkeypatch.setattr(main_module, "_get_token_by_order_id", lambda oid: ("oldtok", dict(rec)))
     html = admin_client.get("/admin/regen/8").text
     assert "<img src=x" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html
+
+
+def test_a_preview_link_shows_the_photos_but_nothing_downloads(client, admin_client, main_module, monkeypatch):
+    for i, p in enumerate(PATHS[:3]):
+        S3.put_object(Bucket="test-bucket", Key=p, Body=f"photo-{i}".encode() * 1000)
+    sent = []
+    monkeypatch.setattr(main_module, "_send_package_email", lambda *a, **kw: sent.append((a, kw)))
+    r = admin_client.post("/api/admin/packages", json={"title": "Smith preview", "emails": [], "paths": PATHS[:3],
+                                                       "preview": True})
+    assert r.status_code == 200 and not sent                       # no email needed: copy the link instead
+    token = r.json()["token"]
+    page = client.get(f"/package/{token}").text
+    assert 'class="preview"' in page and "Preview photos" in page
+    assert f"/package/{token}/thumb/0" in page and f'href="/package/{token}/file/' not in page
+    assert '<div class="acts" style="display:none">' in page                # no Download All / Save to Photos
+    assert client.get(f"/package/{token}/medium/0").status_code != 403      # the enlarged view still works
+    for url in (f"/package/{token}/file/0", f"/package/{token}/links", f"/package/{token}/all"):
+        assert client.get(url, follow_redirects=False).status_code == 403
+    listed = next(p for p in admin_client.get("/api/admin/packages").json()["packages"] if p["token"] == token)
+    assert listed["preview"] is True
+    admin_client.post("/api/admin/packages", json={"title": "Emailed preview", "emails": ["ann@example.com"],
+                                                   "paths": PATHS[:1], "preview": True})
+    assert sent[-1][1]["preview"] is True
+
+
+def test_a_download_link_still_needs_an_email_and_still_downloads(client, admin_client, main_module, monkeypatch):
+    monkeypatch.setattr(main_module, "_send_package_email", lambda *a, **kw: None)
+    assert admin_client.post("/api/admin/packages", json={"title": "x", "emails": [], "paths": PATHS[:1]}).status_code == 400
+    S3.put_object(Bucket="test-bucket", Key=PATHS[0], Body=b"x" * 100)
+    token = admin_client.post("/api/admin/packages", json={"title": "x", "emails": ["a@b.co"], "paths": PATHS[:1]}).json()["token"]
+    page = client.get(f"/package/{token}").text
+    assert 'class=""' in page and f"/package/{token}/file/0" in page
+    assert client.get(f"/package/{token}/file/0", follow_redirects=False).status_code in (302, 307)
